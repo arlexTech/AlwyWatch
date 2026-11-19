@@ -52,6 +52,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let _ = core.seerr_activate(cookie);
     }
+    if let Some(k) = core.keep_connection() {
+        let kind = core
+            .accounts()?
+            .into_iter()
+            .find(|a| a.id == k.account_id)
+            .map(|a| a.kind);
+        let token = match kind {
+            Some(alwywatch_core::ServerKind::Plex) => {
+                tokens.get(&format!("{}:plextv", k.account_id))
+            }
+            _ => tokens.get(&k.account_id),
+        };
+        if let Some(t) = token {
+            let _ = core.keep_activate(t);
+        }
+    }
     let ui = AppWindow::new()?;
     let app = app::App::new(core.clone(), &ui, tokens);
     // Test hook (headless screenshots): start the Jellyfin sign-in with this address.

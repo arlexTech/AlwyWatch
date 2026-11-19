@@ -16,7 +16,10 @@ use slint::{
 
 use crate::platform::{self, Tokens};
 use crate::player::{self, PlayRequest};
-use crate::{AccountRow, AppWindow, Card, Detail, DownloadRow, NamedId, Page, Rail, SeerrPanel};
+use crate::{
+    AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, LeavingRow, NamedId, Page, Rail,
+    SeerrPanel,
+};
 
 const POSTER_PX: u32 = 300;
 const EPISODE_PX: u32 = 320;
@@ -28,6 +31,9 @@ enum Route {
     Home,
     Downloads,
     Requests,
+    Leaving,
+    Triage,
+    KeepAdmin,
     Library(String, String),
     Detail(String),
     Search,
@@ -62,6 +68,9 @@ struct State {
     seerr_results: Vec<SeerrResult>,
     seerr_selected: Option<SeerrResult>,
     seerr_seasons: Vec<(SeerrSeason, bool)>,
+    triage: Vec<LeavingItem>,
+    admin_users: Vec<AdminUser>,
+    armed: Option<(String, i32)>,
     poll_gen: u64,
 }
 
@@ -149,6 +158,9 @@ impl App {
                 seerr_results: vec![],
                 seerr_selected: None,
                 seerr_seasons: vec![],
+                triage: vec![],
+                admin_users: vec![],
+                armed: None,
                 poll_gen: 0,
             }),
             images: RefCell::new(HashMap::new()),
@@ -166,6 +178,8 @@ impl App {
         );
         app.wire(ui);
         app.refresh_seerr_settings();
+        app.refresh_keep_settings();
+        app.show_reminders();
         app.start_download_runner();
         let first = if app.state.borrow().account.is_some() {
             Route::Home
@@ -279,6 +293,428 @@ impl App {
             }
         })
         .ok();
+    }
+
+    // ----- keep service ---------------------------------------------------------------------
+
+    fn leaving_row(i: &LeavingItem) -> LeavingRow {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let when = match i.protection {
+            Protection::Forever => "Kept forever".to_owned(),
+            Protection::UntilWatched => "Kept until watched".to_owned(),
+            p => match i.effective_deletion_date {
+                None => "No date".into(),
+                Some(d) => {
+                    let days = (d - now).div_euclid(86_400);
+                    let mut s = match days {
+                        d if d < 0 => "Overdue".to_owned(),
+                        0 => "Leaves today".into(),
+                        1 => "Leaves tomorrow".into(),
+                        d => format!("Leaves in {d} days"),
+                    };
+                    if p == Protection::Extended {
+                        s.push_str(" (extended)");
+                    }
+                    if !i.collection_active {
+                        s.push_str(" · not active yet");
+                    }
+                    s
+                }
+            },
+        };
+        let vote = i
+            .my_vote
+            .as_ref()
+            .map(|v| match v.kind {
+                VoteKind::DontCare => "You don't care".to_owned(),
+                VoteKind::KeepDays => "You keep it a while".into(),
+                VoteKind::KeepUntilWatched => "You keep it until you watch it".into(),
+                VoteKind::KeepForever => format!(
+                    "You keep it forever{}",
+                    v.reason
+                        .as_ref()
+                        .map(|r| format!(" ({r})"))
+                        .unwrap_or_default()
+                ),
+            })
+            .unwrap_or_default();
+        let others = i.counts.forever + i.counts.until_watched + i.counts.days;
+        LeavingRow {
+            key: sstr(&i.key),
+            title: sstr(
+                [
+                    i.title.clone(),
+                    i.year.map(|y| y.to_string()).unwrap_or_default(),
+                ]
+                .join(" ")
+                .trim(),
+            ),
+            when: sstr(when),
+            vote: sstr(vote),
+            others: sstr(if others > 0 {
+                format!("{others} keep request(s)")
+            } else {
+                String::new()
+            }),
+            poster: Image::default(),
+            urgent: i.protection == Protection::None,
+            voted: i.my_vote.is_some(),
+        }
+    }
+
+    fn render_leaving(self: &Rc<Self>, list: &[LeavingItem]) {
+        let model = Rc::new(VecModel::from(
+            list.iter().map(Self::leaving_row).collect::<Vec<_>>(),
+        ));
+        self.ui().set_leaving(ModelRc::from(model.clone()));
+        for (row, i) in list.iter().enumerate() {
+            let Some(url) = i.poster_url.clone() else {
+                continue;
+            };
+            let (m, key) = (Rc::downgrade(&model), i.key.clone());
+            self.load_url_image(url, move |_, img| {
+                if let Some(m) = m.upgrade()
+                    && let Some(mut r) = m.row_data(row)
+                    && r.key.as_str() == key
+                {
+                    r.poster = img;
+                    m.set_row_data(row, r);
+                }
+            });
+        }
+        let mut cols: Vec<NamedId> = vec![];
+        for i in list {
+            if let (Some(id), Some(t)) = (i.collection_id, &i.collection_title)
+                && !cols.iter().any(|c| c.id.as_str() == id.to_string())
+            {
+                cols.push(NamedId {
+                    id: sstr(id.to_string()),
+                    title: sstr(t),
+                    selected: false,
+                });
+            }
+        }
+        self.ui()
+            .set_admin_collections(ModelRc::new(VecModel::from(cols)));
+    }
+
+    fn load_leaving(self: &Rc<Self>) {
+        if let Ok(Some(list)) = self.core.cached_leaving_soon() {
+            self.render_leaving(&list);
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.refresh_leaving_soon(false).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(list) => {
+                    if t.ui().get_page() == Page::Leaving || t.ui().get_page() == Page::Keepadmin {
+                        t.render_leaving(&list);
+                    }
+                }
+                Err(e) => t.set_error(Some(e)),
+            }
+        })
+        .ok();
+    }
+
+    fn vote_request(choice: &str) -> Option<VoteRequest> {
+        let r = |kind, days, reminder_days, reason: Option<&str>| VoteRequest {
+            kind,
+            days,
+            reminder_days,
+            reason: reason.map(str::to_owned),
+        };
+        Some(match choice {
+            "days7" => r(VoteKind::KeepDays, Some(7), None, None),
+            "days30" => r(VoteKind::KeepDays, Some(30), None, None),
+            "watched" => r(VoteKind::KeepUntilWatched, None, Some(7), None),
+            "love" => r(VoteKind::KeepForever, None, None, Some("love it")),
+            "classic" => r(VoteKind::KeepForever, None, None, Some("classic")),
+            "dontcare" => r(VoteKind::DontCare, None, None, None),
+            _ => return None,
+        })
+    }
+
+    fn keep_vote(self: &Rc<Self>, key: String, choice: String) {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = match Self::vote_request(&choice) {
+                Some(v) => core.keep_vote(key, v).await,
+                None => core.keep_unvote(key).await,
+            };
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(_) => {
+                    t.ui().set_leaving_open(SharedString::new());
+                    if let Ok(Some(list)) = t.core.cached_leaving_soon() {
+                        t.render_leaving(&list);
+                    }
+                }
+                Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    fn show_triage_card(self: &Rc<Self>) {
+        let first = self.state.borrow().triage.first().cloned();
+        let ui = self.ui();
+        ui.set_triage_left(self.state.borrow().triage.len() as i32);
+        let Some(i) = first else { return };
+        ui.set_triage_card(Self::leaving_row(&i));
+        if let Some(url) = i.poster_url.clone() {
+            let key = i.key.clone();
+            self.load_url_image(url, move |t, img| {
+                let ui = t.ui();
+                let mut c = ui.get_triage_card();
+                if c.key.as_str() == key {
+                    c.poster = img;
+                    ui.set_triage_card(c);
+                }
+            });
+        }
+    }
+
+    fn load_triage(self: &Rc<Self>) {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.keep_triage(50).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(list) => {
+                    t.state.borrow_mut().triage = list;
+                    t.show_triage_card();
+                }
+                Err(e) => t.set_error(Some(e)),
+            }
+        })
+        .ok();
+    }
+
+    fn triage_vote(self: &Rc<Self>, choice: String) {
+        let item = {
+            let mut st = self.state.borrow_mut();
+            if st.triage.is_empty() {
+                return;
+            }
+            st.triage.remove(0)
+        };
+        self.show_triage_card();
+        if let Some(v) = Self::vote_request(&choice) {
+            let (core, this) = (self.core.clone(), Rc::downgrade(self));
+            slint::spawn_local(async move {
+                if let (Err(e), Some(t)) = (core.keep_vote(item.key, v).await, this.upgrade()) {
+                    t.ui().set_keep_message(sstr(e.to_string()));
+                }
+            })
+            .ok();
+        }
+    }
+
+    fn render_admin(&self) {
+        let rows: Vec<AdminRow> = self
+            .state
+            .borrow()
+            .admin_users
+            .iter()
+            .map(|u| AdminRow {
+                key: sstr(&u.user_key),
+                name: sstr(&u.name),
+                detail: sstr(format!(
+                    "{}{} kept forever",
+                    if u.is_admin { "admin · " } else { "" },
+                    u.forever_count
+                )),
+                forever: sstr(if u.rights.can_keep_forever {
+                    "Forever: allowed"
+                } else {
+                    "Forever: blocked"
+                }),
+                max_forever: sstr(format!(
+                    "Max forever: {}",
+                    u.rights
+                        .max_forever
+                        .map(|v| v.to_string())
+                        .unwrap_or("∞".into())
+                )),
+                max_days: sstr(format!(
+                    "Max days: {}",
+                    u.rights
+                        .max_keep_days
+                        .map(|v| v.to_string())
+                        .unwrap_or("∞".into())
+                )),
+            })
+            .collect();
+        self.ui()
+            .set_admin_users(ModelRc::new(VecModel::from(rows)));
+    }
+
+    fn load_admin(self: &Rc<Self>) {
+        self.load_leaving();
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.keep_admin_users().await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(u) => {
+                    t.state.borrow_mut().admin_users = u;
+                    t.render_admin();
+                }
+                Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    fn admin_rights(self: &Rc<Self>, user: String, field: String) {
+        let Some(u) = self
+            .state
+            .borrow()
+            .admin_users
+            .iter()
+            .find(|u| u.user_key == user)
+            .cloned()
+        else {
+            return;
+        };
+        let mut r = u.rights.clone();
+        let cycle = |cur: Option<u32>, steps: &[Option<u32>]| {
+            let i = steps
+                .iter()
+                .position(|s| *s == cur)
+                .map(|i| (i + 1) % steps.len())
+                .unwrap_or(0);
+            steps[i]
+        };
+        match field.as_str() {
+            "forever" => r.can_keep_forever = !r.can_keep_forever,
+            "max-forever" => {
+                r.max_forever = cycle(r.max_forever, &[None, Some(5), Some(10), Some(25)])
+            }
+            _ => r.max_keep_days = cycle(r.max_keep_days, &[None, Some(7), Some(30), Some(90)]),
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let res = core.keep_admin_set_rights(user, r).await;
+            let Some(t) = this.upgrade() else { return };
+            match res {
+                Ok(nu) => {
+                    for x in t.state.borrow_mut().admin_users.iter_mut() {
+                        if x.user_key == nu.user_key {
+                            *x = nu.clone();
+                        }
+                    }
+                    t.render_admin();
+                }
+                Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    /// Two clicks on the same button confirm (it rewrites dates in Maintainerr).
+    fn admin_countdown(self: &Rc<Self>, collection: String, stagger: i32) {
+        let confirmed = self.state.borrow().armed.as_ref() == Some(&(collection.clone(), stagger));
+        if !confirmed {
+            self.state.borrow_mut().armed = Some((collection, stagger));
+            self.ui()
+                .set_keep_message("Click the same button again to confirm the countdown.".into());
+            return;
+        }
+        self.state.borrow_mut().armed = None;
+        let Ok(id) = collection.parse::<i64>() else {
+            return;
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.keep_admin_countdown(id, stagger.max(0) as u32).await;
+            if let Some(t) = this.upgrade() {
+                t.ui().set_keep_message(sstr(match r {
+                    Ok(r) => format!(
+                        "Countdown restarted: {} items, {} skipped.",
+                        r.reset, r.skipped
+                    ),
+                    Err(e) => e.to_string(),
+                }));
+                t.load_leaving();
+            }
+        })
+        .ok();
+    }
+
+    fn keep_token(&self, account_id: &str) -> Option<String> {
+        let account = self
+            .core
+            .accounts()
+            .ok()?
+            .into_iter()
+            .find(|a| a.id == account_id)?;
+        match account.kind {
+            ServerKind::Plex => self.tokens.get(&format!("{account_id}:plextv")),
+            ServerKind::Jellyfin => self.tokens.get(account_id),
+        }
+    }
+
+    fn refresh_keep_settings(&self) {
+        let ui = self.ui();
+        ui.set_keep_active(self.core.keep_active());
+        if let Some(k) = self.core.keep_connection() {
+            ui.set_keep_admin(k.is_admin);
+            ui.set_keep_label(sstr(format!(
+                "{} @ {}{}",
+                k.user_name,
+                k.base_url,
+                if k.is_admin { " (admin)" } else { "" }
+            )));
+        }
+    }
+
+    fn keep_connect(self: &Rc<Self>, url: String) {
+        let Some(account) = self.account() else {
+            return;
+        };
+        let Some(token) = self.keep_token(&account) else {
+            self.ui()
+                .set_keep_message("Sign in to this account again first.".into());
+            return;
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = match normalize_server_url(url) {
+                Ok(u) => core.keep_connect(u, account, token).await,
+                Err(e) => Err(e),
+            };
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(_) => {
+                    t.ui().set_keep_message(SharedString::new());
+                    t.refresh_keep_settings();
+                }
+                Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    /// On launch: "you wanted to watch X before it leaves".
+    fn show_reminders(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let due = self.core.keep_due_reminders(now);
+        if !due.is_empty() {
+            let titles: Vec<String> = due.iter().map(|i| i.title.clone()).collect();
+            self.ui().set_keep_message(sstr(format!(
+                "Reminder: you wanted to watch {} before it leaves.",
+                titles.join(", ")
+            )));
+        }
     }
 
     // ----- Seerr ----------------------------------------------------------------------------
@@ -794,6 +1230,18 @@ impl App {
                 ui.set_page(Page::Search);
                 self.state.borrow().grid_model.set_vec(vec![]);
             }
+            Route::Leaving => {
+                ui.set_page(Page::Leaving);
+                self.load_leaving();
+            }
+            Route::Triage => {
+                ui.set_page(Page::Triage);
+                self.load_triage();
+            }
+            Route::KeepAdmin => {
+                ui.set_page(Page::Keepadmin);
+                self.load_admin();
+            }
             Route::Requests => {
                 ui.set_page(Page::Requests);
                 self.load_seerr_requests();
@@ -805,6 +1253,7 @@ impl App {
             Route::Settings => {
                 ui.set_page(Page::Settings);
                 self.refresh_seerr_settings();
+                self.refresh_keep_settings();
                 self.refresh_settings();
             }
             Route::Add => {
@@ -1637,6 +2086,9 @@ impl App {
     }
 
     fn signed_in(self: &Rc<Self>, s: SignedIn) {
+        if let Some(t) = &s.plex_account_token {
+            let _ = self.tokens.put(&format!("{}:plextv", s.account.id), t);
+        }
         if let Err(e) = self.tokens.put(&s.account.id, &s.token) {
             self.ui()
                 .set_status(sstr(format!("could not store the token: {e}")));
@@ -1908,6 +2360,9 @@ impl App {
             Page::Add => Route::Add,
             Page::Downloads => Route::Downloads,
             Page::Requests => Route::Requests,
+            Page::Leaving => Route::Leaving,
+            Page::Triage => Route::Triage,
+            Page::Keepadmin => Route::KeepAdmin,
             _ => Route::Home,
         }));
         on!(on_add_choose, |a, which| a.add_choose(which.into()));
@@ -1924,6 +2379,18 @@ impl App {
         });
         on!(on_download, |a, id| a.download(id.into()));
         on!(on_seerr_url, |a, url| a.seerr_url(url.into()));
+        on!(on_keep_connect, |a, url| a.keep_connect(url.into()));
+        on!(on_keep_disconnect, |a| {
+            let _ = a.core.keep_disconnect();
+            a.refresh_keep_settings();
+        });
+        on!(on_keep_vote, |a, key, choice| a
+            .keep_vote(key.into(), choice.into()));
+        on!(on_triage_vote, |a, choice| a.triage_vote(choice.into()));
+        on!(on_admin_rights, |a, user, field| a
+            .admin_rights(user.into(), field.into()));
+        on!(on_admin_countdown, |a, id, stagger| a
+            .admin_countdown(id.into(), stagger));
         on!(on_seerr_login, |a, m| a.seerr_login(m.into()));
         on!(on_seerr_password, |a, u, p| a
             .seerr_password(u.into(), p.into()));

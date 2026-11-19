@@ -63,7 +63,27 @@ export struct SeerrPanel {
     can-request: bool,
 }
 
-export enum Page { add, home, library, detail, search, settings, downloads, requests }
+export struct LeavingRow {
+    key: string,
+    title: string,
+    when: string,
+    vote: string,
+    others: string,
+    poster: image,
+    urgent: bool,
+    voted: bool,
+}
+
+export struct AdminRow {
+    key: string,
+    name: string,
+    detail: string,
+    forever: string,
+    max-forever: string,
+    max-days: string,
+}
+
+export enum Page { add, home, library, detail, search, settings, downloads, requests, leaving, triage, keepadmin }
 
 export global Palette {
     out property <color> bg: #101114;
@@ -233,6 +253,17 @@ export component AppWindow inherits Window {
     in property <[Card]> seerr-mine;
     in property <SeerrPanel> seerr-panel;
     in property <[NamedId]> seerr-seasons;
+    // Keep service
+    in property <bool> keep-active;
+    in property <bool> keep-admin;
+    in property <string> keep-label;
+    in property <string> keep-message;
+    in property <[LeavingRow]> leaving;
+    in-out property <string> leaving-open;
+    in property <LeavingRow> triage-card;
+    in property <int> triage-left;
+    in property <[AdminRow]> admin-users;
+    in property <[NamedId]> admin-collections;
 
     callback back();
     callback move-focus(bool);
@@ -266,6 +297,12 @@ export component AppWindow inherits Window {
     callback seerr-toggle-season(string);
     callback seerr-request(bool); // all seasons?
     callback seerr-close();
+    callback keep-connect(string);
+    callback keep-disconnect();
+    callback keep-vote(string, string); // key, choice
+    callback triage-vote(string);       // choice
+    callback admin-rights(string, string); // user key, field
+    callback admin-countdown(string, int); // collection id, stagger days
 
     // Arrow keys and Escape not consumed by a focused element end up here.
     FocusScope {
@@ -295,9 +332,15 @@ export component AppWindow inherits Window {
                 }
                 Rectangle { horizontal-stretch: 1; }
                 if root.page != Page.add : Button { label: "Search"; clicked => { root.go(Page.search); } }
+                if root.page != Page.add && root.keep-active : Button { label: "Leaving soon"; clicked => { root.go(Page.leaving); } }
                 if root.page != Page.add && root.seerr-active : Button { label: "Requests"; clicked => { root.go(Page.requests); } }
                 if root.page != Page.add : Button { label: "Downloads"; clicked => { root.go(Page.downloads); } }
                 if root.page != Page.add : Button { label: "Settings"; clicked => { root.go(Page.settings); } }
+            }
+            if root.keep-message != "" : Rectangle {
+                height: 36px;
+                background: Palette.surface-high;
+                Text { text: root.keep-message; color: Palette.accent; }
             }
             if root.error != "" : Rectangle {
                 height: 36px;
@@ -618,6 +661,151 @@ export component AppWindow inherits Window {
                 }
             }
 
+            if root.page == Page.leaving : ScrollView {
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 8px;
+                    alignment: start;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        Text { text: "Leaving soon"; color: Palette.text; font-size: 22px; vertical-alignment: center; }
+                        Button { label: "Sort them out"; primary: true; clicked => { root.go(Page.triage); } }
+                        if root.keep-admin : Button { label: "Admin"; clicked => { root.go(Page.keepadmin); } }
+                    }
+                    Text { text: "What the server will delete, soonest first. Keep what you want to watch or love."; color: Palette.muted; }
+                    for row in root.leaving : Rectangle {
+                        background: Palette.surface;
+                        border-radius: 8px;
+                        height: root.leaving-open == row.key ? 150px : 100px;
+                        VerticalLayout {
+                            padding: 8px;
+                            spacing: 8px;
+                            Focusable {
+                                height: 84px;
+                                clicked => { root.leaving-open = root.leaving-open == row.key ? "" : row.key; }
+                                HorizontalLayout {
+                                    spacing: 12px;
+                                    Rectangle {
+                                        width: 56px;
+                                        border-radius: 6px;
+                                        clip: true;
+                                        background: Palette.surface-high;
+                                        Image { source: row.poster; width: parent.width; height: parent.height; image-fit: cover; }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: row.title; color: Palette.text; font-size: 16px; overflow: elide; }
+                                        Text { text: row.when; color: row.urgent ? Palette.accent : Palette.muted; }
+                                        if row.vote != "" : Text { text: row.vote; color: Palette.muted; font-size: 12px; }
+                                        if row.others != "" : Text { text: row.others; color: Palette.muted; font-size: 12px; }
+                                    }
+                                }
+                            }
+                            if root.leaving-open == row.key : HorizontalLayout {
+                                spacing: 6px;
+                                alignment: start;
+                                Button { label: "Keep 7 days"; clicked => { root.keep-vote(row.key, "days7"); } }
+                                Button { label: "Keep 30 days"; clicked => { root.keep-vote(row.key, "days30"); } }
+                                Button { label: "Until I watch it"; primary: true; clicked => { root.keep-vote(row.key, "watched"); } }
+                                Button { label: "Forever: love it"; clicked => { root.keep-vote(row.key, "love"); } }
+                                Button { label: "Forever: classic"; clicked => { root.keep-vote(row.key, "classic"); } }
+                                Button { label: "Don't care"; clicked => { root.keep-vote(row.key, "dontcare"); } }
+                                if row.voted : Button { label: "Remove my choice"; clicked => { root.keep-vote(row.key, "remove"); } }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if root.page == Page.triage : FocusScope {
+                key-pressed(e) => {
+                    if (e.text == Key.LeftArrow) { root.triage-vote("dontcare"); return accept; }
+                    if (e.text == Key.RightArrow) { root.triage-vote("watched"); return accept; }
+                    if (e.text == Key.UpArrow) { root.triage-vote("love"); return accept; }
+                    return reject;
+                }
+                init => { self.focus(); }
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    alignment: start;
+                    Text { text: "Sort them out"; color: Palette.text; font-size: 22px; horizontal-alignment: center; }
+                    if root.triage-left == 0 : Text { text: "Nothing left to sort. Thanks!"; color: Palette.muted; horizontal-alignment: center; }
+                    if root.triage-left > 0 : VerticalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        Text {
+                            text: root.triage-left + " left · ← don't care   → keep until I watch it   ↑ keep forever";
+                            color: Palette.muted;
+                            horizontal-alignment: center;
+                        }
+                        HorizontalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 260px;
+                                height: 390px;
+                                border-radius: 12px;
+                                clip: true;
+                                background: Palette.surface-high;
+                                Image { source: root.triage-card.poster; width: parent.width; height: parent.height; image-fit: cover; }
+                            }
+                        }
+                        Text { text: root.triage-card.title; color: Palette.text; font-size: 18px; horizontal-alignment: center; }
+                        Text { text: root.triage-card.when; color: Palette.accent; horizontal-alignment: center; }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            alignment: center;
+                            Button { label: "Don't care"; clicked => { root.triage-vote("dontcare"); } }
+                            Button { label: "Keep 30 days"; clicked => { root.triage-vote("days30"); } }
+                            Button { label: "Until I watch it"; primary: true; clicked => { root.triage-vote("watched"); } }
+                            Button { label: "Forever"; clicked => { root.triage-vote("love"); } }
+                        }
+                    }
+                }
+            }
+
+            if root.page == Page.keepadmin : ScrollView {
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 10px;
+                    alignment: start;
+                    Text { text: "Admin"; color: Palette.text; font-size: 22px; }
+                    Text { text: "Start countdown"; color: Palette.text; font-size: 18px; }
+                    Text {
+                        text: "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr. Click twice to confirm.";
+                        color: Palette.muted;
+                        wrap: word-wrap;
+                    }
+                    for c in root.admin-collections : HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        Text { text: c.title; color: Palette.text; vertical-alignment: center; min-width: 200px; }
+                        Button { label: "Today"; clicked => { root.admin-countdown(c.id, 0); } }
+                        Button { label: "Spread over 14 days"; clicked => { root.admin-countdown(c.id, 14); } }
+                        Button { label: "Spread over 30 days"; clicked => { root.admin-countdown(c.id, 30); } }
+                    }
+                    Text { text: "People"; color: Palette.text; font-size: 18px; }
+                    for u in root.admin-users : Rectangle {
+                        background: Palette.surface;
+                        border-radius: 8px;
+                        height: 92px;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 6px;
+                            Text { text: u.name + "  ·  " + u.detail; color: Palette.text; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Button { label: u.forever; clicked => { root.admin-rights(u.key, "forever"); } }
+                                Button { label: u.max-forever; clicked => { root.admin-rights(u.key, "max-forever"); } }
+                                Button { label: u.max-days; clicked => { root.admin-rights(u.key, "max-days"); } }
+                            }
+                        }
+                    }
+                }
+            }
+
             if root.page == Page.settings : ScrollView {
                 VerticalLayout {
                     padding: 24px;
@@ -636,6 +824,18 @@ export component AppWindow inherits Window {
                         Button { label: "Remove"; clicked => { root.remove-account(a.id); } }
                     }
                     HorizontalLayout { alignment: start; Button { label: "Add a server"; primary: true; clicked => { root.go(Page.add); } } }
+                    Text { text: "Leaving soon (AlwyWatch server)"; color: Palette.text; font-size: 20px; }
+                    if root.keep-active : HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        Text { text: root.keep-label; color: Palette.text; vertical-alignment: center; }
+                        Button { label: "Disconnect"; clicked => { root.keep-disconnect(); } }
+                    }
+                    if !root.keep-active : HorizontalLayout {
+                        spacing: 10px;
+                        kurl := LineEdit { placeholder-text: "AlwyWatch server address"; accepted(t) => { root.keep-connect(t); } }
+                        Button { label: "Connect as this account"; clicked => { root.keep-connect(kurl.text); } }
+                    }
                     Text { text: "Requests (Seerr)"; color: Palette.text; font-size: 20px; }
                     if root.seerr-active : HorizontalLayout {
                         spacing: 10px;
