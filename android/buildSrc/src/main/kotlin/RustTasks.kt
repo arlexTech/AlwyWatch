@@ -65,6 +65,9 @@ abstract class CargoNdkTask : RustTask() {
 
     @TaskAction
     fun build() {
+        // cargo-ndk only copies a library when it is newer than the one in -o: after switching
+        // profiles (or ABIs) a stale .so would survive. Start from an empty directory.
+        outDir.get().asFile.deleteRecursively()
         val args = mutableListOf("ndk", "--platform", minSdk.get().toString())
         abis.get().forEach { args += listOf("-t", it) }
         args += listOf("-o", outDir.get().asFile.absolutePath, "build", "--profile", profile.get(), "-p", "alwywatch-core")

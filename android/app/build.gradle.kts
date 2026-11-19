@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ktlint)
+    alias(libs.plugins.baselineprofile)
 }
 
 val rustRoot: File = rootDir.parentFile
@@ -42,6 +45,13 @@ val rustlsVerifierVersion =
         parameters.lockFile.set(File(rustRoot, "Cargo.lock"))
     }
 
+// Release key lives outside the repo: ~/.config/alwywatch/signing.properties (storeFile,
+// storePassword, keyAlias, keyPassword). Without it, release APKs are built unsigned.
+val signingProps =
+    File(System.getProperty("user.home"), ".config/alwywatch/signing.properties")
+        .takeIf { it.isFile }
+        ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
+
 android {
     namespace = "be.alwyapps.watch"
     compileSdk = 37
@@ -55,12 +65,23 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        if (signingProps != null) {
+            create("release") {
+                storeFile = File(signingProps.getProperty("storeFile"))
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signing is configured from ~/.config/alwywatch (outside the repo) once the release key exists.
         }
     }
 
@@ -79,6 +100,10 @@ android {
     }
 
     packaging {
+        // APKs are downloaded directly (not through Play, which compresses on its own): store
+        // native libraries compressed. ~40% smaller download; the system extracts them once at
+        // install time.
+        jniLibs.useLegacyPackaging = true
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "DebugProbesKt.bin", "kotlin-tooling-metadata.json")
     }
 }
@@ -88,6 +113,12 @@ androidComponents {
         variant.sources.jniLibs?.addGeneratedSourceDirectory(cargoNdk, CargoNdkTask::outDir)
         variant.sources.kotlin?.addGeneratedSourceDirectory(uniffiBindgen, UniffiBindgenTask::outDir)
     }
+}
+
+baselineProfile {
+    // Regenerated on demand (needs a device): ./gradlew :app:generateBaselineProfile
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
 }
 
 ktlint {
@@ -120,5 +151,8 @@ dependencies {
     implementation(libs.media3.ffmpeg)
     // libass rendering for ASS/SSA subtitles (styles, positioning, karaoke).
     implementation(libs.ass.media)
+    // Installs the Baseline Profile on devices where the store does not (sideloads, F-Droid).
+    implementation(libs.profileinstaller)
+    baselineProfile(project(":baselineprofile"))
     debugImplementation(libs.compose.ui.tooling)
 }

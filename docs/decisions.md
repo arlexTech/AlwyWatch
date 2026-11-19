@@ -19,6 +19,8 @@ then **small APK** (see CLAUDE.md). This file states why each one is here and wh
 | "Watched" detection by polling | No webhook source exists today (no Jellyfin webhook plugin, Plex webhooks need Plex Pass); only "until watched" items are polled | Requiring plugins/Plex Pass |
 | No downloads UI on TV | TVs stream; saves storage and UI | — |
 | tv-material dropped | `androidx.tv:tv-material` duplicated Material 3 (+~1 MB dex) for a few components; focus handling is done with plain Compose (`FocusCard`, `dpadEscape`) | Using it for cards/rails |
+| Native libs stored compressed in the APK | APKs are downloaded directly (Forgejo), not via Play: arm64 APK 16.2 → 8.5 MB. Cost: libs extracted once at install | Uncompressed page-aligned libs (AGP default, best for Play) |
+| Rust core at opt-level 3, not "s" | "s" saves 0.6 MB of APK but speed ranks above size | `release-size` profile kept for comparison |
 | Release key: new dedicated key | Not reused from other apps; stored outside the repo (`~/.config/alwywatch`) | Debug key / Play App Signing only |
 | License AGPL-3.0-or-later | Same as the other licensed Alwy* project | — |
 
@@ -49,13 +51,13 @@ then **small APK** (see CLAUDE.md). This file states why each one is here and wh
 |---|---|---|
 | Compose BOM (ui, foundation, material3) | UI for phone, tablet and TV in one codebase | No `material-icons-extended` (huge); text buttons |
 | `activity-compose` | Compose host, `ReportDrawn` for startup metrics | — |
-| JNA (`@aar`) | Required by UniFFI's Kotlin bindings | ~0.5 MB per ABI of native stub |
+| JNA (`@aar`) | Required by UniFFI's Kotlin bindings | `libjnidispatch.so` 0.17 MB (arm64) |
 | `kotlinx-coroutines-android` | Rust async functions become `suspend` functions | — |
 | WorkManager | Downloads survive process death and resume when the network returns; keep reminders | Foreground `dataSync` service |
 | Media3 ExoPlayer + UI (pinned 1.8.0) | Player: HW decoding, HDR, tunneling, passthrough | Pinned because the two extensions below are built against exactly 1.8.0 |
 | Media3 HLS | Only for the rare server-transcode fallback | Small |
-| `org.jellyfin.media3:media3-ffmpeg-decoder` | Software DTS/DTS-HD/TrueHD/E-AC3 when the device lacks a decoder, so audio never forces a transcode | **GPLv3** (compatible with AGPL); ~3 MB per ABI |
-| `io.github.peerless2012:ass-media` | libass rendering of ASS/SSA subtitles (styles, positions) | Overlay mode (OpenGL) |
+| `org.jellyfin.media3:media3-ffmpeg-decoder` | Software DTS/DTS-HD/TrueHD/E-AC3 when the device lacks a decoder, so audio never forces a transcode | **GPLv3** (compatible with AGPL); `libffmpegJNI.so` 1.5 MB (arm64) |
+| `io.github.peerless2012:ass-media` | libass rendering of ASS/SSA subtitles (styles, positions) | Overlay mode (OpenGL); `libass.so` 3.0 MB (arm64), the largest native lib after the core |
 | `org.rustls:rustls-platform-verifier` | Kotlin half of the Rust TLS verifier | Version read from Cargo.lock at build time |
 | `androidx.profileinstaller` | Installs the Baseline Profile on sideloaded installs | Tiny |
 | Benchmark (macro), UIAutomator, androidx.test | `:baselineprofile` module only (profile generation, startup benchmark) | Never shipped |

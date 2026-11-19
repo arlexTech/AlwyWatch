@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "AlwyWatch"
-include(":app")
+include(":app", ":baselineprofile")

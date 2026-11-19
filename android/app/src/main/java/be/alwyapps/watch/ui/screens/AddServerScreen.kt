@@ -77,6 +77,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     // Picked from an AlwyWatch server's list: Plex then selects that server by itself.
     var presetPlexId by remember { mutableStateOf<String?>(null) }
+    androidx.activity.compose.ReportDrawn()
 
     fun finish(s: SignedIn) {
         ctx.services.tokens.put(s.account.id, s.token)

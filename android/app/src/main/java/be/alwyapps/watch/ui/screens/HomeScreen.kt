@@ -67,6 +67,8 @@ fun HomeScreen() {
             refresh = { force -> core.refreshHome(account, force) },
         )
     val open: (Item) -> Unit = { nav.push(Route.Detail(it.id)) }
+    // "Fully drawn" = rails on screen (from cache or network), for startup benchmarks.
+    androidx.activity.compose.ReportDrawnWhen { home.value != null || home.error != null }
     LazyColumn(Modifier.fillMaxSize(), state = rememberPersistentListState("home.$account")) {
         item(key = "top") {
             Row(
