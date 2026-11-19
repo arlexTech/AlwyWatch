@@ -74,13 +74,29 @@ fun RequestStatus.label(): String =
     }
 
 /** Seerr: search TMDB, request movies or seasons, follow my requests. */
+
+/** Search hands a Seerr result over to the requests screen (query + chosen title). */
+object PendingRequest {
+    private var value: Pair<String, SeerrResult>? = null
+
+    fun set(
+        query: String,
+        result: SeerrResult,
+    ) {
+        value = query to result
+    }
+
+    fun take(): Pair<String, SeerrResult>? = value.also { value = null }
+}
+
 @Composable
 fun RequestsScreen() {
     val core = LocalCore.current
     val d = LocalDimens.current
-    var query by rememberSaveable { mutableStateOf("") }
+    val handoff = remember { PendingRequest.take() }
+    var query by rememberSaveable { mutableStateOf(handoff?.first ?: "") }
     var results by remember { mutableStateOf<List<SeerrResult>>(emptyList()) }
-    var selected by remember { mutableStateOf<SeerrResult?>(null) }
+    var selected by remember { mutableStateOf<SeerrResult?>(handoff?.second) }
     var message by remember { mutableStateOf<String?>(null) }
     val mine = rememberSwr("seerr-requests", cached = { core.cachedSeerrRequests() }, refresh = { core.refreshSeerrRequests(it) })
     LaunchedEffect(query) {

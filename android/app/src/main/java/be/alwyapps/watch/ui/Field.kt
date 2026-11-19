@@ -37,6 +37,8 @@ fun Field(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    leadingIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    pill: Boolean = false,
 ) {
     val isTv = LocalDimens.current.isTv
     var editing by remember { mutableStateOf(!isTv) }
@@ -67,5 +69,22 @@ fun Field(
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         visualTransformation = visualTransformation,
+        leadingIcon = leadingIcon?.let { { androidx.compose.material3.Icon(it, null, tint = Muted) } },
+        shape =
+            androidx.compose.foundation.shape
+                .RoundedCornerShape(if (pill) 50 else 14),
+        colors =
+            androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = SurfaceColor,
+                unfocusedContainerColor = SurfaceColor,
+                focusedBorderColor = androidx.compose.ui.graphics.Color.White,
+                unfocusedBorderColor = Outline,
+                focusedLabelColor = OnSurface,
+                unfocusedLabelColor = Muted,
+                unfocusedPlaceholderColor = Subtle,
+                focusedPlaceholderColor = Subtle,
+                cursorColor = Accent,
+            ),
+        textStyle = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
     )
 }

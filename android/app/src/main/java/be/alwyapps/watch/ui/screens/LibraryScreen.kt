@@ -2,6 +2,7 @@
 package be.alwyapps.watch.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -31,6 +32,7 @@ import be.alwyapps.watch.core.media.ItemQuery
 import be.alwyapps.watch.core.media.SortBy
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.ErrorBanner
+import be.alwyapps.watch.ui.FocusMemory
 import be.alwyapps.watch.ui.LocalAccount
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
@@ -38,6 +40,7 @@ import be.alwyapps.watch.ui.LocalNavigator
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.PosterCard
 import be.alwyapps.watch.ui.Route
+import be.alwyapps.watch.ui.initialFocus
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val PAGE = 60
@@ -137,16 +140,32 @@ fun LibraryScreen(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "header") {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(title, Modifier.weight(1f).padding(top = 8.dp), style = MaterialTheme.typography.titleLarge)
-                for ((label, s) in listOf("A–Z" to SortBy.TITLE, "Added" to SortBy.DATE_ADDED, "Released" to SortBy.RELEASE_DATE)) {
-                    ActionButton(label, { sort = s }, primary = sort == s)
+            Column(Modifier.padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column {
+                    Text(title, style = MaterialTheme.typography.displaySmall)
+                    if (pager.total > 0) {
+                        Text("%,d titles".format(pager.total), style = MaterialTheme.typography.bodyMedium, color = Muted)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for ((label, s) in listOf("A–Z" to SortBy.TITLE, "Recently added" to SortBy.DATE_ADDED, "Release date" to SortBy.RELEASE_DATE)) {
+                        ActionButton(label, { sort = s }, primary = sort == s)
+                    }
                 }
             }
         }
         pager.error?.let { msg -> item(span = { GridItemSpan(maxLineSpan) }, key = "err") { ErrorBanner(msg) { pager.error = null } } }
-        itemsIndexed(pager.items, key = { _, it -> it.id }) { _, item ->
-            PosterCard(item, d.posterWidth, onClick = { nav.push(Route.Detail(item.id)) })
+        itemsIndexed(pager.items, key = { _, it -> it.id }) { i, item ->
+            val memo = "lib.$id|${item.id}"
+            val focusMe = FocusMemory["lib.$id"]?.let { it == memo } ?: (i == 0)
+            PosterCard(
+                item,
+                d.posterWidth,
+                onClick = { nav.push(Route.Detail(item.id)) },
+                onFocus = { FocusMemory["lib.$id"] = memo },
+                cardModifier = if (focusMe && d.isTv) Modifier.initialFocus() else Modifier,
+                showTitle = true,
+            )
         }
         if (pager.total == 0) {
             item(span = { GridItemSpan(maxLineSpan) }) { Text("This library is empty.", color = Muted) }

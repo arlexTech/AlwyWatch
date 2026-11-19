@@ -64,6 +64,15 @@ fun tabs(): List<Tab> {
     val core = LocalCore.current
     val d = LocalDimens.current
     val out = mutableListOf(Tab(Route.Home, "Home", Icons.Home, Icons.HomeFilled), Tab(Route.Search, "Search", Icons.Search))
+    if (d.isTv) {
+        // Libraries as destinations (from the cached home: no network).
+        val account = LocalAccount.current
+        val libs = androidx.compose.runtime.remember(account) { runCatching { core.cachedHome(account)?.libraries }.getOrNull().orEmpty() }
+        for (lib in libs.filter { it.kind != be.alwyapps.watch.core.media.LibraryKind.OTHER }) {
+            val icon = if (lib.kind == be.alwyapps.watch.core.media.LibraryKind.SHOWS) Icons.Tv else Icons.Movie
+            out += Tab(Route.Library(lib.id, lib.title), lib.title, icon)
+        }
+    }
     if (core.keepActive()) out += Tab(Route.LeavingSoon, "Leaving", Icons.Hourglass)
     // Phones: five slots at most; with "leaving soon" connected, requests live in Search.
     if (core.seerrActive() && (d.isTv || !core.keepActive())) out += Tab(Route.Requests, "Requests", Icons.Add)
