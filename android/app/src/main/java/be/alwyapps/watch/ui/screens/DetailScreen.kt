@@ -378,6 +378,8 @@ private fun Episodes(
                             Text(it, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                         }
                     }
+                    // Phones/tablets: download an episode straight from the list.
+                    if (!d.isTv) DownloadButton(ep)
                 }
             }
         }

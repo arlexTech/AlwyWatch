@@ -873,13 +873,24 @@ impl AlwyWatch {
         self.run(|c| async move {
             let srv = c.server(&account_id)?;
             let src = srv.download_source(&item_id).await?;
-            let title = match c
+            // A readable title ("Show · S1 · E2 · Title"): cached item, else ask the server
+            // (episodes started from a show page are only cached as part of a list).
+            let item = match c
                 .store
                 .cache_get::<Item>(&key(&account_id, &["item", &item_id]))?
             {
-                Some(i) => match (i.value.kind, &i.value.series_title) {
-                    (ItemKind::Episode, Some(series)) => format!("{series} · {}", i.value.title),
-                    _ => i.value.title,
+                Some(i) => Some(i.value),
+                None => srv.item(&item_id).await.ok(),
+            };
+            let title = match item {
+                Some(i) => match (i.kind, &i.series_title) {
+                    (ItemKind::Episode, Some(series)) => {
+                        match (i.season_number, i.episode_number) {
+                            (Some(s), Some(e)) => format!("{series} · S{s} · E{e} · {}", i.title),
+                            _ => format!("{series} · {}", i.title),
+                        }
+                    }
+                    _ => i.title,
                 },
                 None => src.file_name.clone(),
             };

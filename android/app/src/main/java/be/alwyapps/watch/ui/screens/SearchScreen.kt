@@ -60,12 +60,15 @@ fun SearchScreen() {
     val account = LocalAccount.current
     val nav = LocalNavigator.current
     val d = LocalDimens.current
-    var query by rememberSaveable { mutableStateOf("") }
+    // Survives opening a result and coming back (screens are disposed by the navigator).
+    var query by rememberSaveable { mutableStateOf(SearchMemory.query) }
+    LaunchedEffect(query) { SearchMemory.query = query }
     var results by remember { mutableStateOf<List<Item>>(emptyList()) }
     var requestable by remember { mutableStateOf<List<SeerrResult>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    // Keyboard straight away only for a new search, not when coming back to results.
+    LaunchedEffect(Unit) { if (query.isEmpty()) runCatching { focus.requestFocus() } }
     LaunchedEffect(query) {
         if (query.length < 2) {
             results = emptyList()
@@ -139,4 +142,9 @@ fun SearchScreen() {
             item(span = { GridItemSpan(maxLineSpan) }) { Text("No results for \u201c$query\u201d.", color = Muted) }
         }
     }
+}
+
+/** The last search, kept for the process lifetime. */
+object SearchMemory {
+    var query = ""
 }
