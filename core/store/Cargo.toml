@@ -1,5 +1,6 @@
 [package]
 name = "store"
+description = "Local SQLite cache, settings, UI state, offline queue and on-disk image cache."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +9,13 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true
