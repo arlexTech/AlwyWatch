@@ -76,6 +76,21 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
         }
         ActionButton("Add a server", { nav.push(Route.AddServer) }, primary = true)
 
+        Text("Requests (Seerr)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+        val seerr = remember(version) { core.seerrConnection() }
+        if (seerr == null) {
+            ActionButton("Connect Seerr", { nav.push(Route.SeerrConnect) })
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("${seerr.userName} @ ${seerr.baseUrl}", Modifier.weight(1f))
+                ActionButton("Disconnect", {
+                    core.seerrSignOut()
+                    ctx.services.tokens.remove("seerr")
+                    version++
+                })
+            }
+        }
+
         Text("Playback", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
         var tunneling by remember { mutableStateOf(settings.tunneling) }
         ActionButton("Tunneled playback: ${if (tunneling) "on" else "off"}", {

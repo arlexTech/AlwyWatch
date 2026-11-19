@@ -48,6 +48,7 @@ class Services(
             for (account in core.accounts()) {
                 tokens.get(account.id)?.let { core.activateAccount(account.id, it) }
             }
+            if (core.seerrConnection() != null) tokens.get("seerr")?.let { runCatching { core.seerrActivate(it) } }
             watchNetwork(core)
             // Downloads interrupted by a reboot or a killed process continue on their own.
             if (!isTv && core.hasPendingDownloads()) {

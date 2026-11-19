@@ -85,7 +85,42 @@ object Images {
         }
     }
 
+    /** Same pipeline for plain public URLs (Seerr/TMDB posters). */
+    suspend fun loadUrl(
+        core: AlwyWatch,
+        url: String,
+        px: Int,
+    ): ImageBitmap? {
+        val k = "url|$url|${bucket(px)}"
+        memory.get(k)?.let { return it }
+        val path = core.cachedRemoteImage(url) ?: runCatching { core.remoteImage(url) }.getOrNull() ?: return null
+        return withContext(decoder) {
+            val opts =
+                BitmapFactory.Options().apply {
+                    if (Build.VERSION.SDK_INT >= 26) inPreferredConfig = Bitmap.Config.HARDWARE
+                }
+            BitmapFactory.decodeFile(path, opts)?.asImageBitmap()?.also { memory.put(k, it) }
+        }
+    }
+
     fun clearMemory() = memory.evictAll()
+}
+
+@Composable
+fun UrlImage(
+    url: String?,
+    width: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val core = LocalCore.current
+    val px = with(LocalDensity.current) { width.roundToPx() }
+    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    if (url != null && bitmap == null) {
+        LaunchedEffect(url) { bitmap = Images.loadUrl(core, url, px) }
+    }
+    Box(modifier.background(SurfaceHigh)) {
+        bitmap?.let { Image(it, null, Modifier.matchParentSize(), contentScale = ContentScale.Crop) }
+    }
 }
 
 /** Remote image with an instant BlurHash (or flat color) placeholder and no fade animation. */

@@ -17,6 +17,10 @@ sealed interface Route {
 
     data object Downloads : Route
 
+    data object Requests : Route
+
+    data object SeerrConnect : Route
+
     data class Library(
         val id: String,
         val title: String,
@@ -33,6 +37,8 @@ sealed interface Route {
             Settings -> "settings"
             AddServer -> "add"
             Downloads -> "downloads"
+            Requests -> "requests"
+            SeerrConnect -> "seerr-connect"
             is Library -> "lib\u001f$id\u001f$title"
             is Detail -> "item\u001f$itemId"
         }
@@ -46,6 +52,8 @@ sealed interface Route {
                 "settings" -> Settings
                 "add" -> AddServer
                 "downloads" -> Downloads
+                "requests" -> Requests
+                "seerr-connect" -> SeerrConnect
                 "lib" -> if (p.size == 3) Library(p[1], p[2]) else null
                 "item" -> if (p.size == 2) Detail(p[1]) else null
                 else -> null

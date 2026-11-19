@@ -32,7 +32,9 @@ import be.alwyapps.watch.ui.screens.DetailScreen
 import be.alwyapps.watch.ui.screens.DownloadsScreen
 import be.alwyapps.watch.ui.screens.HomeScreen
 import be.alwyapps.watch.ui.screens.LibraryScreen
+import be.alwyapps.watch.ui.screens.RequestsScreen
 import be.alwyapps.watch.ui.screens.SearchScreen
+import be.alwyapps.watch.ui.screens.SeerrConnectScreen
 import be.alwyapps.watch.ui.screens.SettingsScreen
 
 class MainActivity : ComponentActivity() {
@@ -90,6 +92,8 @@ private fun Root(core: AlwyWatch) {
                             nav.reset(Route.Home)
                         })
                     Route.Downloads -> DownloadsScreen()
+                    Route.Requests -> RequestsScreen()
+                    Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.reset(Route.Requests) })
                     is Route.Library -> LibraryScreen(r.id, r.title)
                     is Route.Detail -> DetailScreen(r.itemId)
                 }
