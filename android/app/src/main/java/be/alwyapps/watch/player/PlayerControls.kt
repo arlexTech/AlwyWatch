@@ -1,0 +1,531 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+package be.alwyapps.watch.player
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import be.alwyapps.watch.ui.Accent
+import be.alwyapps.watch.ui.Icons
+import be.alwyapps.watch.ui.LocalDimens
+import be.alwyapps.watch.ui.Muted
+import be.alwyapps.watch.ui.Subtle
+import kotlinx.coroutines.delay
+
+/** Overlay state shared between the activity (keys, player events) and the Compose controls. */
+class PlayerUi {
+    var visible by mutableStateOf(true)
+    var tracksOpen by mutableStateOf(false)
+    var title by mutableStateOf("")
+    var subtitle by mutableStateOf("")
+    var hasNext by mutableStateOf(false)
+    var playing by mutableStateOf(false)
+    var buffering by mutableStateOf(true)
+
+    /** Bumped on every interaction: restarts the auto-hide timer. */
+    var touch by mutableIntStateOf(0)
+
+    fun poke() {
+        visible = true
+        touch++
+    }
+}
+
+fun formatTime(ms: Long): String {
+    val s = (ms / 1000).coerceAtLeast(0)
+    val h = s / 3600
+    val m = (s % 3600) / 60
+    val sec = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+}
+
+@Composable
+fun PlayerOverlay(
+    ui: PlayerUi,
+    player: () -> Player?,
+    onBack: () -> Unit,
+    onNext: () -> Unit,
+) {
+    val tv = LocalDimens.current.isTv
+    var position by remember { mutableLongStateOf(0L) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var buffered by remember { mutableLongStateOf(0L) }
+    // Positions refresh only while the controls are shown.
+    LaunchedEffect(ui.visible) {
+        while (ui.visible) {
+            player()?.let {
+                position = it.currentPosition
+                duration = it.duration.coerceAtLeast(0)
+                buffered = it.bufferedPosition
+            }
+            delay(250)
+        }
+    }
+    // Auto-hide after 4 s without interaction while playing.
+    LaunchedEffect(ui.touch, ui.playing, ui.tracksOpen) {
+        if (ui.playing && !ui.tracksOpen) {
+            delay(4000)
+            ui.visible = false
+        }
+    }
+    val playFocus = remember { FocusRequester() }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { if (ui.visible) ui.visible = false else ui.poke() })
+            },
+    ) {
+        AnimatedVisibility(ui.visible, enter = fadeIn(), exit = fadeOut()) {
+            LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.7f),
+                                0.25f to Color.Transparent,
+                                0.6f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.85f),
+                            ),
+                        ),
+                )
+                Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = if (tv) 56.dp else 20.dp, vertical = if (tv) 36.dp else 16.dp)) {
+                    // Top: back + title.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if (!tv) RoundButton(Icons.Back, "Back", onBack, size = 44)
+                        Column {
+                            if (ui.subtitle.isNotEmpty()) Text(ui.subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 1)
+                            Text(ui.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    // Center transport (also the D-pad home position).
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(if (tv) 28.dp else 36.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RoundButton(Icons.Replay10, "Back 10 seconds", {
+                            player()?.seekBack()
+                            ui.poke()
+                        }, size = 56)
+                        RoundButton(
+                            if (ui.playing) Icons.PauseFilled else Icons.Play,
+                            if (ui.playing) "Pause" else "Play",
+                            {
+                                player()?.let { if (it.isPlaying) it.pause() else it.play() }
+                                ui.poke()
+                            },
+                            size = 76,
+                            modifier = Modifier.focusRequester(playFocus),
+                            emphasized = true,
+                        )
+                        RoundButton(Icons.Forward30, "Forward 30 seconds", {
+                            player()?.seekForward()
+                            ui.poke()
+                        }, size = 56)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    // Bottom: seek bar, times, extra actions.
+                    SeekBar(position, buffered, duration, onSeek = {
+                        player()?.seekTo(it)
+                        position = it
+                        ui.poke()
+                    })
+                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${formatTime(position)}  /  ${formatTime(duration)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Muted,
+                        )
+                        if (duration > 0) {
+                            Text(
+                                "  ·  ends at " +
+                                    java.text.DateFormat
+                                        .getTimeInstance(java.text.DateFormat.SHORT)
+                                        .format(java.util.Date(System.currentTimeMillis() + duration - position)),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Subtle,
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        PillButton(Icons.Subtitles, "Audio & subtitles", {
+                            ui.tracksOpen = true
+                            ui.poke()
+                        })
+                        if (ui.hasNext) {
+                            Spacer(Modifier.width(10.dp))
+                            PillButton(Icons.SkipNext, "Next episode", onNext)
+                        }
+                    }
+                }
+            }
+        }
+        if (ui.buffering) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.size(32.dp), color = Color.White, strokeWidth = 3.dp)
+            }
+        }
+        AnimatedVisibility(
+            ui.tracksOpen,
+            Modifier.align(Alignment.CenterEnd),
+            enter = slideInHorizontally { it } + fadeIn(),
+            exit = slideOutHorizontally { it } + fadeOut(),
+        ) {
+            TracksPanel(player, onClose = {
+                ui.tracksOpen = false
+                ui.poke()
+            })
+        }
+    }
+}
+
+@Composable
+private fun RoundButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    size: Int,
+    modifier: Modifier = Modifier,
+    emphasized: Boolean = false,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val bg =
+        when {
+            focused -> Color.White
+            emphasized -> Color.White.copy(alpha = 0.22f)
+            else -> Color.Transparent
+        }
+    Box(
+        modifier
+            .size(size.dp)
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, label, Modifier.size((size * 0.5f).dp), tint = if (focused) Color.Black else Color.White)
+    }
+}
+
+@Composable
+private fun PillButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (focused) Color.White else Color.White.copy(alpha = 0.16f))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val fg = if (focused) Color.Black else Color.White
+        Icon(icon, null, Modifier.size(20.dp), tint = fg)
+        Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
+    }
+}
+
+/**
+ * Thin seek bar: tap/drag on touch screens; on TV it takes focus and ←/→ move by 10 s
+ * (holding the key accelerates).
+ */
+@Composable
+private fun SeekBar(
+    position: Long,
+    buffered: Long,
+    duration: Long,
+    onSeek: (Long) -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    var width by remember { mutableFloatStateOf(1f) }
+    var repeat by remember { mutableIntStateOf(0) }
+    val frac = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
+    val buf = if (duration > 0) (buffered.toFloat() / duration).coerceIn(0f, 1f) else 0f
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(28.dp)
+            .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
+            .pointerInput(duration) {
+                detectTapGestures { o -> if (duration > 0) onSeek((o.x / width * duration).toLong()) }
+            }.onKeyEvent {
+                if (it.type == KeyEventType.KeyUp) {
+                    repeat = 0
+                    return@onKeyEvent false
+                }
+                val step = 10_000L * (1 + repeat / 8)
+                when (it.key) {
+                    Key.DirectionRight -> {
+                        repeat++
+                        onSeek((position + step).coerceAtMost(duration))
+                        true
+                    }
+                    Key.DirectionLeft -> {
+                        repeat++
+                        onSeek((position - step).coerceAtLeast(0))
+                        true
+                    }
+                    else -> false
+                }
+            }.focusable(interactionSource = interaction),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        val h = if (focused) 8.dp else 5.dp
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(h)
+                .clip(RoundedCornerShape(50))
+                .background(Color.White.copy(alpha = 0.2f)),
+        )
+        Box(
+            Modifier
+                .fillMaxWidth(buf)
+                .height(h)
+                .clip(RoundedCornerShape(50))
+                .background(Color.White.copy(alpha = 0.3f)),
+        )
+        Box(
+            Modifier
+                .fillMaxWidth(frac)
+                .height(h)
+                .clip(RoundedCornerShape(50))
+                .background(Accent),
+        )
+        // Thumb.
+        Box(
+            Modifier
+                .fillMaxWidth(frac)
+                .height(28.dp),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            Box(
+                Modifier
+                    .size(if (focused) 20.dp else 14.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White)
+                    .then(if (focused) Modifier.border(3.dp, Accent, RoundedCornerShape(50)) else Modifier),
+            )
+        }
+    }
+}
+
+/** Audio and subtitle tracks of the current media, selectable. */
+@Composable
+private fun TracksPanel(
+    player: () -> Player?,
+    onClose: () -> Unit,
+) {
+    val p = player() ?: return
+    var version by remember { mutableIntStateOf(0) }
+    val tracks = remember(version) { p.currentTracks }
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+
+    fun select(
+        type: Int,
+        group: androidx.media3.common.Tracks.Group?,
+        index: Int,
+    ) {
+        val b = p.trackSelectionParameters.buildUpon()
+        if (group == null) {
+            b.setTrackTypeDisabled(type, true)
+        } else {
+            b.setTrackTypeDisabled(type, false).setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, index))
+        }
+        p.trackSelectionParameters = b.build()
+        version++
+    }
+
+    data class Option(
+        val label: String,
+        val selected: Boolean,
+        val pick: () -> Unit,
+    )
+
+    fun options(type: Int): List<Option> {
+        val out = mutableListOf<Option>()
+        for (g in tracks.groups.filter { it.type == type }) {
+            for (i in 0 until g.length) {
+                if (!g.isTrackSupported(i)) continue
+                val f = g.getTrackFormat(i)
+                val label =
+                    listOfNotNull(
+                        f.label ?: f.language?.let {
+                            java.util.Locale
+                                .forLanguageTag(it)
+                                .displayLanguage
+                                .ifEmpty { it }
+                        },
+                        if (type == C.TRACK_TYPE_AUDIO && f.channelCount > 0) {
+                            when (f.channelCount) {
+                                1 -> "Mono"
+                                2 -> "Stereo"
+                                6 -> "5.1"
+                                8 -> "7.1"
+                                else -> "${f.channelCount} ch"
+                            }
+                        } else {
+                            null
+                        },
+                        // Media3 converts subtitles to "x-media3-cues" while extracting; the original format is in codecs.
+                        friendlyFormat(if (f.sampleMimeType == "application/x-media3-cues") f.codecs else f.sampleMimeType ?: f.codecs),
+                    ).joinToString(" · ").ifEmpty { "Track ${i + 1}" }
+                out += Option(label, g.isTrackSelected(i)) { select(type, g, i) }
+            }
+        }
+        return out
+    }
+    val audio = options(C.TRACK_TYPE_AUDIO)
+    val subs = options(C.TRACK_TYPE_TEXT)
+    val subsOff = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) || subs.none { it.selected }
+    Column(
+        Modifier
+            .fillMaxHeight()
+            .width(360.dp)
+            .background(Color(0xF2111116))
+            .safeDrawingPadding()
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Audio & subtitles", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            RoundButton(Icons.Close, "Close", onClose, size = 40)
+        }
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            item { Section("Audio") }
+            items(audio.withIndex().toList()) { (i, o) -> TrackRow(o.label, o.selected, o.pick, if (i == 0) Modifier.focusRequester(firstFocus) else Modifier) }
+            item { Section("Subtitles") }
+            item { TrackRow("Off", subsOff, { select(C.TRACK_TYPE_TEXT, null, 0) }) }
+            items(subs) { o -> TrackRow(o.label, o.selected && !subsOff, o.pick) }
+        }
+    }
+}
+
+@Composable
+private fun Section(title: String) {
+    Text(title.uppercase(), Modifier.padding(top = 14.dp, bottom = 4.dp), style = MaterialTheme.typography.labelSmall, color = Subtle)
+}
+
+@Composable
+private fun TrackRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (focused) Color.White else Color.Transparent)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val fg = if (focused) Color.Black else Color.White
+        Text(label, Modifier.weight(1f), color = fg, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (selected) Icon(Icons.Check, "Selected", Modifier.size(20.dp), tint = if (focused) Color.Black else Accent)
+    }
+}
+
+/** "Dolby Digital+", "TrueHD", "SRT"… instead of MIME types. */
+private fun friendlyFormat(mime: String?): String? {
+    val m = mime?.lowercase() ?: return null
+    return when {
+        "eac3-joc" in m -> "Dolby Atmos"
+        "eac3" in m || "ec-3" in m -> "Dolby Digital+"
+        "ac3" in m || "ac-3" in m -> "Dolby Digital"
+        "truehd" in m -> "TrueHD"
+        "dts" in m -> if ("hd" in m) "DTS-HD" else "DTS"
+        "mp4a" in m || "aac" in m -> "AAC"
+        "opus" in m -> "Opus"
+        "flac" in m -> "FLAC"
+        "vorbis" in m -> "Vorbis"
+        "mpeg" in m && "audio" in m -> "MP3"
+        "subrip" in m -> "SRT"
+        "ssa" in m || "ass" in m -> "ASS"
+        "pgs" in m -> "PGS"
+        "vtt" in m -> "WebVTT"
+        "ttml" in m -> "TTML"
+        "dvb" in m -> "DVB"
+        "vobsub" in m || "dvd" in m -> "VobSub"
+        "raw" in m -> null
+        else -> m.substringAfterLast('/').uppercase()
+    }
+}

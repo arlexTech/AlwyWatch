@@ -66,6 +66,7 @@ class PlayerActivity : ComponentActivity() {
     private var prefetchedNext = false
     private var originalModeId = 0
     private var transcoding = false
+    private val ui = PlayerUi()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,13 +81,26 @@ class PlayerActivity : ComponentActivity() {
         originalModeId = window.attributes.preferredDisplayModeId
         view =
             PlayerView(this).apply {
-                setShowSubtitleButton(true)
-                setShowNextButton(false)
-                setShowPreviousButton(false)
-                controllerShowTimeoutMs = 4000
+                // Our own Compose controls draw on top; PlayerView keeps the surface and the
+                // subtitle view (libass renders into it).
+                useController = false
                 keepScreenOn = true
             }
-        setContentView(view)
+        val overlay =
+            androidx.compose.ui.platform.ComposeView(this).apply {
+                setContent {
+                    be.alwyapps.watch.ui.AlwyTheme(isTv = services.isTv) {
+                        PlayerOverlay(ui, { player }, onBack = { finish() }, onNext = { playNext() })
+                    }
+                }
+            }
+        setContentView(
+            android.widget.FrameLayout(this).apply {
+                setBackgroundColor(android.graphics.Color.BLACK)
+                addView(view)
+                addView(overlay)
+            },
+        )
         val start = intent.getLongExtra(EXTRA_START, 0L)
         lifecycleScope.launch {
             core = services.core.await()
@@ -128,6 +142,19 @@ class PlayerActivity : ComponentActivity() {
             startPlayer(local, source!!, transcoding = false, startMs)
             findNextEpisode()
             return
+        }
+        core.cachedItem(account, id)?.item?.let { item ->
+            if (item.kind == ItemKind.EPISODE) {
+                ui.title = item.title
+                ui.subtitle =
+                    listOfNotNull(
+                        item.seriesTitle,
+                        if (item.seasonNumber != null && item.episodeNumber != null) "S${item.seasonNumber} · E${item.episodeNumber}" else null,
+                    ).joinToString("  ·  ")
+            } else {
+                ui.title = item.title
+                ui.subtitle = item.year?.toString() ?: ""
+            }
         }
         val profile = DeviceProfiles.get(this)
         val pi =
@@ -237,7 +264,6 @@ class PlayerActivity : ComponentActivity() {
         p.prepare()
         p.playWhenReady = true
         view.player = p
-        view.requestFocus()
         player = p
         report(PlaybackEvent.START)
         progressJob?.cancel()
@@ -255,11 +281,14 @@ class PlayerActivity : ComponentActivity() {
     private val listener =
         object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                ui.playing = isPlaying
+                if (!isPlaying) ui.poke()
                 val p = player ?: return
                 if (!isPlaying && p.playbackState == Player.STATE_READY) report(PlaybackEvent.PAUSE)
             }
 
             override fun onPlaybackStateChanged(state: Int) {
+                ui.buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
                 if (state == Player.STATE_ENDED) {
                     report(PlaybackEvent.STOP)
                     val next = nextEpisodeId
@@ -335,6 +364,7 @@ class PlayerActivity : ComponentActivity() {
         val eps = core.cachedEpisodes(account, series, season)?.items ?: return
         val idx = eps.indexOfFirst { it.id == itemId }
         nextEpisodeId = eps.getOrNull(idx + 1)?.id
+        ui.hasNext = nextEpisodeId != null
     }
 
     private fun maybePrefetchNext(p: Player) {
@@ -363,17 +393,71 @@ class PlayerActivity : ComponentActivity() {
         services.scope.launch { runCatching { core.reportProgress(account, report) } }
     }
 
+    private fun playNext() {
+        val next = nextEpisodeId ?: return
+        report(PlaybackEvent.STOP)
+        ui.hasNext = false
+        lifecycleScope.launch { load(next, 0L) }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // Any remote key wakes the controls first instead of acting blindly.
-        if (event.action == KeyEvent.ACTION_DOWN &&
-            !view.isControllerFullyVisible &&
-            event.keyCode in
-            setOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)
-        ) {
-            view.showController()
-            return true
+        val down = event.action == KeyEvent.ACTION_DOWN
+        val p = player
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                if (down && p != null) {
+                    if (event.keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE ||
+                        (event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE && p.isPlaying)
+                    ) {
+                        p.pause()
+                    } else {
+                        p.play()
+                    }
+                    ui.poke()
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                if (down) p?.seekForward()
+                ui.poke()
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                if (down) p?.seekBack()
+                ui.poke()
+                return true
+            }
+            KeyEvent.KEYCODE_BACK -> {
+                // Close the panel, then hide the controls, then leave.
+                if (ui.tracksOpen) {
+                    if (down) ui.tracksOpen = false
+                    return true
+                }
+                if (ui.visible && ui.playing) {
+                    if (down) ui.visible = false
+                    return true
+                }
+            }
         }
-        return view.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+        if (!ui.visible) {
+            // Hidden: ←/→ seek right away (like every TV player), other keys wake the controls.
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (down && p != null) {
+                        if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) p.seekBack() else p.seekForward()
+                    }
+                    ui.poke()
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    if (down) ui.poke()
+                    return true
+                }
+            }
+        } else if (down) {
+            ui.touch++
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onStop() {
