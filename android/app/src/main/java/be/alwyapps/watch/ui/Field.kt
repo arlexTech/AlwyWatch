@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -40,6 +41,7 @@ fun Field(
     val isTv = LocalDimens.current.isTv
     var editing by remember { mutableStateOf(!isTv) }
     val keyboard = LocalSoftwareKeyboardController.current
+    val fm = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(editing) { if (isTv && editing) keyboard?.show() }
     OutlinedTextField(
         value,
@@ -47,8 +49,14 @@ fun Field(
         modifier
             .onFocusChanged { if (isTv && !it.isFocused) editing = false }
             .onPreviewKeyEvent {
+                if (!isTv || editing) return@onPreviewKeyEvent false
+                // Not editing: left/right leave the field like any other focusable.
+                if (it.key == Key.DirectionLeft || it.key == Key.DirectionRight) {
+                    return@onPreviewKeyEvent it.type == KeyEventType.KeyDown &&
+                        fm.moveFocus(if (it.key == Key.DirectionLeft) FocusDirection.Left else FocusDirection.Right)
+                }
                 val ok = it.key == Key.DirectionCenter || it.key == Key.Enter || it.key == Key.NumPadEnter
-                if (!isTv || editing || !ok) return@onPreviewKeyEvent false
+                if (!ok) return@onPreviewKeyEvent false
                 if (it.type == KeyEventType.KeyUp) editing = true
                 true
             },

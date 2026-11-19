@@ -85,8 +85,9 @@ android {
 
     buildTypes {
         debug {
-            // Installs next to the release app (different id, no signature clash).
-            applicationIdSuffix = ".dev"
+            // Same id and, when the release key is present, same signature as release: a dev
+            // build installs over the release app and keeps its sign-in and cache.
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             resValue("string", "app_name", "AlwyWatch Dev")
         }
         release {

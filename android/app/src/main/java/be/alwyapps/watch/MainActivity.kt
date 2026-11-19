@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import be.alwyapps.watch.core.AlwyWatch
 import be.alwyapps.watch.ui.AlwyTheme
+import be.alwyapps.watch.ui.AppScaffold
 import be.alwyapps.watch.ui.Background
 import be.alwyapps.watch.ui.LocalAccount
 import be.alwyapps.watch.ui.LocalCore
@@ -50,7 +51,7 @@ class MainActivity : ComponentActivity() {
                 // The window background is already the app color, so waiting a few ms for the
                 // native core to load shows no flash; then the first composition renders from cache.
                 val core by produceState<AlwyWatch?>(null) { value = services.core.await() }
-                Box(Modifier.fillMaxSize().background(Background).safeDrawingPadding()) {
+                Box(Modifier.fillMaxSize().background(Background)) {
                     core?.let { Root(it) }
                 }
             }
@@ -72,36 +73,40 @@ private fun Root(core: AlwyWatch) {
     CompositionLocalProvider(LocalCore provides core, LocalNavigator provides nav) {
         val acct = account
         if (acct == null) {
-            AddServerScreen(onSignedIn = {
-                account = it
-                nav.reset(Route.Home)
-            })
+            Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                AddServerScreen(onSignedIn = {
+                    account = it
+                    nav.reset(Route.Home)
+                })
+            }
             return@CompositionLocalProvider
         }
         // Re-create screens when the account changes (different server, different cache keys).
         key(acct) {
             CompositionLocalProvider(LocalAccount provides acct) {
-                when (val r = nav.current) {
-                    Route.Home -> HomeScreen()
-                    Route.Search -> SearchScreen()
-                    Route.Settings ->
-                        SettingsScreen(onAccountChanged = {
-                            account = it
-                            nav.reset(Route.Home)
-                        })
-                    Route.AddServer ->
-                        AddServerScreen(onSignedIn = {
-                            account = it
-                            nav.reset(Route.Home)
-                        })
-                    Route.Downloads -> DownloadsScreen()
-                    Route.Requests -> RequestsScreen()
-                    Route.LeavingSoon -> LeavingSoonScreen()
-                    Route.Triage -> TriageScreen()
-                    Route.KeepAdmin -> KeepAdminScreen()
-                    Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.reset(Route.Requests) })
-                    is Route.Library -> LibraryScreen(r.id, r.title)
-                    is Route.Detail -> DetailScreen(r.itemId)
+                AppScaffold {
+                    when (val r = nav.current) {
+                        Route.Home -> HomeScreen()
+                        Route.Search -> SearchScreen()
+                        Route.Settings ->
+                            SettingsScreen(onAccountChanged = {
+                                account = it
+                                nav.reset(Route.Home)
+                            })
+                        Route.AddServer ->
+                            AddServerScreen(onSignedIn = {
+                                account = it
+                                nav.reset(Route.Home)
+                            })
+                        Route.Downloads -> DownloadsScreen()
+                        Route.Requests -> RequestsScreen()
+                        Route.LeavingSoon -> LeavingSoonScreen()
+                        Route.Triage -> TriageScreen()
+                        Route.KeepAdmin -> KeepAdminScreen()
+                        Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.reset(Route.Requests) })
+                        is Route.Library -> LibraryScreen(r.id, r.title)
+                        is Route.Detail -> DetailScreen(r.itemId)
+                    }
                 }
             }
         }

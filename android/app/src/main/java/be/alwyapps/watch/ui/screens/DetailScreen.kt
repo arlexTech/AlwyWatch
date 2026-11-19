@@ -3,20 +3,26 @@ package be.alwyapps.watch.ui.screens
 
 import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +34,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -41,20 +48,30 @@ import be.alwyapps.watch.player.DeviceProfiles
 import be.alwyapps.watch.player.PlayerActivity
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
-import be.alwyapps.watch.ui.Background
 import be.alwyapps.watch.ui.ErrorBanner
 import be.alwyapps.watch.ui.FocusCard
+import be.alwyapps.watch.ui.IconAction
+import be.alwyapps.watch.ui.Icons
 import be.alwyapps.watch.ui.LocalAccount
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
+import be.alwyapps.watch.ui.LocalNavigator
 import be.alwyapps.watch.ui.Muted
+import be.alwyapps.watch.ui.OnSurface
+import be.alwyapps.watch.ui.Outline
 import be.alwyapps.watch.ui.RemoteImage
-import be.alwyapps.watch.ui.SurfaceColor
+import be.alwyapps.watch.ui.Subtle
+import be.alwyapps.watch.ui.ambient
+import be.alwyapps.watch.ui.ambientGlow
 import be.alwyapps.watch.ui.backdrop
+import be.alwyapps.watch.ui.fadeEdges
+import be.alwyapps.watch.ui.formatRuntime
 import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.poster
+import be.alwyapps.watch.ui.progress
+import be.alwyapps.watch.ui.remaining
 import be.alwyapps.watch.ui.rememberSwr
-import be.alwyapps.watch.ui.subtitle
+import be.alwyapps.watch.ui.thumb
 import kotlinx.coroutines.launch
 
 fun play(
@@ -72,6 +89,7 @@ fun DetailScreen(itemId: String) {
     val account = LocalAccount.current
     val ctx = LocalContext.current
     val d = LocalDimens.current
+    val nav = LocalNavigator.current
     val scope = rememberCoroutineScope()
     val res =
         rememberSwr(
@@ -86,71 +104,120 @@ fun DetailScreen(itemId: String) {
     if (playable) {
         LaunchedEffect(itemId) { core.prefetchPlaybackInfo(account, itemId, DeviceProfiles.get(ctx)) }
     }
-    val screenH = LocalConfiguration.current.screenHeightDp.dp
+    val config = LocalConfiguration.current
+    val heroH = if (d.isTv) (config.screenHeightDp * 0.8f).dp else (config.screenWidthDp * 1.2f).coerceAtMost(560f).dp
 
-    LazyColumn(Modifier.fillMaxSize()) {
-        item(key = "hero") {
-            Box(Modifier.fillMaxWidth().height(screenH * 0.55f)) {
-                if (item != null) {
-                    RemoteImage(item.id, item.backdrop() ?: item.poster(), 1280.dp, Modifier.fillMaxSize())
-                }
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Background))))
-                Row(Modifier.align(Alignment.BottomStart).padding(d.gutter), verticalAlignment = Alignment.Bottom) {
-                    if (item != null && !d.isTv) {
-                        RemoteImage(item.id, item.poster(), 110.dp, Modifier.width(110.dp).aspectRatio(2f / 3f))
-                    }
-                    Column(Modifier.padding(start = if (d.isTv) 0.dp else 16.dp)) {
-                        Text(
-                            item?.title ?: "",
-                            style = MaterialTheme.typography.headlineMedium,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
+    Box(Modifier.fillMaxSize().ambientGlow(item?.ambient())) {
+        LazyColumn(Modifier.fillMaxSize()) {
+            item(key = "hero") {
+                Box(Modifier.fillMaxWidth().height(heroH)) {
+                    if (item != null) {
+                        RemoteImage(
+                            item.id,
+                            item.backdrop() ?: item.poster(),
+                            1280.dp,
+                            Modifier.fillMaxSize().fadeEdges(bottomFrom = 0.5f, leftTo = if (d.isTv) 0.45f else 0f),
+                            background = Color.Transparent,
                         )
-                        if (item != null) {
-                            val meta =
-                                listOfNotNull(
-                                    item.subtitle().ifEmpty { null },
-                                    item.officialRating,
-                                    item.communityRating?.let { "★ %.1f".format(it) },
+                    }
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.5f),
+                                0.2f to Color.Transparent,
+                            ),
+                        ),
+                    )
+                    if (item != null) {
+                        Column(
+                            Modifier
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth(if (d.isTv) 0.55f else 1f)
+                                .padding(horizontal = d.gutter, vertical = if (d.isTv) 40.dp else 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            if (item.kind == ItemKind.EPISODE) {
+                                Text(item.seriesTitle ?: "", style = MaterialTheme.typography.titleMedium, color = Muted)
+                                Text(item.title, style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            } else {
+                                TitleArt(item, if (d.isTv) 460.dp else 300.dp, big = d.isTv)
+                            }
+                            HeroMeta(item)
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (playable) {
+                                    val resumable = item.user.positionMs > 0u
+                                    ActionButton(
+                                        if (resumable) "Resume" else "Play",
+                                        { play(ctx, account, item, fromStart = false) },
+                                        Modifier.initialFocus(),
+                                        primary = true,
+                                        icon = Icons.Play,
+                                    )
+                                    if (resumable) ActionButton("From start", { play(ctx, account, item, fromStart = true) })
+                                }
+                                IconAction(
+                                    Icons.Check,
+                                    if (item.user.played) "Mark unwatched" else "Mark watched",
+                                    {
+                                        scope.launch {
+                                            runCatching { core.setPlayed(account, item.id, !item.user.played) }
+                                            res.reload()
+                                        }
+                                    },
+                                    active = item.user.played,
                                 )
-                            Text(meta.joinToString("  ·  "), color = Muted)
+                                if (playable && !d.isTv) DownloadButton(item)
+                            }
+                            item.remaining()?.let { left ->
+                                Text(left, style = MaterialTheme.typography.bodySmall, color = Muted)
+                            }
                         }
                     }
-                }
-            }
-        }
-        res.error?.let { msg -> item { ErrorBanner(msg) { res.reload() } } }
-        if (item != null) {
-            item(key = "actions") {
-                Row(Modifier.padding(horizontal = d.gutter), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    if (playable) {
-                        val resumable = item.user.positionMs > 0u
-                        ActionButton(
-                            if (resumable) "Resume" else "Play",
-                            { play(ctx, account, item, fromStart = false) },
-                            Modifier.initialFocus(),
-                            primary = true,
+                    if (!d.isTv) {
+                        IconAction(
+                            Icons.Back,
+                            "Back",
+                            { nav.pop() },
+                            Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
                         )
-                        if (resumable) ActionButton("From start", { play(ctx, account, item, fromStart = true) })
                     }
-                    if (playable && !d.isTv) DownloadButton(item)
-                    ActionButton(if (item.user.played) "Mark unwatched" else "Mark watched", {
-                        scope.launch {
-                            runCatching { core.setPlayed(account, item.id, !item.user.played) }
-                            res.reload()
+                }
+            }
+            res.error?.let { msg -> item { ErrorBanner(msg) { res.reload() } } }
+            if (item != null) {
+                item(key = "overview") {
+                    Column(
+                        Modifier.padding(horizontal = d.gutter, vertical = 12.dp).fillMaxWidth(if (d.isTv) 0.6f else 1f),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        item.overview?.let {
+                            Text(it, style = MaterialTheme.typography.bodyLarge, color = OnSurface.copy(alpha = 0.85f), maxLines = if (d.isTv) 4 else 8)
                         }
-                    })
+                        if (item.genres.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (g in item.genres.take(4)) Chip(g)
+                            }
+                        }
+                    }
                 }
+                if (item.kind == ItemKind.SERIES) item(key = "seasons") { Seasons(item) }
             }
-            item(key = "overview") {
-                Column(Modifier.padding(d.gutter)) {
-                    item.overview?.let { Text(it, style = MaterialTheme.typography.bodyLarge, maxLines = if (d.isTv) 4 else 10) }
-                    if (item.genres.isNotEmpty()) Text(item.genres.joinToString(", "), Modifier.padding(top = 8.dp), color = Muted)
-                }
-            }
-            if (item.kind == ItemKind.SERIES) item(key = "seasons") { Seasons(item) }
+            item { Spacer(Modifier.height(40.dp)) }
         }
     }
+}
+
+@Composable
+private fun Chip(text: String) {
+    Text(
+        text,
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .border(1.dp, Outline, RoundedCornerShape(50))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = Muted,
+    )
 }
 
 /** Queues the original file for download (asks for the notification permission on Android 13+). */
@@ -172,8 +239,8 @@ private fun DownloadButton(item: Item) {
             androidx.activity.result.contract.ActivityResultContracts
                 .RequestPermission(),
         ) { }
-    ActionButton(label, {
-        if (label != "Download") return@ActionButton
+    IconAction(Icons.Download, label, {
+        if (label != "Download") return@IconAction
         if (android.os.Build.VERSION.SDK_INT >= 33) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         scope.launch {
             label =
@@ -186,7 +253,7 @@ private fun DownloadButton(item: Item) {
                     "Download failed"
                 }
         }
-    })
+    }, active = label != "Download")
 }
 
 @Composable
@@ -202,6 +269,7 @@ private fun Seasons(series: Item) {
     if (list.isEmpty()) return
     // Open the first season with unwatched episodes.
     var selected by remember(list) { mutableStateOf(list.firstOrNull { !it.user.played } ?: list.first()) }
+    Text("Episodes", Modifier.padding(horizontal = d.gutter, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
     LazyRow(contentPadding = PaddingValues(horizontal = d.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(list, key = { it.id }) { s -> ActionButton(s.title, { selected = s }, primary = s.id == selected.id) }
     }
@@ -230,26 +298,49 @@ private fun Episodes(
                         if (it.isFocused) core.prefetchPlaybackInfo(account, ep.id, DeviceProfiles.get(ctx))
                     },
             ) {
-                Row(Modifier.fillMaxWidth().background(SurfaceColor).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RemoteImage(ep.id, ep.poster(), 200.dp, Modifier.width(if (d.isTv) 220.dp else 140.dp).aspectRatio(16f / 9f))
-                    Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                        Text(
-                            "${ep.episodeNumber ?: ""}. ${ep.title}",
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        ep.overview?.let {
-                            Text(
-                                it,
-                                color = Muted,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
+                Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(if (d.isTv) 260.dp else 150.dp).clip(RoundedCornerShape(d.radius - 4.dp))) {
+                        RemoteImage(ep.id, ep.thumb(), 300.dp, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+                        ep.progress()?.let {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomStart)
+                                    .fillMaxWidth(it)
+                                    .height(3.dp)
+                                    .background(Accent),
+                            )
+                        }
+                        if (ep.user.played) {
+                            Icon(
+                                Icons.Check,
+                                "Watched",
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                                    .size(20.dp)
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color.Black.copy(alpha = 0.6f))
+                                    .padding(3.dp),
+                                tint = Accent,
                             )
                         }
                     }
-                    if (ep.user.played) Text("✓", Modifier.padding(horizontal = 12.dp), color = Accent)
+                    Column(Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            "${ep.episodeNumber ?: ""}. ${ep.title}",
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            listOfNotNull(ep.runtimeMs?.let { formatRuntime(it.toLong()) }, ep.remaining()).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Subtle,
+                        )
+                        ep.overview?.let {
+                            Text(it, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
             }
         }

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package be.alwyapps.watch.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,10 +19,12 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,11 +34,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -46,46 +59,126 @@ import be.alwyapps.watch.core.media.ImageKind
 import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.media.ItemKind
 
-private val CardShape = RoundedCornerShape(8.dp)
-
-/**
- * Clickable surface with a strong, visible focus state (accent ring + slight scale on TV).
- * `clickable` handles D-pad center / Enter, so the same composable works with touch and remotes.
- */
-@Composable
-fun FocusCard(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    shape: RoundedCornerShape = CardShape,
-    content: @Composable () -> Unit,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    val scale = if (focused) LocalDimens.current.focusScale else 1f
-    Box(
-        modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }.clip(shape)
-            .border(if (focused) 3.dp else 0.dp, if (focused) Accent else Color.Transparent, shape)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
-    ) { content() }
-}
+// ----- Item helpers ---------------------------------------------------------------------------
 
 fun Item.poster() = images.firstOrNull { it.kind == ImageKind.PRIMARY }
 
 fun Item.backdrop() = images.firstOrNull { it.kind == ImageKind.BACKDROP }
 
+fun Item.logo() = images.firstOrNull { it.kind == ImageKind.LOGO }
+
+/** 16:9 artwork: an episode's own still, otherwise the backdrop. */
+fun Item.thumb() =
+    if (kind == ItemKind.EPISODE) {
+        images.firstOrNull { it.kind == ImageKind.PRIMARY } ?: images.firstOrNull { it.kind == ImageKind.THUMB }
+    } else {
+        images.firstOrNull { it.kind == ImageKind.THUMB } ?: backdrop()
+    } ?: poster()
+
 fun Item.subtitle(): String =
     when (kind) {
         ItemKind.EPISODE ->
             listOfNotNull(
-                seriesTitle,
-                if (seasonNumber != null && episodeNumber != null) "S${seasonNumber}E$episodeNumber" else null,
-            ).joinToString(" · ")
-        else -> listOfNotNull(year?.toString(), runtimeMs?.let { "${(it / 60_000u)} min" }).joinToString(" · ")
+                if (seasonNumber != null && episodeNumber != null) "S$seasonNumber · E$episodeNumber" else null,
+                title.takeIf { seriesTitle != null },
+            ).joinToString("  ")
+        else -> listOfNotNull(year?.toString(), runtimeMs?.let { formatRuntime(it.toLong()) }).joinToString(" · ")
     }
+
+fun formatRuntime(ms: Long): String {
+    val min = ms / 60_000
+    return if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"
+}
+
+/** 0..1 when partly watched, else null. */
+fun Item.progress(): Float? {
+    val runtime = runtimeMs?.toLong() ?: return null
+    val pos = user.positionMs.toLong()
+    return if (pos > 0 && runtime > 0) (pos.toFloat() / runtime).coerceIn(0f, 1f) else null
+}
+
+fun Item.remaining(): String? {
+    val runtime = runtimeMs?.toLong() ?: return null
+    val left = runtime - user.positionMs.toLong()
+    return if (user.positionMs > 0u && left > 0) "${formatRuntime(left)} left" else null
+}
+
+/** Ambient color of an item's artwork (BlurHash average, no decoding needed). */
+fun Item.ambient(): Color? = BlurHash.averageColor((backdrop() ?: poster())?.blurhash)
+
+// ----- Focus ----------------------------------------------------------------------------------
+
+/**
+ * Clickable surface with a clear focus state: on TV it scales up, gets a white outline and a
+ * soft glow; on touch screens it is a plain clickable. `clickable` handles D-pad center/Enter.
+ */
+@Composable
+fun FocusCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(LocalDimens.current.radius),
+    onFocus: (() -> Unit)? = null,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val d = LocalDimens.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    if (focused && onFocus != null) LaunchedEffect(Unit) { onFocus() }
+    val scale by animateFloatAsState(if (focused) d.focusScale else 1f, tween(160), label = "scale")
+    Box(
+        modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }.then(if (focused && d.isTv) Modifier.shadow(24.dp, shape, ambientColor = Color.White, spotColor = Color.White) else Modifier)
+            .clip(shape)
+            .then(if (focused && d.isTv) Modifier.border(2.5.dp, Color.White, shape) else Modifier)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        content = content,
+    )
+}
+
+// ----- Cards ----------------------------------------------------------------------------------
+
+@Composable
+private fun ProgressBar(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color.White.copy(alpha = 0.25f)),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(fraction)
+                .height(4.dp)
+                .background(Accent),
+        )
+    }
+}
+
+@Composable
+fun Badge(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Black.copy(alpha = 0.55f),
+    textColor: Color = Color.White,
+) {
+    Text(
+        text.uppercase(),
+        modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(color)
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        color = textColor,
+        style = MaterialTheme.typography.labelSmall,
+        maxLines = 1,
+    )
+}
 
 @Composable
 fun PosterCard(
@@ -93,50 +186,117 @@ fun PosterCard(
     width: Dp,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onFocus: (() -> Unit)? = null,
+    cardModifier: Modifier = Modifier,
+    showTitle: Boolean = !LocalDimens.current.isTv,
+    badge: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     Column(modifier.width(width)) {
-        FocusCard(onClick = onClick) {
-            Box {
-                RemoteImage(item.id, item.poster(), width, Modifier.fillMaxWidth().aspectRatio(2f / 3f), contentDescription = item.title)
-                val runtime = item.runtimeMs?.toLong() ?: 0L
-                val pos = item.user.positionMs.toLong()
-                if (pos > 0 && runtime > 0) {
-                    Box(
-                        Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .background(Color.Black.copy(alpha = 0.6f)),
-                    )
-                    Box(
-                        Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth((pos.toFloat() / runtime).coerceIn(0f, 1f))
-                            .height(4.dp)
-                            .background(Accent),
-                    )
-                } else if (item.user.played) {
-                    Text(
-                        "✓",
-                        Modifier
-                            .align(
-                                Alignment.TopEnd,
-                            ).padding(6.dp)
-                            .background(Accent, RoundedCornerShape(50))
-                            .padding(horizontal = 6.dp),
-                        color = Color.Black,
-                    )
+        FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus) {
+            RemoteImage(item.id, item.poster(), width, Modifier.fillMaxWidth().aspectRatio(2f / 3f), contentDescription = item.title)
+            item.progress()?.let { ProgressBar(it, Modifier.align(Alignment.BottomCenter).padding(8.dp)) }
+            if (item.user.played) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(22.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.Black.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Check, "Watched", Modifier.size(15.dp), tint = Accent) }
+            }
+            badge?.invoke(this)
+        }
+        if (showTitle) {
+            Text(
+                if (item.kind == ItemKind.EPISODE) item.seriesTitle ?: item.title else item.title,
+                Modifier.padding(top = 8.dp),
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(item.subtitle(), style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1)
+        }
+    }
+}
+
+/** 16:9 card for "Continue watching": still, progress, time left. */
+@Composable
+fun LandscapeCard(
+    item: Item,
+    width: Dp,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onFocus: (() -> Unit)? = null,
+    cardModifier: Modifier = Modifier,
+) {
+    Column(modifier.width(width)) {
+        FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus) {
+            RemoteImage(item.id, item.thumb(), width, Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentDescription = item.title)
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.75f))),
+            )
+            Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
+                Text(
+                    if (item.kind == ItemKind.EPISODE) item.seriesTitle ?: item.title else item.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    listOfNotNull(item.subtitle().takeIf { item.kind == ItemKind.EPISODE }, item.remaining()).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                item.progress()?.let { ProgressBar(it, Modifier.padding(top = 8.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+fun SectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    val d = LocalDimens.current
+    Row(
+        modifier.fillMaxWidth().padding(horizontal = d.gutter),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        if (action != null && onAction != null) {
+            FocusCard(onClick = onAction, shape = RoundedCornerShape(50)) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(action, style = MaterialTheme.typography.labelMedium, color = Muted)
+                    Icon(Icons.ChevronRight, null, Modifier.size(18.dp), tint = Muted)
                 }
             }
         }
-        Text(
-            if (item.kind == ItemKind.EPISODE) item.seriesTitle ?: item.title else item.title,
-            Modifier.padding(top = 6.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(item.subtitle(), style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1)
+    }
+}
+
+/**
+ * TV: the last focused card per screen, so coming back (BACK from a detail page) puts the
+ * remote where it was instead of nowhere.
+ */
+object FocusMemory {
+    private val last = mutableMapOf<String, String>()
+
+    operator fun get(screen: String): String? = last[screen]
+
+    operator fun set(
+        screen: String,
+        id: String,
+    ) {
+        last[screen] = id
     }
 }
 
@@ -145,39 +305,92 @@ fun Rail(
     title: String,
     items: List<Item>,
     onClick: (Item) -> Unit,
+    onFocus: ((Item) -> Unit)? = null,
+    landscape: Boolean = false,
+    focusKey: String? = null,
+    defaultFocus: Boolean = false,
 ) {
     if (items.isEmpty()) return
     val d = LocalDimens.current
-    Column(Modifier.padding(top = 20.dp)) {
-        Text(title, Modifier.padding(horizontal = d.gutter), style = MaterialTheme.typography.titleMedium)
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = d.gutter, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
-        ) {
-            items(items, key = { it.id }) { PosterCard(it, d.posterWidth, onClick = { onClick(it) }) }
+    Column(Modifier.padding(top = if (d.isTv) 18.dp else 24.dp)) {
+        SectionHeader(title)
+        TvScrollSpec(leading = d.gutter) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = d.gutter, vertical = if (d.isTv) 14.dp else 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
+            ) {
+                items(items, key = { it.id }) { item ->
+                    // Rail + item: the same title can sit in two rails (continue watching, next up).
+                    val memo = "$title|${item.id}"
+                    val focus = {
+                        onFocus?.invoke(item)
+                        if (focusKey != null) FocusMemory[focusKey] = memo
+                    }
+                    val remembered = focusKey?.let { FocusMemory[it] }
+                    val wantsFocus = d.isTv && (remembered == memo || (remembered == null && defaultFocus && item == items.first()))
+                    val cardMod = if (wantsFocus) Modifier.initialFocus() else Modifier
+                    if (landscape) {
+                        LandscapeCard(item, d.landscapeWidth, onClick = { onClick(item) }, onFocus = focus, cardModifier = cardMod)
+                    } else {
+                        PosterCard(item, d.posterWidth, onClick = { onClick(item) }, onFocus = focus, cardModifier = cardMod)
+                    }
+                }
+            }
         }
     }
 }
 
-/** Grey blocks shown only on a first-ever load (never when cached data exists). */
+/**
+ * TV scrolling like launchers do: the focused element is brought to a fixed position
+ * ([leading] from the start) instead of the minimal scroll, so rows don't end half-cut and the
+ * focused card stays at the same spot while the row moves.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun TvScrollSpec(
+    leading: Dp,
+    content: @Composable () -> Unit,
+) {
+    if (!LocalDimens.current.isTv) {
+        content()
+        return
+    }
+    val px = with(androidx.compose.ui.platform.LocalDensity.current) { leading.toPx() }
+    val spec =
+        remember(px) {
+            object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+                override fun calculateScrollDistance(
+                    offset: Float,
+                    size: Float,
+                    containerSize: Float,
+                ): Float = offset - px
+            }
+        }
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides spec,
+        content = content,
+    )
+}
+
+/** Shimmer-free placeholder blocks, shown only on a first-ever load (never over cached data). */
 @Composable
 fun SkeletonRail() {
     val d = LocalDimens.current
-    Column(Modifier.padding(top = 20.dp, start = d.gutter)) {
+    Column(Modifier.padding(top = 24.dp, start = d.gutter)) {
         Box(
             Modifier
-                .width(160.dp)
-                .height(20.dp)
-                .clip(CardShape)
-                .background(SurfaceHigh),
+                .width(140.dp)
+                .height(18.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(SurfaceColor),
         )
-        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(d.railSpacing)) {
+        Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(d.railSpacing)) {
             repeat(6) {
                 Box(
                     Modifier
                         .width(d.posterWidth)
                         .aspectRatio(2f / 3f)
-                        .clip(CardShape)
+                        .clip(RoundedCornerShape(d.radius))
                         .background(SurfaceColor),
                 )
             }
@@ -195,15 +408,143 @@ fun ErrorBanner(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = d.gutter, vertical = 8.dp)
-            .clip(CardShape)
-            .background(SurfaceHigh)
-            .padding(12.dp),
+            .clip(RoundedCornerShape(d.radius))
+            .background(SurfaceColor)
+            .border(1.dp, Outline, RoundedCornerShape(d.radius))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Danger),
+        )
         Text(message, Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
-        FocusCard(onClick = onRetry) { Text("Retry", Modifier.padding(horizontal = 12.dp, vertical = 6.dp), color = Accent) }
+        ActionButton("Retry", onRetry)
     }
 }
+
+// ----- Buttons --------------------------------------------------------------------------------
+
+/**
+ * Pill button. Primary: white with black text (the main action). Secondary: translucent glass.
+ * On TV the focused button turns white whatever its style, the clearest focus cue at 3 m.
+ */
+@Composable
+fun ActionButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    primary: Boolean = false,
+    icon: ImageVector? = null,
+) {
+    val d = LocalDimens.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val light = primary || (focused && d.isTv)
+    val bg by animateColorAsState(if (light) Color.White else SurfaceHigh, tween(140), label = "bg")
+    val fg = if (light) Color.Black else OnSurface
+    val scale by animateFloatAsState(if (focused && d.isTv) 1.05f else 1f, tween(140), label = "scale")
+    Row(
+        modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }.clip(RoundedCornerShape(50))
+            .background(bg)
+            .then(if (focused && !d.isTv) Modifier.border(2.dp, Accent, RoundedCornerShape(50)) else Modifier)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = if (icon != null) 18.dp else 20.dp, vertical = if (d.isTv) 11.dp else 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (icon != null) Icon(icon, null, Modifier.size(if (d.isTv) 24.dp else 20.dp), tint = fg)
+        Text(label, color = fg, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+    }
+}
+
+/** Round glass button with an icon only (secondary actions on detail pages). */
+@Composable
+fun IconAction(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    active: Boolean = false,
+) {
+    val d = LocalDimens.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val light = focused && d.isTv
+    val bg by animateColorAsState(if (light) Color.White else SurfaceHigh, tween(140), label = "bg")
+    Box(
+        modifier
+            .size(if (d.isTv) 52.dp else 46.dp)
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription,
+            Modifier.size(22.dp),
+            tint =
+                if (light) {
+                    Color.Black
+                } else if (active) {
+                    Accent
+                } else {
+                    OnSurface
+                },
+        )
+    }
+}
+
+// ----- Ambient background ---------------------------------------------------------------------
+
+/** A soft glow of the artwork's color from the top of the screen, fading into the background. */
+fun Modifier.ambientGlow(color: Color?): Modifier =
+    drawBehind {
+        drawRect(Background)
+        if (color != null) {
+            drawRect(
+                Brush.radialGradient(
+                    0f to color.copy(alpha = 0.38f),
+                    1f to Color.Transparent,
+                    center = Offset(size.width * 0.3f, 0f),
+                    radius = size.maxDimension * 0.75f,
+                ),
+            )
+        }
+    }
+
+/**
+ * Fades the content itself to transparent towards the bottom (and the left edge on TV), so
+ * artwork melts into whatever is behind it (the ambient glow) without a visible seam.
+ */
+fun Modifier.fadeEdges(
+    bottomFrom: Float = 0.55f,
+    leftTo: Float = 0f,
+): Modifier =
+    graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            drawRect(
+                Brush.verticalGradient(bottomFrom to Color.Black, 1f to Color.Transparent),
+                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+            )
+            if (leftTo > 0f) {
+                drawRect(
+                    Brush.horizontalGradient(0f to Color.Transparent, leftTo to Color.Black),
+                    blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                )
+            }
+        }
+
+// ----- Focus helpers --------------------------------------------------------------------------
 
 /**
  * Lets D-pad up/down leave a text field (Compose text fields otherwise keep focus and move the
@@ -229,22 +570,4 @@ fun Modifier.initialFocus(enabled: Boolean = LocalDimens.current.isTv): Modifier
     val fr = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
     return focusRequester(fr)
-}
-
-/** Text button that is clearly focusable on TV. */
-@Composable
-fun ActionButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    primary: Boolean = false,
-) {
-    FocusCard(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(50)) {
-        Text(
-            label,
-            Modifier.background(if (primary) Accent else SurfaceHigh).padding(horizontal = 20.dp, vertical = 10.dp),
-            color = if (primary) Color.Black else OnSurface,
-            style = MaterialTheme.typography.labelLarge,
-        )
-    }
 }

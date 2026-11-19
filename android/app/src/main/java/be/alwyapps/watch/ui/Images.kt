@@ -118,7 +118,7 @@ fun UrlImage(
     if (url != null && bitmap == null) {
         LaunchedEffect(url) { bitmap = Images.loadUrl(core, url, px) }
     }
-    Box(modifier.background(SurfaceHigh)) {
+    Box(modifier.background(SurfaceColor)) {
         bitmap?.let { Image(it, null, Modifier.matchParentSize(), contentScale = ContentScale.Crop) }
     }
 }
@@ -132,6 +132,8 @@ fun RemoteImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
     contentDescription: String? = null,
+    background: androidx.compose.ui.graphics.Color = SurfaceColor,
+    alignment: androidx.compose.ui.Alignment = androidx.compose.ui.Alignment.Center,
 ) {
     val core = LocalCore.current
     val account = LocalAccount.current
@@ -143,10 +145,12 @@ fun RemoteImage(
     if (ref != null && bitmap == null) {
         LaunchedEffect(ref.path, px) { bitmap = Images.load(core, account, itemId, ref, px) }
     }
-    Box(modifier.background(SurfaceHigh)) {
-        val img = bitmap ?: placeholder
+    // Logos (Fit) get no placeholder: a blurred block would show behind transparent art.
+    val fit = contentScale == ContentScale.Fit
+    Box(modifier.background(background)) {
+        val img = bitmap ?: placeholder.takeIf { !fit }
         if (img != null) {
-            Image(img, contentDescription, Modifier.matchParentSize(), contentScale = contentScale)
+            Image(img, contentDescription, if (fit) Modifier else Modifier.matchParentSize(), contentScale = contentScale, alignment = alignment)
         }
     }
 }
@@ -174,6 +178,16 @@ object BlurHash {
         val x = v.coerceIn(0f, 1f)
         val s = if (x <= 0.0031308f) x * 12.92f else 1.055f * x.pow(1 / 2.4f) - 0.055f
         return (s * 255 + 0.5f).toInt().coerceIn(0, 255)
+    }
+
+    /** The image's average color (the hash's DC term): free ambient color for any artwork. */
+    fun averageColor(hash: String?): androidx.compose.ui.graphics.Color? {
+        if (hash == null || hash.length < 6) return null
+        return runCatching {
+            val v = decode83(hash, 2, 6)
+            androidx.compose.ui.graphics
+                .Color(0xFF000000.toInt() or v)
+        }.getOrNull()
     }
 
     fun decode(

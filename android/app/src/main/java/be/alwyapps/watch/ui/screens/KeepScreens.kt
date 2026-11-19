@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -90,6 +91,20 @@ fun LeavingItem.leavesLabel(): String {
             val extra = if (protection == Protection.EXTENDED) " (extended)" else ""
             base + extra + if (!collectionActive) " · not active yet" else ""
         }
+    }
+}
+
+/** Short countdown for poster badges: "3 days", "Today", "Overdue", "Kept". */
+fun LeavingItem.shortLabel(): Pair<String, Boolean> {
+    val now = System.currentTimeMillis() / 1000
+    if (protection == Protection.FOREVER || protection == Protection.UNTIL_WATCHED) return "Kept" to false
+    val d = effectiveDeletionDate ?: return "Soon" to false
+    val days = (d - now) / DAY
+    return when {
+        days < 0 -> "Overdue" to true
+        days == 0L -> "Today" to true
+        days == 1L -> "1 day" to true
+        else -> "$days days" to (days <= 7)
     }
 }
 
@@ -159,20 +174,50 @@ fun LeavingSoonRail() {
             ?.take(15)
             .orEmpty()
     if (items.isEmpty()) return
-    Column(Modifier.padding(top = 20.dp)) {
-        Row(Modifier.padding(horizontal = d.gutter), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Leaving soon", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            ActionButton("Sort them out", { nav.push(Route.Triage) }, primary = true)
-            ActionButton("See all", { nav.push(Route.LeavingSoon) })
+    Column(Modifier.padding(top = if (d.isTv) 18.dp else 24.dp)) {
+        Row(Modifier.padding(horizontal = d.gutter), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("Leaving soon", style = MaterialTheme.typography.titleMedium)
+                Text("Keep what you still want to watch", style = MaterialTheme.typography.bodySmall, color = Muted)
+            }
+            ActionButton("Sort them out", { nav.push(Route.Triage) }, primary = true, icon = be.alwyapps.watch.ui.Icons.Favorite)
+            if (!d.isTv) {
+                be.alwyapps.watch.ui
+                    .IconAction(be.alwyapps.watch.ui.Icons.ChevronRight, "See all", { nav.push(Route.LeavingSoon) })
+            }
         }
-        LazyRow(contentPadding = PaddingValues(horizontal = d.gutter, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(d.railSpacing)) {
+        LazyRow(contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(d.railSpacing)) {
             items(items, key = { it.key }) { item ->
                 Column(Modifier.width(d.posterWidth)) {
                     FocusCard(onClick = { nav.push(Route.LeavingSoon) }) {
                         UrlImage(item.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+                        val (label, urgent) = item.shortLabel()
+                        be.alwyapps.watch.ui.Badge(
+                            label,
+                            Modifier.align(Alignment.TopStart).padding(8.dp),
+                            color = if (urgent) be.alwyapps.watch.ui.Danger else Color.Black.copy(alpha = 0.6f),
+                        )
                     }
-                    Text(item.title, Modifier.padding(top = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(item.leavesLabel(), color = Accent, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                    if (!d.isTv) {
+                        Text(
+                            item.title,
+                            Modifier.padding(top = 8.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            listOfNotNull(
+                                item.year?.toString(),
+                                item.kind.replaceFirstChar {
+                                    it.uppercase()
+                                },
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Muted,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }

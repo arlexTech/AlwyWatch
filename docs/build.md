@@ -26,7 +26,8 @@ scripts/dev.sh android [serial]   # ~6 s after a Kotlin change, a few seconds af
 scripts/dev.sh desktop
 ```
 Android: debug APK (no R8), Rust core in the `android-dev` profile (no LTO, incremental), only
-the device's ABI, installed as **AlwyWatch Dev** (`be.alwyapps.watch.dev`) next to the release app.
+the device's ABI, shown as **AlwyWatch Dev**. With the release key present it is signed like
+release and installs over the release app, keeping its sign-in and cache.
 A release build after a Kotlin change takes minutes because of R8; use it only for size and
 performance measurements.
 
