@@ -1,2 +1,292 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Client and protocol types for the alwywatch-server keep service.
+//! The keep-service protocol (shared by alwywatch-server and the apps) and its HTTP client.
+//! Wire format: JSON, snake_case. Documented in `docs/keep-protocol.md`.
+//!
+//! Every authenticated call sends `Authorization: Bearer <token>` and `X-AlwyWatch-Server: <id>`:
+//! for Jellyfin the token is the user's Jellyfin access token, for Plex the plex.tv account token.
+//! The server validates it against the allow-listed media server and never stores it.
+
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
+
+use net::Result;
+use net::reqwest::{Client, Method, RequestBuilder};
+use serde::{Deserialize, Serialize};
+
+macro_rules! record {
+    ($(#[$m:meta])* pub struct $name:ident { $($body:tt)* }) => {
+        $(#[$m])*
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+        pub struct $name { $($body)* }
+    };
+}
+
+macro_rules! simple_enum {
+    ($(#[$m:meta])* pub enum $name:ident { $($body:tt)* }) => {
+        $(#[$m])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+        pub enum $name { $($body)* }
+    };
+}
+
+pub const SERVER_HEADER: &str = "X-AlwyWatch-Server";
+
+simple_enum! {
+    pub enum ServerType { Jellyfin, Plex }
+}
+
+record! {
+    /// An allow-listed media server (public, so apps can offer it without typing a URL).
+    pub struct ServerEntry {
+        pub id: String,
+        pub kind: ServerType,
+        pub name: String,
+        pub url: String,
+    }
+}
+
+simple_enum! {
+    pub enum VoteKind {
+        /// "I don't care": a signal for the admin, never deletes anything by itself.
+        DontCare,
+        /// Keep for N more days.
+        KeepDays,
+        /// Keep until I have watched it (with an optional reminder every N days).
+        KeepUntilWatched,
+        /// Keep forever ("it's a classic", "I love it").
+        KeepForever,
+    }
+}
+
+record! {
+    pub struct VoteRequest {
+        pub kind: VoteKind,
+        /// KeepDays only.
+        pub days: Option<u32>,
+        /// KeepUntilWatched only: the app schedules a local reminder every N days.
+        pub reminder_days: Option<u32>,
+        /// KeepForever only, free text ("classic", "love it").
+        pub reason: Option<String>,
+    }
+}
+
+record! {
+    pub struct MyVote {
+        pub kind: VoteKind,
+        /// KeepDays: unix seconds until which the item is kept.
+        pub until: Option<i64>,
+        pub reminder_days: Option<u32>,
+        pub reason: Option<String>,
+        pub created_at: i64,
+    }
+}
+
+record! {
+    #[derive(Default)]
+    pub struct VoteCounts {
+        pub forever: u32,
+        pub until_watched: u32,
+        pub days: u32,
+        pub dont_care: u32,
+    }
+}
+
+simple_enum! {
+    pub enum Protection {
+        /// Will be deleted at `deletion_date` (if the collection is active).
+        None,
+        /// Someone extended it: deleted at `effective_deletion_date`.
+        Extended,
+        /// Kept until everyone who asked has watched it.
+        UntilWatched,
+        Forever,
+    }
+}
+
+record! {
+    pub struct LeavingItem {
+        /// Maintainerr item id (the Plex ratingKey in Plex mode). Stable across collections.
+        pub key: String,
+        pub title: String,
+        pub year: Option<i32>,
+        /// "movie" | "show"
+        pub kind: String,
+        pub poster_url: Option<String>,
+        pub tmdb_id: Option<String>,
+        pub tvdb_id: Option<String>,
+        /// The same item on the caller's server, to open or play it.
+        pub server_item_id: Option<String>,
+        pub collection_id: Option<i64>,
+        pub collection_title: Option<String>,
+        /// False while the collection is inactive (nothing is deleted yet: review phase).
+        pub collection_active: bool,
+        /// Maintainerr's date (unix seconds), before any keep. May be in the past.
+        pub deletion_date: Option<i64>,
+        /// After extensions; None when protected (forever / until watched).
+        pub effective_deletion_date: Option<i64>,
+        pub protection: Protection,
+        pub my_vote: Option<MyVote>,
+        pub counts: VoteCounts,
+    }
+}
+
+record! {
+    pub struct Rights {
+        pub can_keep_forever: bool,
+        /// None = unlimited.
+        pub max_forever: Option<u32>,
+        /// Longest "keep N days" allowed; None = unlimited (Maintainerr caps at 3650).
+        pub max_keep_days: Option<u32>,
+    }
+}
+
+impl Default for Rights {
+    fn default() -> Self {
+        Self {
+            can_keep_forever: true,
+            max_forever: None,
+            max_keep_days: None,
+        }
+    }
+}
+
+record! {
+    pub struct Me {
+        pub user_key: String,
+        pub name: String,
+        pub server_id: String,
+        pub is_admin: bool,
+        pub rights: Rights,
+        pub forever_count: u32,
+    }
+}
+
+record! {
+    pub struct AdminUser {
+        pub user_key: String,
+        pub name: String,
+        pub server_id: String,
+        pub is_admin: bool,
+        pub rights: Rights,
+        pub forever_count: u32,
+        pub last_seen: i64,
+    }
+}
+
+record! {
+    pub struct CountdownRequest {
+        /// Spread new deletion dates over this many days (0 = all start today).
+        pub stagger_days: u32,
+    }
+}
+
+record! {
+    pub struct CountdownResult {
+        pub reset: u32,
+        pub skipped: u32,
+    }
+}
+
+record! {
+    pub struct ApiError {
+        pub error: String,
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Client
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct KeepClient {
+    http: Client,
+    base: String,
+    token: String,
+    server_id: String,
+}
+
+impl KeepClient {
+    pub fn new(http: Client, base_url: &str, server_id: &str, token: &str) -> Self {
+        Self {
+            http,
+            base: base_url.trim_end_matches('/').to_owned(),
+            token: token.to_owned(),
+            server_id: server_id.to_owned(),
+        }
+    }
+
+    fn req(&self, method: Method, path: &str) -> RequestBuilder {
+        self.http
+            .request(method, format!("{}/v1{path}", self.base))
+            .bearer_auth(&self.token)
+            .header(SERVER_HEADER, &self.server_id)
+            .header("Accept", "application/json")
+    }
+
+    /// Public: the allow-listed servers.
+    pub async fn servers(http: &Client, base_url: &str) -> Result<Vec<ServerEntry>> {
+        net::send_json(http.get(format!("{}/v1/servers", base_url.trim_end_matches('/')))).await
+    }
+
+    pub async fn me(&self) -> Result<Me> {
+        net::send_json(self.req(Method::GET, "/me")).await
+    }
+
+    pub async fn leaving_soon(&self) -> Result<Vec<LeavingItem>> {
+        net::send_json(self.req(Method::GET, "/leaving-soon")).await
+    }
+
+    /// Most urgent items I have not voted on yet (swipe mode).
+    pub async fn triage(&self, limit: u32) -> Result<Vec<LeavingItem>> {
+        net::send_json(self.req(Method::GET, &format!("/triage?limit={limit}"))).await
+    }
+
+    pub async fn vote(&self, key: &str, vote: &VoteRequest) -> Result<LeavingItem> {
+        net::send_json(
+            self.req(Method::PUT, &format!("/votes/{}", net::percent_encode(key)))
+                .json(vote),
+        )
+        .await
+    }
+
+    pub async fn unvote(&self, key: &str) -> Result<LeavingItem> {
+        net::send_json(self.req(
+            Method::DELETE,
+            &format!("/votes/{}", net::percent_encode(key)),
+        ))
+        .await
+    }
+
+    pub async fn admin_users(&self) -> Result<Vec<AdminUser>> {
+        net::send_json(self.req(Method::GET, "/admin/users")).await
+    }
+
+    pub async fn admin_set_rights(&self, user_key: &str, rights: &Rights) -> Result<AdminUser> {
+        net::send_json(
+            self.req(
+                Method::PUT,
+                &format!("/admin/users/{}/rights", net::percent_encode(user_key)),
+            )
+            .json(rights),
+        )
+        .await
+    }
+
+    pub async fn admin_countdown(
+        &self,
+        collection_id: i64,
+        req: &CountdownRequest,
+    ) -> Result<CountdownResult> {
+        net::send_json(
+            self.req(
+                Method::POST,
+                &format!("/admin/collections/{collection_id}/countdown"),
+            )
+            .json(req),
+        )
+        .await
+    }
+}

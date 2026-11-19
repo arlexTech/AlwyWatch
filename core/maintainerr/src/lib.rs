@@ -264,6 +264,53 @@ impl Maintainerr {
         })
     }
 
+    /// Children of an item (seasons of a show, episodes of a season), ordered by index.
+    pub async fn children(&self, media_server_id: &str) -> Result<Vec<(String, i64)>> {
+        #[derive(Deserialize)]
+        struct C {
+            id: serde_json::Value,
+            #[serde(default)]
+            index: Option<i64>,
+        }
+        let mut list: Vec<C> = net::send_json(self.req(
+            Method::GET,
+            &format!(
+                "/api/media-server/meta/{}/children",
+                net::percent_encode(media_server_id)
+            ),
+        ))
+        .await?;
+        list.sort_by_key(|c| c.index.unwrap_or(0));
+        Ok(list
+            .into_iter()
+            .map(|c| {
+                let id = match c.id {
+                    serde_json::Value::String(s) => s,
+                    other => other.to_string(),
+                };
+                (id, c.index.unwrap_or(0))
+            })
+            .collect())
+    }
+
+    /// The last episode of a show (last season with an index > 0, then its last episode).
+    pub async fn last_episode(&self, show_id: &str) -> Result<Option<String>> {
+        let seasons = self.children(show_id).await?;
+        let Some((season, _)) = seasons
+            .iter()
+            .rev()
+            .find(|(_, i)| *i > 0)
+            .or(seasons.last())
+        else {
+            return Ok(None);
+        };
+        Ok(self
+            .children(season)
+            .await?
+            .last()
+            .map(|(id, _)| id.clone()))
+    }
+
     pub async fn exclusions_for(&self, media_server_id: &str) -> Result<Vec<Exclusion>> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]

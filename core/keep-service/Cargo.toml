@@ -1,5 +1,6 @@
 [package]
 name = "keep-service"
+description = "Keep-service protocol types (shared with alwywatch-server) and HTTP client."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +8,13 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+uniffi = ["dep:uniffi"]
+
 [dependencies]
+net = { workspace = true }
+serde = { workspace = true }
+uniffi = { workspace = true, optional = true }
 
 [lints]
 workspace = true

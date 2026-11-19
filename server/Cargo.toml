@@ -9,11 +9,21 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-axum = { workspace = true, features = ["http1", "tokio", "json"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "signal"] }
+axum = { workspace = true, features = ["http1", "tokio", "json", "query"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "signal", "sync", "time"] }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Config file with the allow-list of servers.
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
+net = { workspace = true }
+maintainerr = { workspace = true }
+keep-service = { workspace = true }
 
 [dev-dependencies]
 tower = { version = "0.5", default-features = false, features = ["util"] }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

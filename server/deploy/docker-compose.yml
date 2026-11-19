@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# alwywatch-server next to Maintainerr/Seerr/Plex/Jellyfin/Tautulli. Not deployed automatically:
+# see docs/deploy.md. Build the image first:  docker build -f server/Dockerfile -t alwywatch-server .
+name: alwywatch
+
+services:
+  alwywatch-server:
+    image: alwywatch-server:latest
+    container_name: alwywatch-server
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Brussels
+      # Secrets (put them in an .env file next to this compose file, chmod 600).
+      TAUTULLI_API_KEY: ${TAUTULLI_API_KEY}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      # MAINTAINERR_API_KEY: ${MAINTAINERR_API_KEY}   # only if you enable Maintainerr's API key
+    volumes:
+      - ./data:/data            # config.toml + keep.sqlite (owned by uid 65534)
+    networks:
+      - vod_default             # maintainerr (and seerr)
+      - plex_default
+      - jellyfin_default
+      - tautulli_default
+    # No published port: Caddy reaches it on the shared network (add caddy to "alwywatch").
+    expose:
+      - "8080"
+
+networks:
+  vod_default:
+    external: true
+  plex_default:
+    external: true
+  jellyfin_default:
+    external: true
+  tautulli_default:
+    external: true

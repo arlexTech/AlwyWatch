@@ -1,0 +1,27 @@
+# alwywatch-server configuration (copy to ./data/config.toml).
+# Server ids: Jellyfin "Id" from /System/Info/Public, Plex "machineIdentifier" from /identity.
+listen = "0.0.0.0:8080"
+data_dir = "/data"
+sync_minutes = 10
+
+[[servers]]
+id = "<plex machineIdentifier>"
+kind = "plex"
+name = "HomePlex"
+public_url = "https://plex.example.org"
+internal_url = "https://plex:32400"
+
+[[servers]]
+id = "<jellyfin server id>"
+kind = "jellyfin"
+name = "HomeJelly"
+public_url = "https://jellyfin.example.org"
+internal_url = "http://jellyfin:8096"
+
+[maintainerr]
+url = "http://maintainerr:6246"
+# The server Maintainerr is configured for (its item ids are that server's ids).
+server = "<plex machineIdentifier>"
+
+[tautulli]
+url = "http://tautulli:8181"
