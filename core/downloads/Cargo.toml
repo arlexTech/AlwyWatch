@@ -1,5 +1,6 @@
 [package]
 name = "downloads"
+description = "Resumable download manager: HTTP Range + If-Range, .part files, persisted offsets, retry with backoff."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +8,23 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+uniffi = ["dep:uniffi"]
+
 [dependencies]
+net = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time", "fs", "io-util", "rt"] }
+uniffi = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net"] }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+rusqlite = { workspace = true }
 
 [lints]
 workspace = true
