@@ -75,8 +75,6 @@ fun RequestStatus.label(): String =
         RequestStatus.COMPLETED -> "Available"
     }
 
-/** Seerr: search TMDB, request movies or seasons, follow my requests. */
-
 /** Search hands a Seerr result over to the requests screen (query + chosen title). */
 object PendingRequest {
     private var value: Pair<String, SeerrResult>? = null
@@ -91,6 +89,7 @@ object PendingRequest {
     fun take(): Pair<String, SeerrResult>? = value.also { value = null }
 }
 
+/** Seerr: search TMDB, request movies or seasons, follow my requests. */
 @Composable
 fun RequestsScreen() {
     val core = LocalCore.current

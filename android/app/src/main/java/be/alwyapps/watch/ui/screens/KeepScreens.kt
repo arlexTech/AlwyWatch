@@ -413,7 +413,8 @@ fun TriageScreen() {
             item == null -> Text(if (done > 0) "All done, thanks! $done sorted." else "Nothing to sort right now.", color = Muted)
             else -> {
                 Text(
-                    if (d.isTv) "${queue!!.size} left  ·  ← don't care   → until I watch it   ↑ forever" else "${queue!!.size} left  ·  swipe ← don't care, → keep, ↑ forever",
+                    "${queue!!.size} left  ·  " +
+                        if (d.isTv) "← don't care   → until I watch it   ↑ forever" else "swipe ← don't care, → keep, ↑ forever",
                     color = be.alwyapps.watch.ui.Subtle,
                     style = MaterialTheme.typography.bodySmall,
                 )
