@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+export component AppWindow inherits Window {
+    in property <string> greeting;
+    title: "AlwyWatch";
+    preferred-width: 1280px;
+    preferred-height: 720px;
+    background: #101114;
+
+    Text {
+        text: root.greeting;
+        color: #e8e8ea;
+        font-size: 28px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
