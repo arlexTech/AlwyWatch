@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Runs on a forgejo-runner registered on the owner's workstation (label: alwywatch-host),
+# which already has Rust, the Android SDK/NDK, cargo-ndk, cargo-xwin, makensis and Docker.
+# Every job calls scripts/ci.sh so local runs and CI are identical.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: alwywatch-host
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci.sh rust
+
+  android:
+    runs-on: alwywatch-host
+    needs: rust
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci.sh android
+      - uses: actions/upload-artifact@v3
+        with:
+          name: apks
+          path: android/app/build/outputs/apk/release/*.apk
+
+  linux-desktop:
+    runs-on: alwywatch-host
+    needs: rust
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build --release --locked -p alwywatch-desktop
+
+  windows-desktop:
+    runs-on: alwywatch-host
+    needs: rust
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci.sh windows
+
+  server-image:
+    runs-on: alwywatch-host
+    needs: rust
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci.sh server
