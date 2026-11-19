@@ -2,7 +2,10 @@
 use net::Error as NetError;
 
 /// Errors surfaced to the UIs. Messages never contain tokens.
+/// Flat for the bindings: Kotlin gets one exception class per variant whose `message` is the
+/// text below (fields stay available to Rust callers such as the desktop app).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
+#[uniffi(flat_error)]
 pub enum CoreError {
     #[error("sign in again: the session expired or was revoked")]
     Unauthorized,

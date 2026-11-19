@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +42,7 @@ import be.alwyapps.watch.core.seerr.SeerrResult
 import be.alwyapps.watch.core.seerr.SeerrSeason
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
+import be.alwyapps.watch.ui.Field
 import be.alwyapps.watch.ui.FocusCard
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
@@ -104,7 +104,7 @@ fun RequestsScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            OutlinedTextField(
+            Field(
                 query,
                 { query = it },
                 Modifier.fillMaxWidth().dpadEscape(),

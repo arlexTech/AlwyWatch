@@ -38,7 +38,14 @@ fn main() -> std::process::ExitCode {
 }
 
 async fn run(config: config::Config) -> Result<(), String> {
-    let db = db::Db::open(&config.data_dir.join("keep.sqlite")).map_err(|e| e.to_string())?;
+    // Dry run: its simulated votes and exclusions never mix with the real ones.
+    let db_file = if config.dry_run {
+        eprintln!("[keep] DRY RUN: nothing is written to Maintainerr or Seerr");
+        "keep-dryrun.sqlite"
+    } else {
+        "keep.sqlite"
+    };
+    let db = db::Db::open(&config.data_dir.join(db_file)).map_err(|e| e.to_string())?;
     let http = net::api_client(concat!("AlwyWatch-Server/", env!("CARGO_PKG_VERSION")))
         .map_err(|e| e.to_string())?;
     let listen = config.listen;

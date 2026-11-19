@@ -85,7 +85,7 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
             var keepUrl by remember { mutableStateOf("") }
             var keepError by remember { mutableStateOf<String?>(null) }
             val scope = androidx.compose.runtime.rememberCoroutineScope()
-            androidx.compose.material3.OutlinedTextField(
+            be.alwyapps.watch.ui.Field(
                 keepUrl,
                 { keepUrl = it },
                 Modifier.fillMaxWidth().dpadEscape(),

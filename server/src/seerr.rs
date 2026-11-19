@@ -30,6 +30,8 @@ pub enum BridgeError {
     Disabled,
     /// No matching Seerr user and creating one is turned off.
     NoAccount,
+    /// Read-only mode refuses changes.
+    DryRun,
     /// Seerr unreachable or answered unexpectedly.
     Unavailable(String),
 }
@@ -40,6 +42,8 @@ pub struct Bridge {
     public_url: Option<String>,
     create_users: bool,
     api_key: String,
+    /// Read-only: no Seerr user creation, no requests or cancellations.
+    dry_run: bool,
     /// Serialises linking so two first calls do not create two users.
     link_lock: tokio::sync::Mutex<()>,
 }
@@ -91,7 +95,12 @@ pub fn allowed(method: &Method, path: &str) -> bool {
 }
 
 impl Bridge {
-    pub fn new(http: Client, conf: Option<&SeerrConf>, api_key: Option<&str>) -> Option<Self> {
+    pub fn new(
+        http: Client,
+        conf: Option<&SeerrConf>,
+        api_key: Option<&str>,
+        dry_run: bool,
+    ) -> Option<Self> {
         let (conf, api_key) = (conf?, api_key?);
         Some(Self {
             http,
@@ -99,6 +108,7 @@ impl Bridge {
             public_url: conf.public_url.clone(),
             create_users: conf.create_users,
             api_key: api_key.to_owned(),
+            dry_run,
             link_lock: tokio::sync::Mutex::new(()),
         })
     }
@@ -159,7 +169,12 @@ impl Bridge {
         });
         let (seerr_id, created) = match found {
             Some(u) => (u.id, false),
-            None if !self.create_users => return Err(BridgeError::NoAccount),
+            None if !self.create_users || self.dry_run => {
+                if self.dry_run {
+                    eprintln!("[dry-run] would create a Seerr user for {}", id.user_key);
+                }
+                return Err(BridgeError::NoAccount);
+            }
             None => {
                 let password = random_password();
                 let body = json!({ "email": email, "username": id.name, "password": password });
@@ -232,6 +247,13 @@ impl Bridge {
         query: Option<&str>,
         body: Bytes,
     ) -> Result<Response, BridgeError> {
+        if self.dry_run && method != Method::GET {
+            eprintln!(
+                "[dry-run] would forward {method} {path} for {}",
+                id.user_key
+            );
+            return Err(BridgeError::DryRun);
+        }
         let seerr_id = self.link(db, id).await?;
         let pq = match query {
             Some(q) if !q.is_empty() => format!("{path}?{q}"),

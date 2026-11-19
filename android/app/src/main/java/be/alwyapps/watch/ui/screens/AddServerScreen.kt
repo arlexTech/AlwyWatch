@@ -15,7 +15,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +38,7 @@ import be.alwyapps.watch.core.media.QuickConnectCode
 import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.Danger
+import be.alwyapps.watch.ui.Field
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
@@ -155,7 +155,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                         step = Step.Jellyfin(normalized, quick)
                     }
                 }
-                OutlinedTextField(
+                Field(
                     url,
                     { url = it },
                     label = { Text("Server address") },
@@ -190,14 +190,14 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 }
                 var user by remember { mutableStateOf("") }
                 var pass by remember { mutableStateOf("") }
-                OutlinedTextField(
+                Field(
                     user,
                     { user = it },
                     label = { Text("Username") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().dpadEscape(),
                 )
-                OutlinedTextField(
+                Field(
                     pass,
                     { pass = it },
                     label = { Text("Password") },
@@ -295,7 +295,7 @@ private fun AlwyWatchServerPicker(
         }
     }
     Text("Or, with an AlwyWatch server address from your server owner:", color = Muted, modifier = Modifier.padding(top = 12.dp))
-    OutlinedTextField(
+    Field(
         url,
         { url = it },
         label = { Text("AlwyWatch server") },

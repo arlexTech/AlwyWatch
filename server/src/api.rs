@@ -244,6 +244,10 @@ fn bridge_err(e: BridgeError) -> Error {
             StatusCode::FORBIDDEN,
             "no Seerr account for you; ask the administrator".into(),
         ),
+        BridgeError::DryRun => Error(
+            StatusCode::FORBIDDEN,
+            "this AlwyWatch server is in read-only test mode".into(),
+        ),
         BridgeError::Unavailable(m) => Error(StatusCode::BAD_GATEWAY, format!("Seerr: {m}")),
     }
 }

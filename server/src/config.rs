@@ -89,6 +89,11 @@ pub struct Config {
     pub maintainerr: MaintainerrConf,
     pub tautulli: Option<TautulliConf>,
     pub seerr: Option<SeerrConf>,
+    /// Reads everything, writes nothing: Maintainerr writes and Seerr changes are logged
+    /// instead, and votes go to a separate database (`keep-dryrun.sqlite`). Also
+    /// `ALWYWATCH_DRY_RUN=1`.
+    #[serde(default)]
+    pub dry_run: bool,
     /// Minutes between Maintainerr syncs.
     #[serde(default = "default_sync")]
     pub sync_minutes: u64,
@@ -152,6 +157,9 @@ impl Config {
         }
         if let Ok(d) = std::env::var("ALWYWATCH_DATA") {
             c.data_dir = d.into();
+        }
+        if std::env::var("ALWYWATCH_DRY_RUN").is_ok_and(|v| v == "1" || v == "true") {
+            c.dry_run = true;
         }
         Ok(c)
     }

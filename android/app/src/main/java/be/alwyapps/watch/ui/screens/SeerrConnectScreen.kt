@@ -15,7 +15,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,6 +37,7 @@ import be.alwyapps.watch.core.seerr.SeerrLogin
 import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.Danger
+import be.alwyapps.watch.ui.Field
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
@@ -97,7 +97,7 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
         }
         if (i == null) {
             val submit = { attempt { info = core.seerrInfo(normalizeServerUrl(url)) } }
-            OutlinedTextField(
+            Field(
                 url,
                 { url = it },
                 Modifier.fillMaxWidth().dpadEscape().initialFocus(),
@@ -180,14 +180,14 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                             )
                         }
                     }
-                    OutlinedTextField(
+                    Field(
                         user,
                         { user = it },
                         Modifier.fillMaxWidth().dpadEscape(),
                         label = { Text(if (local) "Email" else "Username") },
                         singleLine = true,
                     )
-                    OutlinedTextField(
+                    Field(
                         pass,
                         { pass = it },
                         Modifier.fillMaxWidth().dpadEscape(),

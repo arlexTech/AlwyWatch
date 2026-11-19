@@ -58,6 +58,7 @@ impl State {
             http.clone(),
             config.seerr.as_ref(),
             config.secrets.seerr_api_key.as_deref(),
+            config.dry_run,
         );
         Self {
             auth: Auth::new(http.clone(), plex_tv),
@@ -338,16 +339,24 @@ impl State {
             let desired = Desired::from_votes(votes.iter().filter(|v| v.item_key == key), now);
             let excluded = self.db.excluded(&key).map_err(|e| e.to_string())?;
             if desired.needs_exclusion() && !excluded {
-                self.with_retry(|| self.maintainerr.add_exclusion(&key))
-                    .await?;
+                if self.config.dry_run {
+                    eprintln!("[dry-run] would add a global exclusion for {key}");
+                } else {
+                    self.with_retry(|| self.maintainerr.add_exclusion(&key))
+                        .await?;
+                }
                 self.db
                     .set_excluded(&key, true)
                     .map_err(|e| e.to_string())?;
                 self.db.log("reconciler", "exclude", &key);
                 changes += 1;
             } else if !desired.needs_exclusion() && excluded {
-                self.with_retry(|| self.maintainerr.remove_global_exclusions(&key))
-                    .await?;
+                if self.config.dry_run {
+                    eprintln!("[dry-run] would remove the global exclusions of {key}");
+                } else {
+                    self.with_retry(|| self.maintainerr.remove_global_exclusions(&key))
+                        .await?;
+                }
                 self.db
                     .set_excluded(&key, false)
                     .map_err(|e| e.to_string())?;
@@ -361,9 +370,13 @@ impl State {
                 && let (Some(collection), Some(current)) = (item.collection_id, item.deletion_date)
                 && let Some(days) = maintainerr::postpone_days(current, now, target)
             {
-                let new_date = self
-                    .with_retry(|| self.maintainerr.postpone(collection, &key, Some(days)))
-                    .await?;
+                let new_date = if self.config.dry_run {
+                    eprintln!("[dry-run] would postpone {key} by {days} days");
+                    None
+                } else {
+                    self.with_retry(|| self.maintainerr.postpone(collection, &key, Some(days)))
+                        .await?
+                };
                 let date = new_date.unwrap_or(current.max(now) + days * DAY);
                 self.db
                     .set_deletion_date(&key, Some(date))
@@ -423,6 +436,16 @@ impl State {
         items.sort_by_key(|i| i.add_date);
         let n = items.len().max(1);
         let (mut reset, mut skipped) = (0u32, 0u32);
+        if self.config.dry_run {
+            eprintln!(
+                "[dry-run] would restart the countdown of {} items in collection {collection_id} over {stagger_days} days",
+                items.len()
+            );
+            return Ok(CountdownResult {
+                reset: 0,
+                skipped: items.len() as u32,
+            });
+        }
         for (idx, i) in items.iter().enumerate() {
             let r = async {
                 self.with_retry(|| self.maintainerr.postpone(c.id, &i.media_server_id, None))

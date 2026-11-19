@@ -27,6 +27,10 @@ struct Env {
 }
 
 async fn env() -> Env {
+    env_with(false).await
+}
+
+async fn env_with(dry_run: bool) -> Env {
     let seerr = MockServer::start().await;
     let (maint, jf, plextv, tautulli) = (
         MockServer::start().await,
@@ -62,6 +66,7 @@ async fn env() -> Env {
     );
     let mut config = Config::parse(&toml).unwrap();
     config.secrets = Secrets::for_tests("jf-admin-key", "taut-key");
+    config.dry_run = dry_run;
     let state = Arc::new(State::new(
         config,
         Db::open_in_memory().unwrap(),
@@ -794,4 +799,85 @@ async fn seerr_bridge_links_existing_users_and_creates_missing_ones() {
     assert_eq!(s, StatusCode::FORBIDDEN);
     let (s, _) = e.call("GET", "/v1/seerr", "jfsrv", "nope", None).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn dry_run_writes_nothing_to_maintainerr_or_seerr() {
+    let e = env_with(true).await;
+    e.state.sync().await.unwrap();
+    // Any write would hit these and fail the test (expect 0).
+    for (m, p) in [
+        ("POST", "/api/rules/exclusion"),
+        ("POST", "/api/collections/media/postpone"),
+    ] {
+        Mock::given(method(m))
+            .and(path(p))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(0)
+            .mount(&e.maint)
+            .await;
+    }
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(201))
+        .expect(0)
+        .mount(&e.seerr)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/user"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"results": []})))
+        .mount(&e.seerr)
+        .await;
+    let (s, item) = e
+        .call(
+            "PUT",
+            "/v1/votes/101",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"kind": "keep_forever"})),
+        )
+        .await;
+    assert_eq!(
+        (s, item["protection"].clone()),
+        (StatusCode::OK, json!("forever"))
+    );
+    let (s, _) = e
+        .call(
+            "PUT",
+            "/v1/votes/100",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"kind": "keep_days", "days": 40})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        e.state.reconcile_once().await.unwrap(),
+        2,
+        "simulated, not sent"
+    );
+    let (s, r) = e
+        .call(
+            "POST",
+            "/v1/admin/collections/2/countdown",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"stagger_days": 0})),
+        )
+        .await;
+    assert_eq!((s, r["reset"].clone()), (StatusCode::OK, json!(0)));
+    // Seerr: no user creation, no requests.
+    assert_eq!(
+        e.call("GET", "/v1/seerr", "jfsrv", "jf-bob", None).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (s, _) = e
+        .call(
+            "POST",
+            "/v1/seerr/api/v1/request",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"mediaType": "movie", "mediaId": 1})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
 }

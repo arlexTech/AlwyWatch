@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +25,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.CoreException
 import be.alwyapps.watch.core.media.Item
+import be.alwyapps.watch.ui.Field
 import be.alwyapps.watch.ui.LocalAccount
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
@@ -69,7 +69,7 @@ fun SearchScreen() {
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            OutlinedTextField(
+            Field(
                 query,
                 { query = it },
                 Modifier.fillMaxWidth().focusRequester(focus).dpadEscape(),
