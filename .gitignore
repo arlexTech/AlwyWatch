@@ -3,6 +3,7 @@
 
 # Android / Gradle
 android/.gradle/
+android/buildSrc/.gradle/
 android/**/build/
 android/local.properties
 android/.idea/

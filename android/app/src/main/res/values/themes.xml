@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Framework theme only (no AppCompat): Compose draws everything. Dark by default. -->
+    <style name="Theme.AlwyWatch" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+    <color name="background">#FF101114</color>
+    <color name="accent">#FFE5A00D</color>
+</resources>
