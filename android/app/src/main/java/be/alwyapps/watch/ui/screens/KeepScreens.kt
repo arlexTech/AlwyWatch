@@ -149,13 +149,21 @@ fun KeepActions(
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { ActionButton("Keep 7 days", { send(req(VoteKind.KEEP_DAYS, days = 7u)) }, if (focusFirst) Modifier.initialFocus() else Modifier) }
+            item {
+                ActionButton(
+                    "Until I watch it",
+                    { send(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u)) },
+                    if (focusFirst) Modifier.initialFocus() else Modifier,
+                    primary = true,
+                    icon = be.alwyapps.watch.ui.Icons.Schedule,
+                )
+            }
             item { ActionButton("Keep 30 days", { send(req(VoteKind.KEEP_DAYS, days = 30u)) }) }
-            item { ActionButton("Until I watch it", { send(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u)) }, primary = true) }
-            item { ActionButton("Forever: I love it", { send(req(VoteKind.KEEP_FOREVER, reason = "love it")) }) }
-            item { ActionButton("Forever: a classic", { send(req(VoteKind.KEEP_FOREVER, reason = "classic")) }) }
+            item { ActionButton("Keep 7 days", { send(req(VoteKind.KEEP_DAYS, days = 7u)) }) }
+            item { ActionButton("I love it", { send(req(VoteKind.KEEP_FOREVER, reason = "love it")) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled) }
+            item { ActionButton("A classic", { send(req(VoteKind.KEEP_FOREVER, reason = "classic")) }, icon = be.alwyapps.watch.ui.Icons.Favorite) }
             item { ActionButton("I don't care", { send(req(VoteKind.DONT_CARE)) }) }
-            if (item.myVote != null) item { ActionButton("Remove my choice", { send(null) }) }
+            if (item.myVote != null) item { ActionButton("Remove my choice", { send(null) }, icon = be.alwyapps.watch.ui.Icons.Close) }
         }
         error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodySmall) }
     }
@@ -232,46 +240,104 @@ fun LeavingSoonScreen() {
     val d = LocalDimens.current
     val list = rememberSwr("leaving", cached = { core.cachedLeavingSoon() }, refresh = { core.refreshLeavingSoon(it) })
     var open by remember { mutableStateOf<String?>(null) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(d.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Leaving soon", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                ActionButton("Sort them out", { nav.push(Route.Triage) }, Modifier.initialFocus(), primary = true)
-                if (core.keepConnection()?.isAdmin == true) ActionButton("Admin", { nav.push(Route.KeepAdmin) })
-            }
-            Text("What the server will delete, soonest first. Keep what you want to watch or love.", color = Muted)
+    var filter by remember { mutableStateOf("all") }
+    val all = list.value.orEmpty()
+    val now = System.currentTimeMillis() / 1000
+    val shown =
+        when (filter) {
+            "urgent" -> all.filter { it.shortLabel().second }
+            "mine" -> all.filter { it.myVote != null }
+            "kept" -> all.filter { it.protection != Protection.NONE }
+            else -> all
         }
-        list.error?.let { item { Text(it, color = Danger) } }
-        items(list.value.orEmpty(), key = { it.key }) { item ->
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = d.gutter, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+                be.alwyapps.watch.ui.PageTitle(
+                    "Leaving soon",
+                    "${"%,d".format(all.size)} titles · ${all.count { it.myVote != null }} with your choice",
+                )
+                Text(
+                    "What the server will delete, soonest first. Keep what you still want to watch or love.",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionButton("Sort them out", { nav.push(Route.Triage) }, Modifier.initialFocus(), primary = true, icon = be.alwyapps.watch.ui.Icons.Favorite)
+                    if (core.keepConnection()?.isAdmin == true) ActionButton("Admin", { nav.push(Route.KeepAdmin) }, icon = be.alwyapps.watch.ui.Icons.Settings)
+                }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for ((key, label) in listOf("all" to "All", "urgent" to "Within a week", "mine" to "My choices", "kept" to "Kept")) {
+                        item(key) { ActionButton(label, { filter = key }, primary = filter == key) }
+                    }
+                }
+            }
+        }
+        list.error?.let {
+            item {
+                be.alwyapps.watch.ui
+                    .ErrorBanner(it) { list.reload() }
+            }
+        }
+        items(shown, key = { it.key }) { item ->
+            val expanded = open == item.key
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(SurfaceColor)
-                    .padding(10.dp),
+                    .clip(RoundedCornerShape(d.radius + 4.dp))
+                    .background(if (expanded) be.alwyapps.watch.ui.SurfaceHigh else SurfaceColor),
             ) {
-                FocusCard(onClick = { open = if (open == item.key) null else item.key }, modifier = Modifier.fillMaxWidth()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        UrlImage(item.posterUrl, 70.dp, Modifier.width(if (d.isTv) 80.dp else 60.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
-                        Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                FocusCard(
+                    onClick = { open = if (expanded) null else item.key },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(d.radius + 4.dp),
+                ) {
+                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        UrlImage(item.posterUrl, 80.dp, Modifier.width(if (d.isTv) 76.dp else 58.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)))
+                        Column(Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 listOfNotNull(item.title, item.year?.toString()).joinToString(" · "),
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleSmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            Text(item.leavesLabel(), color = if (item.protection == Protection.NONE) Accent else Muted)
-                            item.voteLabel()?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
+                            val (label, urgent) = item.shortLabel()
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                be.alwyapps.watch.ui
+                                    .Badge(label, color = if (urgent) Danger else be.alwyapps.watch.ui.SurfaceHigh)
+                                if (!item.collectionActive && item.protection == Protection.NONE) {
+                                    Text("not active yet", style = MaterialTheme.typography.bodySmall, color = be.alwyapps.watch.ui.Subtle)
+                                }
+                            }
                             val c = item.counts
-                            val others = c.forever + c.untilWatched + c.days
-                            if (others > 0u) Text("$others keep request(s)", color = Muted, style = MaterialTheme.typography.bodySmall)
+                            val others =
+                                (c.forever + c.untilWatched + c.days).toInt() - if (item.myVote != null && item.myVote!!.kind != VoteKind.DONT_CARE) 1 else 0
+                            listOfNotNull(
+                                item.voteLabel(),
+                                if (others > 0) "$others other${if (others > 1) "s" else ""} keep it" else null,
+                            ).joinToString(" · ").ifEmpty { null }?.let {
+                                Text(it, color = if (item.myVote != null) Accent else Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            }
                         }
+                        androidx.compose.material3.Icon(
+                            if (expanded) be.alwyapps.watch.ui.Icons.Close else be.alwyapps.watch.ui.Icons.ChevronRight,
+                            null,
+                            Modifier.padding(horizontal = 8.dp),
+                            tint = be.alwyapps.watch.ui.Subtle,
+                        )
                     }
                 }
-                if (open == item.key) {
-                    KeepActions(item, onVoted = { list.reload() }, Modifier.padding(top = 10.dp), focusFirst = true)
+                if (expanded) {
+                    KeepActions(item, onVoted = { list.reload() }, Modifier.padding(start = 12.dp, end = 12.dp, bottom = 14.dp), focusFirst = true)
                 }
             }
+        }
+        if (list.value != null && shown.isEmpty()) {
+            item { Text("Nothing here.", Modifier.padding(vertical = 24.dp), color = Muted) }
         }
     }
 }
