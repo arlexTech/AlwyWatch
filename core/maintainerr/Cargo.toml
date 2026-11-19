@@ -1,5 +1,6 @@
 [package]
 name = "maintainerr"
+description = "Maintainerr API client (verified against 3.32): collections, items, exclusions, postpone."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +9,14 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+net = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
+net = { workspace = true }
 
 [lints]
 workspace = true

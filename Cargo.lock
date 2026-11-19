@@ -2871,6 +2871,13 @@ dependencies = [
 [[package]]
 name = "maintainerr"
 version = "0.1.0"
+dependencies = [
+ "net",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wiremock",
+]
 
 [[package]]
 name = "matchit"
