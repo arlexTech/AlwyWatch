@@ -49,6 +49,11 @@ class Services(
                 tokens.get(account.id)?.let { core.activateAccount(account.id, it) }
             }
             watchNetwork(core)
+            // Downloads interrupted by a reboot or a killed process continue on their own.
+            if (!isTv && core.hasPendingDownloads()) {
+                be.alwyapps.watch.downloads.DownloadWorker
+                    .start(app)
+            }
             // Enumerating codecs takes tens of ms: do it now, off the main thread.
             be.alwyapps.watch.player.DeviceProfiles
                 .get(app)
@@ -73,6 +78,8 @@ class Services(
                     platform = if (isTv) "Android TV" else "Android",
                 ),
             imageCacheMb = 300u,
+            // App-specific external storage: no permission needed, removed with the app.
+            downloadsDir = (app.getExternalFilesDir(android.os.Environment.DIRECTORY_MOVIES) ?: java.io.File(app.filesDir, "downloads")).path,
         )
     }
 
@@ -83,6 +90,10 @@ class Services(
             object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     scope.launch { runCatching { core.flushPendingProgress() } }
+                    if (!isTv && core.hasPendingDownloads()) {
+                        be.alwyapps.watch.downloads.DownloadWorker
+                            .start(app)
+                    }
                 }
             },
         )

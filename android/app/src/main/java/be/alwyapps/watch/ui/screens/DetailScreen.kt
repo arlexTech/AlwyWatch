@@ -133,6 +133,7 @@ fun DetailScreen(itemId: String) {
                         )
                         if (resumable) ActionButton("From start", { play(ctx, account, item, fromStart = true) })
                     }
+                    if (playable && !d.isTv) DownloadButton(item)
                     ActionButton(if (item.user.played) "Mark unwatched" else "Mark watched", {
                         scope.launch {
                             runCatching { core.setPlayed(account, item.id, !item.user.played) }
@@ -150,6 +151,42 @@ fun DetailScreen(itemId: String) {
             if (item.kind == ItemKind.SERIES) item(key = "seasons") { Seasons(item) }
         }
     }
+}
+
+/** Queues the original file for download (asks for the notification permission on Android 13+). */
+@Composable
+private fun DownloadButton(item: Item) {
+    val core = LocalCore.current
+    val account = LocalAccount.current
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var label by remember(item.id) {
+        mutableStateOf(
+            core.downloads().firstOrNull { it.accountId == account && it.itemId == item.id }?.let {
+                if (it.state == be.alwyapps.watch.core.downloads.DownloadState.COMPLETED) "Downloaded" else "Downloading…"
+            } ?: "Download",
+        )
+    }
+    val permission =
+        androidx.activity.compose.rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts
+                .RequestPermission(),
+        ) { }
+    ActionButton(label, {
+        if (label != "Download") return@ActionButton
+        if (android.os.Build.VERSION.SDK_INT >= 33) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        scope.launch {
+            label =
+                try {
+                    core.downloadItem(account, item.id)
+                    be.alwyapps.watch.downloads.DownloadWorker
+                        .start(ctx)
+                    "Downloading…"
+                } catch (e: be.alwyapps.watch.core.CoreException) {
+                    "Download failed"
+                }
+        }
+    })
 }
 
 @Composable

@@ -16,7 +16,7 @@ use slint::{
 
 use crate::platform::{self, Tokens};
 use crate::player::{self, PlayRequest};
-use crate::{AccountRow, AppWindow, Card, Detail, NamedId, Page, Rail};
+use crate::{AccountRow, AppWindow, Card, Detail, DownloadRow, NamedId, Page, Rail};
 
 const POSTER_PX: u32 = 300;
 const EPISODE_PX: u32 = 320;
@@ -26,6 +26,7 @@ const PAGE: u32 = 60;
 #[derive(Clone, PartialEq)]
 enum Route {
     Home,
+    Downloads,
     Library(String, String),
     Detail(String),
     Search,
@@ -65,6 +66,8 @@ thread_local! {
 }
 
 pub struct App {
+    downloads_timer: slint::Timer,
+    runner_timer: slint::Timer,
     core: Arc<AlwyWatch>,
     ui: Weak<AppWindow>,
     tokens: Tokens,
@@ -118,6 +121,8 @@ impl App {
                     .map(|a| a.id)
             });
         let app = Rc::new(Self {
+            downloads_timer: slint::Timer::default(),
+            runner_timer: slint::Timer::default(),
             core,
             ui: ui.as_weak(),
             tokens,
@@ -151,6 +156,7 @@ impl App {
                 == Some("1"),
         );
         app.wire(ui);
+        app.start_download_runner();
         let first = if app.state.borrow().account.is_some() {
             Route::Home
         } else {
@@ -158,6 +164,111 @@ impl App {
         };
         app.navigate(first);
         app
+    }
+
+    // ----- downloads (in-process) --------------------------------------------------------------
+
+    /// Runs the queue in the background now and every minute while something is pending, so
+    /// downloads left waiting by a network loss continue once it is back.
+    fn start_download_runner(self: &Rc<Self>) {
+        self.kick_downloads();
+        let w = Rc::downgrade(self);
+        self.runner_timer.start(
+            slint::TimerMode::Repeated,
+            Duration::from_secs(60),
+            move || {
+                if let Some(a) = w.upgrade()
+                    && a.core.has_pending_downloads()
+                {
+                    a.kick_downloads();
+                }
+            },
+        );
+        let w = Rc::downgrade(self);
+        self.downloads_timer.start(
+            slint::TimerMode::Repeated,
+            Duration::from_secs(1),
+            move || {
+                if let Some(a) = w.upgrade()
+                    && a.ui().get_page() == Page::Downloads
+                {
+                    a.refresh_downloads();
+                }
+            },
+        );
+    }
+
+    fn kick_downloads(&self) {
+        let core = self.core.clone();
+        self.core.runtime().spawn(async move {
+            let _ = core.run_downloads().await;
+        });
+    }
+
+    fn refresh_downloads(&self) {
+        let gb = |b: u64| format!("{:.1} GB", b as f64 / 1e9);
+        let rows: Vec<DownloadRow> = self
+            .core
+            .downloads()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|d| {
+                let size = d
+                    .total
+                    .map(|t| format!("{} / {}", gb(d.downloaded), gb(t)))
+                    .unwrap_or_else(|| gb(d.downloaded));
+                let status = match d.state {
+                    DownloadState::Queued => format!("Queued · {size}"),
+                    DownloadState::Running => format!("Downloading · {size}"),
+                    DownloadState::Paused => format!("Paused · {size}"),
+                    DownloadState::PausedNoSpace => {
+                        "Paused: disk full. Free some space, then resume.".into()
+                    }
+                    DownloadState::Waiting => format!("Waiting for the network · {size}"),
+                    DownloadState::Failed => {
+                        format!("Failed: {}", d.error.clone().unwrap_or_default())
+                    }
+                    DownloadState::Completed => format!("Downloaded · {}", d.file_path),
+                };
+                DownloadRow {
+                    id: d.id as i32,
+                    account: sstr(&d.account_id),
+                    item: sstr(&d.item_id),
+                    title: sstr(&d.title),
+                    status: sstr(status),
+                    progress: d
+                        .total
+                        .filter(|t| *t > 0)
+                        .map(|t| d.downloaded as f32 / t as f32)
+                        .unwrap_or(0.0),
+                    completed: d.state == DownloadState::Completed,
+                    active: matches!(
+                        d.state,
+                        DownloadState::Queued | DownloadState::Running | DownloadState::Waiting
+                    ),
+                }
+            })
+            .collect();
+        self.ui().set_downloads(ModelRc::new(VecModel::from(rows)));
+    }
+
+    fn download(self: &Rc<Self>, id: String) {
+        let Some(account) = self.account() else {
+            return;
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.download_item(account, id).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(_) => {
+                    t.kick_downloads();
+                    t.navigate(Route::Downloads);
+                }
+                Err(e) => t.set_error(Some(e)),
+            }
+        })
+        .ok();
     }
 
     fn ui(&self) -> AppWindow {
@@ -225,6 +336,10 @@ impl App {
             Route::Search => {
                 ui.set_page(Page::Search);
                 self.state.borrow().grid_model.set_vec(vec![]);
+            }
+            Route::Downloads => {
+                ui.set_page(Page::Downloads);
+                self.refresh_downloads();
             }
             Route::Settings => {
                 ui.set_page(Page::Settings);
@@ -828,6 +943,10 @@ impl App {
         let Some(account) = self.account() else {
             return;
         };
+        self.play_for(account, id, from_start);
+    }
+
+    fn play_for(self: &Rc<Self>, account: String, id: String, from_start: bool) {
         let item = self.state.borrow().items.get(&id).cloned();
         let start_ms = if from_start {
             0
@@ -837,18 +956,44 @@ impl App {
         let title = item.as_ref().map(|i| i.title.clone()).unwrap_or_default();
         let next = self.next_episode(&id);
         let spdif = self.ui().get_spdif();
+        let local = self.core.downloaded_file(account.clone(), id.clone());
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
-            let info = match core
-                .playback_info(account.clone(), id.clone(), Self::profile())
-                .await
-            {
-                Ok(i) => i,
-                Err(e) => {
-                    if let Some(t) = this.upgrade() {
-                        t.set_error(Some(e));
+            // Downloaded: play the local original (works offline, progress is queued).
+            let info = if let Some(path) = local {
+                PlaybackInfo {
+                    item_id: id.clone(),
+                    play_session_id: None,
+                    sources: vec![MediaSource {
+                        id: id.clone(),
+                        container: None,
+                        size: None,
+                        bitrate: None,
+                        duration_ms: None,
+                        file_name: None,
+                        streams: vec![],
+                        direct: HttpRequest {
+                            url: path,
+                            headers: vec![],
+                        },
+                        transcode: None,
+                        supports_direct_play: true,
+                        default_audio_index: None,
+                        default_subtitle_index: None,
+                    }],
+                }
+            } else {
+                match core
+                    .playback_info(account.clone(), id.clone(), Self::profile())
+                    .await
+                {
+                    Ok(i) => i,
+                    Err(e) => {
+                        if let Some(t) = this.upgrade() {
+                            t.set_error(Some(e));
+                        }
+                        return;
                     }
-                    return;
                 }
             };
             let Some(src) = info.sources.into_iter().next() else {
@@ -1293,6 +1438,7 @@ impl App {
             Page::Search => Route::Search,
             Page::Settings => Route::Settings,
             Page::Add => Route::Add,
+            Page::Downloads => Route::Downloads,
             _ => Route::Home,
         }));
         on!(on_add_choose, |a, which| a.add_choose(which.into()));
@@ -1307,6 +1453,21 @@ impl App {
             a.images.borrow_mut().clear();
             a.refresh_settings();
         });
+        on!(on_download, |a, id| a.download(id.into()));
+        on!(on_download_action, |a, id, action| {
+            let id = i64::from(id);
+            let _ = match action.as_str() {
+                "pause" => a.core.pause_download(id),
+                "resume" => a.core.resume_download(id).map(|_| a.kick_downloads()),
+                _ => a.core.remove_download(id),
+            };
+            a.refresh_downloads();
+        });
+        on!(on_play_download, |a, account, item| a.play_for(
+            account.into(),
+            item.into(),
+            false
+        ));
         on!(on_toggle_spdif, |a| {
             let ui = a.ui();
             let v = !ui.get_spdif();

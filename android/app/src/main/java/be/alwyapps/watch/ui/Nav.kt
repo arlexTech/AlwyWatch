@@ -15,6 +15,8 @@ sealed interface Route {
 
     data object AddServer : Route
 
+    data object Downloads : Route
+
     data class Library(
         val id: String,
         val title: String,
@@ -30,6 +32,7 @@ sealed interface Route {
             Search -> "search"
             Settings -> "settings"
             AddServer -> "add"
+            Downloads -> "downloads"
             is Library -> "lib\u001f$id\u001f$title"
             is Detail -> "item\u001f$itemId"
         }
@@ -42,6 +45,7 @@ sealed interface Route {
                 "search" -> Search
                 "settings" -> Settings
                 "add" -> AddServer
+                "downloads" -> Downloads
                 "lib" -> if (p.size == 3) Library(p[1], p[2]) else null
                 "item" -> if (p.size == 2) Detail(p[1]) else null
                 else -> null

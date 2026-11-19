@@ -42,7 +42,18 @@ export struct AccountRow {
     current: bool,
 }
 
-export enum Page { add, home, library, detail, search, settings }
+export struct DownloadRow {
+    id: int,
+    account: string,
+    item: string,
+    title: string,
+    status: string,
+    progress: float,
+    completed: bool,
+    active: bool,
+}
+
+export enum Page { add, home, library, detail, search, settings, downloads }
 
 export global Palette {
     out property <color> bg: #101114;
@@ -200,6 +211,7 @@ export component AppWindow inherits Window {
     in property <string> about;
     in-out property <bool> spdif;
     in-out property <string> search-text;
+    in property <[DownloadRow]> downloads;
 
     callback back();
     callback move-focus(bool);
@@ -221,6 +233,9 @@ export component AppWindow inherits Window {
     callback remove-account(string);
     callback clear-cache();
     callback toggle-spdif();
+    callback download(string);
+    callback download-action(int, string); // pause | resume | remove
+    callback play-download(string, string); // account, item
 
     // Arrow keys and Escape not consumed by a focused element end up here.
     FocusScope {
@@ -250,6 +265,7 @@ export component AppWindow inherits Window {
                 }
                 Rectangle { horizontal-stretch: 1; }
                 if root.page != Page.add : Button { label: "Search"; clicked => { root.go(Page.search); } }
+                if root.page != Page.add : Button { label: "Downloads"; clicked => { root.go(Page.downloads); } }
                 if root.page != Page.add : Button { label: "Settings"; clicked => { root.go(Page.settings); } }
             }
             if root.error != "" : Rectangle {
@@ -367,6 +383,10 @@ export component AppWindow inherits Window {
                                         label: "From start";
                                         clicked => { root.play(root.detail.id, true); }
                                     }
+                                    if root.detail.playable : Button {
+                                        label: "Download";
+                                        clicked => { root.download(root.detail.id); }
+                                    }
                                     Button {
                                         label: root.detail.played ? "Mark unwatched" : "Mark watched";
                                         clicked => { root.toggle-played(root.detail.id); }
@@ -467,6 +487,40 @@ export component AppWindow inherits Window {
                 }
                 if root.add-step != "choose" : HorizontalLayout { alignment: start; Button { label: "Back"; clicked => { root.add-choose(""); } } }
                 Text { text: root.status; color: Palette.danger; wrap: word-wrap; }
+            }
+
+            if root.page == Page.downloads : ScrollView {
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 10px;
+                    alignment: start;
+                    Text { text: "Downloads"; color: Palette.text; font-size: 22px; }
+                    if root.downloads.length == 0 : Text { text: "Nothing downloaded yet. Use \"Download\" on a movie or an episode."; color: Palette.muted; }
+                    for d in root.downloads : Rectangle {
+                        background: Palette.surface;
+                        border-radius: 8px;
+                        height: 104px;
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 6px;
+                            Text { text: d.title; color: Palette.text; font-size: 16px; overflow: elide; }
+                            Text { text: d.status; color: Palette.muted; font-size: 12px; }
+                            Rectangle {
+                                height: 4px;
+                                background: Palette.surface-high;
+                                Rectangle { x: 0; width: parent.width * d.progress; background: Palette.accent; }
+                            }
+                            HorizontalLayout {
+                                spacing: 10px;
+                                alignment: start;
+                                if d.completed : Button { label: "Play"; primary: true; clicked => { root.play-download(d.account, d.item); } }
+                                if !d.completed && d.active : Button { label: "Pause"; clicked => { root.download-action(d.id, "pause"); } }
+                                if !d.completed && !d.active : Button { label: "Resume"; primary: true; clicked => { root.download-action(d.id, "resume"); } }
+                                Button { label: "Delete"; clicked => { root.download-action(d.id, "remove"); } }
+                            }
+                        }
+                    }
+                }
             }
 
             if root.page == Page.settings : ScrollView {

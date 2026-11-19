@@ -76,6 +76,8 @@ fun HomeScreen() {
             ) {
                 Text("AlwyWatch", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 ActionButton("Search", { nav.push(Route.Search) })
+                // No downloads on TV.
+                if (!d.isTv) ActionButton("Downloads", { nav.push(Route.Downloads) })
                 ActionButton("Settings", { nav.push(Route.Settings) })
             }
         }

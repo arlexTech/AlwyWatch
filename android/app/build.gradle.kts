@@ -109,6 +109,8 @@ dependencies {
     implementation("org.rustls:rustls-platform-verifier:${rustlsVerifierVersion.get()}")
     // The generated bindings expose async Rust functions as suspend functions.
     implementation(libs.coroutines.android)
+    // Resumable downloads run as a foreground job that WorkManager restarts when the network returns.
+    implementation(libs.work.runtime)
     implementation(libs.media3.exoplayer)
     // Only for the server-transcode fallback (Jellyfin/Plex serve HLS).
     implementation(libs.media3.exoplayer.hls)

@@ -97,6 +97,36 @@ class PlayerActivity : ComponentActivity() {
         startMs: Long,
     ) {
         itemId = id
+        // Downloaded: play the local original file (works offline; progress is queued).
+        core.downloadedFile(account, id)?.let { path ->
+            val local =
+                HttpRequest(
+                    url =
+                        android.net.Uri
+                            .fromFile(java.io.File(path))
+                            .toString(),
+                    headers = emptyList(),
+                )
+            info = null
+            source =
+                be.alwyapps.watch.core.media.MediaSource(
+                    id = id,
+                    container = null,
+                    size = null,
+                    bitrate = null,
+                    durationMs = null,
+                    fileName = null,
+                    streams = emptyList(),
+                    direct = local,
+                    transcode = null,
+                    supportsDirectPlay = true,
+                    defaultAudioIndex = null,
+                    defaultSubtitleIndex = null,
+                )
+            startPlayer(local, source!!, transcoding = false, startMs)
+            findNextEpisode()
+            return
+        }
         val profile = DeviceProfiles.get(this)
         val pi =
             try {
