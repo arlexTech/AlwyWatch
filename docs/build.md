@@ -19,6 +19,17 @@ scripts/ci.sh windows   # cross-build alwywatch.exe
 scripts/ci.sh server    # Docker image
 ```
 
+## Fast test loop
+
+```sh
+scripts/dev.sh android [serial]   # ~6 s after a Kotlin change, a few seconds after a Rust change
+scripts/dev.sh desktop
+```
+Android: debug APK (no R8), Rust core in the `android-dev` profile (no LTO, incremental), only
+the device's ABI, installed as **AlwyWatch Dev** (`be.alwyapps.watch.dev`) next to the release app.
+A release build after a Kotlin change takes minutes because of R8; use it only for size and
+performance measurements.
+
 ## Android
 
 ```sh

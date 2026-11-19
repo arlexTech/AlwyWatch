@@ -74,6 +74,15 @@ codegen-units = 1
 strip = true
 opt-level = 3
 
+[profile.android-dev]
+# Debug APKs (scripts/dev.sh): optimised enough to feel right, but no LTO and parallel
+# codegen so a core change rebuilds in seconds.
+inherits = "release"
+lto = "off"
+codegen-units = 256
+incremental = true
+opt-level = 2
+
 [profile.release-size]
 # Experimental profile used by the size report to compare against opt-level 3.
 inherits = "release"

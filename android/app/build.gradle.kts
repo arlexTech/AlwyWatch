@@ -18,18 +18,25 @@ val rustSources =
         include("core/**/*.rs", "core/**/Cargo.toml", "core/**/uniffi.toml", "tools/**/*.rs", "Cargo.toml", "Cargo.lock")
     }
 
-val cargoNdk =
-    tasks.register<CargoNdkTask>("cargoNdk") {
-        group = "rust"
-        description = "Builds libalwywatch_core.so for each ABI with cargo-ndk"
-        workspace.set(rustRoot)
-        sources.from(rustSources)
-        abis.set(rustAbis)
-        profile.set(rustProfile)
-        minSdk.set(26)
-        ndkDir.set(androidComponents.sdkComponents.sdkDirectory.map { it.dir("ndk/$ndkVersionPinned") })
-        outDir.set(layout.buildDirectory.dir("generated/rustJniLibs"))
-    }
+// Release variants: the configured profile (fat LTO). Debug variants: "android-dev" (no LTO,
+// incremental), so a core change rebuilds in seconds when testing.
+fun cargoNdkTask(
+    name: String,
+    taskProfile: String,
+) = tasks.register<CargoNdkTask>(name) {
+    group = "rust"
+    description = "Builds libalwywatch_core.so ($taskProfile) for each ABI with cargo-ndk"
+    workspace.set(rustRoot)
+    sources.from(rustSources)
+    abis.set(rustAbis)
+    profile.set(taskProfile)
+    minSdk.set(26)
+    ndkDir.set(androidComponents.sdkComponents.sdkDirectory.map { it.dir("ndk/$ndkVersionPinned") })
+    outDir.set(layout.buildDirectory.dir("generated/rustJniLibs/$taskProfile"))
+}
+
+val cargoNdk = cargoNdkTask("cargoNdk", rustProfile)
+val cargoNdkDev = cargoNdkTask("cargoNdkDev", "android-dev")
 
 val uniffiBindgen =
     tasks.register<UniffiBindgenTask>("uniffiBindgen") {
@@ -77,7 +84,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Installs next to the release app (different id, no signature clash).
+            applicationIdSuffix = ".dev"
+            resValue("string", "app_name", "AlwyWatch Dev")
+        }
         release {
+            resValue("string", "app_name", "AlwyWatch")
             signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
@@ -97,6 +110,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 
     packaging {
@@ -110,7 +124,8 @@ android {
 
 androidComponents {
     onVariants { variant ->
-        variant.sources.jniLibs?.addGeneratedSourceDirectory(cargoNdk, CargoNdkTask::outDir)
+        val rust = if (variant.buildType == "debug") cargoNdkDev else cargoNdk
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(rust, CargoNdkTask::outDir)
         variant.sources.kotlin?.addGeneratedSourceDirectory(uniffiBindgen, UniffiBindgenTask::outDir)
     }
 }
