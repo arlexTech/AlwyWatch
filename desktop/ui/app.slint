@@ -1,16 +1,509 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-export component AppWindow inherits Window {
-    in property <string> greeting;
-    title: "AlwyWatch";
-    preferred-width: 1280px;
-    preferred-height: 720px;
-    background: #101114;
+import { LineEdit, ScrollView, ListView } from "std-widgets.slint";
 
-    Text {
-        text: root.greeting;
-        color: #e8e8ea;
-        font-size: 28px;
+export struct Card {
+    id: string,
+    title: string,
+    subtitle: string,
+    image: image,
+    progress: float,
+    played: bool,
+}
+
+export struct Rail {
+    title: string,
+    items: [Card],
+}
+
+export struct NamedId {
+    id: string,
+    title: string,
+    selected: bool,
+}
+
+export struct Detail {
+    id: string,
+    title: string,
+    meta: string,
+    overview: string,
+    genres: string,
+    backdrop: image,
+    poster: image,
+    playable: bool,
+    resumable: bool,
+    played: bool,
+    is-series: bool,
+}
+
+export struct AccountRow {
+    id: string,
+    label: string,
+    detail: string,
+    current: bool,
+}
+
+export enum Page { add, home, library, detail, search, settings }
+
+export global Palette {
+    out property <color> bg: #101114;
+    out property <color> surface: #1a1c20;
+    out property <color> surface-high: #24272c;
+    out property <color> accent: #e5a00d;
+    out property <color> text: #e8e8ea;
+    out property <color> muted: #9a9ca3;
+    out property <color> danger: #e5534b;
+}
+
+// A focusable, clickable surface: Enter/Space activate, focus ring always visible.
+component Focusable inherits Rectangle {
+    in property <bool> primary: false;
+    callback clicked();
+    callback focused();
+    border-radius: 8px;
+    border-width: fs.has-focus ? 3px : 0px;
+    border-color: Palette.accent;
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+        focus-changed-event => { if (self.has-focus) { root.focused(); } }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            fs.focus();
+            root.clicked();
+        }
+    }
+    @children
+}
+
+component Button inherits Focusable {
+    in property <string> label;
+    height: 40px;
+    min-width: txt.preferred-width + 36px;
+    border-radius: 20px;
+    background: root.primary ? Palette.accent : Palette.surface-high;
+    txt := Text {
+        text: root.label;
+        color: root.primary ? #000 : Palette.text;
+        font-size: 15px;
+        font-weight: 600;
         horizontal-alignment: center;
         vertical-alignment: center;
+    }
+}
+
+component PosterCard inherits Focusable {
+    in property <Card> card;
+    width: 150px;
+    height: 270px;
+    VerticalLayout {
+        spacing: 6px;
+        Rectangle {
+            height: 225px;
+            border-radius: 8px;
+            clip: true;
+            background: Palette.surface-high;
+            Image {
+                source: root.card.image;
+                width: parent.width;
+                height: parent.height;
+                image-fit: cover;
+            }
+            if root.card.progress > 0 : Rectangle {
+                y: parent.height - 4px;
+                height: 4px;
+                width: parent.width * root.card.progress;
+                x: 0;
+                background: Palette.accent;
+            }
+            if root.card.played : Rectangle {
+                x: parent.width - 30px;
+                y: 6px;
+                width: 24px;
+                height: 24px;
+                border-radius: 12px;
+                background: Palette.accent;
+                Text { text: "✓"; color: #000; }
+            }
+        }
+        Text { text: root.card.title; color: Palette.text; overflow: elide; font-size: 14px; }
+        Text { text: root.card.subtitle; color: Palette.muted; overflow: elide; font-size: 12px; }
+    }
+}
+
+component RailView {
+    in property <Rail> rail;
+    callback open(string);
+    callback hovered(string);
+    VerticalLayout {
+        spacing: 8px;
+        Text { text: root.rail.title; color: Palette.text; font-size: 20px; font-weight: 600; }
+        rail := ScrollView {
+            height: 290px;
+            content-width: root.rail.items.length * 164px + 12px;
+            content-height: 284px;
+            vertical-scrollbar-policy: always-off;
+            for c[i] in root.rail.items : PosterCard {
+                x: i * 164px + 6px;
+                y: 6px;
+                card: c;
+                clicked => { root.open(c.id); }
+                focused => {
+                    // Keep the focused card visible when moving with the keyboard.
+                    if (self.x + rail.content-x < 0) { rail.content-x = -self.x + 6px; }
+                    if (self.x + self.width + rail.content-x > rail.visible-width) {
+                        rail.content-x = rail.visible-width - self.x - self.width - 6px;
+                    }
+                    root.hovered(c.id);
+                }
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "AlwyWatch";
+    preferred-width: 1280px;
+    preferred-height: 800px;
+    background: Palette.bg;
+    default-font-size: 15px;
+
+    in-out property <Page> page: Page.home;
+    in property <string> status;
+    in property <string> error;
+    in property <bool> can-go-back;
+    // Home
+    in property <[Rail]> rails;
+    in property <[NamedId]> libraries;
+    // Library / search grid
+    in property <string> grid-title;
+    in property <[Card]> grid;
+    in property <[NamedId]> sorts;
+    // Detail
+    in property <Detail> detail;
+    in property <[NamedId]> seasons;
+    in property <[Card]> episodes;
+    // Add server
+    in property <string> add-step: "choose"; // choose | jellyfin-url | jellyfin | plex | plex-servers
+    in property <string> quick-code;
+    in property <string> plex-code;
+    in property <[NamedId]> plex-servers;
+    // Settings
+    in property <[AccountRow]> accounts;
+    in property <string> cache-size;
+    in property <string> about;
+    in-out property <bool> spdif;
+    in-out property <string> search-text;
+
+    callback back();
+    callback move-focus(bool);
+    callback open-item(string);
+    callback prefetch(string);
+    callback open-library(string, string);
+    callback set-sort(string);
+    callback grid-scrolled(float);
+    callback play(string, bool);
+    callback toggle-played(string);
+    callback select-season(string);
+    callback search(string);
+    callback go(Page);
+    callback add-choose(string);
+    callback jellyfin-url(string);
+    callback jellyfin-sign-in(string, string);
+    callback plex-pick(string);
+    callback use-account(string);
+    callback remove-account(string);
+    callback clear-cache();
+    callback toggle-spdif();
+
+    // Arrow keys and Escape not consumed by a focused element end up here.
+    FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Escape || (e.text == Key.Backspace && !e.modifiers.control)) {
+                if (root.can-go-back) { root.back(); return accept; }
+            }
+            if (e.text == Key.RightArrow || e.text == Key.DownArrow) { root.move-focus(true); return accept; }
+            if (e.text == Key.LeftArrow || e.text == Key.UpArrow) { root.move-focus(false); return accept; }
+            return reject;
+        }
+
+        VerticalLayout {
+            padding: 0;
+            // Top bar
+            HorizontalLayout {
+                padding: 16px;
+                spacing: 12px;
+                height: 72px;
+                if root.can-go-back : Button { label: "←"; clicked => { root.back(); } }
+                Text {
+                    text: "AlwyWatch";
+                    color: Palette.text;
+                    font-size: 24px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if root.page != Page.add : Button { label: "Search"; clicked => { root.go(Page.search); } }
+                if root.page != Page.add : Button { label: "Settings"; clicked => { root.go(Page.settings); } }
+            }
+            if root.error != "" : Rectangle {
+                height: 36px;
+                background: Palette.surface-high;
+                Text { text: root.error; color: Palette.muted; }
+            }
+
+            // Pages
+            if root.page == Page.home : ScrollView {
+                VerticalLayout {
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    spacing: 20px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        for lib in root.libraries : Button {
+                            label: lib.title;
+                            clicked => { root.open-library(lib.id, lib.title); }
+                        }
+                    }
+                    for rail in root.rails : RailView {
+                        rail: rail;
+                        open(id) => { root.open-item(id); }
+                        hovered(id) => { root.prefetch(id); }
+                    }
+                    if root.rails.length == 0 : Text { text: root.status; color: Palette.muted; }
+                }
+            }
+
+            if root.page == Page.library || root.page == Page.search : VerticalLayout {
+                padding-left: 24px;
+                padding-right: 24px;
+                spacing: 12px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    height: 44px;
+                    if root.page == Page.library : Text {
+                        text: root.grid-title;
+                        color: Palette.text;
+                        font-size: 22px;
+                        vertical-alignment: center;
+                    }
+                    if root.page == Page.search : LineEdit {
+                        placeholder-text: "Search movies and shows";
+                        text <=> root.search-text;
+                        edited(t) => { root.search(t); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    if root.page == Page.library : HorizontalLayout {
+                        spacing: 8px;
+                        for s in root.sorts : Button {
+                            label: s.title;
+                            primary: s.selected;
+                            clicked => { root.set-sort(s.id); }
+                        }
+                    }
+                }
+                grid := ScrollView {
+                    property <int> cols: max(1, floor((self.visible-width - 10px) / 164px));
+                    content-height: ceil(root.grid.length / self.cols) * 290px + 20px;
+                    scrolled => {
+                        root.grid-scrolled(-self.content-y / max(1px, self.content-height - self.visible-height));
+                    }
+                    for c[i] in root.grid : PosterCard {
+                        x: mod(i, grid.cols) * 164px + 6px;
+                        y: floor(i / grid.cols) * 290px + 6px;
+                        card: c;
+                        clicked => { root.open-item(c.id); }
+                        focused => { root.prefetch(c.id); }
+                    }
+                }
+            }
+
+            if root.page == Page.detail : ScrollView {
+                VerticalLayout {
+                    spacing: 16px;
+                    Rectangle {
+                        height: 380px;
+                        clip: true;
+                        Image {
+                            source: root.detail.backdrop;
+                            width: parent.width;
+                            height: parent.height;
+                            image-fit: cover;
+                            opacity: 0.55;
+                        }
+                        HorizontalLayout {
+                            padding: 24px;
+                            spacing: 20px;
+                            alignment: start;
+                            Rectangle {
+                                width: 200px;
+                                height: 300px;
+                                border-radius: 8px;
+                                clip: true;
+                                background: Palette.surface-high;
+                                Image { source: root.detail.poster; width: parent.width; height: parent.height; image-fit: cover; }
+                            }
+                            VerticalLayout {
+                                alignment: end;
+                                spacing: 8px;
+                                Text { text: root.detail.title; color: Palette.text; font-size: 32px; font-weight: 700; wrap: word-wrap; }
+                                Text { text: root.detail.meta; color: Palette.muted; }
+                                HorizontalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+                                    if root.detail.playable : Button {
+                                        label: root.detail.resumable ? "Resume" : "Play";
+                                        primary: true;
+                                        clicked => { root.play(root.detail.id, false); }
+                                    }
+                                    if root.detail.resumable : Button {
+                                        label: "From start";
+                                        clicked => { root.play(root.detail.id, true); }
+                                    }
+                                    Button {
+                                        label: root.detail.played ? "Mark unwatched" : "Mark watched";
+                                        clicked => { root.toggle-played(root.detail.id); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        padding-left: 24px;
+                        padding-right: 24px;
+                        spacing: 10px;
+                        Text { text: root.detail.overview; color: Palette.text; wrap: word-wrap; }
+                        Text { text: root.detail.genres; color: Palette.muted; }
+                        if root.detail.is-series : HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            for s in root.seasons : Button {
+                                label: s.title;
+                                primary: s.selected;
+                                clicked => { root.select-season(s.id); }
+                            }
+                        }
+                        for ep in root.episodes : Focusable {
+                            height: 96px;
+                            background: Palette.surface;
+                            clicked => { root.play(ep.id, false); }
+                            focused => { root.prefetch(ep.id); }
+                            HorizontalLayout {
+                                padding: 8px;
+                                spacing: 12px;
+                                Rectangle {
+                                    width: 142px;
+                                    border-radius: 6px;
+                                    clip: true;
+                                    background: Palette.surface-high;
+                                    Image { source: ep.image; width: parent.width; height: parent.height; image-fit: cover; }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Text { text: ep.title; color: Palette.text; font-size: 16px; overflow: elide; }
+                                    Text { text: ep.subtitle; color: Palette.muted; overflow: elide; wrap: word-wrap; }
+                                }
+                                if ep.played : Text { text: "✓"; color: Palette.accent; vertical-alignment: center; }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if root.page == Page.add : VerticalLayout {
+                padding: 24px;
+                spacing: 16px;
+                alignment: start;
+                Text { text: "Add a server"; color: Palette.text; font-size: 26px; }
+                if root.add-step == "choose" : HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+                    Button { label: "Jellyfin"; primary: true; clicked => { root.add-choose("jellyfin"); } }
+                    Button { label: "Plex"; clicked => { root.add-choose("plex"); } }
+                }
+                if root.add-step == "jellyfin-url" : VerticalLayout {
+                    spacing: 12px;
+                    url := LineEdit {
+                        placeholder-text: "jellyfin.example.org";
+                        accepted(t) => { root.jellyfin-url(t); }
+                    }
+                    HorizontalLayout { alignment: start; Button { label: "Continue"; primary: true; clicked => { root.jellyfin-url(url.text); } } }
+                }
+                if root.add-step == "jellyfin" : VerticalLayout {
+                    spacing: 12px;
+                    if root.quick-code != "" : VerticalLayout {
+                        spacing: 6px;
+                        Text { text: "Quick Connect: in a Jellyfin app where you are signed in, enter"; color: Palette.muted; }
+                        Text { text: root.quick-code; color: Palette.text; font-size: 44px; }
+                        Text { text: "or sign in with your password:"; color: Palette.muted; }
+                    }
+                    user := LineEdit { placeholder-text: "Username"; }
+                    pass := LineEdit {
+                        placeholder-text: "Password";
+                        input-type: password;
+                        accepted => { root.jellyfin-sign-in(user.text, pass.text); }
+                    }
+                    HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.jellyfin-sign-in(user.text, pass.text); } } }
+                }
+                if root.add-step == "plex" : VerticalLayout {
+                    spacing: 6px;
+                    Text { text: "Finish signing in to Plex in your browser. You can also go to plex.tv/link and enter:"; color: Palette.muted; wrap: word-wrap; }
+                    Text { text: root.plex-code; color: Palette.text; font-size: 44px; }
+                }
+                if root.add-step == "plex-servers" : VerticalLayout {
+                    spacing: 8px;
+                    Text { text: "Choose a server"; color: Palette.text; font-size: 18px; }
+                    for s in root.plex-servers : HorizontalLayout {
+                        alignment: start;
+                        Button { label: s.title; clicked => { root.plex-pick(s.id); } }
+                    }
+                }
+                if root.add-step != "choose" : HorizontalLayout { alignment: start; Button { label: "Back"; clicked => { root.add-choose(""); } } }
+                Text { text: root.status; color: Palette.danger; wrap: word-wrap; }
+            }
+
+            if root.page == Page.settings : ScrollView {
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    Text { text: "Accounts"; color: Palette.text; font-size: 20px; }
+                    for a in root.accounts : HorizontalLayout {
+                        spacing: 10px;
+                        VerticalLayout {
+                            Text { text: a.label; color: Palette.text; }
+                            Text { text: a.detail; color: Palette.muted; font-size: 12px; }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        if !a.current : Button { label: "Use"; clicked => { root.use-account(a.id); } }
+                        if a.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
+                        Button { label: "Remove"; clicked => { root.remove-account(a.id); } }
+                    }
+                    HorizontalLayout { alignment: start; Button { label: "Add a server"; primary: true; clicked => { root.go(Page.add); } } }
+                    Text { text: "Playback"; color: Palette.text; font-size: 20px; }
+                    HorizontalLayout {
+                        alignment: start;
+                        Button {
+                            label: "Audio passthrough (S/PDIF, HDMI receiver): " + (root.spdif ? "on" : "off");
+                            clicked => { root.toggle-spdif(); }
+                        }
+                    }
+                    Text { text: "Storage"; color: Palette.text; font-size: 20px; }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        Text { text: "Image cache: " + root.cache-size; color: Palette.text; vertical-alignment: center; }
+                        Button { label: "Clear"; clicked => { root.clear-cache(); } }
+                    }
+                    Text { text: root.about; color: Palette.muted; }
+                }
+            }
+        }
     }
 }

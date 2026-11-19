@@ -75,8 +75,12 @@ name = "alwywatch-desktop"
 version = "0.1.0"
 dependencies = [
  "alwywatch-core",
+ "image",
+ "libloading",
  "slint",
  "slint-build",
+ "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2474,6 +2478,7 @@ checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
+ "image-webp",
  "moxcms",
  "num-traits",
  "png",

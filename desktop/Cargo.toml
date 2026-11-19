@@ -15,6 +15,16 @@ path = "src/main.rs"
 [dependencies]
 alwywatch-core = { workspace = true }
 slint = { workspace = true, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software"] }
+# Decodes cached posters off the UI thread (same crate and version Slint uses internally).
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+# Loads libmpv at runtime, so the app runs (and browses) without it.
+libloading = "0.8"
+# oneshot channel for the timer-based sleep (already compiled in through the core).
+tokio = { workspace = true, features = ["sync"] }
+
+[target.'cfg(windows)'.dependencies]
+# DPAPI for token storage.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
 
 [build-dependencies]
 slint-build = { workspace = true }
