@@ -4311,6 +4311,14 @@ dependencies = [
 [[package]]
 name = "seerr"
 version = "0.1.0"
+dependencies = [
+ "net",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uniffi",
+ "wiremock",
+]
 
 [[package]]
 name = "semver"

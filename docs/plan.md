@@ -209,3 +209,12 @@ Android: Compose BOM, `androidx.tv:tv-material`, Media3 (exoplayer, ui-compose o
 ## 11. Open questions (need answers before step 1)
 
 See the list in the chat message accompanying this plan. Answers will be folded back into this file.
+
+## 12. Post-v1: web companion (requested 2026-11-19, scope to confirm)
+
+A full browser player would depend on server transcoding (browsers lack MKV, HEVC/DV, DTS/TrueHD,
+styled ASS and passthrough), which contradicts the direct-play goal, and Jellyfin Web / Plex Web
+already exist. Proposed instead: a small web companion served by `alwywatch-server` at the same
+hostname: leaving soon + swipe triage, keep requests, Seerr search/requests, admin page, and a
+"Play" link that opens Jellyfin Web or Plex Web. Same sign-in (Jellyfin/Plex account), a few
+hundred KB, no extra hosting.

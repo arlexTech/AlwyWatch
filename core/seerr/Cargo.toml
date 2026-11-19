@@ -1,5 +1,6 @@
 [package]
 name = "seerr"
+description = "Client for Seerr (Overseerr/Jellyseerr API): sign-in, search, requests, request status."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +8,19 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+uniffi = ["dep:uniffi"]
+
 [dependencies]
+net = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uniffi = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wiremock = { workspace = true }
+net = { workspace = true }
 
 [lints]
 workspace = true
