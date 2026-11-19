@@ -259,6 +259,9 @@ record! {
         pub max_bitrate: Option<u64>,
         pub containers: Vec<String>,
         pub video_codecs: Vec<String>,
+        /// Codecs (of `video_codecs`) the device also decodes at 10 bits (HEVC Main 10, VP9
+        /// profile 2, AV1 Main 10, H.264 High 10). Others are limited to 8 bits.
+        pub video_10bit_codecs: Vec<String>,
         pub audio_codecs: Vec<String>,
         pub subtitle_codecs: Vec<String>,
         pub max_width: Option<u32>,

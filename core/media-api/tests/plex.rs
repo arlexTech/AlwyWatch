@@ -228,6 +228,7 @@ async fn playback_info_direct_play_and_download() {
         max_bitrate: None,
         containers: vec![],
         video_codecs: vec![],
+        video_10bit_codecs: vec![],
         audio_codecs: vec![],
         subtitle_codecs: vec![],
         max_width: None,

@@ -584,9 +584,40 @@ fn sort_param(s: SortBy) -> &'static str {
 }
 
 /// Jellyfin `DeviceProfile` built from ours: direct play everything the device decodes,
-/// HLS/TS transcode as the fallback, text subtitles delivered as external files.
+/// HLS/TS transcode as the fallback, text subtitles delivered as external files. Bit depth and
+/// resolution limits become codec conditions, so Jellyfin offers a transcode for files the
+/// device cannot decode (e.g. 10-bit HEVC on an 8-bit-only decoder).
 fn jellyfin_profile(p: &DeviceProfile) -> serde_json::Value {
     let join = |v: &Vec<String>| v.join(",");
+    let mut codec_profiles: Vec<serde_json::Value> = p
+        .video_codecs
+        .iter()
+        .filter(|c| !p.video_10bit_codecs.contains(c))
+        .map(|c| {
+            json!({
+                "Type": "Video",
+                "Codec": c,
+                "Conditions": [{ "Condition": "LessThanEqual", "Property": "VideoBitDepth", "Value": "8", "IsRequired": false }],
+            })
+        })
+        .collect();
+    let mut size = vec![];
+    if let Some(w) = p.max_width {
+        size.push(json!({ "Condition": "LessThanEqual", "Property": "Width", "Value": w.to_string(), "IsRequired": false }));
+    }
+    if let Some(h) = p.max_height {
+        size.push(json!({ "Condition": "LessThanEqual", "Property": "Height", "Value": h.to_string(), "IsRequired": false }));
+    }
+    if !size.is_empty() {
+        codec_profiles.push(json!({ "Type": "Video", "Conditions": size }));
+    }
+    // Transcode to HEVC only when the device decodes HEVC at 10 bits too (HDR sources stay HDR);
+    // otherwise H.264 first.
+    let transcode_codecs = if p.video_10bit_codecs.iter().any(|c| c == "hevc") {
+        "hevc,h264"
+    } else {
+        "h264,hevc"
+    };
     let subs: Vec<_> = p
         .subtitle_codecs
         .iter()
@@ -616,13 +647,13 @@ fn jellyfin_profile(p: &DeviceProfile) -> serde_json::Value {
             "Container": "ts",
             "Protocol": "hls",
             "Context": "Streaming",
-            "VideoCodec": "hevc,h264",
+            "VideoCodec": transcode_codecs,
             "AudioCodec": join(&p.audio_codecs),
             "MinSegments": 1,
             "BreakOnNonKeyFrames": true,
         }],
         "SubtitleProfiles": subs,
-        "CodecProfiles": [],
+        "CodecProfiles": codec_profiles,
         "ContainerProfiles": [],
     })
 }
@@ -914,5 +945,32 @@ mod tests {
         assert!(h.contains("Device=\"Living%20%22room%22%20TV\""));
         assert!(h.ends_with(", Token=\"tok\""));
         assert!(!auth_header(&c, None).contains("Token"));
+    }
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    #[test]
+    fn eight_bit_only_codecs_get_a_bit_depth_condition() {
+        let p = DeviceProfile {
+            max_bitrate: None,
+            containers: vec!["mkv".into()],
+            video_codecs: vec!["h264".into(), "hevc".into()],
+            video_10bit_codecs: vec![],
+            audio_codecs: vec!["aac".into()],
+            subtitle_codecs: vec![],
+            max_width: Some(1920),
+            max_height: Some(1080),
+            hdr: vec![],
+        };
+        let j = jellyfin_profile(&p);
+        let cps = j["CodecProfiles"].as_array().unwrap();
+        assert_eq!(cps.len(), 3, "h264 + hevc bit depth, one size limit");
+        assert_eq!(cps[1]["Codec"], "hevc");
+        assert_eq!(cps[1]["Conditions"][0]["Property"], "VideoBitDepth");
+        assert_eq!(cps[2]["Conditions"][0]["Value"], "1920");
+        assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "h264,hevc");
     }
 }

@@ -969,6 +969,7 @@ fn empty_profile() -> DeviceProfile {
         max_bitrate: None,
         containers: vec![],
         video_codecs: vec![],
+        video_10bit_codecs: vec![],
         audio_codecs: vec![],
         subtitle_codecs: vec![],
         max_width: None,

@@ -17,6 +17,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -64,6 +65,7 @@ class PlayerActivity : ComponentActivity() {
     private var nextEpisodeId: String? = null
     private var prefetchedNext = false
     private var originalModeId = 0
+    private var transcoding = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -157,6 +159,7 @@ class PlayerActivity : ComponentActivity() {
         startMs: Long,
     ) {
         player?.release()
+        this.transcoding = transcoding
         val settings = PlayerSettings(core, services.isTv)
         val http =
             DefaultHttpDataSource
@@ -261,6 +264,28 @@ class PlayerActivity : ComponentActivity() {
                     report(PlaybackEvent.STOP)
                     val next = nextEpisodeId
                     if (next != null) lifecycleScope.launch { load(next, 0L) } else finish()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                val src = source ?: return
+                val fallback = src.transcode
+                val decoderProblem =
+                    error.errorCode in
+                        setOf(
+                            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+                            PlaybackException.ERROR_CODE_DECODING_FAILED,
+                            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+                            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                        )
+                if (!transcoding && fallback != null && decoderProblem) {
+                    // Direct play first; the server's conversion only when this device fails.
+                    val position = player?.currentPosition ?: 0L
+                    Toast.makeText(this@PlayerActivity, "This device can't decode this file: using the server's converted version", Toast.LENGTH_LONG).show()
+                    lifecycleScope.launch { startPlayer(fallback, src, transcoding = true, position) }
+                } else {
+                    Toast.makeText(this@PlayerActivity, "Playback failed: ${error.errorCodeName}", Toast.LENGTH_LONG).show()
                 }
             }
 

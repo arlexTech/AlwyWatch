@@ -1843,6 +1843,8 @@ impl App {
             ]
             .map(String::from)
             .to_vec(),
+            // mpv decodes 10-bit everywhere (in hardware or software).
+            video_10bit_codecs: ["hevc", "h264", "vp9", "av1"].map(String::from).to_vec(),
             audio_codecs: [
                 "aac", "mp3", "mp2", "opus", "vorbis", "flac", "alac", "ac3", "eac3", "dts", "dca",
                 "truehd", "mlp", "pcm", "wmav2",

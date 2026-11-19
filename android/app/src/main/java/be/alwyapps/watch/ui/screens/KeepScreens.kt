@@ -285,56 +285,68 @@ fun TriageScreen() {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 LaunchedEffect(item.key) { runCatching { focus.requestFocus() } }
-                Box(
-                    Modifier
-                        .width(if (d.isTv) 300.dp else 260.dp)
-                        .focusRequester(focus)
-                        .focusable()
-                        .onKeyEvent {
-                            if (it.type != KeyEventType.KeyDown) return@onKeyEvent false
-                            when (it.key) {
-                                Key.DirectionLeft -> vote(req(VoteKind.DONT_CARE))
-                                Key.DirectionRight -> vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u))
-                                Key.DirectionUp -> vote(req(VoteKind.KEEP_FOREVER, reason = "love it"))
-                                else -> return@onKeyEvent false
-                            }
-                            true
-                        }.pointerInput(item.key) {
-                            detectDragGestures(
-                                onDragEnd = {
-                                    when {
-                                        dy < -250 && abs(dy) > abs(dx) -> vote(req(VoteKind.KEEP_FOREVER, reason = "love it"))
-                                        dx > 250 -> vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u))
-                                        dx < -250 -> vote(req(VoteKind.DONT_CARE))
-                                    }
-                                    dx = 0f
-                                    dy = 0f
-                                },
-                                onDrag = { change, amount ->
-                                    change.consume()
-                                    dx += amount.x
-                                    dy += amount.y
-                                },
-                            )
-                        }.graphicsLayer {
-                            translationX = dx
-                            translationY = dy.coerceAtMost(0f)
-                            rotationZ = dx / 40f
-                        },
-                ) {
-                    Column(Modifier.clip(RoundedCornerShape(12.dp)).background(SurfaceColor)) {
-                        UrlImage(item.posterUrl, 300.dp, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-                        Column(Modifier.padding(12.dp)) {
-                            Text(listOfNotNull(item.title, item.year?.toString()).joinToString(" · "), style = MaterialTheme.typography.titleMedium)
-                            Text(item.leavesLabel(), color = Accent)
+                val card: @Composable () -> Unit = {
+                    Box(
+                        Modifier
+                            .width(if (d.isTv) 220.dp else 260.dp)
+                            .focusRequester(focus)
+                            .focusable()
+                            .onKeyEvent {
+                                if (it.type != KeyEventType.KeyDown) return@onKeyEvent false
+                                when (it.key) {
+                                    Key.DirectionLeft -> vote(req(VoteKind.DONT_CARE))
+                                    Key.DirectionRight -> vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u))
+                                    Key.DirectionUp -> vote(req(VoteKind.KEEP_FOREVER, reason = "love it"))
+                                    else -> return@onKeyEvent false
+                                }
+                                true
+                            }.pointerInput(item.key) {
+                                detectDragGestures(
+                                    onDragEnd = {
+                                        when {
+                                            dy < -250 && abs(dy) > abs(dx) -> vote(req(VoteKind.KEEP_FOREVER, reason = "love it"))
+                                            dx > 250 -> vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u))
+                                            dx < -250 -> vote(req(VoteKind.DONT_CARE))
+                                        }
+                                        dx = 0f
+                                        dy = 0f
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        dx += amount.x
+                                        dy += amount.y
+                                    },
+                                )
+                            }.graphicsLayer {
+                                translationX = dx
+                                translationY = dy.coerceAtMost(0f)
+                                rotationZ = dx / 40f
+                            },
+                    ) {
+                        Column(Modifier.clip(RoundedCornerShape(12.dp)).background(SurfaceColor)) {
+                            UrlImage(item.posterUrl, 300.dp, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+                            // TV: title and buttons sit beside the poster (a 1080p TV is 540 dp tall).
+                            if (!d.isTv) Column(Modifier.padding(12.dp)) { TriageInfo(item) }
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val buttons: @Composable () -> Unit = {
                     ActionButton("Don't care", { vote(req(VoteKind.DONT_CARE)) })
                     ActionButton("Keep 30 days", { vote(req(VoteKind.KEEP_DAYS, days = 30u)) })
                     ActionButton("Until I watch it", { vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u)) }, primary = true)
                     ActionButton("Forever", { vote(req(VoteKind.KEEP_FOREVER, reason = "love it")) })
+                }
+                if (d.isTv) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
+                        card()
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            TriageInfo(item)
+                            buttons()
+                        }
+                    }
+                } else {
+                    card()
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { buttons() }
                 }
             }
         }
@@ -435,4 +447,10 @@ fun KeepAdminScreen() {
             }
         }
     }
+}
+
+@Composable
+private fun TriageInfo(item: LeavingItem) {
+    Text(listOfNotNull(item.title, item.year?.toString()).joinToString(" · "), style = MaterialTheme.typography.titleMedium)
+    Text(item.leavesLabel(), color = Accent)
 }

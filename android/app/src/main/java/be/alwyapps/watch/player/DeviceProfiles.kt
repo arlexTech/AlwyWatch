@@ -3,6 +3,7 @@ package be.alwyapps.watch.player
 
 import android.content.Context
 import android.hardware.display.DisplayManager
+import android.media.MediaCodecInfo.CodecProfileLevel
 import android.media.MediaCodecList
 import android.view.Display
 import be.alwyapps.watch.core.AlwyWatch
@@ -40,6 +41,7 @@ object DeviceProfiles {
         var maxW = 0
         var maxH = 0
         var dolbyVisionDecoder = false
+        val tenBit = linkedSetOf<String>()
         for (info in MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos) {
             if (info.isEncoder) continue
             for (type in info.supportedTypes) {
@@ -47,6 +49,18 @@ object DeviceProfiles {
                 if (t == "video/dolby-vision") dolbyVisionDecoder = true
                 val codec = mimeToCodec[t] ?: continue
                 video += codec
+                runCatching {
+                    val levels = info.getCapabilitiesForType(type).profileLevels.map { it.profile }
+                    val ten =
+                        when (codec) {
+                            "hevc" -> levels.any { it == CodecProfileLevel.HEVCProfileMain10 || it == CodecProfileLevel.HEVCProfileMain10HDR10 }
+                            "h264" -> levels.any { it == CodecProfileLevel.AVCProfileHigh10 }
+                            "vp9" -> levels.any { it == CodecProfileLevel.VP9Profile2 || it == CodecProfileLevel.VP9Profile2HDR }
+                            "av1" -> levels.any { it == CodecProfileLevel.AV1ProfileMain10 || it == CodecProfileLevel.AV1ProfileMain10HDR10 }
+                            else -> false
+                        }
+                    if (ten) tenBit += codec
+                }
                 runCatching {
                     val caps = info.getCapabilitiesForType(type).videoCapabilities ?: return@runCatching
                     maxW = maxOf(maxW, caps.supportedWidths.upper)
@@ -69,6 +83,7 @@ object DeviceProfiles {
             maxBitrate = 200_000_000uL,
             containers = listOf("mkv", "matroska", "webm", "mp4", "m4v", "mov", "ts", "mpegts", "m2ts", "ogg", "flv"),
             videoCodecs = video.toList(),
+            video10bitCodecs = tenBit.toList(),
             audioCodecs =
                 listOf(
                     "aac",
@@ -125,7 +140,11 @@ object DeviceProfiles {
         val audioOk =
             source.streams.none { it.kind == StreamKind.AUDIO } ||
                 source.streams.any { it.kind == StreamKind.AUDIO && it.codec in profile.audioCodecs }
-        return video.codec in profile.videoCodecs && containerOk && audioOk
+        val depthOk = (video.bitDepth ?: 8u) <= 8u || video.codec in profile.video10bitCodecs
+        val sizeOk =
+            (profile.maxWidth == null || (video.width ?: 0u) <= profile.maxWidth!!) &&
+                (profile.maxHeight == null || (video.height ?: 0u) <= profile.maxHeight!!)
+        return video.codec in profile.videoCodecs && depthOk && sizeOk && containerOk && audioOk
     }
 }
 

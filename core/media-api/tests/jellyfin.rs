@@ -249,6 +249,7 @@ async fn playback_info_prefers_direct_play_and_keeps_token_in_headers() {
         max_bitrate: Some(120_000_000),
         containers: vec!["mkv".into(), "mp4".into()],
         video_codecs: vec!["hevc".into(), "h264".into()],
+        video_10bit_codecs: vec!["hevc".into()],
         audio_codecs: vec!["truehd".into(), "eac3".into()],
         subtitle_codecs: vec!["srt".into(), "pgssub".into()],
         max_width: None,
