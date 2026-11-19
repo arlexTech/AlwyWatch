@@ -3,8 +3,21 @@
 //!
 //! Everything the native UIs need is exported from here. Android reaches it through
 //! UniFFI-generated Kotlin bindings; the desktop app links it as a normal Rust crate.
+//!
+//! Data access follows one pattern everywhere (cache-first, stale-while-revalidate):
+//! `cached_x()` is a synchronous SQLite read that returns what we already have (or `None`),
+//! `refresh_x(force)` fetches from the server, stores and returns the fresh value. It skips the
+//! network when the cached value is younger than a short TTL, unless `force` is set. UIs render
+//! the cached value immediately, then the refreshed one.
 
 uniffi::setup_scaffolding!();
+
+mod app;
+mod error;
+
+pub use app::*;
+pub use error::{CoreError, Result};
+pub use media_api::model::*;
 
 /// Version of the core library, shown in the about screens.
 #[uniffi::export]
@@ -19,6 +32,12 @@ pub fn greet(name: String) -> String {
         "Hello {name}, from the AlwyWatch Rust core {}",
         core_version()
     )
+}
+
+/// Normalizes a user-typed server address (adds https://, trims slashes) or explains what is wrong.
+#[uniffi::export]
+pub fn normalize_server_url(input: String) -> Result<String> {
+    Ok(net::normalize_base_url(&input)?)
 }
 
 #[cfg(test)]

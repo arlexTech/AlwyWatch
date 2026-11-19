@@ -169,6 +169,13 @@ impl Store {
         Ok(())
     }
 
+    /// Keeps the value (so screens still render instantly) but forces the next refresh.
+    pub fn cache_mark_stale(&self, key: &str) -> Result<()> {
+        self.conn()
+            .execute("UPDATE cache SET fetched_at = 0 WHERE key = ?1", [key])?;
+        Ok(())
+    }
+
     pub fn cache_delete(&self, key: &str) -> Result<()> {
         self.conn()
             .execute("DELETE FROM cache WHERE key = ?1", [key])?;
