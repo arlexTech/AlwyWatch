@@ -1,0 +1,20 @@
+[package]
+name = "alwywatch-core"
+description = "AlwyWatch core facade: app state, cache-first repositories and the UniFFI surface for native UIs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+# `lib` for the desktop app (direct Rust calls), `cdylib` for Android (UniFFI + JNA).
+crate-type = ["lib", "cdylib"]
+name = "alwywatch_core"
+
+[dependencies]
+uniffi = { workspace = true }
+
+[lints]
+workspace = true

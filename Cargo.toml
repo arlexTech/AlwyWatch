@@ -1,0 +1,78 @@
+[workspace]
+resolver = "3"
+members = [
+    "core/media-api",
+    "core/seerr",
+    "core/maintainerr",
+    "core/keep-service",
+    "core/downloads",
+    "core/store",
+    "core/alwywatch-core",
+    "server",
+    "desktop",
+    "tools/uniffi-bindgen",
+]
+default-members = [
+    "core/media-api",
+    "core/seerr",
+    "core/maintainerr",
+    "core/keep-service",
+    "core/downloads",
+    "core/store",
+    "core/alwywatch-core",
+    "server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "AGPL-3.0-or-later"
+repository = "https://git.example.org/alex/alwywatch"
+publish = false
+
+[workspace.dependencies]
+# Internal crates
+media-api = { path = "core/media-api" }
+seerr = { path = "core/seerr" }
+maintainerr = { path = "core/maintainerr" }
+keep-service = { path = "core/keep-service" }
+downloads = { path = "core/downloads" }
+store = { path = "core/store" }
+alwywatch-core = { path = "core/alwywatch-core" }
+
+# External crates (each one justified in docs/decisions.md)
+tokio = { version = "1.54", default-features = false }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "query", "http2"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+uniffi = { version = "0.32" }
+rusqlite = { version = "0.43", features = ["bundled"] }
+axum = { version = "0.8", default-features = false }
+slint = { version = "1.19", default-features = false }
+slint-build = "1.19"
+wiremock = "0.6"
+tempfile = "3"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+print_stdout = "warn"
+
+[profile.release]
+# Priorities: perceived speed > RAM > size. Fat LTO + 1 CGU gives both speed and size;
+# opt-level 3 stays (speed first). Symbols stripped; debug info kept out of the APK.
+lto = "fat"
+codegen-units = 1
+strip = true
+opt-level = 3
+
+[profile.release-size]
+# Experimental profile used by the size report to compare against opt-level 3.
+inherits = "release"
+opt-level = "s"
