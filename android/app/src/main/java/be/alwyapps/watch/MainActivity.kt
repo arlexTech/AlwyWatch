@@ -31,11 +31,14 @@ import be.alwyapps.watch.ui.screens.AddServerScreen
 import be.alwyapps.watch.ui.screens.DetailScreen
 import be.alwyapps.watch.ui.screens.DownloadsScreen
 import be.alwyapps.watch.ui.screens.HomeScreen
+import be.alwyapps.watch.ui.screens.KeepAdminScreen
+import be.alwyapps.watch.ui.screens.LeavingSoonScreen
 import be.alwyapps.watch.ui.screens.LibraryScreen
 import be.alwyapps.watch.ui.screens.RequestsScreen
 import be.alwyapps.watch.ui.screens.SearchScreen
 import be.alwyapps.watch.ui.screens.SeerrConnectScreen
 import be.alwyapps.watch.ui.screens.SettingsScreen
+import be.alwyapps.watch.ui.screens.TriageScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,6 +96,9 @@ private fun Root(core: AlwyWatch) {
                         })
                     Route.Downloads -> DownloadsScreen()
                     Route.Requests -> RequestsScreen()
+                    Route.LeavingSoon -> LeavingSoonScreen()
+                    Route.Triage -> TriageScreen()
+                    Route.KeepAdmin -> KeepAdminScreen()
                     Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.reset(Route.Requests) })
                     is Route.Library -> LibraryScreen(r.id, r.title)
                     is Route.Detail -> DetailScreen(r.itemId)

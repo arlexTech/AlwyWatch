@@ -21,6 +21,12 @@ sealed interface Route {
 
     data object SeerrConnect : Route
 
+    data object LeavingSoon : Route
+
+    data object Triage : Route
+
+    data object KeepAdmin : Route
+
     data class Library(
         val id: String,
         val title: String,
@@ -39,6 +45,9 @@ sealed interface Route {
             Downloads -> "downloads"
             Requests -> "requests"
             SeerrConnect -> "seerr-connect"
+            LeavingSoon -> "leaving"
+            Triage -> "triage"
+            KeepAdmin -> "keep-admin"
             is Library -> "lib\u001f$id\u001f$title"
             is Detail -> "item\u001f$itemId"
         }
@@ -54,6 +63,9 @@ sealed interface Route {
                 "downloads" -> Downloads
                 "requests" -> Requests
                 "seerr-connect" -> SeerrConnect
+                "leaving" -> LeavingSoon
+                "triage" -> Triage
+                "keep-admin" -> KeepAdmin
                 "lib" -> if (p.size == 3) Library(p[1], p[2]) else null
                 "item" -> if (p.size == 2) Detail(p[1]) else null
                 else -> null

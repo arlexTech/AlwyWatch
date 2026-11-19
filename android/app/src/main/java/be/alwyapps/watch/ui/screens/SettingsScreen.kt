@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -32,6 +33,8 @@ import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.LocalNavigator
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.Route
+import be.alwyapps.watch.ui.dpadEscape
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
@@ -75,6 +78,58 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
             }
         }
         ActionButton("Add a server", { nav.push(Route.AddServer) }, primary = true)
+
+        Text("Leaving soon (AlwyWatch server)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+        val keep = remember(version) { core.keepConnection() }
+        if (keep == null) {
+            var keepUrl by remember { mutableStateOf("") }
+            var keepError by remember { mutableStateOf<String?>(null) }
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            androidx.compose.material3.OutlinedTextField(
+                keepUrl,
+                { keepUrl = it },
+                Modifier.fillMaxWidth().dpadEscape(),
+                label = { Text("AlwyWatch server address") },
+                singleLine = true,
+            )
+            ActionButton("Connect as ${accounts.firstOrNull { it.id == current }?.userName ?: "this account"}", {
+                val account = accounts.firstOrNull { it.id == current } ?: return@ActionButton
+                val token =
+                    if (account.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) {
+                        ctx.services.tokens.get("${account.id}:plextv")
+                    } else {
+                        ctx.services.tokens.get(account.id)
+                    }
+                if (token == null) {
+                    keepError = "Sign in to this account again first."
+                    return@ActionButton
+                }
+                scope.launch {
+                    try {
+                        core.keepConnect(
+                            be.alwyapps.watch.core
+                                .normalizeServerUrl(keepUrl),
+                            account.id,
+                            token,
+                        )
+                        keepError = null
+                        version++
+                    } catch (e: be.alwyapps.watch.core.CoreException) {
+                        keepError = e.message
+                    }
+                }
+            })
+            keepError?.let { Text(it, color = be.alwyapps.watch.ui.Danger) }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("${keep.userName} @ ${keep.baseUrl}" + if (keep.isAdmin) " (admin)" else "", Modifier.weight(1f))
+                ActionButton("Leaving soon", { nav.push(Route.LeavingSoon) })
+                ActionButton("Disconnect", {
+                    core.keepDisconnect()
+                    version++
+                })
+            }
+        }
 
         Text("Requests (Seerr)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
         val seerr = remember(version) { core.seerrConnection() }

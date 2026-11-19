@@ -76,6 +76,8 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
 
     fun finish(s: SignedIn) {
         ctx.services.tokens.put(s.account.id, s.token)
+        // Plex: the plex.tv account token is what Seerr and the keep service accept.
+        s.plexAccountToken?.let { ctx.services.tokens.put("${s.account.id}:plextv", it) }
         core.setSetting("current_account", s.account.id)
         onSignedIn(s.account.id)
     }

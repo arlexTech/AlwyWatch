@@ -97,6 +97,7 @@ fun HomeScreen() {
                     }
                 }
             }
+            if (core.keepActive()) item(key = "leaving") { LeavingSoonRail() }
             item(key = "resume") { Rail("Continue watching", h.resume, open) }
             item(key = "next") { Rail("Next up", h.nextUp, open) }
             items(h.latest, key = { "latest-${it.library.id}" }) { rail ->

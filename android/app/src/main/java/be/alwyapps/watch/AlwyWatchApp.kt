@@ -48,6 +48,14 @@ class Services(
             for (account in core.accounts()) {
                 tokens.get(account.id)?.let { core.activateAccount(account.id, it) }
             }
+            core.keepConnection()?.let { k ->
+                val account = core.accounts().firstOrNull { it.id == k.accountId }
+                val token =
+                    if (account?.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) tokens.get("${k.accountId}:plextv") else tokens.get(k.accountId)
+                token?.let { runCatching { core.keepActivate(it) } }
+            }
+            be.alwyapps.watch.keep.KeepReminderWorker
+                .schedule(app)
             if (core.seerrConnection() != null) tokens.get("seerr")?.let { runCatching { core.seerrActivate(it) } }
             watchNetwork(core)
             // Downloads interrupted by a reboot or a killed process continue on their own.
