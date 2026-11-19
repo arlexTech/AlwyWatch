@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -65,6 +65,7 @@ import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.SurfaceColor
 import be.alwyapps.watch.ui.UrlImage
+import be.alwyapps.watch.ui.ambientGlow
 import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.rememberSwr
 import kotlinx.coroutines.launch
@@ -379,20 +380,41 @@ fun TriageScreen() {
     val focus = remember { FocusRequester() }
     var dx by remember { mutableFloatStateOf(0f) }
     var dy by remember { mutableFloatStateOf(0f) }
+    val total = (queue?.size ?: 0) + done
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(d.gutter),
+        Modifier
+            .fillMaxSize()
+            .triageGlow()
+            .verticalScroll(rememberScrollState())
+            .padding(d.gutter),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Sort them out", style = MaterialTheme.typography.titleLarge)
+        Text("Sort them out", style = MaterialTheme.typography.headlineMedium)
+        if (total > 0) {
+            Box(
+                Modifier
+                    .width(220.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(be.alwyapps.watch.ui.SurfaceHigh),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(done.toFloat() / total)
+                        .height(4.dp)
+                        .background(Accent),
+                )
+            }
+        }
         error?.let { Text(it, color = Danger) }
         when {
             queue == null -> Text("Loading…", color = Muted)
             item == null -> Text(if (done > 0) "All done, thanks! $done sorted." else "Nothing to sort right now.", color = Muted)
             else -> {
                 Text(
-                    "${queue!!.size} left · ← don't care   → keep until I watch it   ↑ keep forever",
-                    color = Muted,
+                    if (d.isTv) "${queue!!.size} left  ·  ← don't care   → until I watch it   ↑ forever" else "${queue!!.size} left  ·  swipe ← don't care, → keep, ↑ forever",
+                    color = be.alwyapps.watch.ui.Subtle,
                     style = MaterialTheme.typography.bodySmall,
                 )
                 LaunchedEffect(item.key) { runCatching { focus.requestFocus() } }
@@ -442,10 +464,15 @@ fun TriageScreen() {
                     }
                 }
                 val buttons: @Composable () -> Unit = {
-                    ActionButton("Don't care", { vote(req(VoteKind.DONT_CARE)) })
+                    ActionButton(
+                        "Until I watch it",
+                        { vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u)) },
+                        primary = true,
+                        icon = be.alwyapps.watch.ui.Icons.Schedule,
+                    )
+                    ActionButton("Forever", { vote(req(VoteKind.KEEP_FOREVER, reason = "love it")) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled)
                     ActionButton("Keep 30 days", { vote(req(VoteKind.KEEP_DAYS, days = 30u)) })
-                    ActionButton("Until I watch it", { vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u)) }, primary = true)
-                    ActionButton("Forever", { vote(req(VoteKind.KEEP_FOREVER, reason = "love it")) })
+                    ActionButton("Don't care", { vote(req(VoteKind.DONT_CARE)) }, icon = be.alwyapps.watch.ui.Icons.Close)
                 }
                 if (d.isTv) {
                     Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -496,64 +523,89 @@ fun KeepAdminScreen() {
             }
         }
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(d.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text("Admin", style = MaterialTheme.typography.titleLarge) }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = d.gutter, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+    ) {
+        item {
+            be.alwyapps.watch.ui
+                .PageTitle("Admin", "Leaving soon: countdown and people's rights")
+        }
         message?.let { item { Text(it, color = Accent) } }
         item {
-            Text("Start countdown", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr.",
-                color = Muted,
-            )
-        }
-        items(collections, key = { "c${it.first}" }) { (id, title) ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(title, Modifier.weight(1f))
-                for (stagger in listOf(0u, 14u, 30u)) {
-                    val label = if (stagger == 0u) "Today" else "Spread $stagger d"
-                    val isArmed = armed == id to stagger
-                    ActionButton(if (isArmed) "Confirm: $label" else label, {
-                        if (!isArmed) {
-                            armed = id to stagger
-                        } else {
-                            armed = null
-                            scope.launch {
-                                message =
-                                    try {
-                                        val r = core.keepAdminCountdown(id, stagger)
-                                        "$title: ${r.reset} restarted, ${r.skipped} skipped"
-                                    } catch (e: CoreException) {
-                                        e.message
+            be.alwyapps.watch.ui.Group(
+                "Start countdown",
+                footer =
+                    "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people " +
+                        "get the full delay to vote. This changes deletion dates in Maintainerr (press twice to confirm).",
+            ) {
+                collections.forEachIndexed { i, (id, title) ->
+                    if (i > 0) {
+                        be.alwyapps.watch.ui
+                            .Divider()
+                    }
+                    be.alwyapps.watch.ui.ListRow(title, icon = be.alwyapps.watch.ui.Icons.Schedule, trailing = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            for (stagger in listOf(0u, 14u, 30u)) {
+                                val label = if (stagger == 0u) "Today" else "Over $stagger days"
+                                val isArmed = armed == id to stagger
+                                ActionButton(if (isArmed) "Confirm" else label, {
+                                    if (!isArmed) {
+                                        armed = id to stagger
+                                    } else {
+                                        armed = null
+                                        scope.launch {
+                                            message =
+                                                try {
+                                                    val r = core.keepAdminCountdown(id, stagger)
+                                                    "$title: ${r.reset} restarted, ${r.skipped} skipped"
+                                                } catch (e: CoreException) {
+                                                    e.message
+                                                }
+                                        }
                                     }
+                                }, primary = isArmed)
                             }
                         }
-                    }, primary = isArmed)
+                    })
                 }
             }
         }
-        item { Text("People", Modifier.padding(top = 12.dp), style = MaterialTheme.typography.titleMedium) }
-        items(users.orEmpty(), key = { it.userKey }) { u ->
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(SurfaceColor)
-                    .padding(10.dp),
-            ) {
-                Text(u.name + if (u.isAdmin) " (admin)" else "")
-                Text("${u.foreverCount} kept forever", color = Muted, style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+        item {
+            be.alwyapps.watch.ui.Group("People", footer = "Everyone can keep forever by default. Tap a value to change it.") {
+                users.orEmpty().forEachIndexed { i, u ->
+                    if (i > 0) {
+                        be.alwyapps.watch.ui
+                            .Divider()
+                    }
                     val r = u.rights
-                    ActionButton(if (r.canKeepForever) "Forever: allowed" else "Forever: blocked", { update(u, r.copy(canKeepForever = !r.canKeepForever)) })
-                    ActionButton("Max forever: ${r.maxForever ?: "∞"}", {
-                        val next = listOf<UInt?>(null, 5u, 10u, 25u)
-                        update(u, r.copy(maxForever = next[(next.indexOf(r.maxForever) + 1) % next.size]))
-                    })
-                    ActionButton("Max days: ${r.maxKeepDays ?: "∞"}", {
-                        val next = listOf<UInt?>(null, 7u, 30u, 90u)
-                        update(u, r.copy(maxKeepDays = next[(next.indexOf(r.maxKeepDays) + 1) % next.size]))
-                    })
+                    Column(Modifier.padding(bottom = 12.dp)) {
+                        be.alwyapps.watch.ui.ListRow(
+                            u.name + if (u.isAdmin) " · admin" else "",
+                            subtitle = "${u.foreverCount} kept forever",
+                            icon = be.alwyapps.watch.ui.Icons.Person,
+                        )
+                        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            item {
+                                ActionButton(if (r.canKeepForever) "Forever allowed" else "Forever blocked", {
+                                    update(u, r.copy(canKeepForever = !r.canKeepForever))
+                                }, primary = !r.canKeepForever)
+                            }
+                            item {
+                                ActionButton("Max forever: ${r.maxForever ?: "∞"}", {
+                                    val next = listOf<UInt?>(null, 5u, 10u, 25u)
+                                    update(u, r.copy(maxForever = next[(next.indexOf(r.maxForever) + 1) % next.size]))
+                                })
+                            }
+                            item {
+                                ActionButton("Max days: ${r.maxKeepDays ?: "∞"}", {
+                                    val next = listOf<UInt?>(null, 7u, 30u, 90u)
+                                    update(u, r.copy(maxKeepDays = next[(next.indexOf(r.maxKeepDays) + 1) % next.size]))
+                                })
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -562,6 +614,17 @@ fun KeepAdminScreen() {
 
 @Composable
 private fun TriageInfo(item: LeavingItem) {
-    Text(listOfNotNull(item.title, item.year?.toString()).joinToString(" · "), style = MaterialTheme.typography.titleMedium)
-    Text(item.leavesLabel(), color = Accent)
+    Text(item.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    val (label, urgent) = item.shortLabel()
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        item.year?.let { Text(it.toString(), color = Muted) }
+        be.alwyapps.watch.ui
+            .Badge(label, color = if (urgent) Danger else be.alwyapps.watch.ui.SurfaceHigh)
+    }
+    val c = item.counts
+    val keepers = c.forever + c.untilWatched + c.days
+    if (keepers > 0u) Text("$keepers ${if (keepers > 1u) "people keep" else "person keeps"} it", color = Muted, style = MaterialTheme.typography.bodySmall)
 }
+
+/** Warm glow behind the triage card. */
+private fun Modifier.triageGlow() = this.then(Modifier.ambientGlow(Accent.copy(alpha = 0.5f)))

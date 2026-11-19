@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -88,9 +89,9 @@ fun AppScaffold(content: @Composable () -> Unit) {
     val d = LocalDimens.current
     val showBars = nav.current.isTopLevel()
     // Artwork screens draw under the status bar; the others keep clear of it.
-    val edgeToEdge = nav.current == Route.Home || nav.current is Route.Detail
+    val edgeToEdge = nav.current == Route.Home || nav.current is Route.Detail || nav.current == Route.AddServer
     if (!showBars) {
-        Box(if (edgeToEdge) Modifier.fillMaxSize() else Modifier.fillMaxSize().safeDrawingPadding()) { content() }
+        Box(if (edgeToEdge) Modifier.fillMaxSize().imePadding() else Modifier.fillMaxSize().safeDrawingPadding()) { content() }
         return
     }
     val tabs = tabs()
@@ -107,7 +108,9 @@ fun AppScaffold(content: @Composable () -> Unit) {
                     .fillMaxSize()
                     .then(if (edgeToEdge) Modifier else Modifier.statusBarsPadding())
                     .navigationBarsPadding()
-                    .padding(bottom = 68.dp),
+                    .padding(bottom = 68.dp)
+                    // Keyboard open: content shrinks above it (fields and their buttons stay visible).
+                    .imePadding(),
             ) { content() }
             BottomBar(tabs, selected, Modifier.align(Alignment.BottomCenter)) { nav.reset(it) }
         }

@@ -9,7 +9,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -73,7 +72,7 @@ private fun Root(core: AlwyWatch) {
     CompositionLocalProvider(LocalCore provides core, LocalNavigator provides nav) {
         val acct = account
         if (acct == null) {
-            Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+            Box(Modifier.fillMaxSize()) {
                 AddServerScreen(onSignedIn = {
                     account = it
                     nav.reset(Route.Home)

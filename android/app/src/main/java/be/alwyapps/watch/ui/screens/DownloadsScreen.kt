@@ -5,10 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,11 +33,11 @@ import be.alwyapps.watch.core.downloads.DownloadState
 import be.alwyapps.watch.downloads.DownloadWorker
 import be.alwyapps.watch.player.PlayerActivity
 import be.alwyapps.watch.ui.Accent
-import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.SurfaceColor
+import be.alwyapps.watch.ui.thumb
 import kotlinx.coroutines.delay
 
 private fun Download.status(): String {
@@ -66,48 +68,95 @@ fun DownloadsScreen() {
             delay(1000)
         }
     }
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = d.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text("Downloads", Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.titleLarge) }
-        if (list.isEmpty()) item { Text("Nothing downloaded yet. Use \"Download\" on a movie or an episode.", color = Muted) }
+    val account = be.alwyapps.watch.ui.LocalAccount.current
+    val totalBytes = list.filter { it.state == DownloadState.COMPLETED }.sumOf { (it.total ?: it.downloaded).toLong() }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding =
+            androidx.compose.foundation.layout
+                .PaddingValues(horizontal = d.gutter, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            be.alwyapps.watch.ui.PageTitle(
+                "Downloads",
+                if (list.isEmpty()) "Watch without a connection" else "Available offline · %.1f GB".format(totalBytes / 1e9),
+            )
+        }
+        if (list.isEmpty()) {
+            item {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    androidx.compose.material3.Icon(be.alwyapps.watch.ui.Icons.Download, null, Modifier.height(48.dp), tint = be.alwyapps.watch.ui.Subtle)
+                    Text("Nothing downloaded yet", style = MaterialTheme.typography.titleMedium)
+                    Text("Tap the download button on a movie or an episode.", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
         items(list, key = { it.id }) { dl ->
-            Column(
+            // Artwork from the cache when the download belongs to the current account.
+            val item = remember(dl.itemId) { if (dl.accountId == account) runCatching { core.cachedItem(account, dl.itemId)?.item }.getOrNull() else null }
+            Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(d.radius + 4.dp))
                     .background(SurfaceColor)
-                    .padding(12.dp),
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Text(dl.title, style = MaterialTheme.typography.titleMedium)
-                Text(dl.status(), color = Muted, style = MaterialTheme.typography.bodySmall)
-                val total = dl.total?.toLong() ?: 0L
-                if (dl.state != DownloadState.COMPLETED && total > 0) {
-                    LinearProgressIndicator(
-                        progress = { (dl.downloaded.toLong().toFloat() / total).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).height(4.dp),
-                        color = Accent,
+                androidx.compose.foundation.layout.Box(Modifier.width(120.dp).clip(RoundedCornerShape(10.dp))) {
+                    be.alwyapps.watch.ui
+                        .RemoteImage(dl.itemId, item?.let { it.thumb() }, 240.dp, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(dl.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Text(
+                        dl.status(),
+                        color = if (dl.state == DownloadState.FAILED || dl.state == DownloadState.PAUSED_NO_SPACE) be.alwyapps.watch.ui.Danger else Muted,
+                        style = MaterialTheme.typography.bodySmall,
                     )
-                }
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    when (dl.state) {
-                        DownloadState.COMPLETED ->
-                            ActionButton("Play", { ctx.startActivity(PlayerActivity.intent(ctx, dl.accountId, dl.itemId, 0L)) }, primary = true)
-                        DownloadState.RUNNING, DownloadState.QUEUED, DownloadState.WAITING ->
-                            ActionButton("Pause", {
-                                core.pauseDownload(dl.id)
-                                tick++
-                            })
-                        else ->
-                            ActionButton("Resume", {
-                                core.resumeDownload(dl.id)
-                                DownloadWorker.start(ctx)
-                                tick++
-                            }, primary = true)
+                    val total = dl.total?.toLong() ?: 0L
+                    if (dl.state != DownloadState.COMPLETED && total > 0) {
+                        LinearProgressIndicator(
+                            progress = { (dl.downloaded.toLong().toFloat() / total).coerceIn(0f, 1f) },
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp)
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(50)),
+                            color = Accent,
+                            trackColor = be.alwyapps.watch.ui.SurfaceHigh,
+                        )
                     }
-                    ActionButton("Delete", {
-                        core.removeDownload(dl.id)
-                        tick++
-                    })
                 }
+                when (dl.state) {
+                    DownloadState.COMPLETED ->
+                        be.alwyapps.watch.ui.IconAction(be.alwyapps.watch.ui.Icons.Play, "Play", {
+                            ctx.startActivity(PlayerActivity.intent(ctx, dl.accountId, dl.itemId, 0L))
+                        })
+                    DownloadState.RUNNING, DownloadState.QUEUED, DownloadState.WAITING ->
+                        be.alwyapps.watch.ui.IconAction(be.alwyapps.watch.ui.Icons.Pause, "Pause", {
+                            core.pauseDownload(dl.id)
+                            tick++
+                        })
+                    else ->
+                        be.alwyapps.watch.ui.IconAction(be.alwyapps.watch.ui.Icons.Refresh, "Resume", {
+                            core.resumeDownload(dl.id)
+                            DownloadWorker.start(ctx)
+                            tick++
+                        })
+                }
+                be.alwyapps.watch.ui.IconAction(be.alwyapps.watch.ui.Icons.Delete, "Delete", {
+                    core.removeDownload(dl.id)
+                    tick++
+                })
             }
         }
     }

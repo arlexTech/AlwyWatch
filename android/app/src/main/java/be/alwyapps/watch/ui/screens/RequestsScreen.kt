@@ -3,6 +3,7 @@ package be.alwyapps.watch.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,9 +49,9 @@ import be.alwyapps.watch.ui.FocusCard
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
-import be.alwyapps.watch.ui.SurfaceColor
 import be.alwyapps.watch.ui.UrlImage
 import be.alwyapps.watch.ui.dpadEscape
+import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.rememberSwr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -120,16 +122,33 @@ fun RequestsScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Field(
-                query,
-                { query = it },
-                Modifier.fillMaxWidth().dpadEscape(),
-                label = { Text("Find a movie or a show to request") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                be.alwyapps.watch.ui
+                    .PageTitle("Requests", "Ask for a movie or a show; it is added when ready.")
+                Field(
+                    query,
+                    { query = it },
+                    Modifier.fillMaxWidth().dpadEscape(),
+                    placeholder = { Text("Find a movie or a show…") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    leadingIcon = be.alwyapps.watch.ui.Icons.Search,
+                    pill = true,
+                )
+            }
         }
-        message?.let { item(span = { GridItemSpan(maxLineSpan) }) { Text(it, color = Accent) } }
+        message?.takeIf { it.isNotEmpty() }?.let {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    it,
+                    Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(be.alwyapps.watch.ui.SurfaceHigh)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    color = Accent,
+                )
+            }
+        }
         selected?.let { r ->
             item(span = { GridItemSpan(maxLineSpan) }, key = "sel-${r.tmdbId}") {
                 RequestPanel(r, onDone = { msg ->
@@ -143,14 +162,22 @@ fun RequestsScreen() {
             Column(Modifier.width(d.posterWidth)) {
                 FocusCard(onClick = { selected = r }) {
                     UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+                    r.availability.label()?.let {
+                        be.alwyapps.watch.ui.Badge(
+                            it,
+                            Modifier.align(Alignment.TopStart).padding(8.dp),
+                            color = if (r.availability == Availability.AVAILABLE) be.alwyapps.watch.ui.Success else Color.Black.copy(alpha = 0.6f),
+                            textColor = if (r.availability == Availability.AVAILABLE) Color.Black else Color.White,
+                        )
+                    }
                 }
-                Text(r.title, Modifier.padding(top = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(listOfNotNull(r.year, r.availability.label()).joinToString(" · "), color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text(r.title, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(r.year ?: "", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
         if (query.length < 2) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("My requests", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
+                Text("My requests", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.titleMedium)
             }
             mine.error?.let { item(span = { GridItemSpan(maxLineSpan) }) { Text(it, color = Muted) } }
             val list = mine.value.orEmpty()
@@ -166,9 +193,26 @@ fun RequestsScreen() {
 private fun MyRequest(r: SeerrRequest) {
     val d = LocalDimens.current
     Column(Modifier.width(d.posterWidth)) {
-        UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(8.dp)))
-        Text(r.title ?: "TMDB ${r.tmdbId}", Modifier.padding(top = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(r.status.label(), color = if (r.status == RequestStatus.COMPLETED) Accent else Muted, style = MaterialTheme.typography.bodySmall)
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(d.radius))) {
+            UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxSize())
+            val (bg, fg) =
+                when (r.status) {
+                    RequestStatus.COMPLETED -> be.alwyapps.watch.ui.Success to Color.Black
+                    RequestStatus.APPROVED -> Color(0xFF5B8CFF) to Color.White
+                    RequestStatus.DECLINED, RequestStatus.FAILED -> be.alwyapps.watch.ui.Danger to Color.White
+                    RequestStatus.PENDING -> Accent to Color.Black
+                }
+            be.alwyapps.watch.ui
+                .Badge(r.status.label(), Modifier.align(Alignment.TopStart).padding(8.dp), color = bg, textColor = fg)
+        }
+        Text(
+            r.title ?: "TMDB ${r.tmdbId}",
+            Modifier.padding(top = 8.dp),
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(r.createdAt.take(10), color = Muted, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -202,39 +246,74 @@ private fun RequestPanel(
             onDone(msg)
         }
     }
-    Column(
+    val d = LocalDimens.current
+    Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(SurfaceColor)
+            .clip(RoundedCornerShape(d.radius + 6.dp))
+            .background(be.alwyapps.watch.ui.SurfaceHigh)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Text(listOfNotNull(r.title, r.year).joinToString(" · "), style = MaterialTheme.typography.titleMedium)
-        r.overview?.let { Text(it, color = Muted, maxLines = 4, overflow = TextOverflow.Ellipsis) }
-        r.availability.label()?.let { Text(it, color = Accent) }
-        if (r.mediaType == SeerrMediaType.MOVIE) {
-            if (r.availability != Availability.AVAILABLE) ActionButton(if (busy) "Requesting…" else "Request", { send(emptyList()) }, primary = true)
-        } else {
-            val list = seasons
-            if (list == null) {
-                Text("Loading seasons…", color = Muted)
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ActionButton(if (busy) "Requesting…" else "Request all seasons", { send(emptyList()) }, primary = chosen.isEmpty())
-                    if (chosen.isNotEmpty()) ActionButton("Request ${chosen.size} selected", { send(chosen.sorted()) }, primary = true)
-                }
-                for (s in list) {
-                    val status = s.availability.label()
-                    val requestable = s.availability == Availability.UNKNOWN || s.availability == Availability.DELETED
-                    ActionButton(
-                        (if (s.number in chosen) "✓ " else "") + s.name + (status?.let { " · $it" } ?: ""),
-                        { if (requestable) chosen = if (s.number in chosen) chosen - s.number else chosen + s.number },
-                        primary = s.number in chosen,
+        UrlImage(r.posterUrl, 160.dp, Modifier.width(if (d.isTv) 160.dp else 110.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(d.radius)))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(r.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOfNotNull(r.year, if (r.mediaType == SeerrMediaType.TV) "Show" else "Movie", r.availability.label()).joinToString(" · "),
+                        color = Muted,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
+                }
+                be.alwyapps.watch.ui
+                    .IconAction(be.alwyapps.watch.ui.Icons.Close, "Close", { onDone("") })
+            }
+            r.overview?.let { Text(it, color = Muted, maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium) }
+            if (r.mediaType == SeerrMediaType.MOVIE) {
+                if (r.availability != Availability.AVAILABLE) {
+                    ActionButton(
+                        if (busy) "Requesting…" else "Request",
+                        { send(emptyList()) },
+                        Modifier.initialFocus(),
+                        primary = true,
+                        icon = be.alwyapps.watch.ui.Icons.Add,
+                    )
+                }
+            } else {
+                val list = seasons
+                if (list == null) {
+                    Text("Loading seasons…", color = Muted)
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ActionButton(
+                            if (busy) {
+                                "Requesting…"
+                            } else if (chosen.isEmpty()) {
+                                "Request all seasons"
+                            } else {
+                                "Request ${chosen.size} season${if (chosen.size > 1) "s" else ""}"
+                            },
+                            { send(chosen.sorted()) },
+                            Modifier.initialFocus(),
+                            primary = true,
+                            icon = be.alwyapps.watch.ui.Icons.Add,
+                        )
+                    }
+                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(list.size) { i ->
+                            val s = list[i]
+                            val requestable = s.availability == Availability.UNKNOWN || s.availability == Availability.DELETED
+                            ActionButton(
+                                s.name + (s.availability.label()?.let { " · $it" } ?: ""),
+                                { if (requestable) chosen = if (s.number in chosen) chosen - s.number else chosen + s.number },
+                                primary = s.number in chosen,
+                                icon = if (s.number in chosen) be.alwyapps.watch.ui.Icons.Check else null,
+                            )
+                        }
+                    }
                 }
             }
         }
-        ActionButton("Close", { onDone("") })
     }
 }

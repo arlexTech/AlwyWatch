@@ -3,14 +3,22 @@ package be.alwyapps.watch.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -23,7 +31,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -36,12 +46,22 @@ import be.alwyapps.watch.core.keep.ServerType
 import be.alwyapps.watch.core.media.PlexServerResource
 import be.alwyapps.watch.core.media.QuickConnectCode
 import be.alwyapps.watch.services
+import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
+import be.alwyapps.watch.ui.Chevron
 import be.alwyapps.watch.ui.Danger
 import be.alwyapps.watch.ui.Field
+import be.alwyapps.watch.ui.FocusCard
+import be.alwyapps.watch.ui.IconAction
+import be.alwyapps.watch.ui.Icons
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
+import be.alwyapps.watch.ui.Outline
+import be.alwyapps.watch.ui.Subtle
+import be.alwyapps.watch.ui.SurfaceColor
+import be.alwyapps.watch.ui.SurfaceHigh
+import be.alwyapps.watch.ui.ambientGlow
 import be.alwyapps.watch.ui.dpadEscape
 import be.alwyapps.watch.ui.initialFocus
 import kotlinx.coroutines.delay
@@ -108,19 +128,39 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .ambientGlow(Accent.copy(alpha = 0.55f))
+            .safeDrawingPadding()
+            .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(d.gutter)
-            .widthIn(max = 640.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = d.gutter, vertical = 24.dp)
+            .widthIn(max = 600.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Text("Add a server", style = MaterialTheme.typography.titleLarge)
+        if (step == Step.Choose) {
+            Column(Modifier.padding(top = 24.dp, bottom = 8.dp)) {
+                Text("AlwyWatch", style = MaterialTheme.typography.displayLarge)
+                Text("Your Jellyfin and Plex, fast and beautiful.", style = MaterialTheme.typography.bodyLarge, color = Muted)
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                IconAction(Icons.Back, "Back", {
+                    step = Step.Choose
+                    error = null
+                })
+                Text(
+                    when (step) {
+                        Step.Plex, is Step.PlexServers -> "Plex"
+                        else -> "Jellyfin"
+                    },
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+            }
+        }
         when (val s = step) {
             Step.Choose -> {
-                Text("Sign in with your existing account.", color = Muted)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton("Jellyfin", { step = Step.JellyfinUrl }, Modifier.initialFocus(), primary = true)
-                    ActionButton("Plex", { step = Step.Plex })
-                }
+                Text("Sign in with your existing account", style = MaterialTheme.typography.titleMedium)
+                ChoiceCard("Jellyfin", "Quick Connect or password", Icons.Library, { step = Step.JellyfinUrl }, Modifier.initialFocus())
+                ChoiceCard("Plex", "Sign in on plex.tv", Icons.Play, { step = Step.Plex })
                 AlwyWatchServerPicker(
                     busy = busy,
                     onPick = { url, entry ->
@@ -165,14 +205,40 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     keyboardActions = KeyboardActions(onGo = { submit() }),
                     modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
                 )
+                Text("Your Jellyfin server's address, as you use it in a browser.", color = Muted, style = MaterialTheme.typography.bodyMedium)
                 ActionButton(if (busy) "Checking…" else "Continue", { submit() }, primary = true)
             }
 
             is Step.Jellyfin -> {
                 if (s.quick != null) {
-                    Text("Quick Connect", style = MaterialTheme.typography.titleMedium)
-                    Text("In a Jellyfin app where you are signed in, open Quick Connect and enter:", color = Muted)
-                    Text(s.quick.code, style = MaterialTheme.typography.displayMedium)
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(SurfaceColor)
+                            .border(1.dp, Outline, RoundedCornerShape(24.dp))
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("QUICK CONNECT", style = MaterialTheme.typography.labelSmall, color = Accent)
+                        Text(
+                            s.quick.code
+                                .chunked(3)
+                                .joinToString(" "),
+                            style =
+                                MaterialTheme.typography.displayLarge.copy(
+                                    letterSpacing =
+                                        androidx.compose.ui.unit
+                                            .TextUnit(0.12f, androidx.compose.ui.unit.TextUnitType.Em),
+                                ),
+                        )
+                        Text(
+                            "In a Jellyfin app where you're signed in, open your profile → Quick Connect and enter this code.",
+                            color = Muted,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text("Waiting for approval…", style = MaterialTheme.typography.bodySmall, color = Subtle)
+                    }
                     LaunchedEffect(s.quick.secret) {
                         while (true) {
                             delay(3000)
@@ -186,7 +252,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                             }
                         }
                     }
-                    Text("Or sign in with your password", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
+                    Text("Or with your password", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
                 }
                 var user by remember { mutableStateOf("") }
                 var pass by remember { mutableStateOf("") }
@@ -242,31 +308,41 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                         error = e.message
                     }
                 }
-                if (strong) {
-                    Text("Finish signing in to Plex in the browser, then come back here.", color = Muted)
-                } else {
-                    Text("On your phone or computer, go to plex.tv/link and enter:", color = Muted)
-                    Text(code ?: "…", style = MaterialTheme.typography.displayMedium)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(SurfaceColor)
+                        .border(1.dp, Outline, RoundedCornerShape(24.dp))
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (strong) {
+                        Text("Finish signing in to Plex in your browser, then come back here.", style = MaterialTheme.typography.titleMedium)
+                    } else {
+                        Text("PLEX.TV/LINK", style = MaterialTheme.typography.labelSmall, color = Accent)
+                        Text(code ?: "…", style = MaterialTheme.typography.displayLarge)
+                        Text("On your phone or computer, go to plex.tv/link and enter this code.", color = Muted)
+                    }
+                    Text("Waiting for Plex…", style = MaterialTheme.typography.bodySmall, color = Subtle)
                 }
             }
 
             is Step.PlexServers -> {
                 Text("Choose a server", style = MaterialTheme.typography.titleMedium)
                 if (s.servers.isEmpty()) Text("This Plex account has no servers.", color = Muted)
-                for (srv in s.servers) {
-                    ActionButton(srv.name + if (srv.owned) " (yours)" else "", {
-                        attempt { finish(core.plexConnect(s.accountToken, srv, null)) }
-                    })
+                s.servers.forEachIndexed { i, srv ->
+                    ChoiceCard(
+                        srv.name,
+                        if (srv.owned) "Your server" else "Shared with you",
+                        Icons.Library,
+                        { attempt { finish(core.plexConnect(s.accountToken, srv, null)) } },
+                        if (i == 0) Modifier.initialFocus() else Modifier,
+                    )
                 }
             }
         }
         error?.let { Text(it, color = Danger) }
-        if (step != Step.Choose) {
-            ActionButton("Back", {
-                step = Step.Choose
-                error = null
-            })
-        }
     }
 }
 
@@ -294,12 +370,17 @@ private fun AlwyWatchServerPicker(
             }
         }
     }
-    Text("Or, with an AlwyWatch server address from your server owner:", color = Muted, modifier = Modifier.padding(top = 12.dp))
+    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.weight(1f).height(1.dp).background(Outline))
+        Text("or", color = Subtle, style = MaterialTheme.typography.bodySmall)
+        Box(Modifier.weight(1f).height(1.dp).background(Outline))
+    }
+    Text("Got an AlwyWatch server address from your server's owner?", color = Muted, style = MaterialTheme.typography.bodyMedium)
     Field(
         url,
         { url = it },
-        label = { Text("AlwyWatch server") },
         placeholder = { Text("watch.example.org") },
+        pill = true,
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
         keyboardActions = KeyboardActions(onGo = { load() }),
@@ -311,6 +392,41 @@ private fun AlwyWatchServerPicker(
         for (e in list) {
             val kind = if (e.kind == ServerType.PLEX) "Plex" else "Jellyfin"
             ActionButton("${e.name} ($kind)", { if (!busy) onPick(base, e) }, primary = true)
+        }
+    }
+}
+
+/** Big tappable card for the sign-in choices. */
+@Composable
+private fun ChoiceCard(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(SurfaceColor)
+                .border(1.dp, Outline, RoundedCornerShape(20.dp))
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(SurfaceHigh),
+                contentAlignment = Alignment.Center,
+            ) { androidx.compose.material3.Icon(icon, null, Modifier.size(26.dp), tint = Accent) }
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+            }
+            Chevron()
         }
     }
 }
