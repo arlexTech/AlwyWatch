@@ -6,7 +6,23 @@ A lightweight, fast, open source media client for **Jellyfin** and **Plex**, wit
 
 Runs on Android phones and tablets, Android TV, Linux and Windows.
 
-> Status: early development. See [the plan](docs/plan.md).
+> Status: 0.1.0, first complete version, not yet released. See [the plan](docs/plan.md).
+
+## Features
+
+* Jellyfin (password or Quick Connect) and Plex (plex.tv PIN) accounts, several at once.
+* Home rails, libraries, details, search; everything renders instantly from a local cache.
+* Direct play with hardware decoding, HDR and audio passthrough (Media3 on Android, mpv on
+  desktop); missing audio codecs are decoded on the device instead of transcoded on the server.
+  Subtitles (including styled ASS) and audio track selection; resume position sync.
+* Downloads on phone, tablet and desktop that resume after network loss.
+* Seerr search and requests, for Plex and Jellyfin users alike (directly or through the
+  AlwyWatch server).
+* "Leaving soon" from Maintainerr, sorted by urgency: keep N days, until I watched it (with
+  reminders), forever, or "I don't care"; swipe mode; admin rights and countdown.
+* Android TV: D-pad first, leanback launcher. Phone and tablet: adaptive layouts.
+
+Every connection is optional: the app works as a plain Jellyfin/Plex client.
 
 ## Goals
 
@@ -19,13 +35,22 @@ Runs on Android phones and tablets, Android TV, Linux and Windows.
 
 | Path | What |
 |---|---|
-| `core/` | Rust core shared by every app (media servers, Seerr, downloads, cache) |
+| `core/` | Rust core shared by every app (media servers, Seerr, keep service, downloads, cache) |
 | `android/` | Android phone/tablet/TV app (Kotlin, Jetpack Compose, Media3) using the core through UniFFI |
 | `desktop/` | Linux and Windows app (Rust, Slint, libmpv) |
-| `server/` | `alwywatch-server`, the optional self-hosted keep service |
+| `server/` | `alwywatch-server`, the optional self-hosted keep service and Seerr bridge |
+| `packaging/`, `scripts/` | Desktop packages, CI script |
 | `docs/` | Plan, build instructions, decisions, performance results |
 
-Building: see [`docs/build.md`](docs/build.md) (coming with the first release). Quick checks: `scripts/ci.sh`.
+## Docs
+
+* [Building](docs/build.md) and packaging (APK, AppImage, Windows installer)
+* [Deploying the server](docs/deploy.md)
+* [Core API](docs/core-api.md) and [keep-service protocol](docs/keep-protocol.md)
+* [Decisions and dependencies](docs/decisions.md)
+* [Performance](docs/perf.md)
+
+Quick checks: `scripts/ci.sh`.
 
 ## License
 
