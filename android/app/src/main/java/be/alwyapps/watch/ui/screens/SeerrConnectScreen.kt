@@ -84,6 +84,17 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
     ) {
         Text("Connect Seerr", style = MaterialTheme.typography.titleLarge)
         val i = info
+        if (i == null && core.keepActive()) {
+            // Works whatever media server the user signed in with (Seerr itself serves one type).
+            Text("Through your AlwyWatch server: no extra sign-in.", color = Muted)
+            ActionButton("Use my AlwyWatch server", {
+                attempt {
+                    core.seerrConnectBridge()
+                    onDone()
+                }
+            }, primary = true)
+            Text("Or connect Seerr directly:", color = Muted)
+        }
         if (i == null) {
             val submit = { attempt { info = core.seerrInfo(normalizeServerUrl(url)) } }
             OutlinedTextField(

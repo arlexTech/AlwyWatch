@@ -22,10 +22,12 @@ struct Env {
     jf: MockServer,
     plextv: MockServer,
     tautulli: MockServer,
+    seerr: MockServer,
     state: Shared,
 }
 
 async fn env() -> Env {
+    let seerr = MockServer::start().await;
     let (maint, jf, plextv, tautulli) = (
         MockServer::start().await,
         MockServer::start().await,
@@ -50,10 +52,13 @@ async fn env() -> Env {
         server = "plexsrv"
         [tautulli]
         url = "{}"
+        [seerr]
+        url = "{}"
         "#,
         jf.uri(),
         maint.uri(),
-        tautulli.uri()
+        tautulli.uri(),
+        seerr.uri()
     );
     let mut config = Config::parse(&toml).unwrap();
     config.secrets = Secrets::for_tests("jf-admin-key", "taut-key");
@@ -68,6 +73,7 @@ async fn env() -> Env {
         jf,
         plextv,
         tautulli,
+        seerr,
         state,
     };
     e.mount_maintainerr().await;
@@ -674,4 +680,118 @@ async fn webhooks_need_the_secret() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::NO_CONTENT);
     let _ = &e.plextv;
+}
+
+#[tokio::test]
+async fn seerr_bridge_links_existing_users_and_creates_missing_ones() {
+    let e = env().await;
+    let key = || header("x-api-key", "seerr-key");
+    // Seerr (Plex mode) knows Plex user 2 as Seerr user 7; nobody from Jellyfin.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/user"))
+        .and(key())
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"results": [
+            {"id": 1, "plexId": 1, "displayName": "owner"},
+            {"id": 7, "plexId": 2, "displayName": "friend"}
+        ]})))
+        .mount(&e.seerr)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/user"))
+        .and(key())
+        .respond_with(
+            ResponseTemplate::new(201).set_body_json(json!({"id": 9, "displayName": "bob"})),
+        )
+        .expect(1)
+        .mount(&e.seerr)
+        .await;
+    for (seerr_id, name) in [(7, "friend"), (9, "bob")] {
+        Mock::given(path("/api/v1/auth/me"))
+            .and(header("x-api-user", seerr_id.to_string().as_str()))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"id": seerr_id, "displayName": name})),
+            )
+            .mount(&e.seerr)
+            .await;
+    }
+    Mock::given(path("/api/v1/settings/public"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"cacheImages": true})))
+        .mount(&e.seerr)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/request"))
+        .and(header("x-api-user", "9"))
+        .and(body_json(json!({"mediaType": "movie", "mediaId": 603})))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"id": 55, "status": 1})))
+        .expect(1)
+        .mount(&e.seerr)
+        .await;
+    Mock::given(path("/api/v1/search"))
+        .and(query_param("query", "the matrix"))
+        .and(header("x-api-user", "9"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"results": []})))
+        .mount(&e.seerr)
+        .await;
+
+    // Plex friend: reuses their Seerr account.
+    let (s, info) = e
+        .call("GET", "/v1/seerr", "plexsrv", "px-friend", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        (info["seerr_user_id"].clone(), info["cache_images"].clone()),
+        (json!(7), json!(true))
+    );
+
+    // Jellyfin bob: created once, then reused for every call.
+    let (s, info) = e.call("GET", "/v1/seerr", "jfsrv", "jf-bob", None).await;
+    assert_eq!(
+        (s, info["user_name"].clone()),
+        (StatusCode::OK, json!("bob"))
+    );
+    let (s, r) = e
+        .call(
+            "POST",
+            "/v1/seerr/api/v1/request",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"mediaType": "movie", "mediaId": 603})),
+        )
+        .await;
+    assert_eq!((s, r["id"].clone()), (StatusCode::CREATED, json!(55)));
+    let (s, _) = e
+        .call(
+            "GET",
+            "/v1/seerr/api/v1/search?query=the%20matrix&page=1",
+            "jfsrv",
+            "jf-bob",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+
+    // Admin endpoints are not forwarded, and unauthenticated callers get nothing.
+    let (s, _) = e
+        .call(
+            "GET",
+            "/v1/seerr/api/v1/settings/main",
+            "jfsrv",
+            "jf-bob",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, _) = e
+        .call(
+            "POST",
+            "/v1/seerr/api/v1/request/55/approve",
+            "jfsrv",
+            "jf-bob",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, _) = e.call("GET", "/v1/seerr", "jfsrv", "nope", None).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
 }

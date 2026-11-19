@@ -11,6 +11,7 @@ mod auth;
 mod config;
 mod db;
 mod keep;
+mod seerr;
 
 use std::sync::Arc;
 

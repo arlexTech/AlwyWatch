@@ -113,6 +113,8 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                             token,
                         )
                         keepError = null
+                        // Seerr through the same server when not set up yet (optional there).
+                        if (core.seerrConnection() == null) runCatching { core.seerrConnectBridge() }
                         version++
                     } catch (e: be.alwyapps.watch.core.CoreException) {
                         keepError = e.message
@@ -137,7 +139,10 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
             ActionButton("Connect Seerr", { nav.push(Route.SeerrConnect) })
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("${seerr.userName} @ ${seerr.baseUrl}", Modifier.weight(1f))
+                Text(
+                    if (seerr.viaKeep) "${seerr.userName} (through your AlwyWatch server)" else "${seerr.userName} @ ${seerr.baseUrl}",
+                    Modifier.weight(1f),
+                )
                 ActionButton("Disconnect", {
                     core.seerrSignOut()
                     ctx.services.tokens.remove("seerr")

@@ -191,6 +191,22 @@ record! {
 }
 
 record! {
+    /// `GET /v1/seerr`: the caller's Seerr account behind the bridge.
+    pub struct SeerrBridgeInfo {
+        pub seerr_user_id: i64,
+        pub user_name: String,
+        /// Seerr's own web UI, when the operator published it.
+        pub public_url: Option<String>,
+        /// Whether Seerr serves images through its cache (`/imageproxy`).
+        pub cache_images: bool,
+    }
+}
+
+/// Seerr API through the bridge: `{keep base}{SEERR_BRIDGE_PATH}/api/v1/...`, same paths and
+/// bodies as Seerr itself (an allow-listed subset), authenticated like every keep call.
+pub const SEERR_BRIDGE_PATH: &str = "/v1/seerr";
+
+record! {
     pub struct ApiError {
         pub error: String,
     }
@@ -229,6 +245,23 @@ impl KeepClient {
     /// Public: the allow-listed servers.
     pub async fn servers(http: &Client, base_url: &str) -> Result<Vec<ServerEntry>> {
         net::send_json(http.get(format!("{}/v1/servers", base_url.trim_end_matches('/')))).await
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base
+    }
+
+    pub fn server_id(&self) -> &str {
+        &self.server_id
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
+    /// Links (or creates) the caller's Seerr account. 404 when the bridge is not configured.
+    pub async fn seerr_bridge(&self) -> Result<SeerrBridgeInfo> {
+        net::send_json(self.req(Method::GET, "/seerr")).await
     }
 
     pub async fn me(&self) -> Result<Me> {

@@ -23,6 +23,8 @@ pub struct State {
     pub http: Client,
     pub maintainerr: Maintainerr,
     pub auth: Auth,
+    /// Seerr for users of the other media server type (None when not configured).
+    pub seerr: Option<crate::seerr::Bridge>,
     /// Wakes the reconciler (after votes and syncs).
     pub reconcile: Notify,
     /// Wakes the "watched" checker (webhooks).
@@ -52,8 +54,14 @@ impl State {
             &config.maintainerr.url,
             config.secrets.maintainerr_api_key.clone(),
         );
+        let seerr = crate::seerr::Bridge::new(
+            http.clone(),
+            config.seerr.as_ref(),
+            config.secrets.seerr_api_key.as_deref(),
+        );
         Self {
             auth: Auth::new(http.clone(), plex_tv),
+            seerr,
             maintainerr,
             config,
             db,

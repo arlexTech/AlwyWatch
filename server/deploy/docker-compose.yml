@@ -14,6 +14,7 @@ services:
       TAUTULLI_API_KEY: ${TAUTULLI_API_KEY}
       JELLYFIN_API_KEY: ${JELLYFIN_API_KEY}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      SEERR_API_KEY: ${SEERR_API_KEY:-}   # Seerr bridge (Seerr → Settings → General → API key)
       # MAINTAINERR_API_KEY: ${MAINTAINERR_API_KEY}   # only if you enable Maintainerr's API key
     volumes:
       - ./data:/data            # config.toml + keep.sqlite (owned by uid 65534)

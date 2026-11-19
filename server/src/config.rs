@@ -18,10 +18,15 @@
 //!
 //! [tautulli]                   # optional: Plex "watched" detection
 //! url = "http://tautulli:8181"
+//!
+//! [seerr]                      # optional: Seerr for users of the other media server type
+//! url = "http://seerr:5055"
+//! public_url = "https://seerr.example.org"
+//! create_users = true          # create a local Seerr user when none matches
 //! ```
 //! Secrets (env): `MAINTAINERR_API_KEY` (optional), `TAUTULLI_API_KEY`,
 //! `JELLYFIN_API_KEY_<SERVER ID>` (or `JELLYFIN_API_KEY` when there is one Jellyfin),
-//! `WEBHOOK_SECRET` (path secret for /v1/hooks/*).
+//! `WEBHOOK_SECRET` (path secret for /v1/hooks/*), `SEERR_API_KEY` (Seerr bridge).
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -61,6 +66,19 @@ pub struct TautulliConf {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct SeerrConf {
+    pub url: String,
+    /// Shown to users (web UI link); never used by the backend.
+    pub public_url: Option<String>,
+    #[serde(default = "yes")]
+    pub create_users: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     #[serde(default = "default_listen")]
     pub listen: SocketAddr,
@@ -70,6 +88,7 @@ pub struct Config {
     pub servers: Vec<ServerConf>,
     pub maintainerr: MaintainerrConf,
     pub tautulli: Option<TautulliConf>,
+    pub seerr: Option<SeerrConf>,
     /// Minutes between Maintainerr syncs.
     #[serde(default = "default_sync")]
     pub sync_minutes: u64,
@@ -82,6 +101,7 @@ pub struct Secrets {
     pub maintainerr_api_key: Option<String>,
     pub tautulli_api_key: Option<String>,
     pub webhook_secret: Option<String>,
+    pub seerr_api_key: Option<String>,
     jellyfin_keys: Vec<(String, String)>,
     jellyfin_default: Option<String>,
 }
@@ -154,6 +174,7 @@ impl Secrets {
             maintainerr_api_key: get("MAINTAINERR_API_KEY"),
             tautulli_api_key: get("TAUTULLI_API_KEY"),
             webhook_secret: get("WEBHOOK_SECRET"),
+            seerr_api_key: get("SEERR_API_KEY"),
             jellyfin_keys,
             jellyfin_default: get("JELLYFIN_API_KEY"),
         }
@@ -165,6 +186,7 @@ impl Secrets {
             maintainerr_api_key: None,
             tautulli_api_key: Some(tautulli.into()),
             webhook_secret: Some("hook".into()),
+            seerr_api_key: Some("seerr-key".into()),
             jellyfin_keys: vec![],
             jellyfin_default: Some(jellyfin.into()),
         }

@@ -694,6 +694,10 @@ impl App {
                 Ok(_) => {
                     t.ui().set_keep_message(SharedString::new());
                     t.refresh_keep_settings();
+                    // Seerr through the same server when not set up yet (optional there).
+                    if t.core.seerr_connection().is_none() {
+                        t.seerr_bridge(true);
+                    }
                 }
                 Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
             }
@@ -996,8 +1000,29 @@ impl App {
         let ui = self.ui();
         ui.set_seerr_active(self.core.seerr_active());
         if let Some(c) = self.core.seerr_connection() {
-            ui.set_seerr_label(sstr(format!("{} @ {}", c.user_name, c.base_url)));
+            ui.set_seerr_label(sstr(if c.via_keep {
+                format!("{} (through your AlwyWatch server)", c.user_name)
+            } else {
+                format!("{} @ {}", c.user_name, c.base_url)
+            }));
         }
+    }
+
+    /// Seerr through the AlwyWatch server (any media server type). `quiet`: the server may
+    /// simply not offer it, which is not worth a message after connecting it.
+    fn seerr_bridge(self: &Rc<Self>, quiet: bool) {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.seerr_connect_bridge().await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(_) => t.ui().set_seerr_message(SharedString::new()),
+                Err(e) if !quiet => t.ui().set_seerr_message(sstr(e.to_string())),
+                Err(_) => {}
+            }
+            t.refresh_seerr_settings();
+        })
+        .ok();
     }
 
     fn seerr_signed_in(self: &Rc<Self>, r: Result<SeerrSignedIn, CoreError>) {
@@ -2383,6 +2408,8 @@ impl App {
         on!(on_keep_disconnect, |a| {
             let _ = a.core.keep_disconnect();
             a.refresh_keep_settings();
+            // A bridged Seerr goes with it.
+            a.refresh_seerr_settings();
         });
         on!(on_keep_vote, |a, key, choice| a
             .keep_vote(key.into(), choice.into()));
@@ -2399,6 +2426,7 @@ impl App {
             let _ = a.tokens.remove("seerr");
             a.refresh_seerr_settings();
         });
+        on!(on_seerr_bridge, |a| a.seerr_bridge(false));
         on!(on_seerr_search, |a, t| a.seerr_search(t.into()));
         on!(on_seerr_open, |a, key| a.seerr_open(key.into()));
         on!(on_seerr_toggle_season, |a, n| {

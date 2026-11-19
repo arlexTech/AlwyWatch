@@ -360,3 +360,57 @@ fn keep_service_connect_list_vote_and_reminders() {
     app.keep_disconnect().unwrap();
     assert!(!app.keep_active());
 }
+
+#[test]
+fn seerr_through_the_keep_bridge() {
+    let env = Env::new();
+    let s = env.sign_in();
+    let app = env.app();
+    let keep = env.block(MockServer::start());
+    let auth = || wiremock::matchers::header("authorization", "Bearer tok");
+    env.block(
+        Mock::given(path("/v1/me"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"user_key": "k", "name": "bob",
+                "server_id": "srv", "is_admin": false, "forever_count": 0,
+                "rights": {"can_keep_forever": true, "max_forever": null, "max_keep_days": null}}),
+            ))
+            .mount(&keep),
+    );
+    env.block(
+        Mock::given(path("/v1/seerr"))
+            .and(auth())
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"seerr_user_id": 9,
+                "user_name": "bob", "public_url": null, "cache_images": true})),
+            )
+            .mount(&keep),
+    );
+    env.block(
+        Mock::given(path("/v1/seerr/api/v1/search"))
+            .and(auth())
+            .and(wiremock::matchers::header("x-alwywatch-server", "srv"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"results": [
+                {"id": 603, "mediaType": "movie", "title": "The Matrix", "releaseDate": "1999-03-31", "posterPath": "/m.jpg"}
+            ]})))
+            .mount(&keep),
+    );
+    env.block(app.keep_connect(keep.uri(), s.account.id.clone(), "tok".into()))
+        .unwrap();
+    assert!(!app.seerr_active());
+    let conn = env.block(app.seerr_connect_bridge()).unwrap();
+    assert!(conn.via_keep);
+    assert!(app.seerr_active());
+    let r = env.block(app.seerr_search("the matrix".into())).unwrap();
+    assert_eq!(r[0].tmdb_id, 603);
+    // Bridged posters come from TMDB directly.
+    assert!(
+        r[0].poster_url
+            .as_deref()
+            .unwrap()
+            .starts_with("https://image.tmdb.org/")
+    );
+    app.keep_disconnect().unwrap();
+    assert!(!app.seerr_active());
+    assert!(app.seerr_connection().is_none());
+}

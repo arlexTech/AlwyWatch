@@ -40,6 +40,9 @@ CREATE TABLE IF NOT EXISTS votes (
 CREATE TABLE IF NOT EXISTS applied (
     item_key TEXT PRIMARY KEY, excluded INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS seerr_links (
+    user_key TEXT PRIMARY KEY, seerr_user_id INTEGER NOT NULL, created INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, actor TEXT NOT NULL,
     action TEXT NOT NULL, detail TEXT NOT NULL
@@ -135,6 +138,37 @@ impl Db {
 
     fn c(&self) -> MutexGuard<'_, Connection> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    // ----- Seerr bridge ------------------------------------------------------------------------
+
+    pub fn seerr_link(&self, user_key: &str) -> rusqlite::Result<Option<i64>> {
+        self.c()
+            .query_row(
+                "SELECT seerr_user_id FROM seerr_links WHERE user_key = ?1",
+                [user_key],
+                |r| r.get(0),
+            )
+            .optional()
+    }
+
+    pub fn set_seerr_link(
+        &self,
+        user_key: &str,
+        seerr_id: i64,
+        created: bool,
+    ) -> rusqlite::Result<()> {
+        self.c().execute(
+            "INSERT OR REPLACE INTO seerr_links(user_key, seerr_user_id, created) VALUES (?1, ?2, ?3)",
+            params![user_key, seerr_id, created],
+        )?;
+        Ok(())
+    }
+
+    pub fn forget_seerr_link(&self, user_key: &str) -> rusqlite::Result<()> {
+        self.c()
+            .execute("DELETE FROM seerr_links WHERE user_key = ?1", [user_key])?;
+        Ok(())
     }
 
     // ----- users and rights -----------------------------------------------------------------

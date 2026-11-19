@@ -366,7 +366,8 @@ impl SeerrAuth {
 pub struct SeerrClient {
     http: Client,
     base: String,
-    cookie: String,
+    /// Session cookie, or the AlwyWatch server's auth headers when bridged.
+    headers: Vec<(String, String)>,
     cache_images: bool,
 }
 
@@ -413,8 +414,19 @@ impl SeerrClient {
         Self {
             http,
             base: session_base_url.trim_end_matches('/').to_owned(),
-            cookie: cookie.to_owned(),
+            headers: vec![(header::COOKIE.as_str().to_owned(), cookie.to_owned())],
             cache_images,
+        }
+    }
+
+    /// Seerr through the AlwyWatch server's bridge (`{keep}/v1/seerr`), for users whose media
+    /// server is not the type Seerr runs on. Same API; posters come straight from TMDB.
+    pub fn bridged(http: Client, bridge_base_url: &str, headers: Vec<(String, String)>) -> Self {
+        Self {
+            http,
+            base: bridge_base_url.trim_end_matches('/').to_owned(),
+            headers,
+            cache_images: false,
         }
     }
 
@@ -423,10 +435,14 @@ impl SeerrClient {
     }
 
     fn req(&self, method: Method, path_and_query: &str) -> RequestBuilder {
-        self.http
+        let mut r = self
+            .http
             .request(method, format!("{}/api/v1{path_and_query}", self.base))
-            .header(header::ACCEPT, "application/json")
-            .header(header::COOKIE, &self.cookie)
+            .header(header::ACCEPT, "application/json");
+        for (k, v) in &self.headers {
+            r = r.header(k.as_str(), v.as_str());
+        }
+        r
     }
 
     /// TMDB poster through Seerr's image cache when it has one (public, no auth needed).

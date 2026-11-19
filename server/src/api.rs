@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! HTTP API (`/v1`), see docs/keep-protocol.md.
 
-use axum::extract::{FromRequestParts, Path, Query, State};
+use axum::body::Bytes;
+use axum::extract::{FromRequestParts, Path, Query, RawQuery, State};
 use axum::http::request::Parts;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{any, get, post, put};
 use axum::{Json, Router};
 use keep_service::{
     ApiError, CountdownRequest, Me, Rights, SERVER_HEADER, ServerEntry, VoteRequest,
@@ -14,6 +15,7 @@ use serde::Deserialize;
 
 use crate::auth::{AuthError, Identity};
 use crate::keep::{Shared, VoteError};
+use crate::seerr::{BridgeError, allowed};
 
 pub fn router(state: Shared) -> Router {
     Router::new()
@@ -29,6 +31,8 @@ pub fn router(state: Shared) -> Router {
             "/v1/admin/collections/{id}/countdown",
             post(admin_countdown),
         )
+        .route("/v1/seerr", get(seerr_info))
+        .route("/v1/seerr/api/v1/{*path}", any(seerr_forward))
         .route("/v1/hooks/{source}/{secret}", post(hook))
         .with_state(state)
 }
@@ -231,6 +235,54 @@ async fn admin_countdown(
             .await
             .map_err(internal)?,
     ))
+}
+
+fn bridge_err(e: BridgeError) -> Error {
+    match e {
+        BridgeError::Disabled => Error(StatusCode::NOT_FOUND, "Seerr is not available here".into()),
+        BridgeError::NoAccount => Error(
+            StatusCode::FORBIDDEN,
+            "no Seerr account for you; ask the administrator".into(),
+        ),
+        BridgeError::Unavailable(m) => Error(StatusCode::BAD_GATEWAY, format!("Seerr: {m}")),
+    }
+}
+
+async fn seerr_info(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+) -> Result<impl IntoResponse, Error> {
+    let bridge = s
+        .seerr
+        .as_ref()
+        .ok_or(BridgeError::Disabled)
+        .map_err(bridge_err)?;
+    Ok(Json(bridge.info(&s.db, &id).await.map_err(bridge_err)?))
+}
+
+async fn seerr_forward(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    method: Method,
+    Path(path): Path<String>,
+    RawQuery(query): RawQuery,
+    body: Bytes,
+) -> Result<Response, Error> {
+    let bridge = s
+        .seerr
+        .as_ref()
+        .ok_or(BridgeError::Disabled)
+        .map_err(bridge_err)?;
+    if !allowed(&method, &path) {
+        return Err(Error(
+            StatusCode::FORBIDDEN,
+            "not available through the bridge".into(),
+        ));
+    }
+    bridge
+        .forward(&s.db, &id, method, &path, query.as_deref(), body)
+        .await
+        .map_err(bridge_err)
 }
 
 /// Tautulli ("watched" notification, JSON) and the Jellyfin webhook plugin. Either just wakes

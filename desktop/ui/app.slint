@@ -292,6 +292,7 @@ export component AppWindow inherits Window {
     callback seerr-login(string);
     callback seerr-password(string, string);
     callback seerr-disconnect();
+    callback seerr-bridge(); // Seerr through the AlwyWatch server
     callback seerr-search(string);
     callback seerr-open(string);
     callback seerr-toggle-season(string);
@@ -847,6 +848,7 @@ export component AppWindow inherits Window {
                         spacing: 10px;
                         surl := LineEdit { placeholder-text: "Seerr address"; accepted(t) => { root.seerr-url(t); } }
                         Button { label: "Connect"; clicked => { root.seerr-url(surl.text); } }
+                        if root.keep-active : Button { label: "Use my AlwyWatch server"; primary: true; clicked => { root.seerr-bridge(); } }
                     }
                     if !root.seerr-active && root.seerr-step == "choose" : HorizontalLayout {
                         spacing: 10px;

@@ -18,9 +18,25 @@ Nothing here is applied automatically. These are the steps for the owner of the 
 | `TAUTULLI_API_KEY` | read Plex users' watch history | Tautulli → Settings → Web Interface → API |
 | `WEBHOOK_SECRET` | optional: lets Tautulli/Jellyfin wake the "watched" check immediately | any long random string |
 | `MAINTAINERR_API_KEY` | only if Maintainerr's API key is turned on | Maintainerr → Settings |
+| `SEERR_API_KEY` | optional Seerr bridge: Seerr for users of the other media server type | Seerr → Settings → General → API Key |
 
 Without the Jellyfin/Tautulli keys everything works except automatic release of "keep until I
-watched it" (those then behave like "keep forever" until the user removes them).
+watched it" (those then behave like "keep forever" until the user removes them). Without
+`SEERR_API_KEY` (or `[seerr]` in config.toml) the Seerr bridge is off and users connect to Seerr
+directly, which only works for the media server type Seerr runs on.
+
+### Seerr bridge
+
+Seerr serves one media server type at a time. With `[seerr]` and `SEERR_API_KEY` set, users of the
+other type (today: Jellyfin users, since Seerr is in Plex mode) use Seerr through alwywatch-server:
+* a user whose Seerr account already exists (same Plex id / Jellyfin user id) is linked to it;
+* otherwise a **local Seerr user** is created once (email `jellyfin-<id>@alwywatch.local`, random
+  password nobody knows, Seerr's *default permissions*). It shows up in Seerr → Users like anyone
+  else: set quotas, auto-approve or remove it there. `create_users = false` disables creation;
+  such users then get "no Seerr account, ask the administrator";
+* calls are made with the API key acting as that user (`X-API-User`), so Seerr enforces their
+  permissions. Only search, details, requesting, listing and cancelling requests are forwarded;
+  settings, users and approval endpoints are refused by the bridge.
 
 ## 2. Files
 

@@ -990,6 +990,9 @@ pub struct SeerrConnection {
     pub base_url: String,
     pub user_name: String,
     pub cache_images: bool,
+    /// Through the AlwyWatch server's Seerr bridge (no cookie; uses the keep connection).
+    #[serde(default)]
+    pub via_keep: bool,
 }
 
 /// Result of a Seerr sign-in: the platform stores `cookie` in secure storage.
@@ -1003,13 +1006,32 @@ const SEERR_KEY: &str = "seerr.connection";
 
 impl Core {
     fn seerr(&self) -> Result<seerr::SeerrClient> {
-        self.seerr
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-            .ok_or(CoreError::NotSignedIn {
-                account_id: "seerr".into(),
-            })
+        if let Some(c) = self.seerr.read().unwrap_or_else(|e| e.into_inner()).clone() {
+            return Ok(c);
+        }
+        // Bridged: built from the keep connection, so it follows its token and lifetime.
+        let bridged = self
+            .store
+            .setting(SEERR_KEY)?
+            .and_then(|s| serde_json::from_str::<SeerrConnection>(&s).ok())
+            .is_some_and(|c| c.via_keep);
+        if bridged && let Ok(keep) = self.keep() {
+            return Ok(self.seerr_bridged(&keep));
+        }
+        Err(CoreError::NotSignedIn {
+            account_id: "seerr".into(),
+        })
+    }
+
+    fn seerr_bridged(&self, keep: &keep_service::KeepClient) -> seerr::SeerrClient {
+        seerr::SeerrClient::bridged(
+            self.http.clone(),
+            &format!("{}{}", keep.base_url(), keep_service::SEERR_BRIDGE_PATH),
+            vec![
+                ("Authorization".into(), format!("Bearer {}", keep.token())),
+                (keep_service::SERVER_HEADER.into(), keep.server_id().into()),
+            ],
+        )
     }
 
     async fn seerr_finish(
@@ -1023,6 +1045,7 @@ impl Core {
             base_url: session.base_url.clone(),
             user_name: session.user.display_name.clone(),
             cache_images: info.cache_images,
+            via_keep: false,
         };
         self.store.set_setting(
             SEERR_KEY,
@@ -1140,9 +1163,35 @@ impl AlwyWatch {
             .and_then(|s| serde_json::from_str(&s).ok())
     }
 
-    /// Re-attaches Seerr with the cookie from secure storage. No network.
+    /// Seerr through the connected AlwyWatch server, for accounts Seerr itself cannot sign in
+    /// (e.g. Jellyfin users while Seerr runs in Plex mode). The server links or creates the
+    /// user's Seerr account; nothing needs storing on the device.
+    pub async fn seerr_connect_bridge(&self) -> Result<SeerrConnection> {
+        self.run(|c| async move {
+            let keep = c.keep()?;
+            let info = keep.seerr_bridge().await?;
+            let conn = SeerrConnection {
+                base_url: format!("{}{}", keep.base_url(), keep_service::SEERR_BRIDGE_PATH),
+                user_name: info.user_name,
+                cache_images: false,
+                via_keep: true,
+            };
+            c.store
+                .set_setting(SEERR_KEY, &serde_json::to_string(&conn).unwrap_or_default())?;
+            *c.seerr.write().unwrap_or_else(|e| e.into_inner()) = None;
+            c.store.cache_delete("seerr/requests")?;
+            Ok(conn)
+        })
+        .await
+    }
+
+    /// Re-attaches Seerr with the cookie from secure storage. No network. Not needed for a
+    /// bridged connection (`via_keep`).
     pub fn seerr_activate(&self, cookie: String) -> Result<()> {
         let conn = self.seerr_connection().ok_or(CoreError::NotFound)?;
+        if conn.via_keep {
+            return Ok(());
+        }
         *self.core.seerr.write().unwrap_or_else(|e| e.into_inner()) =
             Some(seerr::SeerrClient::new(
                 self.core.http.clone(),
@@ -1364,6 +1413,9 @@ impl AlwyWatch {
         *self.core.keep.write().unwrap_or_else(|e| e.into_inner()) = None;
         self.core.store.remove_setting(KEEP_KEY)?;
         self.core.store.cache_delete(LEAVING_KEY)?;
+        if self.seerr_connection().is_some_and(|c| c.via_keep) {
+            self.seerr_sign_out()?;
+        }
         Ok(())
     }
 

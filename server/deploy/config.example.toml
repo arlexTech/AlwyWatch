@@ -25,3 +25,11 @@ server = "<plex machineIdentifier>"
 
 [tautulli]
 url = "http://tautulli:8181"
+
+# Optional: Seerr for users of the media server type Seerr does not run on (it serves one type
+# at a time). Needs SEERR_API_KEY. Users are linked to their existing Seerr account (same Plex
+# id / Jellyfin user id) or get a local Seerr user created once with Seerr's default permissions.
+[seerr]
+url = "http://seerr:5055"
+public_url = "https://seerr.example.org"
+create_users = true
