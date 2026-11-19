@@ -211,17 +211,20 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                 },
                 subtitle = "Switches the TV to the video's frame rate (no judder).",
             )
-            Divider()
             var tunneling by remember { mutableStateOf(settings.tunneling) }
-            ToggleRow(
-                "Tunneled playback",
-                tunneling,
-                {
-                    tunneling = it
-                    settings.tunneling = it
-                },
-                subtitle = "Lower power on some TV devices, but breaks playback on others.",
-            )
+            // Tunneling only exists on TV devices.
+            if (d.isTv) Divider()
+            if (d.isTv) {
+                ToggleRow(
+                    "Tunneled playback",
+                    tunneling,
+                    {
+                        tunneling = it
+                        settings.tunneling = it
+                    },
+                    subtitle = "Lower power on some TV devices, but breaks playback on others.",
+                )
+            }
         }
 
         Group("Storage") {

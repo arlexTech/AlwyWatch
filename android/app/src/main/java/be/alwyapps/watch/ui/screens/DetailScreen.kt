@@ -227,8 +227,11 @@ fun DetailScreen(itemId: String) {
                             Text(it, style = MaterialTheme.typography.bodyLarge, color = OnSurface.copy(alpha = 0.85f), maxLines = if (d.isTv) 4 else 8)
                         }
                         if (item.genres.isNotEmpty()) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                for (g in item.genres.take(4)) Chip(g)
+                            androidx.compose.foundation.layout.FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                for (g in item.genres.take(5)) Chip(g)
                             }
                         }
                     }
@@ -250,6 +253,7 @@ private fun Chip(text: String) {
             .padding(horizontal = 12.dp, vertical = 6.dp),
         style = MaterialTheme.typography.labelMedium,
         color = Muted,
+        maxLines = 1,
     )
 }
 

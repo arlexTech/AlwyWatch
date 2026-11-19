@@ -92,7 +92,7 @@ fun DownloadsScreen() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    androidx.compose.material3.Icon(be.alwyapps.watch.ui.Icons.Download, null, Modifier.height(48.dp), tint = be.alwyapps.watch.ui.Subtle)
+                    androidx.compose.material3.Icon(be.alwyapps.watch.ui.Icons.Download, null, Modifier.height(56.dp).width(56.dp), tint = be.alwyapps.watch.ui.Subtle)
                     Text("Nothing downloaded yet", style = MaterialTheme.typography.titleMedium)
                     Text("Tap the download button on a movie or an episode.", color = Muted, style = MaterialTheme.typography.bodyMedium)
                 }
