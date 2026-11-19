@@ -32,6 +32,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.CoreException
 import be.alwyapps.watch.core.SignedIn
+import be.alwyapps.watch.core.keep.ServerEntry
+import be.alwyapps.watch.core.keep.ServerType
 import be.alwyapps.watch.core.media.PlexServerResource
 import be.alwyapps.watch.core.media.QuickConnectCode
 import be.alwyapps.watch.services
@@ -73,12 +75,17 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
     var step by remember { mutableStateOf<Step>(Step.Choose) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    // Picked from an AlwyWatch server's list: Plex then selects that server by itself.
+    var presetPlexId by remember { mutableStateOf<String?>(null) }
 
     fun finish(s: SignedIn) {
         ctx.services.tokens.put(s.account.id, s.token)
         // Plex: the plex.tv account token is what Seerr and the keep service accept.
         s.plexAccountToken?.let { ctx.services.tokens.put("${s.account.id}:plextv", it) }
         core.setSetting("current_account", s.account.id)
+        // Leaving soon + Seerr through the AlwyWatch server the user started from (if any).
+        val keepToken = s.plexAccountToken ?: s.token
+        ctx.services.scope.launch { runCatching { core.keepOnboard(s.account.id, keepToken) } }
         onSignedIn(s.account.id)
     }
 
@@ -113,6 +120,26 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     ActionButton("Jellyfin", { step = Step.JellyfinUrl }, Modifier.initialFocus(), primary = true)
                     ActionButton("Plex", { step = Step.Plex })
                 }
+                AlwyWatchServerPicker(
+                    busy = busy,
+                    onPick = { url, entry ->
+                        attempt {
+                            core.keepSetPreset(url)
+                            when (entry.kind) {
+                                ServerType.JELLYFIN -> {
+                                    core.jellyfinServerInfo(entry.url)
+                                    val quick = runCatching { core.jellyfinQuickConnectStart(entry.url) }.getOrNull()
+                                    step = Step.Jellyfin(entry.url, quick)
+                                }
+                                ServerType.PLEX -> {
+                                    presetPlexId = entry.id
+                                    step = Step.Plex
+                                }
+                            }
+                        }
+                    },
+                    onError = { error = it },
+                )
             }
 
             Step.JellyfinUrl -> {
@@ -199,7 +226,13 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                             delay(2000)
                             try {
                                 val token = core.plexCheckPin(pin.id)
-                                step = Step.PlexServers(token, core.plexServers(token))
+                                val servers = core.plexServers(token)
+                                val preset = servers.firstOrNull { it.machineId == presetPlexId }
+                                if (preset != null) {
+                                    finish(core.plexConnect(token, preset, null))
+                                } else {
+                                    step = Step.PlexServers(token, servers)
+                                }
                                 break
                             } catch (_: CoreException.Pending) {
                             }
@@ -232,6 +265,51 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 step = Step.Choose
                 error = null
             })
+        }
+    }
+}
+
+/** "Got an AlwyWatch server address?": lists its servers so nobody types media server URLs. */
+@Composable
+private fun AlwyWatchServerPicker(
+    busy: Boolean,
+    onPick: (url: String, entry: ServerEntry) -> Unit,
+    onError: (String?) -> Unit,
+) {
+    val core = LocalCore.current
+    val scope = rememberCoroutineScope()
+    var url by remember { mutableStateOf("") }
+    var entries by remember { mutableStateOf<Pair<String, List<ServerEntry>>?>(null) }
+    val load = {
+        onError(null)
+        scope.launch {
+            try {
+                val normalized =
+                    be.alwyapps.watch.core
+                        .normalizeServerUrl(url)
+                entries = normalized to core.keepServers(normalized)
+            } catch (e: CoreException) {
+                onError(e.message)
+            }
+        }
+    }
+    Text("Or, with an AlwyWatch server address from your server owner:", color = Muted, modifier = Modifier.padding(top = 12.dp))
+    OutlinedTextField(
+        url,
+        { url = it },
+        label = { Text("AlwyWatch server") },
+        placeholder = { Text("watch.example.org") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+        keyboardActions = KeyboardActions(onGo = { load() }),
+        modifier = Modifier.fillMaxWidth().dpadEscape(),
+    )
+    ActionButton("Show servers", { load() })
+    entries?.let { (base, list) ->
+        if (list.isEmpty()) Text("This AlwyWatch server lists no media servers.", color = Muted)
+        for (e in list) {
+            val kind = if (e.kind == ServerType.PLEX) "Plex" else "Jellyfin"
+            ActionButton("${e.name} ($kind)", { if (!busy) onPick(base, e) }, primary = true)
         }
     }
 }

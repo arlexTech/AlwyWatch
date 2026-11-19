@@ -61,6 +61,11 @@ struct State {
     jellyfin_url: String,
     plex_token: String,
     plex_servers: Vec<PlexServerResource>,
+    /// Servers listed by an AlwyWatch server on the add screen, and that server's address.
+    preset_servers: Vec<ServerEntry>,
+    preset_url: String,
+    /// Plex server picked from that list: selected automatically after the plex.tv sign-in.
+    preset_plex: Option<String>,
     series: Option<String>,
     season: Option<String>,
     search_gen: u64,
@@ -151,6 +156,9 @@ impl App {
                 jellyfin_url: String::new(),
                 plex_token: String::new(),
                 plex_servers: vec![],
+                preset_servers: vec![],
+                preset_url: String::new(),
+                preset_plex: None,
                 series: None,
                 season: None,
                 search_gen: 0,
@@ -2122,6 +2130,19 @@ impl App {
         let _ = self
             .core
             .set_setting("current_account".into(), s.account.id.clone());
+        // Leaving soon + Seerr through the AlwyWatch server the user started from (if any).
+        if let Some(token) = self.keep_token(&s.account.id) {
+            let (core, this, id) = (self.core.clone(), Rc::downgrade(self), s.account.id.clone());
+            slint::spawn_local(async move {
+                if let Ok(Some(_)) = core.keep_onboard(id, token).await
+                    && let Some(t) = this.upgrade()
+                {
+                    t.refresh_keep_settings();
+                    t.refresh_seerr_settings();
+                }
+            })
+            .ok();
+        }
         self.state.borrow_mut().account = Some(s.account.id);
         self.images.borrow_mut().clear();
         self.reset(Route::Home);
@@ -2165,6 +2186,68 @@ impl App {
                 self.plex_flow();
             }
             _ => ui.set_add_step("choose".into()),
+        }
+    }
+
+    /// Lists an AlwyWatch server's media servers so nobody types their URLs.
+    fn add_keep_servers(self: &Rc<Self>, url: String) {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let url = match normalize_server_url(url) {
+                Ok(u) => u,
+                Err(e) => return report(&this, e),
+            };
+            let list = match core.keep_servers(url.clone()).await {
+                Ok(l) => l,
+                Err(e) => return report(&this, e),
+            };
+            let Some(t) = this.upgrade() else { return };
+            t.ui().set_preset_servers(ModelRc::new(VecModel::from(
+                list.iter()
+                    .enumerate()
+                    .map(|(i, e)| NamedId {
+                        id: sstr(i.to_string()),
+                        title: sstr(format!(
+                            "{} ({})",
+                            e.name,
+                            match e.kind {
+                                ServerType::Plex => "Plex",
+                                ServerType::Jellyfin => "Jellyfin",
+                            }
+                        )),
+                        selected: false,
+                    })
+                    .collect::<Vec<_>>(),
+            )));
+            t.ui().set_status(if list.is_empty() {
+                "This AlwyWatch server lists no media servers.".into()
+            } else {
+                SharedString::new()
+            });
+            let mut st = t.state.borrow_mut();
+            st.preset_servers = list;
+            st.preset_url = url;
+        })
+        .ok();
+    }
+
+    fn add_keep_pick(self: &Rc<Self>, index: String) {
+        let (entry, url) = {
+            let st = self.state.borrow();
+            let e = index
+                .parse::<usize>()
+                .ok()
+                .and_then(|i| st.preset_servers.get(i).cloned());
+            (e, st.preset_url.clone())
+        };
+        let Some(entry) = entry else { return };
+        let _ = self.core.keep_set_preset(url);
+        match entry.kind {
+            ServerType::Jellyfin => self.jellyfin_url(entry.url),
+            ServerType::Plex => {
+                self.state.borrow_mut().preset_plex = Some(entry.id);
+                self.add_choose("plex".into());
+            }
         }
     }
 
@@ -2280,9 +2363,16 @@ impl App {
                         )));
                         let mut st = t.state.borrow_mut();
                         st.plex_token = token;
+                        let preset = st
+                            .preset_plex
+                            .take()
+                            .filter(|id| servers.iter().any(|s| &s.machine_id == id));
                         st.plex_servers = servers;
                         drop(st);
-                        t.ui().set_add_step("plex-servers".into());
+                        match preset {
+                            Some(id) => t.plex_pick(id),
+                            None => t.ui().set_add_step("plex-servers".into()),
+                        }
                         return;
                     }
                     Err(CoreError::Pending) => continue,
@@ -2392,6 +2482,8 @@ impl App {
         }));
         on!(on_add_choose, |a, which| a.add_choose(which.into()));
         on!(on_jellyfin_url, |a, url| a.jellyfin_url(url.into()));
+        on!(on_add_keep_servers, |a, url| a.add_keep_servers(url.into()));
+        on!(on_add_keep_pick, |a, i| a.add_keep_pick(i.into()));
         on!(on_jellyfin_sign_in, |a, u, p| a
             .jellyfin_sign_in(u.into(), p.into()));
         on!(on_plex_pick, |a, id| a.plex_pick(id.into()));

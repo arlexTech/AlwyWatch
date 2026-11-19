@@ -395,10 +395,20 @@ fn seerr_through_the_keep_bridge() {
             ]})))
             .mount(&keep),
     );
-    env.block(app.keep_connect(keep.uri(), s.account.id.clone(), "tok".into()))
+    // No preset: onboarding does nothing.
+    assert!(
+        env.block(app.keep_onboard(s.account.id.clone(), "tok".into()))
+            .unwrap()
+            .is_none()
+    );
+    // Server picked from the AlwyWatch server's list, then signed in: both get connected.
+    app.keep_set_preset(keep.uri()).unwrap();
+    let k = env
+        .block(app.keep_onboard(s.account.id.clone(), "tok".into()))
         .unwrap();
-    assert!(!app.seerr_active());
-    let conn = env.block(app.seerr_connect_bridge()).unwrap();
+    assert_eq!(k.unwrap().user_name, "bob");
+    assert!(app.keep_active());
+    let conn = app.seerr_connection().unwrap();
     assert!(conn.via_keep);
     assert!(app.seerr_active());
     let r = env.block(app.seerr_search("the matrix".into())).unwrap();

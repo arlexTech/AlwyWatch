@@ -281,6 +281,9 @@ export component AppWindow inherits Window {
     callback jellyfin-url(string);
     callback jellyfin-sign-in(string, string);
     callback plex-pick(string);
+    callback add-keep-servers(string);
+    callback add-keep-pick(string);
+    in property <[NamedId]> preset-servers;
     callback use-account(string);
     callback remove-account(string);
     callback clear-cache();
@@ -522,6 +525,19 @@ export component AppWindow inherits Window {
                     alignment: start;
                     Button { label: "Jellyfin"; primary: true; clicked => { root.add-choose("jellyfin"); } }
                     Button { label: "Plex"; clicked => { root.add-choose("plex"); } }
+                }
+                if root.add-step == "choose" : VerticalLayout {
+                    spacing: 8px;
+                    Text { text: "Or, with an AlwyWatch server address from your server owner:"; color: Palette.muted; }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        kserver := LineEdit { placeholder-text: "watch.example.org"; accepted(t) => { root.add-keep-servers(t); } }
+                        Button { label: "Show servers"; clicked => { root.add-keep-servers(kserver.text); } }
+                    }
+                    for s in root.preset-servers : HorizontalLayout {
+                        alignment: start;
+                        Button { label: s.title; primary: true; clicked => { root.add-keep-pick(s.id); } }
+                    }
                 }
                 if root.add-step == "jellyfin-url" : VerticalLayout {
                     spacing: 12px;

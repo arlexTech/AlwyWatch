@@ -1314,6 +1314,8 @@ pub struct KeepConnection {
 }
 
 const KEEP_KEY: &str = "keep.connection";
+/// AlwyWatch server address entered on the add-server screen, connected after sign-in.
+const KEEP_PRESET_KEY: &str = "keep.preset_url";
 const LEAVING_KEY: &str = "keep/leaving-soon";
 
 impl Core {
@@ -1383,6 +1385,36 @@ impl AlwyWatch {
             Ok(conn)
         })
         .await
+    }
+
+    /// Remembers the AlwyWatch server a user picked a media server from, so `keep_onboard`
+    /// can connect it right after they sign in.
+    pub fn keep_set_preset(&self, url: String) -> Result<()> {
+        let base = net::normalize_base_url(&url)?;
+        Ok(self.core.store.set_setting(KEEP_PRESET_KEY, &base)?)
+    }
+
+    /// After a sign-in: connects the preset AlwyWatch server as that account (if any and not
+    /// connected yet), then Seerr through it when Seerr is not set up. Seerr failing (bridge not
+    /// offered) is not an error. `token` is the same one `keep_connect` takes.
+    pub async fn keep_onboard(
+        &self,
+        account_id: String,
+        token: String,
+    ) -> Result<Option<KeepConnection>> {
+        let Some(url) = self.core.store.setting(KEEP_PRESET_KEY)? else {
+            return Ok(None);
+        };
+        if self.keep_connection().is_some() {
+            self.core.store.remove_setting(KEEP_PRESET_KEY)?;
+            return Ok(None);
+        }
+        let conn = self.keep_connect(url, account_id, token).await?;
+        self.core.store.remove_setting(KEEP_PRESET_KEY)?;
+        if self.seerr_connection().is_none() {
+            let _ = self.seerr_connect_bridge().await;
+        }
+        Ok(Some(conn))
     }
 
     pub fn keep_connection(&self) -> Option<KeepConnection> {
