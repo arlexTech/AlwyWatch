@@ -107,3 +107,24 @@ abstract class UniffiBindgenTask : RustTask() {
         }
     }
 }
+
+/**
+ * Version of the rustls-platform-verifier Android component, read from Cargo.lock so the Kotlin
+ * half always matches the Rust half (as required by that crate).
+ */
+abstract class RustlsVerifierVersion : org.gradle.api.provider.ValueSource<String, RustlsVerifierVersion.Params> {
+    interface Params : org.gradle.api.provider.ValueSourceParameters {
+        val lockFile: org.gradle.api.file.RegularFileProperty
+    }
+
+    override fun obtain(): String {
+        val lines = parameters.lockFile.get().asFile.readLines()
+        val idx = lines.indexOfFirst { it.trim() == "name = \"rustls-platform-verifier-android\"" }
+        check(idx >= 0) { "rustls-platform-verifier-android not found in Cargo.lock" }
+        return lines
+            .drop(idx + 1)
+            .first { it.trimStart().startsWith("version = ") }
+            .substringAfter('"')
+            .substringBefore('"')
+    }
+}

@@ -4,3 +4,6 @@
 -dontwarn java.awt.**
 # Generated UniFFI bindings: callback interfaces and structures are reached through JNA.
 -keep class be.alwyapps.watch.core.** { *; }
+# rustls-platform-verifier: called from Rust through JNI, invisible to R8.
+-keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }
+-keep class be.alwyapps.watch.core.NativeTls { *; }

@@ -37,6 +37,11 @@ val uniffiBindgen =
         outDir.set(layout.buildDirectory.dir("generated/uniffi/kotlin"))
     }
 
+val rustlsVerifierVersion =
+    providers.of(RustlsVerifierVersion::class.java) {
+        parameters.lockFile.set(File(rustRoot, "Cargo.lock"))
+    }
+
 android {
     namespace = "be.alwyapps.watch"
     compileSdk = 37
@@ -70,7 +75,7 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = false
+        buildConfig = true
     }
 
     packaging {
@@ -98,8 +103,20 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)
-    implementation(libs.tv.material)
     // UniFFI's Kotlin bindings call the Rust library through JNA.
     implementation("${libs.jna.get()}@aar")
+    // Kotlin half of rustls-platform-verifier; version must equal the Rust crate's (Cargo.lock).
+    implementation("org.rustls:rustls-platform-verifier:${rustlsVerifierVersion.get()}")
+    // The generated bindings expose async Rust functions as suspend functions.
+    implementation(libs.coroutines.android)
+    implementation(libs.media3.exoplayer)
+    // Only for the server-transcode fallback (Jellyfin/Plex serve HLS).
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.ui)
+    // Software decoding of DTS/DTS-HD/TrueHD/(E-)AC3 on devices without those decoders,
+    // so audio never needs a server transcode.
+    implementation(libs.media3.ffmpeg)
+    // libass rendering for ASS/SSA subtitles (styles, positioning, karaoke).
+    implementation(libs.ass.media)
     debugImplementation(libs.compose.ui.tooling)
 }
