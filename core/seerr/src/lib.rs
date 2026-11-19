@@ -597,10 +597,8 @@ impl SeerrClient {
             .filter_map(|v| self.convert_request(v))
             .collect();
         // Titles and posters come from the details endpoints (cached by Seerr).
-        let details = out.iter().map(|r| self.details(r.media_type, r.tmdb_id));
-        let resolved = join_all(details).await;
-        for (r, d) in out.iter_mut().zip(resolved) {
-            if let Some((title, poster)) = d {
+        for r in out.iter_mut() {
+            if let Some((title, poster)) = self.details(r.media_type, r.tmdb_id).await {
                 r.title = Some(title);
                 r.poster_url = poster;
             }
@@ -655,16 +653,6 @@ impl SeerrClient {
         let d: D = net::send_json(self.req(Method::GET, &path)).await?;
         Ok(availability(d.media_info.and_then(|m| m.status)))
     }
-}
-
-/// Minimal join_all for a handful of futures (avoids pulling in the futures crate).
-async fn join_all<F: std::future::Future>(futs: impl IntoIterator<Item = F>) -> Vec<F::Output> {
-    let mut out = Vec::new();
-    // Sequential but each call is a small cached Seerr lookup; requests lists are short.
-    for f in futs {
-        out.push(f.await);
-    }
-    out
 }
 
 #[cfg(test)]

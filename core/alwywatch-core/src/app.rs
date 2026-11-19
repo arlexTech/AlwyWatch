@@ -166,6 +166,7 @@ pub fn bucket_width(w: u32) -> u32 {
 // ---------------------------------------------------------------------------------------------
 
 pub struct Core {
+    seerr: RwLock<Option<seerr::SeerrClient>>,
     downloads: downloads::Downloads,
     downloads_running: std::sync::atomic::AtomicBool,
     client: ClientInfo,
@@ -456,6 +457,7 @@ impl AlwyWatch {
         })?;
         Ok(Arc::new(Self {
             core: Arc::new(Core {
+                seerr: RwLock::new(None),
                 downloads,
                 downloads_running: std::sync::atomic::AtomicBool::new(false),
                 client: config.client,
@@ -968,6 +970,275 @@ impl AlwyWatch {
 
     pub fn set_setting(&self, key: String, value: String) -> Result<()> {
         Ok(self.core.store.set_setting(&key, &value)?)
+    }
+}
+
+/// The Seerr connection as stored locally (the session cookie is kept by the platform).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct SeerrConnection {
+    pub base_url: String,
+    pub user_name: String,
+    pub cache_images: bool,
+}
+
+/// Result of a Seerr sign-in: the platform stores `cookie` in secure storage.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SeerrSignedIn {
+    pub connection: SeerrConnection,
+    pub cookie: String,
+}
+
+const SEERR_KEY: &str = "seerr.connection";
+
+impl Core {
+    fn seerr(&self) -> Result<seerr::SeerrClient> {
+        self.seerr
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or(CoreError::NotSignedIn {
+                account_id: "seerr".into(),
+            })
+    }
+
+    async fn seerr_finish(
+        &self,
+        url: &str,
+        session: Result<seerr::SeerrSession>,
+    ) -> Result<SeerrSignedIn> {
+        let session = session?;
+        let info = seerr::SeerrAuth::new(self.http.clone()).info(url).await?;
+        let connection = SeerrConnection {
+            base_url: session.base_url.clone(),
+            user_name: session.user.display_name.clone(),
+            cache_images: info.cache_images,
+        };
+        self.store.set_setting(
+            SEERR_KEY,
+            &serde_json::to_string(&connection).unwrap_or_default(),
+        )?;
+        *self.seerr.write().unwrap_or_else(|e| e.into_inner()) = Some(seerr::SeerrClient::new(
+            self.http.clone(),
+            &session.base_url,
+            &session.cookie,
+            info.cache_images,
+        ));
+        Ok(SeerrSignedIn {
+            connection,
+            cookie: session.cookie,
+        })
+    }
+}
+
+#[uniffi::export]
+impl AlwyWatch {
+    /// What a Seerr instance accepts for sign-in (Plex, Jellyfin, Emby, local).
+    pub async fn seerr_info(&self, url: String) -> Result<SeerrInfo> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            Ok(seerr::SeerrAuth::new(c.http.clone()).info(&base).await?)
+        })
+        .await
+    }
+
+    /// `plex_account_token` comes from a plex.tv PIN sign-in (`plex_create_pin`/`plex_check_pin`).
+    pub async fn seerr_sign_in_plex(
+        &self,
+        url: String,
+        plex_account_token: String,
+    ) -> Result<SeerrSignedIn> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            let r = seerr::SeerrAuth::new(c.http.clone())
+                .sign_in_plex(&base, &plex_account_token)
+                .await
+                .map_err(CoreError::from);
+            c.seerr_finish(&base, r).await
+        })
+        .await
+    }
+
+    pub async fn seerr_sign_in_jellyfin(
+        &self,
+        url: String,
+        username: String,
+        password: String,
+    ) -> Result<SeerrSignedIn> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            let r = seerr::SeerrAuth::new(c.http.clone())
+                .sign_in_jellyfin(&base, &username, &password)
+                .await
+                .map_err(CoreError::from);
+            c.seerr_finish(&base, r).await
+        })
+        .await
+    }
+
+    pub async fn seerr_sign_in_local(
+        &self,
+        url: String,
+        email: String,
+        password: String,
+    ) -> Result<SeerrSignedIn> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            let r = seerr::SeerrAuth::new(c.http.clone())
+                .sign_in_local(&base, &email, &password)
+                .await
+                .map_err(CoreError::from);
+            c.seerr_finish(&base, r).await
+        })
+        .await
+    }
+
+    pub async fn seerr_quick_connect_start(&self, url: String) -> Result<SeerrQuickConnect> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            Ok(seerr::SeerrAuth::new(c.http.clone())
+                .quick_connect_start(&base)
+                .await?)
+        })
+        .await
+    }
+
+    /// `CoreError::Pending` until approved in a Jellyfin app.
+    pub async fn seerr_quick_connect_poll(
+        &self,
+        url: String,
+        secret: String,
+    ) -> Result<SeerrSignedIn> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            let r = seerr::SeerrAuth::new(c.http.clone())
+                .quick_connect_poll(&base, &secret)
+                .await
+                .map_err(CoreError::from);
+            c.seerr_finish(&base, r).await
+        })
+        .await
+    }
+
+    /// The stored Seerr connection, if any (no network).
+    pub fn seerr_connection(&self) -> Option<SeerrConnection> {
+        self.core
+            .store
+            .setting(SEERR_KEY)
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str(&s).ok())
+    }
+
+    /// Re-attaches Seerr with the cookie from secure storage. No network.
+    pub fn seerr_activate(&self, cookie: String) -> Result<()> {
+        let conn = self.seerr_connection().ok_or(CoreError::NotFound)?;
+        *self.core.seerr.write().unwrap_or_else(|e| e.into_inner()) =
+            Some(seerr::SeerrClient::new(
+                self.core.http.clone(),
+                &conn.base_url,
+                &cookie,
+                conn.cache_images,
+            ));
+        Ok(())
+    }
+
+    pub fn seerr_active(&self) -> bool {
+        self.core.seerr().is_ok()
+    }
+
+    pub fn seerr_sign_out(&self) -> Result<()> {
+        *self.core.seerr.write().unwrap_or_else(|e| e.into_inner()) = None;
+        self.core.store.remove_setting(SEERR_KEY)?;
+        self.core.store.cache_delete("seerr/requests")?;
+        Ok(())
+    }
+
+    pub async fn seerr_search(&self, query: String) -> Result<Vec<SeerrResult>> {
+        self.run(|c| async move { Ok(c.seerr()?.search(&query, 1).await?) })
+            .await
+    }
+
+    pub async fn seerr_seasons(&self, tmdb_id: i64) -> Result<Vec<SeerrSeason>> {
+        self.run(|c| async move { Ok(c.seerr()?.seasons(tmdb_id).await?) })
+            .await
+    }
+
+    /// Requests a movie or a show (`seasons` empty = every season).
+    pub async fn seerr_request(
+        &self,
+        media_type: SeerrMediaType,
+        tmdb_id: i64,
+        seasons: Vec<u32>,
+    ) -> Result<SeerrRequest> {
+        self.run(|c| async move {
+            let r = c.seerr()?.request(media_type, tmdb_id, &seasons).await?;
+            c.store.cache_mark_stale("seerr/requests")?;
+            Ok(r)
+        })
+        .await
+    }
+
+    pub async fn seerr_cancel(&self, request_id: i64) -> Result<()> {
+        self.run(|c| async move {
+            c.seerr()?.cancel(request_id).await?;
+            c.store.cache_mark_stale("seerr/requests")?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub fn cached_seerr_requests(&self) -> Result<Option<Vec<SeerrRequest>>> {
+        Ok(self
+            .core
+            .store
+            .cache_get::<Vec<SeerrRequest>>("seerr/requests")?
+            .map(|c| c.value))
+    }
+
+    pub async fn refresh_seerr_requests(&self, force: bool) -> Result<Vec<SeerrRequest>> {
+        self.run(|c| async move {
+            let client = c.seerr()?;
+            let (v, _) = c
+                .swr("seerr/requests", TTL_HOME, force, || async {
+                    Ok(client.requests(50).await?)
+                })
+                .await?;
+            Ok(v)
+        })
+        .await
+    }
+
+    /// Local file for an arbitrary public image URL (Seerr/TMDB posters), cached like the rest.
+    pub async fn remote_image(&self, url: String) -> Result<String> {
+        self.run(|c| async move {
+            let key = format!("url\u{1f}{url}");
+            if let Some(p) = c.images.get(&key)? {
+                return Ok(p.to_string_lossy().into_owned());
+            }
+            let _permit = c
+                .image_permits
+                .acquire()
+                .await
+                .map_err(|e| CoreError::Internal {
+                    detail: e.to_string(),
+                })?;
+            let bytes = net::send(c.http.get(&url))
+                .await?
+                .bytes()
+                .await
+                .map_err(net::Error::from)?;
+            Ok(c.images.put(&key, &bytes)?.to_string_lossy().into_owned())
+        })
+        .await
+    }
+
+    pub fn cached_remote_image(&self, url: String) -> Option<String> {
+        self.core
+            .images
+            .get(&format!("url\u{1f}{url}"))
+            .ok()
+            .flatten()
+            .map(|p| p.to_string_lossy().into_owned())
     }
 }
 

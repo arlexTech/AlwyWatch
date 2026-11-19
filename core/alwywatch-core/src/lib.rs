@@ -23,6 +23,10 @@ pub use error::{CoreError, Result};
 pub use media_api::jellyfin::QuickConnectCode;
 pub use media_api::model::*;
 pub use media_api::plex::{PlexPin, PlexServerResource};
+pub use seerr::{
+    Availability, QuickConnect as SeerrQuickConnect, RequestStatus, SeerrInfo, SeerrLogin,
+    SeerrMediaType, SeerrRequest, SeerrResult, SeerrSeason,
+};
 
 /// Version of the core library, shown in the about screens.
 #[uniffi::export]

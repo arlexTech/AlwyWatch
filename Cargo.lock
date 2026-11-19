@@ -61,6 +61,7 @@ dependencies = [
  "media-api",
  "net",
  "rustls-platform-verifier",
+ "seerr",
  "serde",
  "serde_json",
  "store",
