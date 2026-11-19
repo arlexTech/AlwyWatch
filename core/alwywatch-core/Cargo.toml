@@ -17,6 +17,7 @@ name = "alwywatch_core"
 net = { workspace = true }
 media-api = { workspace = true, features = ["uniffi"] }
 store = { workspace = true }
+downloads = { workspace = true, features = ["uniffi"] }
 uniffi = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "macros"] }
 serde = { workspace = true }

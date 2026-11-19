@@ -37,6 +37,9 @@ pub enum DownloadState {
     Paused,
     /// Stopped because the disk is full; the `.part` file is kept.
     PausedNoSpace,
+    /// Retries exhausted on network/server errors: resumes automatically when the network is
+    /// back (the platform reruns the queue), keeps its `.part` file.
+    Waiting,
     Failed,
     Completed,
 }
@@ -48,6 +51,7 @@ impl DownloadState {
             Self::Running => "running",
             Self::Paused => "paused",
             Self::PausedNoSpace => "no_space",
+            Self::Waiting => "waiting",
             Self::Failed => "failed",
             Self::Completed => "completed",
         }
@@ -58,6 +62,7 @@ impl DownloadState {
             "running" => Self::Running,
             "paused" => Self::Paused,
             "no_space" => Self::PausedNoSpace,
+            "waiting" => Self::Waiting,
             "failed" => Self::Failed,
             "completed" => Self::Completed,
             _ => Self::Queued,
@@ -386,11 +391,12 @@ impl Downloads {
         Ok(path.filter(|p| Path::new(p).exists()))
     }
 
-    /// Ids that should run (queued, or interrupted by a crash).
+    /// Ids that should run (queued, waiting for the network, or interrupted by a crash).
     pub fn pending(&self) -> Result<Vec<i64>> {
         let db = lock(&self.db);
-        let mut stmt = db
-            .prepare("SELECT id FROM downloads WHERE state IN ('queued', 'running') ORDER BY id")?;
+        let mut stmt = db.prepare(
+            "SELECT id FROM downloads WHERE state IN ('queued', 'running', 'waiting') ORDER BY id",
+        )?;
         let ids = stmt
             .query_map([], |r| r.get(0))?
             .collect::<rusqlite::Result<_>>()?;
@@ -512,7 +518,11 @@ impl Downloads {
                     self.set_state(id, DownloadState::PausedNoSpace, Some("disk full"), &[])?;
                     break Ok(DownloadState::PausedNoSpace);
                 }
-                Err(Error::Transient(msg)) if failures + 1 < self.retry.max_attempts => {
+                Err(Error::Transient(msg)) if failures + 1 >= self.retry.max_attempts => {
+                    self.set_state(id, DownloadState::Waiting, Some(&msg), &[])?;
+                    break Ok(DownloadState::Waiting);
+                }
+                Err(Error::Transient(msg)) => {
                     let wait = self.retry.delay(failures);
                     failures += 1;
                     lock(&self.db).execute(

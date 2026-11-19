@@ -36,6 +36,8 @@ pub struct CoreConfig {
     pub cache_dir: String,
     pub client: ClientInfo,
     pub image_cache_mb: u32,
+    /// Where downloaded media files go (user-visible storage on desktop, app storage on Android).
+    pub downloads_dir: String,
 }
 
 /// A signed-in user on one server. Stored without the token.
@@ -164,6 +166,8 @@ pub fn bucket_width(w: u32) -> u32 {
 // ---------------------------------------------------------------------------------------------
 
 pub struct Core {
+    downloads: downloads::Downloads,
+    downloads_running: std::sync::atomic::AtomicBool,
     client: ClientInfo,
     http: net::reqwest::Client,
     store: Arc<Store>,
@@ -442,8 +446,18 @@ impl AlwyWatch {
             config.client.product, config.client.version, config.client.platform
         );
         let http = net::api_client(&ua)?;
+        let downloads = downloads::Downloads::open(
+            &data.join("downloads.sqlite"),
+            &PathBuf::from(&config.downloads_dir),
+            net::transfer_client(&ua)?,
+        )
+        .map_err(|e| CoreError::Storage {
+            detail: e.to_string(),
+        })?;
         Ok(Arc::new(Self {
             core: Arc::new(Core {
+                downloads,
+                downloads_running: std::sync::atomic::AtomicBool::new(false),
                 client: config.client,
                 http,
                 store,
@@ -839,6 +853,113 @@ impl AlwyWatch {
         self.run(|c| async move { c.flush_pending().await }).await
     }
 
+    // ----- downloads -------------------------------------------------------------------------
+
+    /// Queues the original file of an item for download (does not start it: see `run_downloads`).
+    pub async fn download_item(&self, account_id: String, item_id: String) -> Result<Download> {
+        self.run(|c| async move {
+            let srv = c.server(&account_id)?;
+            let src = srv.download_source(&item_id).await?;
+            let title = match c
+                .store
+                .cache_get::<Item>(&key(&account_id, &["item", &item_id]))?
+            {
+                Some(i) => match (i.value.kind, &i.value.series_title) {
+                    (ItemKind::Episode, Some(series)) => format!("{series} · {}", i.value.title),
+                    _ => i.value.title,
+                },
+                None => src.file_name.clone(),
+            };
+            let id = c
+                .downloads
+                .enqueue(downloads::DownloadRequest {
+                    account_id: account_id.clone(),
+                    item_id: item_id.clone(),
+                    title,
+                    url: src.request.url,
+                    headers: src
+                        .request
+                        .headers
+                        .into_iter()
+                        .map(|h| (h.name, h.value))
+                        .collect(),
+                    file_name: src.file_name,
+                    expected_size: src.size,
+                })
+                .map_err(dl_err)?;
+            c.downloads.get(id).map_err(dl_err)
+        })
+        .await
+    }
+
+    pub fn downloads(&self) -> Result<Vec<Download>> {
+        self.core.downloads.list().map_err(dl_err)
+    }
+
+    pub fn pause_download(&self, id: i64) -> Result<()> {
+        self.core.downloads.pause(id).map_err(dl_err)
+    }
+
+    pub fn resume_download(&self, id: i64) -> Result<()> {
+        self.core.downloads.resume(id).map_err(dl_err)
+    }
+
+    pub fn remove_download(&self, id: i64) -> Result<()> {
+        self.core.downloads.remove(id).map_err(dl_err)
+    }
+
+    /// The local file of a completed download, for offline playback.
+    pub fn downloaded_file(&self, account_id: String, item_id: String) -> Option<String> {
+        self.core
+            .downloads
+            .completed_file(&account_id, &item_id)
+            .ok()
+            .flatten()
+    }
+
+    /// True when downloads are queued or waiting for the network (platforms schedule a rerun).
+    pub fn has_pending_downloads(&self) -> bool {
+        self.core
+            .downloads
+            .pending()
+            .map(|p| !p.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// Runs queued downloads one after another until none is left, or stops early when the
+    /// network is down (downloads left `Waiting`).
+    /// Only one runner at a time; returns how many completed. Android calls this from a
+    /// foreground WorkManager job, the desktop app from a background task.
+    pub async fn run_downloads(&self) -> Result<u32> {
+        self.run(|c| async move {
+            use std::sync::atomic::Ordering;
+            if c.downloads_running.swap(true, Ordering::SeqCst) {
+                return Ok(0);
+            }
+            let mut done = 0;
+            let result = async {
+                loop {
+                    let pending = c.downloads.pending().map_err(dl_err)?;
+                    let Some(id) = pending.first().copied() else {
+                        break;
+                    };
+                    match c.downloads.run(id).await.map_err(dl_err)? {
+                        DownloadState::Completed => done += 1,
+                        // The network is down: stop here, the platform reruns us when it is back.
+                        DownloadState::Waiting => break,
+                        // Paused, failed or no space: leave it and continue with the next one.
+                        _ => {}
+                    }
+                }
+                Ok(done)
+            }
+            .await;
+            c.downloads_running.store(false, Ordering::SeqCst);
+            result
+        })
+        .await
+    }
+
     // ----- settings and UI state ------------------------------------------------------------
 
     pub fn get_setting(&self, key: String) -> Result<Option<String>> {
@@ -847,6 +968,15 @@ impl AlwyWatch {
 
     pub fn set_setting(&self, key: String, value: String) -> Result<()> {
         Ok(self.core.store.set_setting(&key, &value)?)
+    }
+}
+
+fn dl_err(e: downloads::Error) -> CoreError {
+    match e {
+        downloads::Error::NotFound => CoreError::NotFound,
+        other => CoreError::Invalid {
+            detail: other.to_string(),
+        },
     }
 }
 

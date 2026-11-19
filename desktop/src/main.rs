@@ -40,6 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             platform: if cfg!(windows) { "Windows" } else { "Linux" }.into(),
         },
         image_cache_mb: 300,
+        downloads_dir: paths.downloads.to_string_lossy().into_owned(),
     })?;
     for a in core.accounts()? {
         if let Some(t) = tokens.get(&a.id) {

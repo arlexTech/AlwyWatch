@@ -11,6 +11,8 @@ use std::path::PathBuf;
 pub struct Paths {
     pub data: PathBuf,
     pub cache: PathBuf,
+    /// Downloaded media: in the user's Videos folder so they are easy to find and manage.
+    pub downloads: PathBuf,
 }
 
 pub fn paths() -> Paths {
@@ -19,9 +21,13 @@ pub fn paths() -> Paths {
         let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
         let roaming = env("APPDATA").unwrap_or_else(|| PathBuf::from("."));
         let local = env("LOCALAPPDATA").unwrap_or_else(|| roaming.clone());
+        let videos = env("USERPROFILE")
+            .map(|p| p.join("Videos"))
+            .unwrap_or_else(|| local.clone());
         Paths {
             data: roaming.join("AlwyWatch"),
             cache: local.join("AlwyWatch").join("cache"),
+            downloads: videos.join("AlwyWatch"),
         }
     }
     #[cfg(not(windows))]
@@ -35,9 +41,14 @@ pub fn paths() -> Paths {
                 .filter(|p| p.is_absolute())
                 .unwrap_or_else(|| home.join(fallback))
         };
+        // XDG_VIDEOS_DIR lives in user-dirs.dirs; the plain default is good enough here.
+        let videos = std::env::var_os("XDG_VIDEOS_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join("Videos"));
         Paths {
             data: xdg("XDG_DATA_HOME", ".local/share").join("alwywatch"),
             cache: xdg("XDG_CACHE_HOME", ".cache").join("alwywatch"),
+            downloads: videos.join("AlwyWatch"),
         }
     }
 }

@@ -35,6 +35,7 @@ impl Env {
                 platform: "Linux".into(),
             },
             image_cache_mb: 16,
+            downloads_dir: dir.path().join("dl").to_string_lossy().into(),
         })
         .unwrap();
         Self {
@@ -247,4 +248,40 @@ fn width_buckets() {
     assert_eq!(bucket_width(320), 320);
     assert_eq!(bucket_width(321), 480);
     assert_eq!(bucket_width(9999), 1920);
+}
+
+#[test]
+fn download_item_runs_and_is_available_offline() {
+    let env = Env::new();
+    let s = env.sign_in();
+    let app = env.app();
+    env.mount(Mock::given(path("/Items/i1")).respond_with(
+        ResponseTemplate::new(200).set_body_json(json!({
+            "Id": "i1", "Type": "Movie", "Name": "Arrival",
+            "MediaSources": [{"Id": "ms", "Size": 6, "Path": "/m/Arrival.mkv"}]
+        })),
+    ));
+    env.mount(
+        Mock::given(path("/Items/i1/Download")).respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("etag", "\"x\"")
+                .set_body_bytes(b"movie!".to_vec()),
+        ),
+    );
+    let d = env
+        .block(app.download_item(s.account.id.clone(), "i1".into()))
+        .unwrap();
+    assert_eq!(d.state, DownloadState::Queued);
+    assert_eq!(d.total, Some(6));
+    assert!(
+        app.downloaded_file(s.account.id.clone(), "i1".into())
+            .is_none()
+    );
+    assert_eq!(env.block(app.run_downloads()).unwrap(), 1);
+    let file = app
+        .downloaded_file(s.account.id.clone(), "i1".into())
+        .unwrap();
+    assert!(file.ends_with("Arrival.mkv"));
+    assert_eq!(std::fs::read(file).unwrap(), b"movie!");
+    assert_eq!(app.downloads().unwrap()[0].state, DownloadState::Completed);
 }

@@ -412,17 +412,29 @@ async fn permanent_errors_fail_and_can_be_resumed_later() {
 }
 
 #[tokio::test]
-async fn gives_up_after_max_attempts() {
+async fn exhausted_retries_wait_for_the_network_and_stay_pending() {
     let s = MockServer::start().await;
-    Mock::given(method("GET"))
+    let down = Mock::given(method("GET"))
         .respond_with(ResponseTemplate::new(502))
-        .mount(&s)
+        .mount_as_scoped(&s)
         .await;
     let dir = tempfile::tempdir().unwrap();
     let m = manager(dir.path(), file_sink());
     let id = m.enqueue(request(format!("{}/f", s.uri()), None)).unwrap();
-    assert_eq!(m.run(id).await.unwrap(), DownloadState::Failed);
+    assert_eq!(m.run(id).await.unwrap(), DownloadState::Waiting);
     assert_eq!(s.received_requests().await.unwrap().len(), 5);
+    assert!(m.get(id).unwrap().error.unwrap().contains("502"));
+    assert_eq!(
+        m.pending().unwrap(),
+        vec![id],
+        "rerun when the network is back"
+    );
+    drop(down);
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"x".to_vec()))
+        .mount(&s)
+        .await;
+    assert_eq!(m.run(id).await.unwrap(), DownloadState::Completed);
 }
 
 #[tokio::test]
