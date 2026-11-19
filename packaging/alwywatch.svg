@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="256" height="256">
+  <!-- SPDX-License-Identifier: AGPL-3.0-or-later. Placeholder icon (same as Android). -->
+  <rect width="108" height="108" rx="20" fill="#101114"/>
+  <path d="M42 32 78 54 42 76Z" fill="#E5A00D"/>
+</svg>

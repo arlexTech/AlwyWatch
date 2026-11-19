@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AlwyWatch
+Comment=Jellyfin and Plex client
+Exec=alwywatch
+Icon=alwywatch
+Categories=AudioVideo;Video;Player;
+Terminal=false

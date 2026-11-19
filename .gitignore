@@ -28,3 +28,4 @@ android/.kotlin/
 .DS_Store
 .vscode/
 .idea/
+/dist/
