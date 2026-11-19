@@ -1,0 +1,29 @@
+/target/
+**/*.rs.bk
+
+# Android / Gradle
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.idea/
+android/.kotlin/
+*.iml
+*.apk
+*.aab
+*.jks
+*.keystore
+*.b64
+
+# Desktop packaging output
+/dist/
+
+# Local secrets and env
+.env
+*.env
+!*.env.example
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
