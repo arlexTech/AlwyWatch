@@ -47,9 +47,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             core.activate_account(a.id.clone(), t)?;
         }
     }
+    if core.seerr_connection().is_some()
+        && let Some(cookie) = tokens.get("seerr")
+    {
+        let _ = core.seerr_activate(cookie);
+    }
     let ui = AppWindow::new()?;
     let app = app::App::new(core.clone(), &ui, tokens);
     // Test hook (headless screenshots): start the Jellyfin sign-in with this address.
+    if let Ok(url) = std::env::var("ALWYWATCH_TEST_SEERR_URL") {
+        app.test_seerr(url);
+    }
     if let Ok(url) = std::env::var("ALWYWATCH_TEST_JELLYFIN_URL") {
         app.test_jellyfin(url);
     }

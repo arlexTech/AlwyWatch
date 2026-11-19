@@ -53,7 +53,17 @@ export struct DownloadRow {
     active: bool,
 }
 
-export enum Page { add, home, library, detail, search, settings, downloads }
+export struct SeerrPanel {
+    open: bool,
+    key: string,
+    title: string,
+    overview: string,
+    status: string,
+    is-tv: bool,
+    can-request: bool,
+}
+
+export enum Page { add, home, library, detail, search, settings, downloads, requests }
 
 export global Palette {
     out property <color> bg: #101114;
@@ -212,6 +222,17 @@ export component AppWindow inherits Window {
     in-out property <bool> spdif;
     in-out property <string> search-text;
     in property <[DownloadRow]> downloads;
+    // Seerr
+    in property <bool> seerr-active;
+    in property <string> seerr-label;
+    in property <string> seerr-step: "url"; // url | choose | plex | jellyfin | local
+    in property <[NamedId]> seerr-logins;
+    in property <string> seerr-code;
+    in property <string> seerr-message;
+    in property <[Card]> seerr-results;
+    in property <[Card]> seerr-mine;
+    in property <SeerrPanel> seerr-panel;
+    in property <[NamedId]> seerr-seasons;
 
     callback back();
     callback move-focus(bool);
@@ -236,6 +257,15 @@ export component AppWindow inherits Window {
     callback download(string);
     callback download-action(int, string); // pause | resume | remove
     callback play-download(string, string); // account, item
+    callback seerr-url(string);
+    callback seerr-login(string);
+    callback seerr-password(string, string);
+    callback seerr-disconnect();
+    callback seerr-search(string);
+    callback seerr-open(string);
+    callback seerr-toggle-season(string);
+    callback seerr-request(bool); // all seasons?
+    callback seerr-close();
 
     // Arrow keys and Escape not consumed by a focused element end up here.
     FocusScope {
@@ -265,6 +295,7 @@ export component AppWindow inherits Window {
                 }
                 Rectangle { horizontal-stretch: 1; }
                 if root.page != Page.add : Button { label: "Search"; clicked => { root.go(Page.search); } }
+                if root.page != Page.add && root.seerr-active : Button { label: "Requests"; clicked => { root.go(Page.requests); } }
                 if root.page != Page.add : Button { label: "Downloads"; clicked => { root.go(Page.downloads); } }
                 if root.page != Page.add : Button { label: "Settings"; clicked => { root.go(Page.settings); } }
             }
@@ -523,10 +554,75 @@ export component AppWindow inherits Window {
                 }
             }
 
+            if root.page == Page.requests : ScrollView {
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    alignment: start;
+                    LineEdit {
+                        placeholder-text: "Find a movie or a show to request";
+                        edited(t) => { root.seerr-search(t); }
+                    }
+                    if root.seerr-message != "" : Text { text: root.seerr-message; color: Palette.accent; }
+                    if root.seerr-panel.open : Rectangle {
+                        background: Palette.surface;
+                        border-radius: 8px;
+                        VerticalLayout {
+                            padding: 16px;
+                            spacing: 8px;
+                            Text { text: root.seerr-panel.title; color: Palette.text; font-size: 18px; }
+                            Text { text: root.seerr-panel.overview; color: Palette.muted; wrap: word-wrap; }
+                            if root.seerr-panel.status != "" : Text { text: root.seerr-panel.status; color: Palette.accent; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                if root.seerr-panel.can-request : Button {
+                                    label: root.seerr-panel.is-tv ? "Request all seasons" : "Request";
+                                    primary: true;
+                                    clicked => { root.seerr-request(true); }
+                                }
+                                if root.seerr-panel.is-tv : Button { label: "Request selected"; clicked => { root.seerr-request(false); } }
+                                Button { label: "Close"; clicked => { root.seerr-close(); } }
+                            }
+                            if root.seerr-panel.is-tv : HorizontalLayout {
+                                spacing: 6px;
+                                alignment: start;
+                                for s in root.seerr-seasons : Button {
+                                    label: s.title;
+                                    primary: s.selected;
+                                    clicked => { root.seerr-toggle-season(s.id); }
+                                }
+                            }
+                        }
+                    }
+                    results := Rectangle {
+                        property <int> cols: max(1, floor((self.width - 10px) / 164px));
+                        height: ceil(root.seerr-results.length / self.cols) * 290px;
+                        for c[i] in root.seerr-results : PosterCard {
+                            x: mod(i, results.cols) * 164px;
+                            y: floor(i / results.cols) * 290px;
+                            card: c;
+                            clicked => { root.seerr-open(c.id); }
+                        }
+                    }
+                    if root.seerr-results.length == 0 : Text { text: "My requests"; color: Palette.text; font-size: 20px; }
+                    if root.seerr-results.length == 0 : mine := Rectangle {
+                        property <int> cols: max(1, floor((self.width - 10px) / 164px));
+                        height: ceil(root.seerr-mine.length / self.cols) * 290px;
+                        for c[i] in root.seerr-mine : PosterCard {
+                            x: mod(i, mine.cols) * 164px;
+                            y: floor(i / mine.cols) * 290px;
+                            card: c;
+                        }
+                    }
+                }
+            }
+
             if root.page == Page.settings : ScrollView {
                 VerticalLayout {
                     padding: 24px;
                     spacing: 12px;
+                    alignment: start;
                     Text { text: "Accounts"; color: Palette.text; font-size: 20px; }
                     for a in root.accounts : HorizontalLayout {
                         spacing: 10px;
@@ -540,6 +636,36 @@ export component AppWindow inherits Window {
                         Button { label: "Remove"; clicked => { root.remove-account(a.id); } }
                     }
                     HorizontalLayout { alignment: start; Button { label: "Add a server"; primary: true; clicked => { root.go(Page.add); } } }
+                    Text { text: "Requests (Seerr)"; color: Palette.text; font-size: 20px; }
+                    if root.seerr-active : HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        Text { text: root.seerr-label; color: Palette.text; vertical-alignment: center; }
+                        Button { label: "Disconnect"; clicked => { root.seerr-disconnect(); } }
+                    }
+                    if !root.seerr-active && root.seerr-step == "url" : HorizontalLayout {
+                        spacing: 10px;
+                        surl := LineEdit { placeholder-text: "Seerr address"; accepted(t) => { root.seerr-url(t); } }
+                        Button { label: "Connect"; clicked => { root.seerr-url(surl.text); } }
+                    }
+                    if !root.seerr-active && root.seerr-step == "choose" : HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        for l in root.seerr-logins : Button { label: l.title; primary: true; clicked => { root.seerr-login(l.id); } }
+                    }
+                    if !root.seerr-active && root.seerr-step == "plex" : Text {
+                        text: "Finish signing in to Plex in your browser…";
+                        color: Palette.muted;
+                    }
+                    if !root.seerr-active && (root.seerr-step == "jellyfin" || root.seerr-step == "local") : VerticalLayout {
+                        spacing: 8px;
+                        if root.seerr-code != "" : Text { text: "Quick Connect code: " + root.seerr-code; color: Palette.text; font-size: 20px; }
+                        su := LineEdit { placeholder-text: root.seerr-step == "local" ? "Email" : "Username"; }
+                        sp := LineEdit { placeholder-text: "Password"; input-type: password; accepted => { root.seerr-password(su.text, sp.text); } }
+                        HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.seerr-password(su.text, sp.text); } } }
+                    }
+                    if root.seerr-message != "" && root.page == Page.settings : Text { text: root.seerr-message; color: Palette.danger; }
+
                     Text { text: "Playback"; color: Palette.text; font-size: 20px; }
                     HorizontalLayout {
                         alignment: start;

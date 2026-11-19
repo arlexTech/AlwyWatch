@@ -16,7 +16,7 @@ use slint::{
 
 use crate::platform::{self, Tokens};
 use crate::player::{self, PlayRequest};
-use crate::{AccountRow, AppWindow, Card, Detail, DownloadRow, NamedId, Page, Rail};
+use crate::{AccountRow, AppWindow, Card, Detail, DownloadRow, NamedId, Page, Rail, SeerrPanel};
 
 const POSTER_PX: u32 = 300;
 const EPISODE_PX: u32 = 320;
@@ -27,6 +27,7 @@ const PAGE: u32 = 60;
 enum Route {
     Home,
     Downloads,
+    Requests,
     Library(String, String),
     Detail(String),
     Search,
@@ -57,6 +58,10 @@ struct State {
     series: Option<String>,
     season: Option<String>,
     search_gen: u64,
+    seerr_url: String,
+    seerr_results: Vec<SeerrResult>,
+    seerr_selected: Option<SeerrResult>,
+    seerr_seasons: Vec<(SeerrSeason, bool)>,
     poll_gen: u64,
 }
 
@@ -140,6 +145,10 @@ impl App {
                 series: None,
                 season: None,
                 search_gen: 0,
+                seerr_url: String::new(),
+                seerr_results: vec![],
+                seerr_selected: None,
+                seerr_seasons: vec![],
                 poll_gen: 0,
             }),
             images: RefCell::new(HashMap::new()),
@@ -156,6 +165,7 @@ impl App {
                 == Some("1"),
         );
         app.wire(ui);
+        app.refresh_seerr_settings();
         app.start_download_runner();
         let first = if app.state.borrow().account.is_some() {
             Route::Home
@@ -271,6 +281,453 @@ impl App {
         .ok();
     }
 
+    // ----- Seerr ----------------------------------------------------------------------------
+
+    fn load_url_image(self: &Rc<Self>, url: String, apply: impl Fn(&Rc<Self>, Image) + 'static) {
+        let key = format!("url|{url}");
+        if let Some(img) = self.images.borrow().get(&key) {
+            apply(self, img.clone());
+            return;
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let path = match core.cached_remote_image(url.clone()) {
+                Some(p) => p,
+                None => match core.remote_image(url).await {
+                    Ok(p) => p,
+                    Err(_) => return,
+                },
+            };
+            let decoded = core
+                .runtime()
+                .spawn_blocking(move || {
+                    let img = image::open(path).ok()?.into_rgba8();
+                    let (w, h) = img.dimensions();
+                    Some(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
+                        img.as_raw(),
+                        w,
+                        h,
+                    ))
+                })
+                .await
+                .ok()
+                .flatten();
+            let (Some(this), Some(buf)) = (this.upgrade(), decoded) else {
+                return;
+            };
+            let img = Image::from_rgba8(buf);
+            this.images.borrow_mut().insert(key, img.clone());
+            apply(&this, img);
+        })
+        .ok();
+    }
+
+    fn seerr_cards(
+        self: &Rc<Self>,
+        cards: Vec<(String, String, String, Option<String>)>,
+        set: fn(&AppWindow, ModelRc<Card>),
+    ) {
+        let model = Rc::new(VecModel::from(
+            cards
+                .iter()
+                .map(|(id, title, sub, _)| Card {
+                    id: sstr(id),
+                    title: sstr(title),
+                    subtitle: sstr(sub),
+                    image: Image::default(),
+                    progress: 0.0,
+                    played: false,
+                })
+                .collect::<Vec<_>>(),
+        ));
+        set(&self.ui(), ModelRc::from(model.clone()));
+        for (row, (id, _, _, url)) in cards.into_iter().enumerate() {
+            let Some(url) = url else { continue };
+            let m = Rc::downgrade(&model);
+            self.load_url_image(url, move |_, img| {
+                if let Some(m) = m.upgrade()
+                    && let Some(mut c) = m.row_data(row)
+                    && c.id.as_str() == id
+                {
+                    c.image = img;
+                    m.set_row_data(row, c);
+                }
+            });
+        }
+    }
+
+    fn availability_label(a: Availability) -> &'static str {
+        match a {
+            Availability::Available => "Available",
+            Availability::PartiallyAvailable => "Partly available",
+            Availability::Processing => "Downloading",
+            Availability::Pending => "Requested",
+            Availability::Blocklisted => "Blocked",
+            _ => "",
+        }
+    }
+
+    fn load_seerr_requests(self: &Rc<Self>) {
+        let render = |this: &Rc<Self>, list: Vec<SeerrRequest>| {
+            let cards = list
+                .into_iter()
+                .map(|r| {
+                    let status = match r.status {
+                        RequestStatus::Pending => "Waiting for approval",
+                        RequestStatus::Approved => "Approved",
+                        RequestStatus::Declined => "Declined",
+                        RequestStatus::Failed => "Failed",
+                        RequestStatus::Completed => "Available",
+                    };
+                    (
+                        format!("req:{}", r.id),
+                        r.title.unwrap_or_else(|| format!("TMDB {}", r.tmdb_id)),
+                        status.to_owned(),
+                        r.poster_url,
+                    )
+                })
+                .collect();
+            this.seerr_cards(cards, AppWindow::set_seerr_mine);
+        };
+        if let Ok(Some(list)) = self.core.cached_seerr_requests() {
+            render(self, list);
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.refresh_seerr_requests(false).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(list) => render(&t, list),
+                Err(e) => t.ui().set_seerr_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    fn seerr_search(self: &Rc<Self>, text: String) {
+        let generation = {
+            let mut st = self.state.borrow_mut();
+            st.search_gen += 1;
+            st.search_gen
+        };
+        if text.chars().count() < 2 {
+            self.state.borrow_mut().seerr_results.clear();
+            self.ui().set_seerr_results(ModelRc::default());
+            return;
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            async_sleep(Duration::from_millis(350)).await;
+            if this
+                .upgrade()
+                .is_none_or(|t| t.state.borrow().search_gen != generation)
+            {
+                return;
+            }
+            let r = core.seerr_search(text).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(results) => {
+                    let cards = results
+                        .iter()
+                        .map(|r| {
+                            let sub = [
+                                r.year.clone().unwrap_or_default(),
+                                Self::availability_label(r.availability).to_owned(),
+                            ]
+                            .into_iter()
+                            .filter(|s| !s.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" · ");
+                            (
+                                format!("{:?}:{}", r.media_type, r.tmdb_id),
+                                r.title.clone(),
+                                sub,
+                                r.poster_url.clone(),
+                            )
+                        })
+                        .collect();
+                    t.state.borrow_mut().seerr_results = results;
+                    t.seerr_cards(cards, AppWindow::set_seerr_results);
+                }
+                Err(e) => t.ui().set_seerr_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    fn seerr_open(self: &Rc<Self>, key: String) {
+        let r = self
+            .state
+            .borrow()
+            .seerr_results
+            .iter()
+            .find(|r| format!("{:?}:{}", r.media_type, r.tmdb_id) == key)
+            .cloned();
+        let Some(r) = r else { return };
+        let is_tv = r.media_type == SeerrMediaType::Tv;
+        self.ui().set_seerr_panel(SeerrPanel {
+            open: true,
+            key: sstr(&key),
+            title: sstr(
+                [r.title.clone(), r.year.clone().unwrap_or_default()]
+                    .join(" ")
+                    .trim(),
+            ),
+            overview: sstr(r.overview.clone().unwrap_or_default()),
+            status: sstr(Self::availability_label(r.availability)),
+            is_tv,
+            can_request: r.availability != Availability::Available,
+        });
+        {
+            let mut st = self.state.borrow_mut();
+            st.seerr_selected = Some(r.clone());
+            st.seerr_seasons.clear();
+        }
+        self.ui().set_seerr_seasons(ModelRc::default());
+        if is_tv {
+            let (core, this) = (self.core.clone(), Rc::downgrade(self));
+            slint::spawn_local(async move {
+                let seasons = core.seerr_seasons(r.tmdb_id).await.unwrap_or_default();
+                if let Some(t) = this.upgrade() {
+                    t.state.borrow_mut().seerr_seasons =
+                        seasons.into_iter().map(|s| (s, false)).collect();
+                    t.render_seerr_seasons();
+                }
+            })
+            .ok();
+        }
+    }
+
+    fn render_seerr_seasons(&self) {
+        let rows: Vec<NamedId> = self
+            .state
+            .borrow()
+            .seerr_seasons
+            .iter()
+            .map(|(s, sel)| {
+                let status = Self::availability_label(s.availability);
+                NamedId {
+                    id: sstr(s.number.to_string()),
+                    title: sstr(if status.is_empty() {
+                        s.name.clone()
+                    } else {
+                        format!("{} · {status}", s.name)
+                    }),
+                    selected: *sel,
+                }
+            })
+            .collect();
+        self.ui()
+            .set_seerr_seasons(ModelRc::new(VecModel::from(rows)));
+    }
+
+    fn seerr_request(self: &Rc<Self>, all: bool) {
+        let (r, seasons) = {
+            let st = self.state.borrow();
+            let Some(r) = st.seerr_selected.clone() else {
+                return;
+            };
+            let chosen: Vec<u32> = st
+                .seerr_seasons
+                .iter()
+                .filter(|(_, sel)| *sel)
+                .map(|(s, _)| s.number)
+                .collect();
+            (r, if all { vec![] } else { chosen })
+        };
+        if !all && r.media_type == SeerrMediaType::Tv && seasons.is_empty() {
+            self.ui()
+                .set_seerr_message("Pick at least one season.".into());
+            return;
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let res = core.seerr_request(r.media_type, r.tmdb_id, seasons).await;
+            let Some(t) = this.upgrade() else { return };
+            t.ui().set_seerr_message(sstr(match res {
+                Ok(_) => format!("Requested: {}", r.title),
+                Err(e) => format!("Could not request {}: {e}", r.title),
+            }));
+            t.ui().set_seerr_panel(SeerrPanel::default());
+            let _ = core.refresh_seerr_requests(true).await;
+            t.load_seerr_requests();
+        })
+        .ok();
+    }
+
+    fn refresh_seerr_settings(&self) {
+        let ui = self.ui();
+        ui.set_seerr_active(self.core.seerr_active());
+        if let Some(c) = self.core.seerr_connection() {
+            ui.set_seerr_label(sstr(format!("{} @ {}", c.user_name, c.base_url)));
+        }
+    }
+
+    fn seerr_signed_in(self: &Rc<Self>, r: Result<SeerrSignedIn, CoreError>) {
+        match r {
+            Ok(s) => {
+                if let Err(e) = self.tokens.put("seerr", &s.cookie) {
+                    self.ui()
+                        .set_seerr_message(sstr(format!("could not store the session: {e}")));
+                    return;
+                }
+                self.ui().set_seerr_message(SharedString::new());
+                self.ui().set_seerr_step("url".into());
+                self.refresh_seerr_settings();
+            }
+            Err(e) => self.ui().set_seerr_message(sstr(e.to_string())),
+        }
+    }
+
+    fn seerr_url(self: &Rc<Self>, url: String) {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = match normalize_server_url(url) {
+                Ok(u) => core.seerr_info(u).await,
+                Err(e) => Err(e),
+            };
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(info) => {
+                    t.state.borrow_mut().seerr_url = info.base_url.clone();
+                    let rows: Vec<NamedId> = info
+                        .logins
+                        .iter()
+                        .filter_map(|l| {
+                            let (id, title) = match l {
+                                SeerrLogin::Plex => ("plex", "Sign in with Plex"),
+                                SeerrLogin::Jellyfin => ("jellyfin", "Sign in with Jellyfin"),
+                                SeerrLogin::Emby => ("emby", "Sign in with Emby"),
+                                SeerrLogin::Local => ("local", "Seerr account"),
+                                SeerrLogin::NotConfigured => return None,
+                            };
+                            Some(NamedId {
+                                id: id.into(),
+                                title: title.into(),
+                                selected: false,
+                            })
+                        })
+                        .collect();
+                    t.ui().set_seerr_logins(ModelRc::new(VecModel::from(rows)));
+                    t.ui().set_seerr_step("choose".into());
+                    t.ui().set_seerr_message(SharedString::new());
+                }
+                Err(e) => t.ui().set_seerr_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    fn seerr_login(self: &Rc<Self>, method: String) {
+        let url = self.state.borrow().seerr_url.clone();
+        let generation = {
+            let mut st = self.state.borrow_mut();
+            st.poll_gen += 1;
+            st.poll_gen
+        };
+        let ui = self.ui();
+        ui.set_seerr_code(SharedString::new());
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        match method.as_str() {
+            "plex" => {
+                ui.set_seerr_step("plex".into());
+                slint::spawn_local(async move {
+                    let pin = match core.plex_create_pin(true).await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            if let Some(t) = this.upgrade() {
+                                t.seerr_signed_in(Err(e));
+                            }
+                            return;
+                        }
+                    };
+                    platform::open_url(&pin.auth_url);
+                    loop {
+                        async_sleep(Duration::from_secs(2)).await;
+                        if this
+                            .upgrade()
+                            .is_none_or(|t| t.state.borrow().poll_gen != generation)
+                        {
+                            return;
+                        }
+                        match core.plex_check_pin(pin.id).await {
+                            Ok(token) => {
+                                let r = core.seerr_sign_in_plex(url.clone(), token).await;
+                                if let Some(t) = this.upgrade() {
+                                    t.seerr_signed_in(r);
+                                }
+                                return;
+                            }
+                            Err(CoreError::Pending) => continue,
+                            Err(e) => {
+                                if let Some(t) = this.upgrade() {
+                                    t.seerr_signed_in(Err(e));
+                                }
+                                return;
+                            }
+                        }
+                    }
+                })
+                .ok();
+            }
+            "jellyfin" | "emby" => {
+                ui.set_seerr_step("jellyfin".into());
+                if method == "jellyfin" {
+                    slint::spawn_local(async move {
+                        let Ok(qc) = core.seerr_quick_connect_start(url.clone()).await else {
+                            return;
+                        };
+                        if let Some(t) = this.upgrade() {
+                            t.ui().set_seerr_code(sstr(&qc.code));
+                        }
+                        loop {
+                            async_sleep(Duration::from_secs(3)).await;
+                            if this
+                                .upgrade()
+                                .is_none_or(|t| t.state.borrow().poll_gen != generation)
+                            {
+                                return;
+                            }
+                            match core
+                                .seerr_quick_connect_poll(url.clone(), qc.secret.clone())
+                                .await
+                            {
+                                Err(CoreError::Pending) => continue,
+                                r => {
+                                    if let Some(t) = this.upgrade() {
+                                        t.seerr_signed_in(r);
+                                    }
+                                    return;
+                                }
+                            }
+                        }
+                    })
+                    .ok();
+                }
+            }
+            _ => ui.set_seerr_step("local".into()),
+        }
+    }
+
+    fn seerr_password(self: &Rc<Self>, user: String, pass: String) {
+        let url = self.state.borrow().seerr_url.clone();
+        let local = self.ui().get_seerr_step() == "local";
+        self.state.borrow_mut().poll_gen += 1;
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = if local {
+                core.seerr_sign_in_local(url, user, pass).await
+            } else {
+                core.seerr_sign_in_jellyfin(url, user, pass).await
+            };
+            if let Some(t) = this.upgrade() {
+                t.seerr_signed_in(r);
+            }
+        })
+        .ok();
+    }
+
     fn ui(&self) -> AppWindow {
         self.ui.upgrade().expect("window alive")
     }
@@ -337,12 +794,17 @@ impl App {
                 ui.set_page(Page::Search);
                 self.state.borrow().grid_model.set_vec(vec![]);
             }
+            Route::Requests => {
+                ui.set_page(Page::Requests);
+                self.load_seerr_requests();
+            }
             Route::Downloads => {
                 ui.set_page(Page::Downloads);
                 self.refresh_downloads();
             }
             Route::Settings => {
                 ui.set_page(Page::Settings);
+                self.refresh_seerr_settings();
                 self.refresh_settings();
             }
             Route::Add => {
@@ -1380,6 +1842,12 @@ impl App {
         .ok();
     }
 
+    /// Test hook used by headless screenshots: open settings and start connecting Seerr.
+    pub fn test_seerr(self: &Rc<Self>, url: String) {
+        self.navigate(Route::Settings);
+        self.seerr_url(url);
+    }
+
     /// Test hook used by headless screenshots.
     pub fn test_jellyfin(self: &Rc<Self>, url: String) {
         self.navigate(Route::Add);
@@ -1439,6 +1907,7 @@ impl App {
             Page::Settings => Route::Settings,
             Page::Add => Route::Add,
             Page::Downloads => Route::Downloads,
+            Page::Requests => Route::Requests,
             _ => Route::Home,
         }));
         on!(on_add_choose, |a, which| a.add_choose(which.into()));
@@ -1454,6 +1923,36 @@ impl App {
             a.refresh_settings();
         });
         on!(on_download, |a, id| a.download(id.into()));
+        on!(on_seerr_url, |a, url| a.seerr_url(url.into()));
+        on!(on_seerr_login, |a, m| a.seerr_login(m.into()));
+        on!(on_seerr_password, |a, u, p| a
+            .seerr_password(u.into(), p.into()));
+        on!(on_seerr_disconnect, |a| {
+            let _ = a.core.seerr_sign_out();
+            let _ = a.tokens.remove("seerr");
+            a.refresh_seerr_settings();
+        });
+        on!(on_seerr_search, |a, t| a.seerr_search(t.into()));
+        on!(on_seerr_open, |a, key| a.seerr_open(key.into()));
+        on!(on_seerr_toggle_season, |a, n| {
+            if let Ok(n) = n.parse::<u32>() {
+                for (s, sel) in a.state.borrow_mut().seerr_seasons.iter_mut() {
+                    if s.number == n
+                        && matches!(
+                            s.availability,
+                            Availability::Unknown | Availability::Deleted
+                        )
+                    {
+                        *sel = !*sel;
+                    }
+                }
+                a.render_seerr_seasons();
+            }
+        });
+        on!(on_seerr_request, |a, all| a.seerr_request(all));
+        on!(on_seerr_close, |a| a
+            .ui()
+            .set_seerr_panel(SeerrPanel::default()));
         on!(on_download_action, |a, id, action| {
             let id = i64::from(id);
             let _ = match action.as_str() {
