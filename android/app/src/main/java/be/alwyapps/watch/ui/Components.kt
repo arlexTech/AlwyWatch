@@ -82,7 +82,8 @@ fun Item.subtitle(): String =
                 if (seasonNumber != null && episodeNumber != null) "S$seasonNumber · E$episodeNumber" else null,
                 title.takeIf { seriesTitle != null },
             ).joinToString("  ")
-        else -> listOfNotNull(year?.toString(), runtimeMs?.let { formatRuntime(it.toLong()) }).joinToString(" · ")
+        ItemKind.SERIES -> listOfNotNull(year?.toString(), childCount?.let { "$it season${if (it > 1u) "s" else ""}" }).joinToString(" · ")
+        else -> listOfNotNull(year?.toString(), runtimeMs?.takeIf { it > 0u }?.let { formatRuntime(it.toLong()) }).joinToString(" · ")
     }
 
 fun formatRuntime(ms: Long): String {

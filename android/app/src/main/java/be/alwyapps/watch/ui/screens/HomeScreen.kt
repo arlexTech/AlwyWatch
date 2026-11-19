@@ -206,7 +206,9 @@ private fun PhoneHero(
     LaunchedEffect(current?.id) { onColor(current?.ambient()) }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val width = maxWidth
-        val height = (width * 1.18f).coerceAtMost(620.dp)
+        // Portrait phones: tall hero; landscape tablets: at most 3/4 of the screen height.
+        val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+        val height = minOf(width * 1.18f, 620.dp, screenH * 0.75f)
         HorizontalPager(pager, Modifier.fillMaxWidth().height(height)) { page ->
             val item = featured[page]
             Box(Modifier.fillMaxSize()) {
@@ -216,7 +218,7 @@ private fun PhoneHero(
                     Modifier.align(Alignment.BottomStart).padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    TitleArt(item, width * 0.7f)
+                    TitleArt(item, minOf(width * 0.7f, 420.dp))
                     HeroMeta(item)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.EPISODE) {

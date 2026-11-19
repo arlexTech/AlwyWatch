@@ -104,6 +104,29 @@ fun DetailScreen(itemId: String) {
     if (playable) {
         LaunchedEffect(itemId) { core.prefetchPlaybackInfo(account, itemId, DeviceProfiles.get(ctx)) }
     }
+    // Shows: the episode to continue with (first unwatched, or the one in progress).
+    var nextEp by remember(itemId) { mutableStateOf<Item?>(null) }
+    if (item?.kind == ItemKind.SERIES) {
+        LaunchedEffect(itemId) {
+            // The server's own "continue watching" / "next up" know best (cached with home).
+            val home = runCatching { core.cachedHome(account) }.getOrNull()
+            nextEp = home?.let { h -> (h.resume + h.nextUp).firstOrNull { it.seriesId == itemId } }
+            if (nextEp != null) return@LaunchedEffect
+            nextEp =
+                runCatching {
+                    val seasons =
+                        core.cachedSeasons(account, itemId)?.items ?: core.refreshSeasons(account, itemId, false).items
+                    for (season in seasons.filter { !it.user.played }.ifEmpty { seasons.take(1) }) {
+                        val eps =
+                            core.cachedEpisodes(account, itemId, season.id)?.items
+                                ?: core.refreshEpisodes(account, itemId, season.id, false).items
+                        val ep = eps.firstOrNull { it.user.positionMs > 0u && !it.user.played } ?: eps.firstOrNull { !it.user.played }
+                        if (ep != null) return@runCatching ep
+                    }
+                    null
+                }.getOrNull()
+        }
+    }
     val config = LocalConfiguration.current
     val heroH = if (d.isTv) (config.screenHeightDp * 0.8f).dp else (config.screenWidthDp * 1.2f).coerceAtMost(560f).dp
 
@@ -154,6 +177,16 @@ fun DetailScreen(itemId: String) {
                                         icon = Icons.Play,
                                     )
                                     if (resumable) ActionButton("From start", { play(ctx, account, item, fromStart = true) })
+                                }
+                                nextEp?.let { ep ->
+                                    val label = "S${ep.seasonNumber ?: 1} · E${ep.episodeNumber ?: 1}"
+                                    ActionButton(
+                                        if (ep.user.positionMs > 0u) "Resume $label" else "Play $label",
+                                        { play(ctx, account, ep, fromStart = false) },
+                                        Modifier.initialFocus(),
+                                        primary = true,
+                                        icon = Icons.Play,
+                                    )
                                 }
                                 IconAction(
                                     Icons.Check,

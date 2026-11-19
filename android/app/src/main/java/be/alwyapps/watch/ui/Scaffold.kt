@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -65,7 +66,7 @@ fun tabs(): List<Tab> {
     val core = LocalCore.current
     val d = LocalDimens.current
     val out = mutableListOf(Tab(Route.Home, "Home", Icons.Home, Icons.HomeFilled), Tab(Route.Search, "Search", Icons.Search))
-    if (d.isTv) {
+    if (d.isTv || androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840) {
         // Libraries as destinations (from the cached home: no network).
         val account = LocalAccount.current
         val libs = androidx.compose.runtime.remember(account) { runCatching { core.cachedHome(account)?.libraries }.getOrNull().orEmpty() }
@@ -96,10 +97,18 @@ fun AppScaffold(content: @Composable () -> Unit) {
     }
     val tabs = tabs()
     val selected = tabs.firstOrNull { it.route == nav.current }?.route ?: tabs.first().route
-    if (d.isTv) {
+    // Wide touch screens (tablets in landscape, foldables): a side rail like TV, always labelled.
+    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840
+    if (d.isTv || wide) {
         Row(Modifier.fillMaxSize()) {
-            SideRail(tabs, selected) { nav.reset(it) }
-            Box(Modifier.weight(1f).fillMaxHeight().then(if (edgeToEdge) Modifier else Modifier.padding(top = 24.dp))) { content() }
+            SideRail(tabs, selected, alwaysExpanded = !d.isTv) { nav.reset(it) }
+            val inner =
+                when {
+                    d.isTv -> if (edgeToEdge) Modifier else Modifier.padding(top = 24.dp)
+                    edgeToEdge -> Modifier.imePadding()
+                    else -> Modifier.statusBarsPadding().navigationBarsPadding().imePadding()
+                }
+            Box(Modifier.weight(1f).fillMaxHeight().then(inner)) { content() }
         }
     } else {
         Box(Modifier.fillMaxSize()) {
@@ -173,17 +182,21 @@ private fun BottomBar(
 private fun SideRail(
     tabs: List<Tab>,
     selected: Route,
+    alwaysExpanded: Boolean = false,
     onSelect: (Route) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var focusExpanded by remember { mutableStateOf(false) }
+    val expanded = alwaysExpanded || focusExpanded
     val fm = androidx.compose.ui.platform.LocalFocusManager.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     // After choosing a destination, hand the focus to its content (and fold the rail).
     val select: (Route) -> Unit = { route ->
         onSelect(route)
-        scope.launch {
-            kotlinx.coroutines.delay(60)
-            fm.moveFocus(androidx.compose.ui.focus.FocusDirection.Right)
+        if (!alwaysExpanded) {
+            scope.launch {
+                kotlinx.coroutines.delay(60)
+                fm.moveFocus(androidx.compose.ui.focus.FocusDirection.Right)
+            }
         }
     }
     val width by animateDpAsState(if (expanded) 220.dp else 88.dp, tween(180), label = "rail")
@@ -197,7 +210,8 @@ private fun SideRail(
                 } else {
                     Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.5f), 1f to Color.Transparent)
                 },
-            ).onFocusChanged { expanded = it.hasFocus }
+            ).then(if (alwaysExpanded) Modifier.systemBarsPadding() else Modifier)
+            .onFocusChanged { focusExpanded = it.hasFocus }
             .focusGroup()
             .padding(horizontal = 16.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),

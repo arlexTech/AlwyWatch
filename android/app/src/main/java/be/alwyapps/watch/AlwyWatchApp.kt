@@ -37,7 +37,11 @@ class Services(
     private val app: Application,
 ) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val isTv: Boolean = app.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    val isTv: Boolean =
+        app.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) &&
+            // Debug builds: `adb push x /sdcard/Android/data/be.alwyapps.watch/files/force-touch-ui`
+            // renders the phone/tablet UI on a TV device (layout testing).
+            !(BuildConfig.DEBUG && java.io.File(app.getExternalFilesDir(null), "force-touch-ui").exists())
     val tokens by lazy { TokenStore(app) }
 
     val core: Deferred<AlwyWatch> =
