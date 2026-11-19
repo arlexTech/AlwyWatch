@@ -1252,6 +1252,7 @@ impl App {
             }
             Route::Library(id, title) => {
                 ui.set_page(Page::Library);
+                ui.set_library_id(sstr(&id));
                 ui.set_grid_title(sstr(&title));
                 self.open_library(id, SortBy::Title);
             }
@@ -1430,13 +1431,19 @@ impl App {
         rails.extend(
             home.latest
                 .iter()
-                .map(|r| (format!("Latest in {}", r.library.title), r.items.clone())),
+                .map(|r| (format!("New in {}", r.library.title), r.items.clone())),
         );
         rails.retain(|(_, items)| !items.is_empty());
         let models: Vec<Rc<VecModel<Card>>> =
             rails.iter().map(|_| Rc::new(VecModel::default())).collect();
-        for ((_, items), m) in rails.iter().zip(&models) {
-            self.fill(m, items, ImageKind::Primary, POSTER_PX, 0);
+        // What the user is watching: landscape stills; the rest: posters.
+        let landscape = |t: &str| t == "Continue watching" || t == "Next up";
+        for ((t, items), m) in rails.iter().zip(&models) {
+            if landscape(t) {
+                self.fill(m, items, ImageKind::Backdrop, 640, 0);
+            } else {
+                self.fill(m, items, ImageKind::Primary, POSTER_PX, 0);
+            }
         }
         let rail_vec: Vec<Rail> = rails
             .iter()
@@ -1444,8 +1451,19 @@ impl App {
             .map(|((t, _), m)| Rail {
                 title: sstr(t),
                 items: ModelRc::from(m.clone()),
+                landscape: landscape(t),
             })
             .collect();
+        // Hero: the first title with artwork (then whatever the user points at).
+        if let Some(first) = rails
+            .iter()
+            .flat_map(|(_, items)| items.iter())
+            .find(|i| image_ref(i, ImageKind::Backdrop).is_some())
+            .cloned()
+            && self.ui().get_hero().id.is_empty()
+        {
+            self.set_hero(&first);
+        }
         ui.set_rails(ModelRc::new(VecModel::from(rail_vec)));
         ui.set_libraries(ModelRc::new(VecModel::from(
             home.libraries
@@ -1624,6 +1642,72 @@ impl App {
 
     // ----- detail ---------------------------------------------------------------------------
 
+    /// Texts of a detail/hero panel (images are filled in asynchronously).
+    fn detail_of(i: &Item) -> Detail {
+        let playable = matches!(i.kind, ItemKind::Movie | ItemKind::Episode);
+        let mut meta = vec![item_subtitle(i)];
+        meta.extend(i.official_rating.clone());
+        meta.extend(i.community_rating.map(|r| format!("★ {r:.1}")));
+        meta.extend(i.genres.first().cloned());
+        meta.retain(|m| !m.is_empty());
+        Detail {
+            id: sstr(&i.id),
+            title: sstr(if i.kind == ItemKind::Episode {
+                i.series_title.as_deref().unwrap_or(&i.title)
+            } else {
+                &i.title
+            }),
+            meta: sstr(meta.join("  ·  ")),
+            overview: sstr(i.overview.clone().unwrap_or_default()),
+            genres: sstr(i.genres.join(", ")),
+            backdrop: Image::default(),
+            poster: Image::default(),
+            logo: Image::default(),
+            playable,
+            resumable: playable && i.user.position_ms > 0,
+            played: i.user.played,
+            is_series: i.kind == ItemKind::Series,
+        }
+    }
+
+    /// The home hero: follows the hovered/focused card (only items with a backdrop).
+    fn set_hero(self: &Rc<Self>, i: &Item) {
+        if image_ref(i, ImageKind::Backdrop).is_none() {
+            return;
+        }
+        let ui = self.ui();
+        if ui.get_hero().id.as_str() == i.id {
+            return;
+        }
+        let mut h = Self::detail_of(i);
+        // Keep the previous artwork until the new one is decoded (no flash to black).
+        let prev = ui.get_hero();
+        h.backdrop = prev.backdrop;
+        ui.set_hero(h);
+        let id = i.id.clone();
+        self.load_image(i, ImageKind::Backdrop, BACKDROP_PX, {
+            let id = id.clone();
+            move |this, img| {
+                let ui = this.ui();
+                let mut h = ui.get_hero();
+                if h.id.as_str() == id {
+                    h.backdrop = img;
+                    ui.set_hero(h);
+                }
+            }
+        });
+        if image_ref(i, ImageKind::Logo).is_some() {
+            self.load_image(i, ImageKind::Logo, 800, move |this, img| {
+                let ui = this.ui();
+                let mut h = ui.get_hero();
+                if h.id.as_str() == id {
+                    h.logo = img;
+                    ui.set_hero(h);
+                }
+            });
+        }
+    }
+
     fn render_detail(self: &Rc<Self>, i: &Item) {
         let ui = self.ui();
         self.state
@@ -1631,29 +1715,26 @@ impl App {
             .items
             .insert(i.id.clone(), i.clone());
         let playable = matches!(i.kind, ItemKind::Movie | ItemKind::Episode);
-        let mut meta = vec![item_subtitle(i)];
-        meta.extend(i.official_rating.clone());
-        meta.extend(i.community_rating.map(|r| format!("★ {r:.1}")));
-        meta.retain(|m| !m.is_empty());
-        let mut d = Detail {
-            id: sstr(&i.id),
-            title: sstr(&i.title),
-            meta: sstr(meta.join("  ·  ")),
-            overview: sstr(i.overview.clone().unwrap_or_default()),
-            genres: sstr(i.genres.join(", ")),
-            backdrop: Image::default(),
-            poster: Image::default(),
-            playable,
-            resumable: playable && i.user.position_ms > 0,
-            played: i.user.played,
-            is_series: i.kind == ItemKind::Series,
-        };
+        let mut d = Self::detail_of(i);
+        d.title = sstr(&i.title);
         if ui.get_detail().id == d.id {
             d.backdrop = ui.get_detail().backdrop;
             d.poster = ui.get_detail().poster;
+            d.logo = ui.get_detail().logo;
         }
         ui.set_detail(d);
         let id = i.id.clone();
+        if i.kind != ItemKind::Episode && image_ref(i, ImageKind::Logo).is_some() {
+            let id = id.clone();
+            self.load_image(i, ImageKind::Logo, 800, move |this, img| {
+                let ui = this.ui();
+                let mut d = ui.get_detail();
+                if d.id.as_str() == id {
+                    d.logo = img;
+                    ui.set_detail(d);
+                }
+            });
+        }
         self.load_image(i, ImageKind::Backdrop, BACKDROP_PX, {
             let id = id.clone();
             move |this, img| {
@@ -2452,7 +2533,15 @@ impl App {
                 .dispatch_event(slint::platform::WindowEvent::KeyReleased { text });
         });
         on!(on_open_item, |a, id| a.navigate(Route::Detail(id.into())));
-        on!(on_prefetch, |a, id| a.prefetch(&id));
+        on!(on_prefetch, |a, id| {
+            a.prefetch(&id);
+            if a.ui().get_page() == Page::Home {
+                let item = a.state.borrow().items.get(id.as_str()).cloned();
+                if let Some(i) = item {
+                    a.set_hero(&i);
+                }
+            }
+        });
         on!(on_open_library, |a, id, title| a
             .navigate(Route::Library(id.into(), title.into())));
         on!(on_set_sort, |a, id| {

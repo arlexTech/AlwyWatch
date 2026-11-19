@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { LineEdit, ScrollView, ListView } from "std-widgets.slint";
+// AlwyWatch desktop UI. Same design language as the Android app: Manrope, near-black with
+// translucent surfaces, artwork-led pages, white pill for the main action.
+import { ScrollView } from "std-widgets.slint";
+import "fonts/Manrope.ttf";
 
 export struct Card {
     id: string,
@@ -13,6 +16,7 @@ export struct Card {
 export struct Rail {
     title: string,
     items: [Card],
+    landscape: bool,
 }
 
 export struct NamedId {
@@ -29,6 +33,7 @@ export struct Detail {
     genres: string,
     backdrop: image,
     poster: image,
+    logo: image,
     playable: bool,
     resumable: bool,
     played: bool,
@@ -86,23 +91,33 @@ export struct AdminRow {
 export enum Page { add, home, library, detail, search, settings, downloads, requests, leaving, triage, keepadmin }
 
 export global Palette {
-    out property <color> bg: #101114;
-    out property <color> surface: #1a1c20;
-    out property <color> surface-high: #24272c;
-    out property <color> accent: #e5a00d;
-    out property <color> text: #e8e8ea;
-    out property <color> muted: #9a9ca3;
-    out property <color> danger: #e5534b;
+    out property <color> bg: #09090c;
+    out property <color> surface: #ffffff14;
+    out property <color> surface-high: #ffffff24;
+    out property <color> outline: #ffffff1f;
+    out property <color> accent: #ffb224;
+    out property <color> text: #f4f4f6;
+    out property <color> muted: #f4f4f699;
+    out property <color> subtle: #f4f4f666;
+    out property <color> danger: #ff5a5f;
+    out property <color> success: #3ddc97;
 }
 
-// A focusable, clickable surface: Enter/Space activate, focus ring always visible.
+component Icon inherits Image {
+    in property <color> tint: Palette.text;
+    width: 22px;
+    height: 22px;
+    colorize: root.tint;
+    image-fit: contain;
+}
+
+// A focusable, clickable surface: Enter/Space activate; focus and hover are always visible.
 component Focusable inherits Rectangle {
     in property <bool> primary: false;
+    out property <bool> active: fs.has-focus || ta.has-hover;
     callback clicked();
     callback focused();
-    border-radius: 8px;
-    border-width: fs.has-focus ? 3px : 0px;
-    border-color: Palette.accent;
+    border-radius: 14px;
     fs := FocusScope {
         key-pressed(e) => {
             if (e.text == Key.Return || e.text == " ") {
@@ -113,97 +128,248 @@ component Focusable inherits Rectangle {
         }
         focus-changed-event => { if (self.has-focus) { root.focused(); } }
     }
-    TouchArea {
+    ta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
             fs.focus();
             root.clicked();
         }
+        changed has-hover => { if (self.has-hover) { root.focused(); } }
     }
     @children
 }
 
+// Pill button: primary = white with black text; secondary = glass. Focus/hover turn it white.
 component Button inherits Focusable {
     in property <string> label;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    property <bool> light: root.primary || root.active;
     height: 40px;
-    min-width: txt.preferred-width + 36px;
+    min-width: row.preferred-width + 36px;
     border-radius: 20px;
-    background: root.primary ? Palette.accent : Palette.surface-high;
-    txt := Text {
-        text: root.label;
-        color: root.primary ? #000 : Palette.text;
+    background: root.light ? (root.primary && root.active ? #e6e6e6 : #ffffff) : Palette.surface-high;
+    animate background { duration: 120ms; }
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 8px;
+        if root.has-icon : Icon { source: root.icon; tint: root.light ? #000 : Palette.text; width: 20px; height: 20px; y: (parent.height - self.height) / 2; }
+        Text {
+            text: root.label;
+            color: root.light ? #000 : Palette.text;
+            font-size: 15px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component IconButton inherits Focusable {
+    in property <image> icon;
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+    background: root.active ? #ffffff : Palette.surface-high;
+    Icon { source: root.icon; tint: root.active ? #000 : Palette.text; }
+}
+
+component NavItem inherits Focusable {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> selected;
+    height: 44px;
+    border-radius: 22px;
+    background: root.active ? #ffffff : (root.selected ? Palette.surface-high : transparent);
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 14px;
+        Icon {
+            source: root.icon;
+            tint: root.active ? #000 : (root.selected ? Palette.text : Palette.muted);
+            y: (parent.height - self.height) / 2;
+        }
+        Text {
+            text: root.label;
+            color: root.active ? #000 : (root.selected ? Palette.text : Palette.muted);
+            font-size: 15px;
+            font-weight: root.selected ? 700 : 600;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+component PageTitle inherits VerticalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    spacing: 2px;
+    Text { text: root.title; color: Palette.text; font-size: 34px; font-weight: 800; letter-spacing: -0.5px; }
+    if root.subtitle != "" : Text { text: root.subtitle; color: Palette.muted; font-size: 15px; }
+}
+
+// Rounded text field (bare TextInput: no inner widget box).
+component Field inherits Rectangle {
+    in-out property <string> text <=> ti.text;
+    in property <string> placeholder;
+    in property <InputType> input-type: InputType.text;
+    callback accepted(string);
+    callback edited(string);
+    height: 48px;
+    border-radius: 24px;
+    background: Palette.surface;
+    border-width: ti.has-focus ? 2px : 1px;
+    border-color: ti.has-focus ? #ffffff : Palette.outline;
+    TouchArea { mouse-cursor: MouseCursor.text; clicked => { ti.focus(); } }
+    if ti.text == "" : Text {
+        x: 20px;
+        text: root.placeholder;
+        color: Palette.subtle;
         font-size: 15px;
-        font-weight: 600;
-        horizontal-alignment: center;
         vertical-alignment: center;
     }
+    ti := TextInput {
+        x: 20px;
+        width: parent.width - 40px;
+        color: Palette.text;
+        font-size: 15px;
+        vertical-alignment: center;
+        single-line: true;
+        input-type: root.input-type;
+        selection-background-color: #ffb22466;
+        accepted => { root.accepted(self.text); }
+        edited => { root.edited(self.text); }
+    }
+}
+
+component Badge inherits Rectangle {
+    in property <string> label;
+    in property <color> tone: #000000a0;
+    in property <color> fg: #ffffff;
+    height: 22px;
+    width: t.preferred-width + 14px;
+    border-radius: 6px;
+    background: root.tone;
+    t := Text { text: root.label; color: root.fg; font-size: 11px; font-weight: 800; letter-spacing: 0.6px; }
+}
+
+component Progress inherits Rectangle {
+    in property <float> value;
+    height: 4px;
+    border-radius: 2px;
+    background: #ffffff40;
+    Rectangle { x: 0; width: parent.width * root.value; border-radius: 2px; background: Palette.accent; }
 }
 
 component PosterCard inherits Focusable {
     in property <Card> card;
-    width: 150px;
-    height: 270px;
+    width: 160px;
+    height: 292px;
+    background: transparent;
     VerticalLayout {
-        spacing: 6px;
+        spacing: 8px;
         Rectangle {
-            height: 225px;
-            border-radius: 8px;
+            height: 240px;
+            border-radius: 14px;
             clip: true;
-            background: Palette.surface-high;
-            Image {
-                source: root.card.image;
-                width: parent.width;
-                height: parent.height;
-                image-fit: cover;
-            }
-            if root.card.progress > 0 : Rectangle {
-                y: parent.height - 4px;
-                height: 4px;
-                width: parent.width * root.card.progress;
-                x: 0;
-                background: Palette.accent;
-            }
+            background: Palette.surface;
+            border-width: root.active ? 3px : 0px;
+            border-color: #ffffff;
+            Image { source: root.card.image; width: parent.width; height: parent.height; image-fit: cover; }
+            if root.card.progress > 0 : Progress { x: 8px; y: parent.height - 12px; width: parent.width - 16px; value: root.card.progress; }
             if root.card.played : Rectangle {
                 x: parent.width - 30px;
-                y: 6px;
-                width: 24px;
-                height: 24px;
-                border-radius: 12px;
-                background: Palette.accent;
-                Text { text: "✓"; color: #000; }
+                y: 8px;
+                width: 22px;
+                height: 22px;
+                border-radius: 11px;
+                background: #000000a0;
+                Icon { source: @image-url("icons/check.svg"); tint: Palette.accent; width: 15px; height: 15px; }
             }
         }
-        Text { text: root.card.title; color: Palette.text; overflow: elide; font-size: 14px; }
+        Text { text: root.card.title; color: Palette.text; overflow: elide; font-size: 14px; font-weight: 700; }
         Text { text: root.card.subtitle; color: Palette.muted; overflow: elide; font-size: 12px; }
+    }
+}
+
+// 16:9 card for "Continue watching": still, title, time, progress.
+component LandscapeCard inherits Focusable {
+    in property <Card> card;
+    width: 300px;
+    height: 169px;
+    clip: true;
+    background: Palette.surface;
+    border-width: root.active ? 3px : 0px;
+    border-color: #ffffff;
+    Image { source: root.card.image; width: parent.width; height: parent.height; image-fit: cover; }
+    Rectangle { background: @linear-gradient(180deg, #00000000 45%, #000000c0 100%); }
+    VerticalLayout {
+        padding: 12px;
+        spacing: 2px;
+        alignment: end;
+        Text { text: root.card.title; color: Palette.text; overflow: elide; font-size: 15px; font-weight: 700; }
+        Text { text: root.card.subtitle; color: Palette.muted; overflow: elide; font-size: 12px; }
+        if root.card.progress > 0 : Rectangle { height: 8px; }
+        if root.card.progress > 0 : Progress { value: root.card.progress; }
     }
 }
 
 component RailView {
     in property <Rail> rail;
+    property <length> step: root.rail.landscape ? 316px : 176px;
+    property <length> h: root.rail.landscape ? 181px : 304px;
     callback open(string);
     callback hovered(string);
     VerticalLayout {
-        spacing: 8px;
-        Text { text: root.rail.title; color: Palette.text; font-size: 20px; font-weight: 600; }
-        rail := ScrollView {
-            height: 290px;
-            content-width: root.rail.items.length * 164px + 12px;
-            content-height: 284px;
+        spacing: 10px;
+        Text { text: root.rail.title; color: Palette.text; font-size: 20px; font-weight: 700; }
+        sv := ScrollView {
+            height: root.h + 8px;
+            content-width: root.rail.items.length * root.step + 12px;
+            content-height: root.h + 4px;
             vertical-scrollbar-policy: always-off;
-            for c[i] in root.rail.items : PosterCard {
-                x: i * 164px + 6px;
-                y: 6px;
-                card: c;
-                clicked => { root.open(c.id); }
-                focused => {
-                    // Keep the focused card visible when moving with the keyboard.
-                    if (self.x + rail.content-x < 0) { rail.content-x = -self.x + 6px; }
-                    if (self.x + self.width + rail.content-x > rail.visible-width) {
-                        rail.content-x = rail.visible-width - self.x - self.width - 6px;
+            for c[i] in root.rail.items : Rectangle {
+                x: i * root.step + 4px;
+                y: 4px;
+                width: root.step - 16px;
+                height: root.h;
+                if root.rail.landscape : LandscapeCard {
+                    card: c;
+                    clicked => { root.open(c.id); }
+                    focused => {
+                        if (parent.x + sv.content-x < 0) { sv.content-x = -parent.x + 4px; }
+                        if (parent.x + parent.width + sv.content-x > sv.visible-width) { sv.content-x = sv.visible-width - parent.x - parent.width - 4px; }
+                        root.hovered(c.id);
                     }
-                    root.hovered(c.id);
+                }
+                if !root.rail.landscape : PosterCard {
+                    card: c;
+                    clicked => { root.open(c.id); }
+                    focused => {
+                        if (parent.x + sv.content-x < 0) { sv.content-x = -parent.x + 4px; }
+                        if (parent.x + parent.width + sv.content-x > sv.visible-width) { sv.content-x = sv.visible-width - parent.x - parent.width - 4px; }
+                        root.hovered(c.id);
+                    }
                 }
             }
+        }
+    }
+}
+
+// Grouped settings card.
+component Group inherits VerticalLayout {
+    in property <string> title;
+    spacing: 8px;
+    if root.title != "" : Text { text: root.title; color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+    Rectangle {
+        border-radius: 18px;
+        background: Palette.surface;
+        border-width: 1px;
+        border-color: Palette.outline;
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+            @children
         }
     }
 }
@@ -214,6 +380,7 @@ export component AppWindow inherits Window {
     preferred-height: 800px;
     background: Palette.bg;
     default-font-size: 15px;
+    default-font-family: "Manrope";
 
     in-out property <Page> page: Page.home;
     in property <string> status;
@@ -222,10 +389,12 @@ export component AppWindow inherits Window {
     // Home
     in property <[Rail]> rails;
     in property <[NamedId]> libraries;
+    in property <Detail> hero;
     // Library / search grid
     in property <string> grid-title;
     in property <[Card]> grid;
     in property <[NamedId]> sorts;
+    in property <string> library-id;
     // Detail
     in property <Detail> detail;
     in property <[NamedId]> seasons;
@@ -319,587 +488,790 @@ export component AppWindow inherits Window {
             return reject;
         }
 
-        VerticalLayout {
-            padding: 0;
-            // Top bar
-            HorizontalLayout {
-                padding: 16px;
-                spacing: 12px;
-                height: 72px;
-                if root.can-go-back : Button { label: "←"; clicked => { root.back(); } }
-                Text {
-                    text: "AlwyWatch";
-                    color: Palette.text;
-                    font-size: 24px;
-                    font-weight: 700;
-                    vertical-alignment: center;
-                }
-                Rectangle { horizontal-stretch: 1; }
-                if root.page != Page.add : Button { label: "Search"; clicked => { root.go(Page.search); } }
-                if root.page != Page.add && root.keep-active : Button { label: "Leaving soon"; clicked => { root.go(Page.leaving); } }
-                if root.page != Page.add && root.seerr-active : Button { label: "Requests"; clicked => { root.go(Page.requests); } }
-                if root.page != Page.add : Button { label: "Downloads"; clicked => { root.go(Page.downloads); } }
-                if root.page != Page.add : Button { label: "Settings"; clicked => { root.go(Page.settings); } }
-            }
-            if root.keep-message != "" : Rectangle {
-                height: 36px;
-                background: Palette.surface-high;
-                Text { text: root.keep-message; color: Palette.accent; }
-            }
-            if root.error != "" : Rectangle {
-                height: 36px;
-                background: Palette.surface-high;
-                Text { text: root.error; color: Palette.muted; }
-            }
-
-            // Pages
-            if root.page == Page.home : ScrollView {
+        HorizontalLayout {
+            // ----- Sidebar ----------------------------------------------------------------
+            if root.page != Page.add : Rectangle {
+                width: 232px;
+                background: #ffffff08;
+                Rectangle { x: parent.width - 1px; width: 1px; background: Palette.outline; }
                 VerticalLayout {
-                    padding-left: 24px;
-                    padding-right: 24px;
-                    spacing: 20px;
-                    HorizontalLayout {
-                        spacing: 10px;
-                        alignment: start;
-                        for lib in root.libraries : Button {
-                            label: lib.title;
-                            clicked => { root.open-library(lib.id, lib.title); }
-                        }
-                    }
-                    for rail in root.rails : RailView {
-                        rail: rail;
-                        open(id) => { root.open-item(id); }
-                        hovered(id) => { root.prefetch(id); }
-                    }
-                    if root.rails.length == 0 : Text { text: root.status; color: Palette.muted; }
-                }
-            }
-
-            if root.page == Page.library || root.page == Page.search : VerticalLayout {
-                padding-left: 24px;
-                padding-right: 24px;
-                spacing: 12px;
-                HorizontalLayout {
-                    spacing: 10px;
-                    height: 44px;
-                    if root.page == Page.library : Text {
-                        text: root.grid-title;
+                    padding: 16px;
+                    padding-top: 24px;
+                    spacing: 4px;
+                    alignment: start;
+                    Text {
+                        text: "AlwyWatch";
                         color: Palette.text;
-                        font-size: 22px;
-                        vertical-alignment: center;
+                        font-size: 24px;
+                        font-weight: 800;
+                        letter-spacing: -0.5px;
                     }
-                    if root.page == Page.search : LineEdit {
-                        placeholder-text: "Search movies and shows";
-                        text <=> root.search-text;
-                        edited(t) => { root.search(t); }
+                    Rectangle { height: 22px; }
+                    NavItem { label: "Home"; icon: @image-url("icons/home.svg"); selected: root.page == Page.home; clicked => { root.go(Page.home); } }
+                    NavItem { label: "Search"; icon: @image-url("icons/search.svg"); selected: root.page == Page.search; clicked => { root.go(Page.search); } }
+                    for lib in root.libraries : NavItem {
+                        label: lib.title;
+                        icon: @image-url("icons/movie.svg");
+                        selected: root.page == Page.library && root.library-id == lib.id;
+                        clicked => { root.open-library(lib.id, lib.title); }
                     }
-                    Rectangle { horizontal-stretch: 1; }
-                    if root.page == Page.library : HorizontalLayout {
-                        spacing: 8px;
-                        for s in root.sorts : Button {
-                            label: s.title;
-                            primary: s.selected;
-                            clicked => { root.set-sort(s.id); }
-                        }
+                    if root.keep-active : NavItem {
+                        label: "Leaving soon";
+                        icon: @image-url("icons/hourglass_bottom.svg");
+                        selected: root.page == Page.leaving || root.page == Page.triage || root.page == Page.keepadmin;
+                        clicked => { root.go(Page.leaving); }
                     }
-                }
-                grid := ScrollView {
-                    property <int> cols: max(1, floor((self.visible-width - 10px) / 164px));
-                    content-height: ceil(root.grid.length / self.cols) * 290px + 20px;
-                    scrolled => {
-                        root.grid-scrolled(-self.content-y / max(1px, self.content-height - self.visible-height));
-                    }
-                    for c[i] in root.grid : PosterCard {
-                        x: mod(i, grid.cols) * 164px + 6px;
-                        y: floor(i / grid.cols) * 290px + 6px;
-                        card: c;
-                        clicked => { root.open-item(c.id); }
-                        focused => { root.prefetch(c.id); }
-                    }
+                    if root.seerr-active : NavItem { label: "Requests"; icon: @image-url("icons/add.svg"); selected: root.page == Page.requests; clicked => { root.go(Page.requests); } }
+                    NavItem { label: "Downloads"; icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
+                    NavItem { label: "Settings"; icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings; clicked => { root.go(Page.settings); } }
                 }
             }
 
-            if root.page == Page.detail : ScrollView {
+            // ----- Content ----------------------------------------------------------------
+            Rectangle {
+                horizontal-stretch: 1;
+                clip: true;
+
                 VerticalLayout {
-                    spacing: 16px;
-                    Rectangle {
-                        height: 380px;
-                        clip: true;
-                        Image {
-                            source: root.detail.backdrop;
-                            width: parent.width;
-                            height: parent.height;
-                            image-fit: cover;
-                            opacity: 0.55;
-                        }
-                        HorizontalLayout {
-                            padding: 24px;
-                            spacing: 20px;
-                            alignment: start;
+                    if root.keep-message != "" : Rectangle {
+                        height: 40px;
+                        background: #ffb2241f;
+                        Text { text: root.keep-message; color: Palette.accent; font-weight: 600; }
+                    }
+                    if root.error != "" : Rectangle {
+                        height: 40px;
+                        background: Palette.surface;
+                        Text { text: root.error; color: Palette.muted; }
+                    }
+
+                    // Home: artwork hero that follows the hovered/focused card, then rails.
+                    if root.page == Page.home : ScrollView {
+                        VerticalLayout {
+                            spacing: 18px;
                             Rectangle {
-                                width: 200px;
-                                height: 300px;
-                                border-radius: 8px;
+                                height: 460px;
                                 clip: true;
-                                background: Palette.surface-high;
-                                Image { source: root.detail.poster; width: parent.width; height: parent.height; image-fit: cover; }
+                                Image { source: root.hero.backdrop; width: parent.width; height: parent.height; image-fit: cover; }
+                                Rectangle { background: @linear-gradient(90deg, #09090cf5 0%, #09090cb0 35%, #09090c00 70%); }
+                                Rectangle { background: @linear-gradient(180deg, #09090c00 50%, #09090c 100%); }
+                                VerticalLayout {
+                                    x: 40px;
+                                    width: min(560px, parent.width - 80px);
+                                    padding-bottom: 36px;
+                                    spacing: 12px;
+                                    alignment: end;
+                                    if root.hero.logo.width > 0 : Image {
+                                        source: root.hero.logo;
+                                        height: 110px;
+                                        width: min(380px, self.height * root.hero.logo.width / max(1, root.hero.logo.height) * 1px / 1px);
+                                        image-fit: contain;
+                                        horizontal-alignment: left;
+                                    }
+                                    if root.hero.logo.width == 0 : Text {
+                                        text: root.hero.title;
+                                        color: Palette.text;
+                                        font-size: 44px;
+                                        font-weight: 800;
+                                        letter-spacing: -1px;
+                                        wrap: word-wrap;
+                                    }
+                                    Text { text: root.hero.meta; color: Palette.muted; font-size: 15px; overflow: elide; }
+                                    Text { text: root.hero.overview; color: Palette.muted; font-size: 14px; wrap: word-wrap; max-height: 60px; overflow: elide; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        alignment: start;
+                                        if root.hero.playable : Button {
+                                            label: root.hero.resumable ? "Resume" : "Play";
+                                            primary: true;
+                                            has-icon: true;
+                                            icon: @image-url("icons/play_arrow_fill1.svg");
+                                            clicked => { root.play(root.hero.id, false); }
+                                        }
+                                        if root.hero.id != "" : Button {
+                                            label: "Details";
+                                            has-icon: true;
+                                            icon: @image-url("icons/info.svg");
+                                            clicked => { root.open-item(root.hero.id); }
+                                        }
+                                    }
+                                }
                             }
                             VerticalLayout {
-                                alignment: end;
-                                spacing: 8px;
-                                Text { text: root.detail.title; color: Palette.text; font-size: 32px; font-weight: 700; wrap: word-wrap; }
-                                Text { text: root.detail.meta; color: Palette.muted; }
-                                HorizontalLayout {
-                                    spacing: 12px;
-                                    alignment: start;
-                                    if root.detail.playable : Button {
-                                        label: root.detail.resumable ? "Resume" : "Play";
-                                        primary: true;
-                                        clicked => { root.play(root.detail.id, false); }
-                                    }
-                                    if root.detail.resumable : Button {
-                                        label: "From start";
-                                        clicked => { root.play(root.detail.id, true); }
-                                    }
-                                    if root.detail.playable : Button {
-                                        label: "Download";
-                                        clicked => { root.download(root.detail.id); }
-                                    }
-                                    Button {
-                                        label: root.detail.played ? "Mark unwatched" : "Mark watched";
-                                        clicked => { root.toggle-played(root.detail.id); }
-                                    }
+                                padding-left: 40px;
+                                padding-right: 24px;
+                                padding-bottom: 32px;
+                                spacing: 22px;
+                                for rail in root.rails : RailView {
+                                    rail: rail;
+                                    open(id) => { root.open-item(id); }
+                                    hovered(id) => { root.prefetch(id); }
                                 }
+                                if root.rails.length == 0 : Text { text: root.status; color: Palette.muted; }
                             }
                         }
                     }
-                    VerticalLayout {
-                        padding-left: 24px;
+
+                    if root.page == Page.library || root.page == Page.search : VerticalLayout {
+                        padding-left: 40px;
                         padding-right: 24px;
-                        spacing: 10px;
-                        Text { text: root.detail.overview; color: Palette.text; wrap: word-wrap; }
-                        Text { text: root.detail.genres; color: Palette.muted; }
-                        if root.detail.is-series : HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
-                            for s in root.seasons : Button {
-                                label: s.title;
-                                primary: s.selected;
-                                clicked => { root.select-season(s.id); }
+                        padding-top: 28px;
+                        spacing: 18px;
+                        if root.page == Page.library : HorizontalLayout {
+                            spacing: 10px;
+                            PageTitle { title: root.grid-title; }
+                            Rectangle { horizontal-stretch: 1; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: end;
+                                for s in root.sorts : Button {
+                                    label: s.title;
+                                    primary: s.selected;
+                                    y: (parent.height - self.height) / 2;
+                                    clicked => { root.set-sort(s.id); }
+                                }
                             }
                         }
-                        for ep in root.episodes : Focusable {
-                            height: 96px;
-                            background: Palette.surface;
-                            clicked => { root.play(ep.id, false); }
-                            focused => { root.prefetch(ep.id); }
-                            HorizontalLayout {
-                                padding: 8px;
-                                spacing: 12px;
-                                Rectangle {
-                                    width: 142px;
-                                    border-radius: 6px;
-                                    clip: true;
-                                    background: Palette.surface-high;
-                                    Image { source: ep.image; width: parent.width; height: parent.height; image-fit: cover; }
+                        if root.page == Page.search : VerticalLayout {
+                            spacing: 14px;
+                            PageTitle { title: "Search"; }
+                            Field {
+                                placeholder: "Movies, shows, episodes…";
+                                text <=> root.search-text;
+                                edited(t) => { root.search(t); }
+                            }
+                        }
+                        grid := ScrollView {
+                            property <int> cols: max(1, floor((self.visible-width - 10px) / 176px));
+                            content-height: ceil(root.grid.length / self.cols) * 312px + 20px;
+                            scrolled => {
+                                root.grid-scrolled(-self.content-y / max(1px, self.content-height - self.visible-height));
+                            }
+                            for c[i] in root.grid : PosterCard {
+                                x: mod(i, grid.cols) * 176px + 4px;
+                                y: floor(i / grid.cols) * 312px + 4px;
+                                card: c;
+                                clicked => { root.open-item(c.id); }
+                                focused => { root.prefetch(c.id); }
+                            }
+                        }
+                    }
+
+                    if root.page == Page.detail : ScrollView {
+                        VerticalLayout {
+                            spacing: 18px;
+                            Rectangle {
+                                height: 520px;
+                                clip: true;
+                                Image { source: root.detail.backdrop; width: parent.width; height: parent.height; image-fit: cover; }
+                                Rectangle { background: @linear-gradient(90deg, #09090cf0 0%, #09090c90 40%, #09090c00 75%); }
+                                Rectangle { background: @linear-gradient(180deg, #09090c80 0%, #09090c00 18%, #09090c00 55%, #09090c 100%); }
+                                if root.can-go-back : IconButton {
+                                    x: 24px;
+                                    y: 20px;
+                                    icon: @image-url("icons/arrow_back.svg");
+                                    clicked => { root.back(); }
                                 }
                                 VerticalLayout {
-                                    alignment: center;
-                                    Text { text: ep.title; color: Palette.text; font-size: 16px; overflow: elide; }
-                                    Text { text: ep.subtitle; color: Palette.muted; overflow: elide; wrap: word-wrap; }
+                                    x: 40px;
+                                    width: min(620px, parent.width - 80px);
+                                    padding-bottom: 32px;
+                                    spacing: 12px;
+                                    alignment: end;
+                                    if root.detail.logo.width > 0 : Image {
+                                        source: root.detail.logo;
+                                        height: 120px;
+                                        image-fit: contain;
+                                        horizontal-alignment: left;
+                                    }
+                                    if root.detail.logo.width == 0 : Text {
+                                        text: root.detail.title;
+                                        color: Palette.text;
+                                        font-size: 46px;
+                                        font-weight: 800;
+                                        letter-spacing: -1px;
+                                        wrap: word-wrap;
+                                    }
+                                    Text { text: root.detail.meta; color: Palette.muted; font-size: 15px; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        alignment: start;
+                                        if root.detail.playable : Button {
+                                            label: root.detail.resumable ? "Resume" : "Play";
+                                            primary: true;
+                                            has-icon: true;
+                                            icon: @image-url("icons/play_arrow_fill1.svg");
+                                            clicked => { root.play(root.detail.id, false); }
+                                        }
+                                        if root.detail.resumable : Button {
+                                            label: "From start";
+                                            clicked => { root.play(root.detail.id, true); }
+                                        }
+                                        if root.detail.playable : IconButton {
+                                            icon: @image-url("icons/download.svg");
+                                            clicked => { root.download(root.detail.id); }
+                                        }
+                                        IconButton {
+                                            icon: @image-url("icons/check.svg");
+                                            clicked => { root.toggle-played(root.detail.id); }
+                                        }
+                                    }
                                 }
-                                if ep.played : Text { text: "✓"; color: Palette.accent; vertical-alignment: center; }
+                            }
+                            VerticalLayout {
+                                padding-left: 40px;
+                                padding-right: 40px;
+                                padding-bottom: 32px;
+                                spacing: 14px;
+                                Text { text: root.detail.overview; color: #f4f4f6d9; font-size: 16px; wrap: word-wrap; }
+                                if root.detail.genres != "" : Text { text: root.detail.genres; color: Palette.subtle; }
+                                if root.detail.is-series : Text { text: "Episodes"; color: Palette.text; font-size: 20px; font-weight: 700; }
+                                if root.detail.is-series : HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+                                    for s in root.seasons : Button {
+                                        label: s.title;
+                                        primary: s.selected;
+                                        clicked => { root.select-season(s.id); }
+                                    }
+                                }
+                                for ep in root.episodes : Focusable {
+                                    height: 112px;
+                                    background: self.active ? Palette.surface-high : transparent;
+                                    clicked => { root.play(ep.id, false); }
+                                    focused => { root.prefetch(ep.id); }
+                                    HorizontalLayout {
+                                        padding: 8px;
+                                        spacing: 16px;
+                                        Rectangle {
+                                            width: 170px;
+                                            border-radius: 10px;
+                                            clip: true;
+                                            background: Palette.surface;
+                                            Image { source: ep.image; width: parent.width; height: parent.height; image-fit: cover; }
+                                            if ep.progress > 0 : Progress { y: parent.height - 4px; width: parent.width; value: ep.progress; border-radius: 0; }
+                                        }
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 4px;
+                                            Text { text: ep.title; color: Palette.text; font-size: 16px; font-weight: 700; overflow: elide; }
+                                            Text { text: ep.subtitle; color: Palette.muted; overflow: elide; wrap: word-wrap; font-size: 13px; }
+                                        }
+                                        if ep.played : Icon { source: @image-url("icons/check.svg"); tint: Palette.accent; y: (parent.height - self.height) / 2; }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
 
-            if root.page == Page.add : VerticalLayout {
-                padding: 24px;
-                spacing: 16px;
-                alignment: start;
-                Text { text: "Add a server"; color: Palette.text; font-size: 26px; }
-                if root.add-step == "choose" : HorizontalLayout {
-                    spacing: 12px;
-                    alignment: start;
-                    Button { label: "Jellyfin"; primary: true; clicked => { root.add-choose("jellyfin"); } }
-                    Button { label: "Plex"; clicked => { root.add-choose("plex"); } }
-                }
-                if root.add-step == "choose" : VerticalLayout {
-                    spacing: 8px;
-                    Text { text: "Or, with an AlwyWatch server address from your server owner:"; color: Palette.muted; }
-                    HorizontalLayout {
-                        spacing: 10px;
-                        kserver := LineEdit { placeholder-text: "watch.example.org"; accepted(t) => { root.add-keep-servers(t); } }
-                        Button { label: "Show servers"; clicked => { root.add-keep-servers(kserver.text); } }
-                    }
-                    for s in root.preset-servers : HorizontalLayout {
-                        alignment: start;
-                        Button { label: s.title; primary: true; clicked => { root.add-keep-pick(s.id); } }
-                    }
-                }
-                if root.add-step == "jellyfin-url" : VerticalLayout {
-                    spacing: 12px;
-                    url := LineEdit {
-                        placeholder-text: "jellyfin.example.org";
-                        accepted(t) => { root.jellyfin-url(t); }
-                    }
-                    HorizontalLayout { alignment: start; Button { label: "Continue"; primary: true; clicked => { root.jellyfin-url(url.text); } } }
-                }
-                if root.add-step == "jellyfin" : VerticalLayout {
-                    spacing: 12px;
-                    if root.quick-code != "" : VerticalLayout {
-                        spacing: 6px;
-                        Text { text: "Quick Connect: in a Jellyfin app where you are signed in, enter"; color: Palette.muted; }
-                        Text { text: root.quick-code; color: Palette.text; font-size: 44px; }
-                        Text { text: "or sign in with your password:"; color: Palette.muted; }
-                    }
-                    user := LineEdit { placeholder-text: "Username"; }
-                    pass := LineEdit {
-                        placeholder-text: "Password";
-                        input-type: password;
-                        accepted => { root.jellyfin-sign-in(user.text, pass.text); }
-                    }
-                    HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.jellyfin-sign-in(user.text, pass.text); } } }
-                }
-                if root.add-step == "plex" : VerticalLayout {
-                    spacing: 6px;
-                    Text { text: "Finish signing in to Plex in your browser. You can also go to plex.tv/link and enter:"; color: Palette.muted; wrap: word-wrap; }
-                    Text { text: root.plex-code; color: Palette.text; font-size: 44px; }
-                }
-                if root.add-step == "plex-servers" : VerticalLayout {
-                    spacing: 8px;
-                    Text { text: "Choose a server"; color: Palette.text; font-size: 18px; }
-                    for s in root.plex-servers : HorizontalLayout {
-                        alignment: start;
-                        Button { label: s.title; clicked => { root.plex-pick(s.id); } }
-                    }
-                }
-                if root.add-step != "choose" : HorizontalLayout { alignment: start; Button { label: "Back"; clicked => { root.add-choose(""); } } }
-                Text { text: root.status; color: Palette.danger; wrap: word-wrap; }
-            }
-
-            if root.page == Page.downloads : ScrollView {
-                VerticalLayout {
-                    padding: 24px;
-                    spacing: 10px;
-                    alignment: start;
-                    Text { text: "Downloads"; color: Palette.text; font-size: 22px; }
-                    if root.downloads.length == 0 : Text { text: "Nothing downloaded yet. Use \"Download\" on a movie or an episode."; color: Palette.muted; }
-                    for d in root.downloads : Rectangle {
-                        background: Palette.surface;
-                        border-radius: 8px;
-                        height: 104px;
-                        VerticalLayout {
-                            padding: 12px;
-                            spacing: 6px;
-                            Text { text: d.title; color: Palette.text; font-size: 16px; overflow: elide; }
-                            Text { text: d.status; color: Palette.muted; font-size: 12px; }
-                            Rectangle {
-                                height: 4px;
-                                background: Palette.surface-high;
-                                Rectangle { x: 0; width: parent.width * d.progress; background: Palette.accent; }
+                    if root.page == Page.add : Rectangle {
+                        background: @radial-gradient(circle, #ffb2244d 0%, #09090c00 60%);
+                        HorizontalLayout {
+                            alignment: center;
+                            VerticalLayout {
+                                width: min(560px, root.width - 48px);
+                                padding-top: 72px;
+                                spacing: 16px;
+                                alignment: start;
+                                if root.add-step == "choose" : VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "AlwyWatch"; color: Palette.text; font-size: 56px; font-weight: 800; letter-spacing: -1.5px; }
+                                    Text { text: "Your Jellyfin and Plex, fast and beautiful."; color: Palette.muted; font-size: 17px; }
+                                    Rectangle { height: 16px; }
+                                }
+                                if root.add-step != "choose" : HorizontalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+                                    IconButton { icon: @image-url("icons/arrow_back.svg"); clicked => { root.add-choose(""); } }
+                                    Text {
+                                        text: root.add-step == "plex" || root.add-step == "plex-servers" ? "Plex" : "Jellyfin";
+                                        color: Palette.text;
+                                        font-size: 28px;
+                                        font-weight: 800;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                if root.add-step == "choose" : Text { text: "Sign in with your existing account"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                if root.add-step == "choose" : Focusable {
+                                    height: 76px;
+                                    border-radius: 20px;
+                                    background: self.active ? Palette.surface-high : Palette.surface;
+                                    border-width: 1px;
+                                    border-color: Palette.outline;
+                                    clicked => { root.add-choose("jellyfin"); }
+                                    HorizontalLayout {
+                                        padding: 16px;
+                                        spacing: 16px;
+                                        Rectangle { width: 44px; border-radius: 12px; background: Palette.surface-high; Icon { source: @image-url("icons/video_library.svg"); tint: Palette.accent; } }
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Text { text: "Jellyfin"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                            Text { text: "Quick Connect or password"; color: Palette.muted; font-size: 13px; }
+                                        }
+                                        Rectangle { horizontal-stretch: 1; }
+                                        Icon { source: @image-url("icons/chevron_right.svg"); tint: Palette.subtle; y: (parent.height - self.height) / 2; }
+                                    }
+                                }
+                                if root.add-step == "choose" : Focusable {
+                                    height: 76px;
+                                    border-radius: 20px;
+                                    background: self.active ? Palette.surface-high : Palette.surface;
+                                    border-width: 1px;
+                                    border-color: Palette.outline;
+                                    clicked => { root.add-choose("plex"); }
+                                    HorizontalLayout {
+                                        padding: 16px;
+                                        spacing: 16px;
+                                        Rectangle { width: 44px; border-radius: 12px; background: Palette.surface-high; Icon { source: @image-url("icons/play_arrow_fill1.svg"); tint: Palette.accent; } }
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Text { text: "Plex"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                            Text { text: "Sign in on plex.tv"; color: Palette.muted; font-size: 13px; }
+                                        }
+                                        Rectangle { horizontal-stretch: 1; }
+                                        Icon { source: @image-url("icons/chevron_right.svg"); tint: Palette.subtle; y: (parent.height - self.height) / 2; }
+                                    }
+                                }
+                                if root.add-step == "choose" : VerticalLayout {
+                                    spacing: 10px;
+                                    padding-top: 10px;
+                                    Text { text: "Got an AlwyWatch server address from your server's owner?"; color: Palette.muted; wrap: word-wrap; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        kserver := Field { placeholder: "watch.example.org"; accepted(t) => { root.add-keep-servers(t); } }
+                                        Button { label: "Show servers"; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
+                                    }
+                                    for s in root.preset-servers : HorizontalLayout {
+                                        alignment: start;
+                                        Button { label: s.title; primary: true; clicked => { root.add-keep-pick(s.id); } }
+                                    }
+                                }
+                                if root.add-step == "jellyfin-url" : VerticalLayout {
+                                    spacing: 12px;
+                                    url := Field {
+                                        placeholder: "jellyfin.example.org";
+                                        accepted(t) => { root.jellyfin-url(t); }
+                                    }
+                                    Text { text: "Your Jellyfin server's address, as you use it in a browser."; color: Palette.muted; }
+                                    HorizontalLayout { alignment: start; Button { label: "Continue"; primary: true; clicked => { root.jellyfin-url(url.text); } } }
+                                }
+                                if root.add-step == "jellyfin" : VerticalLayout {
+                                    spacing: 12px;
+                                    if root.quick-code != "" : Rectangle {
+                                        height: 190px;
+                                        border-radius: 24px;
+                                        background: Palette.surface;
+                                        border-width: 1px;
+                                        border-color: Palette.outline;
+                                        VerticalLayout {
+                                            padding: 24px;
+                                            spacing: 8px;
+                                            Text { text: "QUICK CONNECT"; color: Palette.accent; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+                                            Text { text: root.quick-code; color: Palette.text; font-size: 54px; font-weight: 800; letter-spacing: 8px; }
+                                            Text { text: "In a Jellyfin app where you're signed in, open your profile → Quick Connect and enter this code."; color: Palette.muted; wrap: word-wrap; }
+                                        }
+                                    }
+                                    if root.quick-code != "" : Text { text: "Or with your password"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                    user := Field { placeholder: "Username"; }
+                                    pass := Field {
+                                        placeholder: "Password";
+                                        input-type: password;
+                                        accepted => { root.jellyfin-sign-in(user.text, pass.text); }
+                                    }
+                                    HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.jellyfin-sign-in(user.text, pass.text); } } }
+                                }
+                                if root.add-step == "plex" : Rectangle {
+                                    height: 170px;
+                                    border-radius: 24px;
+                                    background: Palette.surface;
+                                    border-width: 1px;
+                                    border-color: Palette.outline;
+                                    VerticalLayout {
+                                        padding: 24px;
+                                        spacing: 8px;
+                                        Text { text: "Finish signing in to Plex in your browser. You can also go to plex.tv/link and enter:"; color: Palette.muted; wrap: word-wrap; }
+                                        Text { text: root.plex-code; color: Palette.text; font-size: 48px; font-weight: 800; letter-spacing: 6px; }
+                                    }
+                                }
+                                if root.add-step == "plex-servers" : VerticalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Choose a server"; color: Palette.text; font-size: 18px; font-weight: 700; }
+                                    for s in root.plex-servers : HorizontalLayout {
+                                        alignment: start;
+                                        Button { label: s.title; clicked => { root.plex-pick(s.id); } }
+                                    }
+                                }
+                                Text { text: root.status; color: Palette.danger; wrap: word-wrap; }
                             }
+                        }
+                    }
+
+                    if root.page == Page.downloads : ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 12px;
+                            alignment: start;
+                            PageTitle { title: "Downloads"; subtitle: "Available offline"; }
+                            if root.downloads.length == 0 : Text { text: "Nothing downloaded yet. Use the download button on a movie or an episode."; color: Palette.muted; }
+                            for d in root.downloads : Rectangle {
+                                background: Palette.surface;
+                                border-radius: 18px;
+                                height: 92px;
+                                HorizontalLayout {
+                                    padding: 16px;
+                                    spacing: 14px;
+                                    VerticalLayout {
+                                        spacing: 6px;
+                                        alignment: center;
+                                        Text { text: d.title; color: Palette.text; font-size: 16px; font-weight: 700; overflow: elide; }
+                                        Text { text: d.status; color: Palette.muted; font-size: 12px; }
+                                        if !d.completed : Progress { value: d.progress; }
+                                    }
+                                    if d.completed : IconButton { y: (parent.height - self.height) / 2; icon: @image-url("icons/play_arrow_fill1.svg"); clicked => { root.play-download(d.account, d.item); } }
+                                    if !d.completed && d.active : Button { y: (parent.height - self.height) / 2; label: "Pause"; clicked => { root.download-action(d.id, "pause"); } }
+                                    if !d.completed && !d.active : Button { y: (parent.height - self.height) / 2; label: "Resume"; primary: true; clicked => { root.download-action(d.id, "resume"); } }
+                                    IconButton { y: (parent.height - self.height) / 2; icon: @image-url("icons/delete.svg"); clicked => { root.download-action(d.id, "remove"); } }
+                                }
+                            }
+                        }
+                    }
+
+                    if root.page == Page.requests : ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 14px;
+                            alignment: start;
+                            PageTitle { title: "Requests"; subtitle: "Ask for a movie or a show; it is added when ready."; }
+                            Field {
+                                placeholder: "Find a movie or a show…";
+                                edited(t) => { root.seerr-search(t); }
+                            }
+                            if root.seerr-message != "" : Text { text: root.seerr-message; color: Palette.accent; }
+                            if root.seerr-panel.open : Rectangle {
+                                background: Palette.surface-high;
+                                border-radius: 20px;
+                                VerticalLayout {
+                                    padding: 20px;
+                                    spacing: 10px;
+                                    HorizontalLayout {
+                                        Text { text: root.seerr-panel.title; color: Palette.text; font-size: 24px; font-weight: 800; }
+                                        Rectangle { horizontal-stretch: 1; }
+                                        IconButton { icon: @image-url("icons/close.svg"); clicked => { root.seerr-close(); } }
+                                    }
+                                    Text { text: root.seerr-panel.overview; color: Palette.muted; wrap: word-wrap; }
+                                    if root.seerr-panel.status != "" : Text { text: root.seerr-panel.status; color: Palette.accent; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        if root.seerr-panel.can-request : Button {
+                                            label: root.seerr-panel.is-tv ? "Request all seasons" : "Request";
+                                            primary: true;
+                                            has-icon: true;
+                                            icon: @image-url("icons/add.svg");
+                                            clicked => { root.seerr-request(true); }
+                                        }
+                                        if root.seerr-panel.is-tv : Button { label: "Request selected"; clicked => { root.seerr-request(false); } }
+                                    }
+                                    if root.seerr-panel.is-tv : HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: start;
+                                        for s in root.seerr-seasons : Button {
+                                            label: s.title;
+                                            primary: s.selected;
+                                            clicked => { root.seerr-toggle-season(s.id); }
+                                        }
+                                    }
+                                }
+                            }
+                            results := Rectangle {
+                                property <int> cols: max(1, floor((self.width - 10px) / 176px));
+                                height: ceil(root.seerr-results.length / self.cols) * 312px;
+                                for c[i] in root.seerr-results : PosterCard {
+                                    x: mod(i, results.cols) * 176px;
+                                    y: floor(i / results.cols) * 312px;
+                                    card: c;
+                                    clicked => { root.seerr-open(c.id); }
+                                }
+                            }
+                            if root.seerr-results.length == 0 : Text { text: "My requests"; color: Palette.text; font-size: 20px; font-weight: 700; }
+                            if root.seerr-results.length == 0 : mine := Rectangle {
+                                property <int> cols: max(1, floor((self.width - 10px) / 176px));
+                                height: ceil(root.seerr-mine.length / self.cols) * 312px;
+                                for c[i] in root.seerr-mine : PosterCard {
+                                    x: mod(i, mine.cols) * 176px;
+                                    y: floor(i / mine.cols) * 312px;
+                                    card: c;
+                                }
+                            }
+                        }
+                    }
+
+                    if root.page == Page.leaving : ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 10px;
+                            alignment: start;
+                            PageTitle { title: "Leaving soon"; subtitle: "What the server will delete, soonest first. Keep what you want to watch or love."; }
                             HorizontalLayout {
                                 spacing: 10px;
                                 alignment: start;
-                                if d.completed : Button { label: "Play"; primary: true; clicked => { root.play-download(d.account, d.item); } }
-                                if !d.completed && d.active : Button { label: "Pause"; clicked => { root.download-action(d.id, "pause"); } }
-                                if !d.completed && !d.active : Button { label: "Resume"; primary: true; clicked => { root.download-action(d.id, "resume"); } }
-                                Button { label: "Delete"; clicked => { root.download-action(d.id, "remove"); } }
+                                padding-bottom: 8px;
+                                Button { label: "Sort them out"; primary: true; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.go(Page.triage); } }
+                                if root.keep-admin : Button { label: "Admin"; has-icon: true; icon: @image-url("icons/settings.svg"); clicked => { root.go(Page.keepadmin); } }
                             }
-                        }
-                    }
-                }
-            }
-
-            if root.page == Page.requests : ScrollView {
-                VerticalLayout {
-                    padding: 24px;
-                    spacing: 12px;
-                    alignment: start;
-                    LineEdit {
-                        placeholder-text: "Find a movie or a show to request";
-                        edited(t) => { root.seerr-search(t); }
-                    }
-                    if root.seerr-message != "" : Text { text: root.seerr-message; color: Palette.accent; }
-                    if root.seerr-panel.open : Rectangle {
-                        background: Palette.surface;
-                        border-radius: 8px;
-                        VerticalLayout {
-                            padding: 16px;
-                            spacing: 8px;
-                            Text { text: root.seerr-panel.title; color: Palette.text; font-size: 18px; }
-                            Text { text: root.seerr-panel.overview; color: Palette.muted; wrap: word-wrap; }
-                            if root.seerr-panel.status != "" : Text { text: root.seerr-panel.status; color: Palette.accent; }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                alignment: start;
-                                if root.seerr-panel.can-request : Button {
-                                    label: root.seerr-panel.is-tv ? "Request all seasons" : "Request";
-                                    primary: true;
-                                    clicked => { root.seerr-request(true); }
+                            for row in root.leaving : Rectangle {
+                                background: root.leaving-open == row.key ? Palette.surface-high : Palette.surface;
+                                border-radius: 18px;
+                                height: root.leaving-open == row.key ? 164px : 108px;
+                                VerticalLayout {
+                                    padding: 10px;
+                                    spacing: 10px;
+                                    Focusable {
+                                        height: 88px;
+                                        clicked => { root.leaving-open = root.leaving-open == row.key ? "" : row.key; }
+                                        HorizontalLayout {
+                                            spacing: 14px;
+                                            Rectangle {
+                                                width: 58px;
+                                                border-radius: 10px;
+                                                clip: true;
+                                                background: Palette.surface-high;
+                                                Image { source: row.poster; width: parent.width; height: parent.height; image-fit: cover; }
+                                            }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                spacing: 4px;
+                                                Text { text: row.title; color: Palette.text; font-size: 16px; font-weight: 700; overflow: elide; }
+                                                HorizontalLayout {
+                                                    alignment: start;
+                                                    Badge { label: row.when; tone: row.urgent ? Palette.danger : Palette.surface-high; }
+                                                }
+                                                if row.vote != "" || row.others != "" : Text {
+                                                    text: row.vote + (row.vote != "" && row.others != "" ? " · " : "") + row.others;
+                                                    color: row.voted ? Palette.accent : Palette.muted;
+                                                    font-size: 12px;
+                                                }
+                                            }
+                                            Rectangle { horizontal-stretch: 1; }
+                                            Icon { source: @image-url("icons/chevron_right.svg"); tint: Palette.subtle; y: (parent.height - self.height) / 2; }
+                                        }
+                                    }
+                                    if root.leaving-open == row.key : HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: start;
+                                        Button { label: "Until I watch it"; primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.keep-vote(row.key, "watched"); } }
+                                        Button { label: "Keep 30 days"; clicked => { root.keep-vote(row.key, "days30"); } }
+                                        Button { label: "Keep 7 days"; clicked => { root.keep-vote(row.key, "days7"); } }
+                                        Button { label: "I love it"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.keep-vote(row.key, "love"); } }
+                                        Button { label: "A classic"; clicked => { root.keep-vote(row.key, "classic"); } }
+                                        Button { label: "Don't care"; clicked => { root.keep-vote(row.key, "dontcare"); } }
+                                        if row.voted : Button { label: "Remove my choice"; clicked => { root.keep-vote(row.key, "remove"); } }
+                                    }
                                 }
-                                if root.seerr-panel.is-tv : Button { label: "Request selected"; clicked => { root.seerr-request(false); } }
-                                Button { label: "Close"; clicked => { root.seerr-close(); } }
-                            }
-                            if root.seerr-panel.is-tv : HorizontalLayout {
-                                spacing: 6px;
-                                alignment: start;
-                                for s in root.seerr-seasons : Button {
-                                    label: s.title;
-                                    primary: s.selected;
-                                    clicked => { root.seerr-toggle-season(s.id); }
-                                }
                             }
                         }
                     }
-                    results := Rectangle {
-                        property <int> cols: max(1, floor((self.width - 10px) / 164px));
-                        height: ceil(root.seerr-results.length / self.cols) * 290px;
-                        for c[i] in root.seerr-results : PosterCard {
-                            x: mod(i, results.cols) * 164px;
-                            y: floor(i / results.cols) * 290px;
-                            card: c;
-                            clicked => { root.seerr-open(c.id); }
-                        }
-                    }
-                    if root.seerr-results.length == 0 : Text { text: "My requests"; color: Palette.text; font-size: 20px; }
-                    if root.seerr-results.length == 0 : mine := Rectangle {
-                        property <int> cols: max(1, floor((self.width - 10px) / 164px));
-                        height: ceil(root.seerr-mine.length / self.cols) * 290px;
-                        for c[i] in root.seerr-mine : PosterCard {
-                            x: mod(i, mine.cols) * 164px;
-                            y: floor(i / mine.cols) * 290px;
-                            card: c;
-                        }
-                    }
-                }
-            }
 
-            if root.page == Page.leaving : ScrollView {
-                VerticalLayout {
-                    padding: 24px;
-                    spacing: 8px;
-                    alignment: start;
-                    HorizontalLayout {
-                        spacing: 10px;
-                        alignment: start;
-                        Text { text: "Leaving soon"; color: Palette.text; font-size: 22px; vertical-alignment: center; }
-                        Button { label: "Sort them out"; primary: true; clicked => { root.go(Page.triage); } }
-                        if root.keep-admin : Button { label: "Admin"; clicked => { root.go(Page.keepadmin); } }
-                    }
-                    Text { text: "What the server will delete, soonest first. Keep what you want to watch or love."; color: Palette.muted; }
-                    for row in root.leaving : Rectangle {
-                        background: Palette.surface;
-                        border-radius: 8px;
-                        height: root.leaving-open == row.key ? 150px : 100px;
-                        VerticalLayout {
-                            padding: 8px;
-                            spacing: 8px;
-                            Focusable {
-                                height: 84px;
-                                clicked => { root.leaving-open = root.leaving-open == row.key ? "" : row.key; }
-                                HorizontalLayout {
-                                    spacing: 12px;
+                    if root.page == Page.triage : FocusScope {
+                        key-pressed(e) => {
+                            if (e.text == Key.LeftArrow) { root.triage-vote("dontcare"); return accept; }
+                            if (e.text == Key.RightArrow) { root.triage-vote("watched"); return accept; }
+                            if (e.text == Key.UpArrow) { root.triage-vote("love"); return accept; }
+                            return reject;
+                        }
+                        init => { self.focus(); }
+                        Rectangle {
+                            background: @radial-gradient(circle, #ffb22440 0%, #09090c00 65%);
+                            VerticalLayout {
+                                padding: 32px;
+                                spacing: 14px;
+                                alignment: start;
+                                Text { text: "Sort them out"; color: Palette.text; font-size: 30px; font-weight: 800; horizontal-alignment: center; }
+                                if root.triage-left == 0 : Text { text: "Nothing left to sort. Thanks!"; color: Palette.muted; horizontal-alignment: center; }
+                                if root.triage-left > 0 : Text {
+                                    text: root.triage-left + " left  ·  ← don't care   → until I watch it   ↑ forever";
+                                    color: Palette.subtle;
+                                    horizontal-alignment: center;
+                                }
+                                if root.triage-left > 0 : HorizontalLayout {
+                                    alignment: center;
+                                    spacing: 32px;
                                     Rectangle {
-                                        width: 56px;
-                                        border-radius: 6px;
+                                        width: 280px;
+                                        height: 420px;
+                                        border-radius: 18px;
                                         clip: true;
                                         background: Palette.surface-high;
-                                        Image { source: row.poster; width: parent.width; height: parent.height; image-fit: cover; }
+                                        Image { source: root.triage-card.poster; width: parent.width; height: parent.height; image-fit: cover; }
                                     }
                                     VerticalLayout {
                                         alignment: center;
-                                        Text { text: row.title; color: Palette.text; font-size: 16px; overflow: elide; }
-                                        Text { text: row.when; color: row.urgent ? Palette.accent : Palette.muted; }
-                                        if row.vote != "" : Text { text: row.vote; color: Palette.muted; font-size: 12px; }
-                                        if row.others != "" : Text { text: row.others; color: Palette.muted; font-size: 12px; }
+                                        spacing: 12px;
+                                        width: 320px;
+                                        Text { text: root.triage-card.title; color: Palette.text; font-size: 28px; font-weight: 800; wrap: word-wrap; }
+                                        HorizontalLayout { alignment: start; Badge { label: root.triage-card.when; tone: root.triage-card.urgent ? Palette.danger : Palette.surface-high; } }
+                                        Rectangle { height: 6px; }
+                                        HorizontalLayout { alignment: start; Button { label: "Until I watch it"; primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.triage-vote("watched"); } } }
+                                        HorizontalLayout { alignment: start; Button { label: "Forever"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.triage-vote("love"); } } }
+                                        HorizontalLayout { alignment: start; Button { label: "Keep 30 days"; clicked => { root.triage-vote("days30"); } } }
+                                        HorizontalLayout { alignment: start; Button { label: "Don't care"; has-icon: true; icon: @image-url("icons/close.svg"); clicked => { root.triage-vote("dontcare"); } } }
                                     }
                                 }
                             }
-                            if root.leaving-open == row.key : HorizontalLayout {
-                                spacing: 6px;
-                                alignment: start;
-                                Button { label: "Keep 7 days"; clicked => { root.keep-vote(row.key, "days7"); } }
-                                Button { label: "Keep 30 days"; clicked => { root.keep-vote(row.key, "days30"); } }
-                                Button { label: "Until I watch it"; primary: true; clicked => { root.keep-vote(row.key, "watched"); } }
-                                Button { label: "Forever: love it"; clicked => { root.keep-vote(row.key, "love"); } }
-                                Button { label: "Forever: classic"; clicked => { root.keep-vote(row.key, "classic"); } }
-                                Button { label: "Don't care"; clicked => { root.keep-vote(row.key, "dontcare"); } }
-                                if row.voted : Button { label: "Remove my choice"; clicked => { root.keep-vote(row.key, "remove"); } }
-                            }
                         }
                     }
-                }
-            }
 
-            if root.page == Page.triage : FocusScope {
-                key-pressed(e) => {
-                    if (e.text == Key.LeftArrow) { root.triage-vote("dontcare"); return accept; }
-                    if (e.text == Key.RightArrow) { root.triage-vote("watched"); return accept; }
-                    if (e.text == Key.UpArrow) { root.triage-vote("love"); return accept; }
-                    return reject;
-                }
-                init => { self.focus(); }
-                VerticalLayout {
-                    padding: 24px;
-                    spacing: 12px;
-                    alignment: start;
-                    Text { text: "Sort them out"; color: Palette.text; font-size: 22px; horizontal-alignment: center; }
-                    if root.triage-left == 0 : Text { text: "Nothing left to sort. Thanks!"; color: Palette.muted; horizontal-alignment: center; }
-                    if root.triage-left > 0 : VerticalLayout {
-                        spacing: 10px;
-                        alignment: start;
-                        Text {
-                            text: root.triage-left + " left · ← don't care   → keep until I watch it   ↑ keep forever";
-                            color: Palette.muted;
-                            horizontal-alignment: center;
-                        }
-                        HorizontalLayout {
-                            alignment: center;
-                            Rectangle {
-                                width: 260px;
-                                height: 390px;
-                                border-radius: 12px;
-                                clip: true;
-                                background: Palette.surface-high;
-                                Image { source: root.triage-card.poster; width: parent.width; height: parent.height; image-fit: cover; }
-                            }
-                        }
-                        Text { text: root.triage-card.title; color: Palette.text; font-size: 18px; horizontal-alignment: center; }
-                        Text { text: root.triage-card.when; color: Palette.accent; horizontal-alignment: center; }
-                        HorizontalLayout {
-                            spacing: 10px;
-                            alignment: center;
-                            Button { label: "Don't care"; clicked => { root.triage-vote("dontcare"); } }
-                            Button { label: "Keep 30 days"; clicked => { root.triage-vote("days30"); } }
-                            Button { label: "Until I watch it"; primary: true; clicked => { root.triage-vote("watched"); } }
-                            Button { label: "Forever"; clicked => { root.triage-vote("love"); } }
-                        }
-                    }
-                }
-            }
-
-            if root.page == Page.keepadmin : ScrollView {
-                VerticalLayout {
-                    padding: 24px;
-                    spacing: 10px;
-                    alignment: start;
-                    Text { text: "Admin"; color: Palette.text; font-size: 22px; }
-                    Text { text: "Start countdown"; color: Palette.text; font-size: 18px; }
-                    Text {
-                        text: "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr. Click twice to confirm.";
-                        color: Palette.muted;
-                        wrap: word-wrap;
-                    }
-                    for c in root.admin-collections : HorizontalLayout {
-                        spacing: 8px;
-                        alignment: start;
-                        Text { text: c.title; color: Palette.text; vertical-alignment: center; min-width: 200px; }
-                        Button { label: "Today"; clicked => { root.admin-countdown(c.id, 0); } }
-                        Button { label: "Spread over 14 days"; clicked => { root.admin-countdown(c.id, 14); } }
-                        Button { label: "Spread over 30 days"; clicked => { root.admin-countdown(c.id, 30); } }
-                    }
-                    Text { text: "People"; color: Palette.text; font-size: 18px; }
-                    for u in root.admin-users : Rectangle {
-                        background: Palette.surface;
-                        border-radius: 8px;
-                        height: 92px;
+                    if root.page == Page.keepadmin : ScrollView {
                         VerticalLayout {
-                            padding: 10px;
-                            spacing: 6px;
-                            Text { text: u.name + "  ·  " + u.detail; color: Palette.text; }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                alignment: start;
-                                Button { label: u.forever; clicked => { root.admin-rights(u.key, "forever"); } }
-                                Button { label: u.max-forever; clicked => { root.admin-rights(u.key, "max-forever"); } }
-                                Button { label: u.max-days; clicked => { root.admin-rights(u.key, "max-days"); } }
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 20px;
+                            alignment: start;
+                            PageTitle { title: "Admin"; subtitle: "Leaving soon: countdown and people's rights"; }
+                            Group {
+                                title: "START COUNTDOWN";
+                                Text {
+                                    text: "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr. Click twice to confirm.";
+                                    color: Palette.muted;
+                                    wrap: word-wrap;
+                                }
+                                for c in root.admin-collections : HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: c.title; color: Palette.text; font-weight: 700; vertical-alignment: center; min-width: 200px; }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    Button { label: "Today"; clicked => { root.admin-countdown(c.id, 0); } }
+                                    Button { label: "Over 14 days"; clicked => { root.admin-countdown(c.id, 14); } }
+                                    Button { label: "Over 30 days"; clicked => { root.admin-countdown(c.id, 30); } }
+                                }
+                            }
+                            Group {
+                                title: "PEOPLE";
+                                for u in root.admin-users : VerticalLayout {
+                                    spacing: 6px;
+                                    Text { text: u.name + "  ·  " + u.detail; color: Palette.text; font-weight: 700; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Button { label: u.forever; clicked => { root.admin-rights(u.key, "forever"); } }
+                                        Button { label: u.max-forever; clicked => { root.admin-rights(u.key, "max-forever"); } }
+                                        Button { label: u.max-days; clicked => { root.admin-rights(u.key, "max-days"); } }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
 
-            if root.page == Page.settings : ScrollView {
-                VerticalLayout {
-                    padding: 24px;
-                    spacing: 12px;
-                    alignment: start;
-                    Text { text: "Accounts"; color: Palette.text; font-size: 20px; }
-                    for a in root.accounts : HorizontalLayout {
-                        spacing: 10px;
+                    if root.page == Page.settings : ScrollView {
                         VerticalLayout {
-                            Text { text: a.label; color: Palette.text; }
-                            Text { text: a.detail; color: Palette.muted; font-size: 12px; }
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 22px;
+                            alignment: start;
+                            PageTitle { title: "Settings"; }
+                            Group {
+                                title: "ACCOUNTS";
+                                for a in root.accounts : HorizontalLayout {
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: a.label; color: Palette.text; font-weight: 700; }
+                                        Text { text: a.detail; color: Palette.muted; font-size: 12px; }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    if !a.current : Button { label: "Use"; clicked => { root.use-account(a.id); } }
+                                    if a.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
+                                    IconButton { icon: @image-url("icons/delete.svg"); clicked => { root.remove-account(a.id); } }
+                                }
+                                HorizontalLayout { alignment: start; Button { label: "Add a server"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.go(Page.add); } } }
+                            }
+                            Group {
+                                title: "LEAVING SOON";
+                                if root.keep-active : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: root.keep-label; color: Palette.text; vertical-alignment: center; }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    Button { label: "Disconnect"; clicked => { root.keep-disconnect(); } }
+                                }
+                                if !root.keep-active : HorizontalLayout {
+                                    spacing: 10px;
+                                    kurl := Field { placeholder: "AlwyWatch server address"; accepted(t) => { root.keep-connect(t); } }
+                                    Button { label: "Connect"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.keep-connect(kurl.text); } }
+                                }
+                            }
+                            Group {
+                                title: "REQUESTS";
+                                if root.seerr-active : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: root.seerr-label; color: Palette.text; vertical-alignment: center; }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    Button { label: "Disconnect"; clicked => { root.seerr-disconnect(); } }
+                                }
+                                if !root.seerr-active && root.seerr-step == "url" : HorizontalLayout {
+                                    spacing: 10px;
+                                    surl := Field { placeholder: "Seerr address"; accepted(t) => { root.seerr-url(t); } }
+                                    Button { label: "Connect"; y: (parent.height - self.height) / 2; clicked => { root.seerr-url(surl.text); } }
+                                    if root.keep-active : Button { label: "Use my AlwyWatch server"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.seerr-bridge(); } }
+                                }
+                                if !root.seerr-active && root.seerr-step == "choose" : HorizontalLayout {
+                                    spacing: 10px;
+                                    alignment: start;
+                                    for l in root.seerr-logins : Button { label: l.title; primary: true; clicked => { root.seerr-login(l.id); } }
+                                }
+                                if !root.seerr-active && root.seerr-step == "plex" : Text {
+                                    text: "Finish signing in to Plex in your browser…";
+                                    color: Palette.muted;
+                                }
+                                if !root.seerr-active && (root.seerr-step == "jellyfin" || root.seerr-step == "local") : VerticalLayout {
+                                    spacing: 8px;
+                                    if root.seerr-code != "" : Text { text: "Quick Connect code: " + root.seerr-code; color: Palette.text; font-size: 20px; font-weight: 800; }
+                                    su := Field { placeholder: root.seerr-step == "local" ? "Email" : "Username"; }
+                                    sp := Field { placeholder: "Password"; input-type: password; accepted => { root.seerr-password(su.text, sp.text); } }
+                                    HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.seerr-password(su.text, sp.text); } } }
+                                }
+                                if root.seerr-message != "" && root.page == Page.settings : Text { text: root.seerr-message; color: Palette.danger; }
+                            }
+                            Group {
+                                title: "PLAYBACK";
+                                HorizontalLayout {
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: "Audio passthrough"; color: Palette.text; font-weight: 700; }
+                                        Text { text: "Send Dolby/DTS untouched to an HDMI or S/PDIF receiver."; color: Palette.muted; font-size: 12px; }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    Focusable {
+                                        width: 48px;
+                                        height: 28px;
+                                        border-radius: 14px;
+                                        background: root.spdif ? Palette.accent : Palette.surface-high;
+                                        y: (parent.height - self.height) / 2;
+                                        clicked => { root.toggle-spdif(); }
+                                        Rectangle {
+                                            x: root.spdif ? parent.width - 24px : 4px;
+                                            width: 20px;
+                                            height: 20px;
+                                            border-radius: 10px;
+                                            background: #ffffff;
+                                            animate x { duration: 150ms; }
+                                        }
+                                    }
+                                }
+                            }
+                            Group {
+                                title: "STORAGE";
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: "Image cache"; color: Palette.text; font-weight: 700; vertical-alignment: center; }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    Text { text: root.cache-size; color: Palette.muted; vertical-alignment: center; }
+                                    Button { label: "Clear"; clicked => { root.clear-cache(); } }
+                                }
+                            }
+                            Text { text: root.about; color: Palette.subtle; }
                         }
-                        Rectangle { horizontal-stretch: 1; }
-                        if !a.current : Button { label: "Use"; clicked => { root.use-account(a.id); } }
-                        if a.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
-                        Button { label: "Remove"; clicked => { root.remove-account(a.id); } }
                     }
-                    HorizontalLayout { alignment: start; Button { label: "Add a server"; primary: true; clicked => { root.go(Page.add); } } }
-                    Text { text: "Leaving soon (AlwyWatch server)"; color: Palette.text; font-size: 20px; }
-                    if root.keep-active : HorizontalLayout {
-                        spacing: 10px;
-                        alignment: start;
-                        Text { text: root.keep-label; color: Palette.text; vertical-alignment: center; }
-                        Button { label: "Disconnect"; clicked => { root.keep-disconnect(); } }
-                    }
-                    if !root.keep-active : HorizontalLayout {
-                        spacing: 10px;
-                        kurl := LineEdit { placeholder-text: "AlwyWatch server address"; accepted(t) => { root.keep-connect(t); } }
-                        Button { label: "Connect as this account"; clicked => { root.keep-connect(kurl.text); } }
-                    }
-                    Text { text: "Requests (Seerr)"; color: Palette.text; font-size: 20px; }
-                    if root.seerr-active : HorizontalLayout {
-                        spacing: 10px;
-                        alignment: start;
-                        Text { text: root.seerr-label; color: Palette.text; vertical-alignment: center; }
-                        Button { label: "Disconnect"; clicked => { root.seerr-disconnect(); } }
-                    }
-                    if !root.seerr-active && root.seerr-step == "url" : HorizontalLayout {
-                        spacing: 10px;
-                        surl := LineEdit { placeholder-text: "Seerr address"; accepted(t) => { root.seerr-url(t); } }
-                        Button { label: "Connect"; clicked => { root.seerr-url(surl.text); } }
-                        if root.keep-active : Button { label: "Use my AlwyWatch server"; primary: true; clicked => { root.seerr-bridge(); } }
-                    }
-                    if !root.seerr-active && root.seerr-step == "choose" : HorizontalLayout {
-                        spacing: 10px;
-                        alignment: start;
-                        for l in root.seerr-logins : Button { label: l.title; primary: true; clicked => { root.seerr-login(l.id); } }
-                    }
-                    if !root.seerr-active && root.seerr-step == "plex" : Text {
-                        text: "Finish signing in to Plex in your browser…";
-                        color: Palette.muted;
-                    }
-                    if !root.seerr-active && (root.seerr-step == "jellyfin" || root.seerr-step == "local") : VerticalLayout {
-                        spacing: 8px;
-                        if root.seerr-code != "" : Text { text: "Quick Connect code: " + root.seerr-code; color: Palette.text; font-size: 20px; }
-                        su := LineEdit { placeholder-text: root.seerr-step == "local" ? "Email" : "Username"; }
-                        sp := LineEdit { placeholder-text: "Password"; input-type: password; accepted => { root.seerr-password(su.text, sp.text); } }
-                        HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.seerr-password(su.text, sp.text); } } }
-                    }
-                    if root.seerr-message != "" && root.page == Page.settings : Text { text: root.seerr-message; color: Palette.danger; }
-
-                    Text { text: "Playback"; color: Palette.text; font-size: 20px; }
-                    HorizontalLayout {
-                        alignment: start;
-                        Button {
-                            label: "Audio passthrough (S/PDIF, HDMI receiver): " + (root.spdif ? "on" : "off");
-                            clicked => { root.toggle-spdif(); }
-                        }
-                    }
-                    Text { text: "Storage"; color: Palette.text; font-size: 20px; }
-                    HorizontalLayout {
-                        spacing: 10px;
-                        alignment: start;
-                        Text { text: "Image cache: " + root.cache-size; color: Palette.text; vertical-alignment: center; }
-                        Button { label: "Clear"; clicked => { root.clear-cache(); } }
-                    }
-                    Text { text: root.about; color: Palette.muted; }
                 }
             }
         }
