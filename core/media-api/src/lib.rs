@@ -1,2 +1,145 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Common media-server abstraction (`MediaServer` trait) with Jellyfin and Plex clients.
+//! Common media-server abstraction with Jellyfin and Plex implementations.
+//!
+//! [`MediaServer`] is the read/playback surface the apps use. Sign-in flows differ per server
+//! and live on [`jellyfin::JellyfinAuth`] and [`plex::PlexAuth`]. [`AnyServer`] dispatches
+//! statically to one of the two clients (no boxing, no `async-trait`).
+
+#[cfg(feature = "uniffi")]
+uniffi::setup_scaffolding!();
+
+pub mod jellyfin;
+pub mod model;
+pub mod plex;
+
+use std::future::Future;
+
+pub use model::*;
+pub use net::{Error, Result};
+
+/// The read and playback surface every supported server implements.
+pub trait MediaServer: Send + Sync {
+    fn session(&self) -> &Session;
+
+    fn libraries(&self) -> impl Future<Output = Result<Vec<Library>>> + Send;
+    fn items(&self, query: &ItemQuery) -> impl Future<Output = Result<Page>> + Send;
+    fn item(&self, id: &str) -> impl Future<Output = Result<Item>> + Send;
+    fn seasons(&self, series_id: &str) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn episodes(
+        &self,
+        series_id: &str,
+        season_id: &str,
+    ) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    /// Partially watched items, most recent first.
+    fn resume(&self, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    /// Next unwatched episode of series in progress.
+    fn next_up(&self, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn latest(
+        &self,
+        library_id: &str,
+        limit: u32,
+    ) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn search(&self, query: &str, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    /// Playback sources, original file first. Transcoding is only offered as a fallback.
+    fn playback_info(
+        &self,
+        item_id: &str,
+        profile: &DeviceProfile,
+    ) -> impl Future<Output = Result<PlaybackInfo>> + Send;
+    fn report_progress(&self, report: &ProgressReport) -> impl Future<Output = Result<()>> + Send;
+    fn set_played(&self, item_id: &str, played: bool) -> impl Future<Output = Result<()>> + Send;
+    /// The original file (never a transcode), so downloads can be resumed.
+    fn download_source(&self, item_id: &str)
+    -> impl Future<Output = Result<DownloadSource>> + Send;
+    /// Every movie or series with its external ids (light items, no user data). Used to map
+    /// Maintainerr items (Plex ratingKey + tmdb/tvdb) to this server; callers cache it.
+    fn provider_index(&self, kind: ItemKind) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    /// A sized image request. Pure: no network.
+    fn image_request(&self, item_id: &str, image: &ImageRef, max_width: u32) -> HttpRequest;
+}
+
+/// Static dispatch over the supported servers.
+#[derive(Debug, Clone)]
+pub enum AnyServer {
+    Jellyfin(jellyfin::JellyfinClient),
+    Plex(plex::PlexClient),
+}
+
+macro_rules! dispatch {
+    ($self:ident, $c:ident => $e:expr) => {
+        match $self {
+            AnyServer::Jellyfin($c) => $e,
+            AnyServer::Plex($c) => $e,
+        }
+    };
+}
+
+impl AnyServer {
+    /// Rebuilds a client from a stored session (token restored from secure storage).
+    pub fn from_session(session: Session, client: ClientInfo, http: net::reqwest::Client) -> Self {
+        match session.kind {
+            ServerKind::Jellyfin => {
+                AnyServer::Jellyfin(jellyfin::JellyfinClient::new(session, client, http))
+            }
+            ServerKind::Plex => AnyServer::Plex(plex::PlexClient::new(session, client, http)),
+        }
+    }
+}
+
+impl MediaServer for AnyServer {
+    fn session(&self) -> &Session {
+        dispatch!(self, c => c.session())
+    }
+    async fn libraries(&self) -> Result<Vec<Library>> {
+        dispatch!(self, c => c.libraries().await)
+    }
+    async fn items(&self, query: &ItemQuery) -> Result<Page> {
+        dispatch!(self, c => c.items(query).await)
+    }
+    async fn item(&self, id: &str) -> Result<Item> {
+        dispatch!(self, c => c.item(id).await)
+    }
+    async fn seasons(&self, series_id: &str) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.seasons(series_id).await)
+    }
+    async fn episodes(&self, series_id: &str, season_id: &str) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.episodes(series_id, season_id).await)
+    }
+    async fn resume(&self, limit: u32) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.resume(limit).await)
+    }
+    async fn next_up(&self, limit: u32) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.next_up(limit).await)
+    }
+    async fn latest(&self, library_id: &str, limit: u32) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.latest(library_id, limit).await)
+    }
+    async fn search(&self, query: &str, limit: u32) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.search(query, limit).await)
+    }
+    async fn playback_info(&self, item_id: &str, profile: &DeviceProfile) -> Result<PlaybackInfo> {
+        dispatch!(self, c => c.playback_info(item_id, profile).await)
+    }
+    async fn report_progress(&self, report: &ProgressReport) -> Result<()> {
+        dispatch!(self, c => c.report_progress(report).await)
+    }
+    async fn set_played(&self, item_id: &str, played: bool) -> Result<()> {
+        dispatch!(self, c => c.set_played(item_id, played).await)
+    }
+    async fn download_source(&self, item_id: &str) -> Result<DownloadSource> {
+        dispatch!(self, c => c.download_source(item_id).await)
+    }
+    async fn provider_index(&self, kind: ItemKind) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.provider_index(kind).await)
+    }
+    fn image_request(&self, item_id: &str, image: &ImageRef, max_width: u32) -> HttpRequest {
+        dispatch!(self, c => c.image_request(item_id, image, max_width))
+    }
+}
+
+pub(crate) fn header(name: &str, value: impl Into<String>) -> Header {
+    Header {
+        name: name.to_owned(),
+        value: value.into(),
+    }
+}

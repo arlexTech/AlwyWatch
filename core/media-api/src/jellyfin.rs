@@ -1,0 +1,918 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//! Jellyfin client (built against the 12.4 OpenAPI; the shapes used here are unchanged since 10.x).
+//!
+//! Auth always goes in the `Authorization: MediaBrowser … Token="…"` header: servers with legacy
+//! authorization disabled reject `api_key` query parameters and `X-Emby-Token`.
+
+use std::collections::HashMap;
+
+use net::reqwest::{Client, Method, RequestBuilder};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+use crate::model::*;
+use crate::{Error, MediaServer, Result, header};
+
+const TICKS_PER_MS: i64 = 10_000;
+const ITEM_FIELDS: &str =
+    "Overview,Genres,ProviderIds,ChildCount,PremiereDate,OfficialRating,PrimaryImageAspectRatio";
+const IMAGE_TYPES: &str = "Primary,Backdrop,Thumb,Logo";
+
+fn auth_header(client: &ClientInfo, token: Option<&str>) -> String {
+    let enc = net::percent_encode;
+    let mut h = format!(
+        "MediaBrowser Client=\"{}\", Device=\"{}\", DeviceId=\"{}\", Version=\"{}\"",
+        enc(&client.product),
+        enc(&client.device_name),
+        enc(&client.device_id),
+        enc(&client.version)
+    );
+    if let Some(t) = token {
+        h.push_str(&format!(", Token=\"{t}\""));
+    }
+    h
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sign-in
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct QuickConnectCode {
+    /// Kept by the app to poll; never shown.
+    pub secret: String,
+    /// Shown to the user, entered in another signed-in Jellyfin client.
+    pub code: String,
+}
+
+/// Sign-in flows (no session yet).
+#[derive(Debug, Clone)]
+pub struct JellyfinAuth {
+    http: Client,
+    client: ClientInfo,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct PublicInfo {
+    id: String,
+    server_name: Option<String>,
+    version: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct AuthResult {
+    user: UserDto,
+    access_token: String,
+    server_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct UserDto {
+    id: String,
+    name: String,
+    #[serde(default)]
+    policy: Option<PolicyDto>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct PolicyDto {
+    #[serde(default)]
+    is_administrator: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct QuickConnectResult {
+    #[serde(default)]
+    authenticated: bool,
+    secret: String,
+    code: String,
+}
+
+impl JellyfinAuth {
+    pub fn new(http: Client, client: ClientInfo) -> Self {
+        Self { http, client }
+    }
+
+    fn req(&self, method: Method, base: &str, path: &str) -> RequestBuilder {
+        self.http
+            .request(method, net::join(base, path))
+            .header("Authorization", auth_header(&self.client, None))
+            .header("Accept", "application/json")
+    }
+
+    /// Unauthenticated server identity; also validates that the address is a Jellyfin server.
+    pub async fn public_info(&self, base_url: &str) -> Result<ServerInfo> {
+        let info: PublicInfo =
+            net::send_json(self.req(Method::GET, base_url, "/System/Info/Public")).await?;
+        Ok(ServerInfo {
+            kind: ServerKind::Jellyfin,
+            id: info.id,
+            name: info.server_name.unwrap_or_else(|| "Jellyfin".into()),
+            version: info.version.unwrap_or_default(),
+        })
+    }
+
+    pub async fn quick_connect_enabled(&self, base_url: &str) -> Result<bool> {
+        net::send_json(self.req(Method::GET, base_url, "/QuickConnect/Enabled")).await
+    }
+
+    pub async fn sign_in(&self, base_url: &str, username: &str, password: &str) -> Result<Session> {
+        let req = self
+            .req(Method::POST, base_url, "/Users/AuthenticateByName")
+            .json(&json!({ "Username": username, "Pw": password }));
+        let res: AuthResult = net::send_json(req).await?;
+        self.session(base_url, res).await
+    }
+
+    pub async fn quick_connect_start(&self, base_url: &str) -> Result<QuickConnectCode> {
+        let r: QuickConnectResult =
+            net::send_json(self.req(Method::POST, base_url, "/QuickConnect/Initiate")).await?;
+        Ok(QuickConnectCode {
+            secret: r.secret,
+            code: r.code,
+        })
+    }
+
+    /// Returns [`Error::Pending`] until the code has been approved in another client.
+    pub async fn quick_connect_poll(&self, base_url: &str, secret: &str) -> Result<Session> {
+        let state: QuickConnectResult = net::send_json(
+            self.req(Method::GET, base_url, "/QuickConnect/Connect")
+                .query(&[("secret", secret)]),
+        )
+        .await?;
+        if !state.authenticated {
+            return Err(Error::Pending);
+        }
+        let res: AuthResult = net::send_json(
+            self.req(
+                Method::POST,
+                base_url,
+                "/Users/AuthenticateWithQuickConnect",
+            )
+            .json(&json!({ "Secret": secret })),
+        )
+        .await?;
+        self.session(base_url, res).await
+    }
+
+    async fn session(&self, base_url: &str, res: AuthResult) -> Result<Session> {
+        let name = match self.public_info(base_url).await {
+            Ok(i) => i.name,
+            Err(_) => "Jellyfin".into(),
+        };
+        Ok(Session {
+            kind: ServerKind::Jellyfin,
+            base_url: base_url.to_owned(),
+            server_id: res.server_id,
+            server_name: name,
+            user_id: res.user.id,
+            user_name: res.user.name,
+            is_admin: res.user.policy.is_some_and(|p| p.is_administrator),
+            token: res.access_token,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// DTOs
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+struct QueryResult {
+    items: Vec<BaseItemDto>,
+    total_record_count: Option<u32>,
+    start_index: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+struct BaseItemDto {
+    id: String,
+    name: Option<String>,
+    sort_name: Option<String>,
+    overview: Option<String>,
+    production_year: Option<i32>,
+    run_time_ticks: Option<i64>,
+    community_rating: Option<f32>,
+    official_rating: Option<String>,
+    genres: Vec<String>,
+    provider_ids: HashMap<String, Option<String>>,
+    series_id: Option<String>,
+    series_name: Option<String>,
+    season_id: Option<String>,
+    parent_index_number: Option<u32>,
+    index_number: Option<u32>,
+    image_tags: HashMap<String, String>,
+    backdrop_image_tags: Vec<String>,
+    image_blur_hashes: HashMap<String, HashMap<String, String>>,
+    user_data: Option<UserDataDto>,
+    child_count: Option<u32>,
+    #[serde(rename = "Type")]
+    kind: Option<String>,
+    collection_type: Option<String>,
+    premiere_date: Option<String>,
+    series_primary_image_tag: Option<String>,
+    parent_backdrop_item_id: Option<String>,
+    parent_backdrop_image_tags: Vec<String>,
+    parent_logo_item_id: Option<String>,
+    parent_logo_image_tag: Option<String>,
+    media_sources: Vec<MediaSourceDto>,
+    path: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+struct UserDataDto {
+    played: bool,
+    playback_position_ticks: i64,
+    play_count: u32,
+    is_favorite: bool,
+    last_played_date: Option<String>,
+    unplayed_item_count: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+struct PlaybackInfoResponse {
+    media_sources: Vec<MediaSourceDto>,
+    play_session_id: Option<String>,
+    error_code: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+struct MediaSourceDto {
+    id: String,
+    path: Option<String>,
+    container: Option<String>,
+    size: Option<u64>,
+    bitrate: Option<u64>,
+    run_time_ticks: Option<i64>,
+    supports_direct_play: bool,
+    transcoding_url: Option<String>,
+    media_streams: Vec<MediaStreamDto>,
+    default_audio_stream_index: Option<i64>,
+    default_subtitle_stream_index: Option<i64>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
+struct MediaStreamDto {
+    index: i64,
+    #[serde(rename = "Type")]
+    kind: Option<String>,
+    codec: Option<String>,
+    profile: Option<String>,
+    language: Option<String>,
+    title: Option<String>,
+    display_title: Option<String>,
+    channels: Option<u32>,
+    channel_layout: Option<String>,
+    bit_depth: Option<u32>,
+    width: Option<u32>,
+    height: Option<u32>,
+    video_range_type: Option<String>,
+    dv_profile: Option<u32>,
+    is_default: bool,
+    is_forced: bool,
+    is_external: bool,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Client
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct JellyfinClient {
+    session: Session,
+    http: Client,
+    auth: String,
+}
+
+impl JellyfinClient {
+    pub fn new(session: Session, client: ClientInfo, http: Client) -> Self {
+        let auth = auth_header(&client, Some(&session.token));
+        Self {
+            session,
+            http,
+            auth,
+        }
+    }
+
+    fn auth_headers(&self) -> Vec<Header> {
+        vec![header("Authorization", self.auth.clone())]
+    }
+
+    fn req(&self, method: Method, path: &str) -> RequestBuilder {
+        self.http
+            .request(method, net::join(&self.session.base_url, path))
+            .header("Authorization", &self.auth)
+            .header("Accept", "application/json")
+    }
+
+    fn uid(&self) -> &str {
+        &self.session.user_id
+    }
+
+    async fn query(&self, path: &str, params: &[(&str, String)]) -> Result<QueryResult> {
+        net::send_json(self.req(Method::GET, path).query(params)).await
+    }
+
+    fn list_params(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("userId", self.uid().to_owned()),
+            ("fields", ITEM_FIELDS.into()),
+            ("enableImageTypes", IMAGE_TYPES.into()),
+            ("imageTypeLimit", "1".into()),
+        ]
+    }
+
+    fn convert(&self, dto: BaseItemDto) -> Item {
+        convert_item(dto)
+    }
+
+    fn convert_all(&self, dtos: Vec<BaseItemDto>) -> Vec<Item> {
+        dtos.into_iter().map(|d| self.convert(d)).collect()
+    }
+
+    fn convert_source(
+        &self,
+        item_id: &str,
+        s: MediaSourceDto,
+        session: &Option<String>,
+    ) -> MediaSource {
+        let mut direct = format!(
+            "{}/Videos/{}/stream?static=true&mediaSourceId={}",
+            self.session.base_url,
+            item_id,
+            net::percent_encode(&s.id)
+        );
+        if let Some(ps) = session {
+            direct.push_str(&format!("&playSessionId={}", net::percent_encode(ps)));
+        }
+        let streams = s
+            .media_streams
+            .into_iter()
+            .filter_map(|m| {
+                let kind = match m.kind.as_deref() {
+                    Some("Video") => StreamKind::Video,
+                    Some("Audio") => StreamKind::Audio,
+                    Some("Subtitle") => StreamKind::Subtitle,
+                    _ => return None,
+                };
+                let codec = m.codec.unwrap_or_default().to_ascii_lowercase();
+                let external =
+                    (kind == StreamKind::Subtitle && m.is_external).then(|| HttpRequest {
+                        url: format!(
+                            "{}/Videos/{}/{}/Subtitles/{}/0/Stream.{}",
+                            self.session.base_url,
+                            item_id,
+                            net::percent_encode(&s.id),
+                            m.index,
+                            if codec.is_empty() {
+                                "srt"
+                            } else {
+                                codec.as_str()
+                            }
+                        ),
+                        headers: self.auth_headers(),
+                    });
+                Some(MediaStream {
+                    index: m.index,
+                    kind,
+                    hdr: (kind == StreamKind::Video)
+                        .then(|| hdr_from_range(m.video_range_type.as_deref())),
+                    codec,
+                    profile: m.profile,
+                    language: m.language,
+                    title: m.title,
+                    display_title: m.display_title,
+                    channels: m.channels,
+                    channel_layout: m.channel_layout,
+                    bit_depth: m.bit_depth,
+                    width: m.width,
+                    height: m.height,
+                    dv_profile: m.dv_profile,
+                    is_default: m.is_default,
+                    is_forced: m.is_forced,
+                    is_external: m.is_external,
+                    external,
+                })
+            })
+            .collect();
+        MediaSource {
+            file_name: s.path.as_deref().and_then(file_name),
+            id: s.id,
+            container: s.container,
+            size: s.size,
+            bitrate: s.bitrate,
+            duration_ms: s.run_time_ticks.map(ticks_to_ms),
+            streams,
+            direct: HttpRequest {
+                url: direct,
+                headers: self.auth_headers(),
+            },
+            transcode: s.transcoding_url.map(|u| HttpRequest {
+                url: net::join(&self.session.base_url, &u),
+                headers: self.auth_headers(),
+            }),
+            supports_direct_play: s.supports_direct_play,
+            default_audio_index: s.default_audio_stream_index,
+            default_subtitle_index: s.default_subtitle_stream_index,
+        }
+    }
+}
+
+fn ticks_to_ms(t: i64) -> u64 {
+    (t.max(0) / TICKS_PER_MS) as u64
+}
+
+fn file_name(path: &str) -> Option<String> {
+    path.rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+}
+
+fn hdr_from_range(range: Option<&str>) -> HdrKind {
+    match range.unwrap_or("SDR") {
+        r if r.starts_with("DOVI") => HdrKind::DolbyVision,
+        "HDR10" => HdrKind::Hdr10,
+        "HDR10Plus" => HdrKind::Hdr10Plus,
+        "HLG" => HdrKind::Hlg,
+        _ => HdrKind::Sdr,
+    }
+}
+
+fn kind_of(t: Option<&str>) -> ItemKind {
+    match t.unwrap_or_default() {
+        "Movie" => ItemKind::Movie,
+        "Series" => ItemKind::Series,
+        "Season" => ItemKind::Season,
+        "Episode" => ItemKind::Episode,
+        "BoxSet" => ItemKind::Collection,
+        "Folder" | "CollectionFolder" | "UserView" => ItemKind::Folder,
+        _ => ItemKind::Other,
+    }
+}
+
+/// Unix seconds from an ISO-8601 timestamp (`2026-11-19T13:09:56.1234567Z`), without a date crate.
+pub(crate) fn iso_to_unix(s: &str) -> Option<i64> {
+    let (date, time) = s.split_once('T')?;
+    let mut d = date.split('-').map(|p| p.parse::<i64>().ok());
+    let (y, m, day) = (d.next()??, d.next()??, d.next()??);
+    let mut t = time.trim_end_matches('Z').split([':', '.', '+']);
+    let (hh, mm, ss) = (
+        t.next()?.parse::<i64>().ok()?,
+        t.next()?.parse::<i64>().ok()?,
+        t.next().and_then(|v| v.parse::<i64>().ok()).unwrap_or(0),
+    );
+    // Days from civil (Howard Hinnant's algorithm).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + hh * 3600 + mm * 60 + ss)
+}
+
+fn image(
+    images: &mut Vec<ImageRef>,
+    kind: ImageKind,
+    type_name: &str,
+    owner: &str,
+    tag: &str,
+    hashes: &HashMap<String, HashMap<String, String>>,
+) {
+    images.push(ImageRef {
+        kind,
+        path: format!(
+            "/Items/{owner}/Images/{type_name}?tag={}",
+            net::percent_encode(tag)
+        ),
+        blurhash: hashes.get(type_name).and_then(|m| m.get(tag)).cloned(),
+    });
+}
+
+fn convert_item(d: BaseItemDto) -> Item {
+    let kind = kind_of(d.kind.as_deref());
+    let mut images = Vec::new();
+    let h = &d.image_blur_hashes;
+    if let Some(tag) = d.image_tags.get("Primary") {
+        image(&mut images, ImageKind::Primary, "Primary", &d.id, tag, h);
+    } else if let (Some(sid), Some(tag)) = (&d.series_id, &d.series_primary_image_tag) {
+        image(&mut images, ImageKind::Primary, "Primary", sid, tag, h);
+    }
+    if let Some(tag) = d.backdrop_image_tags.first() {
+        image(&mut images, ImageKind::Backdrop, "Backdrop", &d.id, tag, h);
+    } else if let (Some(pid), Some(tag)) = (
+        &d.parent_backdrop_item_id,
+        d.parent_backdrop_image_tags.first(),
+    ) {
+        image(&mut images, ImageKind::Backdrop, "Backdrop", pid, tag, h);
+    }
+    if let Some(tag) = d.image_tags.get("Thumb") {
+        image(&mut images, ImageKind::Thumb, "Thumb", &d.id, tag, h);
+    }
+    if let Some(tag) = d.image_tags.get("Logo") {
+        image(&mut images, ImageKind::Logo, "Logo", &d.id, tag, h);
+    } else if let (Some(pid), Some(tag)) = (&d.parent_logo_item_id, &d.parent_logo_image_tag) {
+        image(&mut images, ImageKind::Logo, "Logo", pid, tag, h);
+    }
+    let pid = |k: &str| {
+        d.provider_ids
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(k))
+            .and_then(|(_, v)| v.clone())
+            .filter(|v| !v.is_empty())
+    };
+    let provider_ids = ProviderIds {
+        tmdb: pid("Tmdb"),
+        tvdb: pid("Tvdb"),
+        imdb: pid("Imdb"),
+    };
+    let u = d.user_data.unwrap_or_default();
+    Item {
+        title: d.name.unwrap_or_default(),
+        sort_title: d.sort_name,
+        overview: d.overview,
+        year: d.production_year,
+        runtime_ms: d.run_time_ticks.map(ticks_to_ms),
+        community_rating: d.community_rating,
+        official_rating: d.official_rating,
+        genres: d.genres,
+        provider_ids,
+        series_id: d.series_id,
+        series_title: d.series_name,
+        season_id: d.season_id,
+        season_number: d.parent_index_number,
+        episode_number: d.index_number,
+        child_count: d.child_count,
+        premiere_date: d.premiere_date.map(|p| p.chars().take(10).collect()),
+        images,
+        user: UserData {
+            played: u.played,
+            position_ms: ticks_to_ms(u.playback_position_ticks),
+            play_count: u.play_count,
+            favorite: u.is_favorite,
+            last_played_at: u.last_played_date.as_deref().and_then(iso_to_unix),
+            unplayed_count: u.unplayed_item_count,
+        },
+        id: d.id,
+        kind,
+    }
+}
+
+fn sort_param(s: SortBy) -> &'static str {
+    match s {
+        SortBy::Title => "SortName",
+        SortBy::DateAdded => "DateCreated,SortName",
+        SortBy::ReleaseDate => "PremiereDate,ProductionYear,SortName",
+        SortBy::Rating => "CommunityRating,SortName",
+        SortBy::LastPlayed => "DatePlayed,SortName",
+        SortBy::Random => "Random",
+    }
+}
+
+/// Jellyfin `DeviceProfile` built from ours: direct play everything the device decodes,
+/// HLS/TS transcode as the fallback, text subtitles delivered as external files.
+fn jellyfin_profile(p: &DeviceProfile) -> serde_json::Value {
+    let join = |v: &Vec<String>| v.join(",");
+    let subs: Vec<_> = p
+        .subtitle_codecs
+        .iter()
+        .flat_map(|c| {
+            let embed = json!({ "Format": c, "Method": "Embed" });
+            if matches!(
+                c.as_str(),
+                "srt" | "subrip" | "vtt" | "webvtt" | "ass" | "ssa"
+            ) {
+                vec![embed, json!({ "Format": c, "Method": "External" })]
+            } else {
+                vec![embed]
+            }
+        })
+        .collect();
+    json!({
+        "Name": "AlwyWatch",
+        "MaxStreamingBitrate": p.max_bitrate,
+        "DirectPlayProfiles": [{
+            "Type": "Video",
+            "Container": join(&p.containers),
+            "VideoCodec": join(&p.video_codecs),
+            "AudioCodec": join(&p.audio_codecs),
+        }],
+        "TranscodingProfiles": [{
+            "Type": "Video",
+            "Container": "ts",
+            "Protocol": "hls",
+            "Context": "Streaming",
+            "VideoCodec": "hevc,h264",
+            "AudioCodec": join(&p.audio_codecs),
+            "MinSegments": 1,
+            "BreakOnNonKeyFrames": true,
+        }],
+        "SubtitleProfiles": subs,
+        "CodecProfiles": [],
+        "ContainerProfiles": [],
+    })
+}
+
+impl MediaServer for JellyfinClient {
+    fn session(&self) -> &Session {
+        &self.session
+    }
+
+    async fn libraries(&self) -> Result<Vec<Library>> {
+        let r = self
+            .query("/UserViews", &[("userId", self.uid().to_owned())])
+            .await?;
+        Ok(r.items
+            .into_iter()
+            .map(|d| Library {
+                kind: match d.collection_type.as_deref() {
+                    Some("movies") => LibraryKind::Movies,
+                    Some("tvshows") => LibraryKind::Shows,
+                    _ => LibraryKind::Other,
+                },
+                title: d.name.unwrap_or_default(),
+                id: d.id,
+            })
+            .collect())
+    }
+
+    async fn items(&self, q: &ItemQuery) -> Result<Page> {
+        let mut p = self.list_params();
+        p.push(("recursive", "true".into()));
+        p.push(("includeItemTypes", "Movie,Series".into()));
+        p.push(("startIndex", q.start.to_string()));
+        p.push(("limit", q.limit.to_string()));
+        p.push(("sortBy", sort_param(q.sort_by).into()));
+        p.push((
+            "sortOrder",
+            if q.descending {
+                "Descending"
+            } else {
+                "Ascending"
+            }
+            .into(),
+        ));
+        p.push(("enableTotalRecordCount", "true".into()));
+        if let Some(lib) = &q.library_id {
+            p.push(("parentId", lib.clone()));
+        }
+        if q.unplayed_only {
+            p.push(("isPlayed", "false".into()));
+        }
+        if let Some(s) = q.search.as_ref().filter(|s| !s.is_empty()) {
+            p.push(("searchTerm", s.clone()));
+        }
+        let r = self.query("/Items", &p).await?;
+        let items = self.convert_all(r.items);
+        Ok(Page {
+            start: r.start_index.unwrap_or(q.start),
+            total: r.total_record_count.unwrap_or(items.len() as u32),
+            items,
+        })
+    }
+
+    async fn item(&self, id: &str) -> Result<Item> {
+        let d: BaseItemDto = net::send_json(
+            self.req(Method::GET, &format!("/Items/{}", net::percent_encode(id)))
+                .query(&[("userId", self.uid()), ("fields", ITEM_FIELDS)]),
+        )
+        .await?;
+        Ok(self.convert(d))
+    }
+
+    async fn seasons(&self, series_id: &str) -> Result<Vec<Item>> {
+        let path = format!("/Shows/{}/Seasons", net::percent_encode(series_id));
+        Ok(self.convert_all(self.query(&path, &self.list_params()).await?.items))
+    }
+
+    async fn episodes(&self, series_id: &str, season_id: &str) -> Result<Vec<Item>> {
+        let path = format!("/Shows/{}/Episodes", net::percent_encode(series_id));
+        let mut p = self.list_params();
+        p.push(("seasonId", season_id.to_owned()));
+        Ok(self.convert_all(self.query(&path, &p).await?.items))
+    }
+
+    async fn resume(&self, limit: u32) -> Result<Vec<Item>> {
+        let mut p = self.list_params();
+        p.push(("limit", limit.to_string()));
+        p.push(("mediaTypes", "Video".into()));
+        p.push(("enableTotalRecordCount", "false".into()));
+        Ok(self.convert_all(self.query("/UserItems/Resume", &p).await?.items))
+    }
+
+    async fn next_up(&self, limit: u32) -> Result<Vec<Item>> {
+        let mut p = self.list_params();
+        p.push(("limit", limit.to_string()));
+        p.push(("enableTotalRecordCount", "false".into()));
+        Ok(self.convert_all(self.query("/Shows/NextUp", &p).await?.items))
+    }
+
+    async fn latest(&self, library_id: &str, limit: u32) -> Result<Vec<Item>> {
+        let mut p = self.list_params();
+        p.push(("parentId", library_id.to_owned()));
+        p.push(("limit", limit.to_string()));
+        let items: Vec<BaseItemDto> =
+            net::send_json(self.req(Method::GET, "/Items/Latest").query(&p)).await?;
+        Ok(self.convert_all(items))
+    }
+
+    async fn search(&self, query: &str, limit: u32) -> Result<Vec<Item>> {
+        let mut p = self.list_params();
+        p.push(("searchTerm", query.to_owned()));
+        p.push(("recursive", "true".into()));
+        p.push(("includeItemTypes", "Movie,Series,Episode".into()));
+        p.push(("limit", limit.to_string()));
+        Ok(self.convert_all(self.query("/Items", &p).await?.items))
+    }
+
+    async fn playback_info(&self, item_id: &str, profile: &DeviceProfile) -> Result<PlaybackInfo> {
+        let body = json!({
+            "UserId": self.uid(),
+            "MaxStreamingBitrate": profile.max_bitrate,
+            "DeviceProfile": jellyfin_profile(profile),
+            "EnableDirectPlay": true,
+            "EnableDirectStream": true,
+            "EnableTranscoding": true,
+            "AutoOpenLiveStream": true,
+        });
+        let r: PlaybackInfoResponse = net::send_json(
+            self.req(
+                Method::POST,
+                &format!("/Items/{}/PlaybackInfo", net::percent_encode(item_id)),
+            )
+            .query(&[("userId", self.uid())])
+            .json(&body),
+        )
+        .await?;
+        if let Some(code) = r.error_code {
+            return Err(Error::invalid(format!(
+                "playback refused by server: {code}"
+            )));
+        }
+        let session = r.play_session_id;
+        let mut sources: Vec<_> = r
+            .media_sources
+            .into_iter()
+            .map(|s| self.convert_source(item_id, s, &session))
+            .collect();
+        // Direct-playable sources first.
+        sources.sort_by_key(|s| !s.supports_direct_play);
+        Ok(PlaybackInfo {
+            item_id: item_id.to_owned(),
+            play_session_id: session,
+            sources,
+        })
+    }
+
+    async fn report_progress(&self, r: &ProgressReport) -> Result<()> {
+        let path = match r.event {
+            PlaybackEvent::Start => "/Sessions/Playing",
+            PlaybackEvent::Progress | PlaybackEvent::Pause => "/Sessions/Playing/Progress",
+            PlaybackEvent::Stop => "/Sessions/Playing/Stopped",
+        };
+        let body = json!({
+            "ItemId": r.item_id,
+            "MediaSourceId": r.media_source_id,
+            "PlaySessionId": r.play_session_id,
+            "PositionTicks": r.position_ms as i64 * TICKS_PER_MS,
+            "IsPaused": r.event == PlaybackEvent::Pause,
+            "PlayMethod": "DirectPlay",
+            "CanSeek": true,
+            "AudioStreamIndex": r.audio_index,
+            "SubtitleStreamIndex": r.subtitle_index,
+        });
+        net::send(self.req(Method::POST, path).json(&body)).await?;
+        Ok(())
+    }
+
+    async fn set_played(&self, item_id: &str, played: bool) -> Result<()> {
+        let method = if played { Method::POST } else { Method::DELETE };
+        net::send(
+            self.req(
+                method,
+                &format!("/UserPlayedItems/{}", net::percent_encode(item_id)),
+            )
+            .query(&[("userId", self.uid())]),
+        )
+        .await?;
+        Ok(())
+    }
+
+    async fn download_source(&self, item_id: &str) -> Result<DownloadSource> {
+        let d: BaseItemDto = net::send_json(
+            self.req(
+                Method::GET,
+                &format!("/Items/{}", net::percent_encode(item_id)),
+            )
+            .query(&[("userId", self.uid()), ("fields", "MediaSources,Path")]),
+        )
+        .await?;
+        let source = d.media_sources.first();
+        let name = source
+            .and_then(|s| s.path.as_deref())
+            .or(d.path.as_deref())
+            .and_then(file_name)
+            .unwrap_or_else(|| {
+                format!(
+                    "{item_id}.{}",
+                    source.and_then(|s| s.container.as_deref()).unwrap_or("mkv")
+                )
+            });
+        Ok(DownloadSource {
+            request: HttpRequest {
+                url: format!(
+                    "{}/Items/{}/Download",
+                    self.session.base_url,
+                    net::percent_encode(item_id)
+                ),
+                headers: self.auth_headers(),
+            },
+            size: source.and_then(|s| s.size),
+            file_name: name,
+        })
+    }
+
+    async fn provider_index(&self, kind: ItemKind) -> Result<Vec<Item>> {
+        let t = match kind {
+            ItemKind::Movie => "Movie",
+            ItemKind::Series => "Series",
+            _ => {
+                return Err(Error::invalid(
+                    "provider index supports movies and series only",
+                ));
+            }
+        };
+        let p = [
+            ("userId", self.uid().to_owned()),
+            ("recursive", "true".into()),
+            ("includeItemTypes", t.into()),
+            ("fields", "ProviderIds".into()),
+            ("enableImages", "false".into()),
+            ("enableUserData", "false".into()),
+            ("enableTotalRecordCount", "false".into()),
+        ];
+        Ok(self.convert_all(self.query("/Items", &p).await?.items))
+    }
+
+    fn image_request(&self, _item_id: &str, image: &ImageRef, max_width: u32) -> HttpRequest {
+        HttpRequest {
+            url: format!(
+                "{}{}&fillWidth={max_width}&quality=90",
+                self.session.base_url, image.path
+            ),
+            headers: self.auth_headers(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn iso_parsing() {
+        assert_eq!(iso_to_unix("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            iso_to_unix("2026-11-19T13:09:56.1234567Z"),
+            Some(1_795_093_796)
+        );
+        assert_eq!(iso_to_unix("garbage"), None);
+    }
+
+    #[test]
+    fn hdr_ranges() {
+        assert_eq!(hdr_from_range(Some("DOVIWithHDR10")), HdrKind::DolbyVision);
+        assert_eq!(hdr_from_range(Some("HDR10Plus")), HdrKind::Hdr10Plus);
+        assert_eq!(hdr_from_range(None), HdrKind::Sdr);
+    }
+
+    #[test]
+    fn auth_header_encodes_values_and_appends_token() {
+        let c = ClientInfo {
+            product: "AlwyWatch".into(),
+            version: "0.1.0".into(),
+            device_name: "Living \"room\" TV".into(),
+            device_id: "abc".into(),
+            platform: "Android TV".into(),
+        };
+        let h = auth_header(&c, Some("tok"));
+        assert!(h.starts_with("MediaBrowser Client=\"AlwyWatch\""));
+        assert!(h.contains("Device=\"Living%20%22room%22%20TV\""));
+        assert!(h.ends_with(", Token=\"tok\""));
+        assert!(!auth_header(&c, None).contains("Token"));
+    }
+}

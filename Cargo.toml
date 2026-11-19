@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "core/net",
     "core/media-api",
     "core/seerr",
     "core/maintainerr",
@@ -13,6 +14,7 @@ members = [
     "tools/uniffi-bindgen",
 ]
 default-members = [
+    "core/net",
     "core/media-api",
     "core/seerr",
     "core/maintainerr",
@@ -33,6 +35,7 @@ publish = false
 
 [workspace.dependencies]
 # Internal crates
+net = { path = "core/net" }
 media-api = { path = "core/media-api" }
 seerr = { path = "core/seerr" }
 maintainerr = { path = "core/maintainerr" }
