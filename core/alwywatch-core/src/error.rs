@@ -10,18 +10,18 @@ pub enum CoreError {
     NotFound,
     #[error("server error (HTTP {status})")]
     Server { status: u16 },
-    #[error("network unavailable: {message}")]
-    Network { message: String },
+    #[error("network unavailable: {detail}")]
+    Network { detail: String },
     #[error("waiting for authorization")]
     Pending,
-    #[error("{message}")]
-    Invalid { message: String },
+    #[error("{detail}")]
+    Invalid { detail: String },
     #[error("account {account_id} is not signed in on this device")]
     NotSignedIn { account_id: String },
-    #[error("local storage error: {message}")]
-    Storage { message: String },
-    #[error("internal error: {message}")]
-    Internal { message: String },
+    #[error("local storage error: {detail}")]
+    Storage { detail: String },
+    #[error("internal error: {detail}")]
+    Internal { detail: String },
 }
 
 impl CoreError {
@@ -40,11 +40,11 @@ impl From<NetError> for CoreError {
             NetError::Unauthorized => CoreError::Unauthorized,
             NetError::NotFound => CoreError::NotFound,
             NetError::Status { status } => CoreError::Server { status },
-            NetError::Network { message } => CoreError::Network { message },
+            NetError::Network { message } => CoreError::Network { detail: message },
             NetError::Decode { message } => CoreError::Invalid {
-                message: format!("unexpected server response: {message}"),
+                detail: format!("unexpected server response: {message}"),
             },
-            NetError::Invalid { message } => CoreError::Invalid { message },
+            NetError::Invalid { message } => CoreError::Invalid { detail: message },
             NetError::Pending => CoreError::Pending,
         }
     }
@@ -53,7 +53,7 @@ impl From<NetError> for CoreError {
 impl From<store::Error> for CoreError {
     fn from(e: store::Error) -> Self {
         CoreError::Storage {
-            message: e.to_string(),
+            detail: e.to_string(),
         }
     }
 }

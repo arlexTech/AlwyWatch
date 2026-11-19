@@ -7,9 +7,6 @@
 //! * Tokens travel in headers only. Request URLs never contain secrets, so errors (which include
 //!   the URL) are safe to log.
 
-#[cfg(feature = "uniffi")]
-uniffi::setup_scaffolding!();
-
 use std::sync::Once;
 use std::time::Duration;
 
@@ -20,7 +17,6 @@ use serde::de::DeserializeOwned;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum Error {
     #[error("not signed in, or the session expired")]
     Unauthorized,

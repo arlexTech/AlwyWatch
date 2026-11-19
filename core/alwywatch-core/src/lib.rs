@@ -12,6 +12,8 @@
 
 uniffi::setup_scaffolding!();
 
+#[cfg(target_os = "android")]
+mod android;
 mod app;
 mod error;
 

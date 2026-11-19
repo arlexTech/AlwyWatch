@@ -688,13 +688,13 @@ impl MediaServer for PlexClient {
         &self.session
     }
 
-    async fn libraries(&self) -> Result<Vec<Library>> {
+    async fn libraries(&self) -> Result<Vec<MediaLibrary>> {
         Ok(self
             .get("/library/sections", &[])
             .await?
             .directory
             .into_iter()
-            .map(|d| Library {
+            .map(|d| MediaLibrary {
                 kind: match d.kind.as_str() {
                     "movie" => LibraryKind::Movies,
                     "show" => LibraryKind::Shows,

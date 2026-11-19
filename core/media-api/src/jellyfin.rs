@@ -632,13 +632,13 @@ impl MediaServer for JellyfinClient {
         &self.session
     }
 
-    async fn libraries(&self) -> Result<Vec<Library>> {
+    async fn libraries(&self) -> Result<Vec<MediaLibrary>> {
         let r = self
             .query("/UserViews", &[("userId", self.uid().to_owned())])
             .await?;
         Ok(r.items
             .into_iter()
-            .map(|d| Library {
+            .map(|d| MediaLibrary {
                 kind: match d.collection_type.as_deref() {
                     Some("movies") => LibraryKind::Movies,
                     Some("tvshows") => LibraryKind::Shows,

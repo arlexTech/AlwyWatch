@@ -61,7 +61,7 @@ pub struct SignedIn {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct LibraryRail {
-    pub library: Library,
+    pub library: MediaLibrary,
     pub items: Vec<Item>,
 }
 
@@ -69,7 +69,7 @@ pub struct LibraryRail {
 pub struct Home {
     pub resume: Vec<Item>,
     pub next_up: Vec<Item>,
-    pub libraries: Vec<Library>,
+    pub libraries: Vec<MediaLibrary>,
     pub latest: Vec<LibraryRail>,
     /// Unix seconds when this was fetched from the server.
     pub fetched_at: i64,
@@ -241,7 +241,7 @@ impl Core {
         let mut latest = Vec::new();
         while let Some(r) = set.join_next().await {
             let (i, library, items) = r.map_err(|e| CoreError::Internal {
-                message: e.to_string(),
+                detail: e.to_string(),
             })?;
             // A failing library rail should not hide the rest of the home screen.
             if let Ok(items) = items {
@@ -277,7 +277,7 @@ impl Core {
             .acquire()
             .await
             .map_err(|e| CoreError::Internal {
-                message: e.to_string(),
+                detail: e.to_string(),
             })?;
         // Another request may have fetched it while we waited.
         if let Some(p) = self.images.get(&cache_key)? {
@@ -403,7 +403,7 @@ impl AlwyWatch {
     {
         let fut = f(self.core.clone());
         self.rt.spawn(fut).await.map_err(|e| CoreError::Internal {
-            message: e.to_string(),
+            detail: e.to_string(),
         })?
     }
 
@@ -428,7 +428,7 @@ impl AlwyWatch {
             .enable_all()
             .build()
             .map_err(|e| CoreError::Internal {
-                message: e.to_string(),
+                detail: e.to_string(),
             })?;
         let data = PathBuf::from(&config.data_dir);
         let store = Arc::new(Store::open(&data.join("alwywatch.sqlite"))?);

@@ -68,7 +68,7 @@ simple_enum! {
 }
 
 record! {
-    pub struct Library {
+    pub struct MediaLibrary {
         pub id: String,
         pub title: String,
         pub kind: LibraryKind,

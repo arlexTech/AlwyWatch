@@ -21,7 +21,7 @@ pub use net::{Error, Result};
 pub trait MediaServer: Send + Sync {
     fn session(&self) -> &Session;
 
-    fn libraries(&self) -> impl Future<Output = Result<Vec<Library>>> + Send;
+    fn libraries(&self) -> impl Future<Output = Result<Vec<MediaLibrary>>> + Send;
     fn items(&self, query: &ItemQuery) -> impl Future<Output = Result<Page>> + Send;
     fn item(&self, id: &str) -> impl Future<Output = Result<Item>> + Send;
     fn seasons(&self, series_id: &str) -> impl Future<Output = Result<Vec<Item>>> + Send;
@@ -90,7 +90,7 @@ impl MediaServer for AnyServer {
     fn session(&self) -> &Session {
         dispatch!(self, c => c.session())
     }
-    async fn libraries(&self) -> Result<Vec<Library>> {
+    async fn libraries(&self) -> Result<Vec<MediaLibrary>> {
         dispatch!(self, c => c.libraries().await)
     }
     async fn items(&self, query: &ItemQuery) -> Result<Page> {

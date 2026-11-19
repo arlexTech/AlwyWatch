@@ -10,7 +10,7 @@ publish.workspace = true
 
 [features]
 # Derives UniFFI records/enums on the models so alwywatch-core can export them as-is.
-uniffi = ["dep:uniffi", "net/uniffi"]
+uniffi = ["dep:uniffi"]
 
 [dependencies]
 net = { workspace = true }
