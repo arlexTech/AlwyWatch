@@ -59,6 +59,9 @@ pub struct Account {
 pub struct SignedIn {
     pub account: Account,
     pub token: String,
+    /// Plex only: the plex.tv account token (differs from the server token for shared users).
+    /// Stored by the platform too: Seerr and the keep service authenticate with it.
+    pub plex_account_token: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -166,6 +169,7 @@ pub fn bucket_width(w: u32) -> u32 {
 // ---------------------------------------------------------------------------------------------
 
 pub struct Core {
+    keep: RwLock<Option<keep_service::KeepClient>>,
     seerr: RwLock<Option<seerr::SeerrClient>>,
     downloads: downloads::Downloads,
     downloads_running: std::sync::atomic::AtomicBool,
@@ -198,7 +202,11 @@ impl Core {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(account.id.clone(), Arc::new(server));
-        SignedIn { account, token }
+        SignedIn {
+            account,
+            token,
+            plex_account_token: None,
+        }
     }
 
     fn signed_in(&self, session: Session) -> Result<SignedIn> {
@@ -457,6 +465,7 @@ impl AlwyWatch {
         })?;
         Ok(Arc::new(Self {
             core: Arc::new(Core {
+                keep: RwLock::new(None),
                 seerr: RwLock::new(None),
                 downloads,
                 downloads_running: std::sync::atomic::AtomicBool::new(false),
@@ -601,7 +610,9 @@ impl AlwyWatch {
                 .map(|u| net::normalize_base_url(&u))
                 .transpose()?;
             let session = auth.connect(&server, &user, preferred.as_deref()).await?;
-            c.signed_in(session)
+            let mut s = c.signed_in(session)?;
+            s.plex_account_token = Some(account_token);
+            Ok(s)
         })
         .await
     }
@@ -1239,6 +1250,223 @@ impl AlwyWatch {
             .ok()
             .flatten()
             .map(|p| p.to_string_lossy().into_owned())
+    }
+}
+
+/// The keep service connection as stored locally (the token stays in secure storage: it is the
+/// account's own Jellyfin token or plex.tv account token).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct KeepConnection {
+    pub base_url: String,
+    pub account_id: String,
+    pub server_id: String,
+    pub user_name: String,
+    pub is_admin: bool,
+}
+
+const KEEP_KEY: &str = "keep.connection";
+const LEAVING_KEY: &str = "keep/leaving-soon";
+
+impl Core {
+    fn keep(&self) -> Result<keep_service::KeepClient> {
+        self.keep
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or(CoreError::NotSignedIn {
+                account_id: "keep".into(),
+            })
+    }
+
+    fn keep_client(&self, base: &str, server_id: &str, token: &str) -> keep_service::KeepClient {
+        keep_service::KeepClient::new(self.http.clone(), base, server_id, token)
+    }
+
+    /// Keeps the cached list in sync after a vote (so the next frame is already right).
+    fn keep_patch(&self, item: &LeavingItem) {
+        if let Ok(Some(mut c)) = self.store.cache_get::<Vec<LeavingItem>>(LEAVING_KEY) {
+            if let Some(slot) = c.value.iter_mut().find(|i| i.key == item.key) {
+                *slot = item.clone();
+            }
+            let _ = self.store.cache_put(LEAVING_KEY, &c.value);
+        }
+    }
+}
+
+#[uniffi::export]
+impl AlwyWatch {
+    /// Media servers a keep service serves (public), to offer them without typing URLs.
+    pub async fn keep_servers(&self, url: String) -> Result<Vec<ServerEntry>> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            Ok(keep_service::KeepClient::servers(&c.http, &base).await?)
+        })
+        .await
+    }
+
+    /// Connects the keep service as one of the signed-in accounts. `token` is that account's
+    /// Jellyfin token, or for Plex the plex.tv account token.
+    pub async fn keep_connect(
+        &self,
+        url: String,
+        account_id: String,
+        token: String,
+    ) -> Result<KeepConnection> {
+        let account = self
+            .accounts()?
+            .into_iter()
+            .find(|a| a.id == account_id)
+            .ok_or(CoreError::NotFound)?;
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            let client = c.keep_client(&base, &account.server_id, &token);
+            let me = client.me().await?;
+            let conn = KeepConnection {
+                base_url: base,
+                account_id,
+                server_id: account.server_id,
+                user_name: me.name,
+                is_admin: me.is_admin,
+            };
+            c.store
+                .set_setting(KEEP_KEY, &serde_json::to_string(&conn).unwrap_or_default())?;
+            *c.keep.write().unwrap_or_else(|e| e.into_inner()) = Some(client);
+            Ok(conn)
+        })
+        .await
+    }
+
+    pub fn keep_connection(&self) -> Option<KeepConnection> {
+        self.core
+            .store
+            .setting(KEEP_KEY)
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str(&s).ok())
+    }
+
+    /// Re-attaches the keep service with the token from secure storage. No network.
+    pub fn keep_activate(&self, token: String) -> Result<()> {
+        let conn = self.keep_connection().ok_or(CoreError::NotFound)?;
+        *self.core.keep.write().unwrap_or_else(|e| e.into_inner()) = Some(self.core.keep_client(
+            &conn.base_url,
+            &conn.server_id,
+            &token,
+        ));
+        Ok(())
+    }
+
+    pub fn keep_active(&self) -> bool {
+        self.core.keep().is_ok()
+    }
+
+    pub fn keep_disconnect(&self) -> Result<()> {
+        *self.core.keep.write().unwrap_or_else(|e| e.into_inner()) = None;
+        self.core.store.remove_setting(KEEP_KEY)?;
+        self.core.store.cache_delete(LEAVING_KEY)?;
+        Ok(())
+    }
+
+    pub async fn keep_me(&self) -> Result<Me> {
+        self.run(|c| async move { Ok(c.keep()?.me().await?) }).await
+    }
+
+    /// Leaving soon, most urgent first (cached, instant).
+    pub fn cached_leaving_soon(&self) -> Result<Option<Vec<LeavingItem>>> {
+        Ok(self
+            .core
+            .store
+            .cache_get::<Vec<LeavingItem>>(LEAVING_KEY)?
+            .map(|c| c.value))
+    }
+
+    pub async fn refresh_leaving_soon(&self, force: bool) -> Result<Vec<LeavingItem>> {
+        self.run(|c| async move {
+            let client = c.keep()?;
+            let (v, _) = c
+                .swr(LEAVING_KEY, TTL_LIST, force, || async {
+                    Ok(client.leaving_soon().await?)
+                })
+                .await?;
+            Ok(v)
+        })
+        .await
+    }
+
+    /// Most urgent items I have not voted on (swipe mode).
+    pub async fn keep_triage(&self, limit: u32) -> Result<Vec<LeavingItem>> {
+        self.run(|c| async move { Ok(c.keep()?.triage(limit).await?) })
+            .await
+    }
+
+    pub async fn keep_vote(&self, key: String, vote: VoteRequest) -> Result<LeavingItem> {
+        self.run(|c| async move {
+            let item = c.keep()?.vote(&key, &vote).await?;
+            c.keep_patch(&item);
+            Ok(item)
+        })
+        .await
+    }
+
+    pub async fn keep_unvote(&self, key: String) -> Result<LeavingItem> {
+        self.run(|c| async move {
+            let item = c.keep()?.unvote(&key).await?;
+            c.keep_patch(&item);
+            Ok(item)
+        })
+        .await
+    }
+
+    /// Until-watched keeps of mine whose reminder is due today (for local notifications).
+    pub fn keep_due_reminders(&self, now: i64) -> Vec<LeavingItem> {
+        let Ok(Some(list)) = self.cached_leaving_soon() else {
+            return vec![];
+        };
+        list.into_iter()
+            .filter(|i| {
+                i.my_vote.as_ref().is_some_and(|v| {
+                    v.kind == VoteKind::KeepUntilWatched
+                        && v.reminder_days.is_some_and(|d| {
+                            let period = i64::from(d.max(1)) * 86_400;
+                            let age = now - v.created_at;
+                            age >= period && age % period < 86_400
+                        })
+                })
+            })
+            .collect()
+    }
+
+    pub async fn keep_admin_users(&self) -> Result<Vec<AdminUser>> {
+        self.run(|c| async move { Ok(c.keep()?.admin_users().await?) })
+            .await
+    }
+
+    pub async fn keep_admin_set_rights(
+        &self,
+        user_key: String,
+        rights: Rights,
+    ) -> Result<AdminUser> {
+        self.run(|c| async move { Ok(c.keep()?.admin_set_rights(&user_key, &rights).await?) })
+            .await
+    }
+
+    pub async fn keep_admin_countdown(
+        &self,
+        collection_id: i64,
+        stagger_days: u32,
+    ) -> Result<CountdownResult> {
+        self.run(|c| async move {
+            let r = c
+                .keep()?
+                .admin_countdown(
+                    collection_id,
+                    &keep_service::CountdownRequest { stagger_days },
+                )
+                .await?;
+            c.store.cache_mark_stale(LEAVING_KEY)?;
+            Ok(r)
+        })
+        .await
     }
 }
 

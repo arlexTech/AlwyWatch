@@ -285,3 +285,78 @@ fn download_item_runs_and_is_available_offline() {
     assert_eq!(std::fs::read(file).unwrap(), b"movie!");
     assert_eq!(app.downloads().unwrap()[0].state, DownloadState::Completed);
 }
+
+#[test]
+fn keep_service_connect_list_vote_and_reminders() {
+    let env = Env::new();
+    let s = env.sign_in();
+    let app = env.app();
+    let keep = env.block(MockServer::start());
+    let me = json!({"user_key": "jellyfin:srv:u1", "name": "alice", "server_id": "srv", "is_admin": false,
+        "rights": {"can_keep_forever": true, "max_forever": null, "max_keep_days": null}, "forever_count": 0});
+    let item = |vote: serde_json::Value| {
+        json!({
+            "key": "100", "title": "Arrival", "year": 2016, "kind": "movie", "poster_url": null, "tmdb_id": "10",
+            "tvdb_id": null, "server_item_id": "jf-1", "collection_id": 2, "collection_title": "Deletion",
+            "collection_active": false, "deletion_date": 1000, "effective_deletion_date": 1000,
+            "protection": "none", "my_vote": vote, "counts": {"forever": 0, "until_watched": 0, "days": 0, "dont_care": 0}
+        })
+    };
+    env.block(
+        Mock::given(path("/v1/me"))
+            .and(wiremock::matchers::header("authorization", "Bearer tok"))
+            .and(wiremock::matchers::header("x-alwywatch-server", "srv"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(me))
+            .mount(&keep),
+    );
+    env.block(
+        Mock::given(path("/v1/leaving-soon"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([item(json!(null))])))
+            .mount(&keep),
+    );
+    let created = 1_000_000;
+    env.block(
+        Mock::given(method("PUT"))
+            .and(path("/v1/votes/100"))
+            .and(wiremock::matchers::body_json(json!({"kind": "keep_until_watched", "days": null, "reminder_days": 7, "reason": null})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(item(json!({
+                "kind": "keep_until_watched", "until": null, "reminder_days": 7, "reason": null, "created_at": created
+            }))))
+            .mount(&keep),
+    );
+    let conn = env
+        .block(app.keep_connect(keep.uri(), s.account.id.clone(), "tok".into()))
+        .unwrap();
+    assert_eq!(conn.server_id, "srv");
+    assert!(app.keep_active());
+    assert!(app.cached_leaving_soon().unwrap().is_none());
+    let list = env.block(app.refresh_leaving_soon(false)).unwrap();
+    assert_eq!(list[0].server_item_id.as_deref(), Some("jf-1"));
+    let voted = env
+        .block(app.keep_vote(
+            "100".into(),
+            VoteRequest {
+                kind: VoteKind::KeepUntilWatched,
+                days: None,
+                reminder_days: Some(7),
+                reason: None,
+            },
+        ))
+        .unwrap();
+    assert_eq!(
+        voted.my_vote.as_ref().unwrap().kind,
+        VoteKind::KeepUntilWatched
+    );
+    assert!(
+        app.cached_leaving_soon().unwrap().unwrap()[0]
+            .my_vote
+            .is_some(),
+        "cache patched in place"
+    );
+    // Reminder due exactly every 7 days, not before.
+    assert!(app.keep_due_reminders(created + 3 * 86_400).is_empty());
+    assert_eq!(app.keep_due_reminders(created + 7 * 86_400 + 60).len(), 1);
+    assert_eq!(app.keep_due_reminders(created + 14 * 86_400 + 60).len(), 1);
+    app.keep_disconnect().unwrap();
+    assert!(!app.keep_active());
+}

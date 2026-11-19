@@ -20,6 +20,10 @@ mod error;
 pub use app::*;
 pub use downloads::{Download, DownloadState};
 pub use error::{CoreError, Result};
+pub use keep_service::{
+    AdminUser, CountdownResult, LeavingItem, Me, MyVote, Protection, Rights, ServerEntry,
+    ServerType, VoteCounts, VoteKind, VoteRequest,
+};
 pub use media_api::jellyfin::QuickConnectCode;
 pub use media_api::model::*;
 pub use media_api::plex::{PlexPin, PlexServerResource};

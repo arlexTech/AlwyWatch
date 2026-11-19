@@ -58,6 +58,7 @@ version = "0.1.0"
 dependencies = [
  "downloads",
  "jni",
+ "keep-service",
  "media-api",
  "net",
  "rustls-platform-verifier",
