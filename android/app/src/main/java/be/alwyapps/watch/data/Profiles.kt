@@ -107,6 +107,13 @@ class ProfileStore(
         return false
     }
 
+    /** Several profiles: open the last one used at launch instead of asking who's watching. */
+    var autoSignIn: Boolean
+        get() = prefs.getBoolean("auto_sign_in", false)
+        set(v) {
+            prefs.edit().putBoolean("auto_sign_in", v).apply()
+        }
+
     /** Asked once at the next start (after a switch whose PIN was already checked). */
     var unlockedOnce: String?
         get() = prefs.getString("unlocked_once", null)

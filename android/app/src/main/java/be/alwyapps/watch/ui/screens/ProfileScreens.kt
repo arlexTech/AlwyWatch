@@ -75,14 +75,24 @@ fun ProfileGate(content: @Composable () -> Unit) {
         // Coming from a switch whose PIN was already checked.
         val unlocked = services.profiles.unlockedOnce == services.profile
         if (unlocked) services.profiles.unlockedOnce = null
-        mutableStateOf(ProfileSession.open || unlocked || (profiles.size < 2 && current?.hasPin != true))
+        // Automatic sign-in: straight into the last profile (its PIN is still asked).
+        val auto = services.profiles.autoSignIn && current?.hasPin != true
+        mutableStateOf(ProfileSession.open || unlocked || auto || (profiles.size < 2 && current?.hasPin != true))
     }
     if (open) {
         ProfileSession.open = true
         content()
         return
     }
-    WhoIsWatching(onPicked = { id ->
+    val autoPin =
+        remember {
+            services.profiles.autoSignIn &&
+                services.profiles
+                    .list()
+                    .firstOrNull { it.id == services.profile }
+                    ?.hasPin == true
+        }
+    WhoIsWatching(only = if (autoPin) services.profile else null, onPicked = { id ->
         if (id == services.profile) {
             ProfileSession.open = true
             open = true
@@ -93,11 +103,17 @@ fun ProfileGate(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun WhoIsWatching(onPicked: (String) -> Unit) {
+private fun WhoIsWatching(
+    only: String? = null,
+    onPicked: (String) -> Unit,
+) {
     val ctx = LocalContext.current
     val store = ctx.services.profiles
     val profiles = remember { store.list() }
-    var asking by remember { mutableStateOf<Profile?>(if (profiles.size == 1) profiles.single() else null) }
+    // One profile, or automatic sign-in into a PIN-protected one: just its PIN.
+    var asking by remember {
+        mutableStateOf<Profile?>(profiles.firstOrNull { it.id == only } ?: if (profiles.size == 1) profiles.single() else null)
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -259,6 +275,19 @@ fun ProfilesGroup() {
         }
         Divider()
         ListRow("Add a profile", icon = Icons.Add, onClick = { adding = true }, trailing = { Chevron() })
+        if (profiles.size > 1) {
+            Divider()
+            var auto by remember { mutableStateOf(services.profiles.autoSignIn) }
+            be.alwyapps.watch.ui.ToggleRow(
+                "Sign in automatically",
+                auto,
+                {
+                    auto = it
+                    services.profiles.autoSignIn = it
+                },
+                subtitle = "Open the last profile used instead of asking who's watching (a PIN is still asked)",
+            )
+        }
     }
 
     if (adding || renaming != null) {
