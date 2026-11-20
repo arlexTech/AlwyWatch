@@ -733,12 +733,21 @@ fun Modifier.dpadEscape(): Modifier {
     }
 }
 
+/** Per-screen flag for [initialFocus] (provided by the navigation host for each screen). */
+val LocalInitialFocusDone = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.runtime.MutableState<Boolean>?> { null }
+
 /** Requests focus once on first composition (TV: put the remote on the main action). */
 @Composable
 fun Modifier.initialFocus(enabled: Boolean = LocalDimens.current.isTv): Modifier {
     if (!enabled) return this
     val fr = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
+    // Once per screen: an element that leaves and comes back (data reloading) must not steal
+    // the focus from wherever the user moved it since.
+    val owner = LocalInitialFocusDone.current
+    LaunchedEffect(Unit) {
+        if (owner?.value == true) return@LaunchedEffect
+        if (runCatching { fr.requestFocus() }.isSuccess) owner?.value = true
+    }
     return focusRequester(fr)
 }
 

@@ -109,55 +109,59 @@ private fun Root(core: AlwyWatch) {
         key(acct) {
             CompositionLocalProvider(LocalAccount provides acct) {
                 AppScaffold {
-                    when (val r = nav.current) {
-                        Route.Home -> HomeScreen()
-                        Route.Search -> SearchScreen()
-                        Route.Settings ->
-                            SettingsScreen(onAccountChanged = {
-                                account = it
-                                nav.reset(Route.Home)
-                            })
-                        Route.AddServer ->
-                            AddServerScreen(onSignedIn = {
-                                account = it
-                                nav.reset(Route.Home)
-                            })
-                        Route.Downloads ->
-                            androidx.compose.foundation.layout.Column {
-                                be.alwyapps.watch.ui
-                                    .PageTitle("Downloads")
+                    // One initial focus per screen visit (see initialFocus).
+                    val focusDone = remember(nav.current) { mutableStateOf(false) }
+                    CompositionLocalProvider(be.alwyapps.watch.ui.LocalInitialFocusDone provides focusDone) {
+                        when (val r = nav.current) {
+                            Route.Home -> HomeScreen()
+                            Route.Search -> SearchScreen()
+                            Route.Settings ->
+                                SettingsScreen(onAccountChanged = {
+                                    account = it
+                                    nav.reset(Route.Home)
+                                })
+                            Route.AddServer ->
+                                AddServerScreen(onSignedIn = {
+                                    account = it
+                                    nav.reset(Route.Home)
+                                })
+                            Route.Downloads ->
+                                androidx.compose.foundation.layout.Column {
+                                    be.alwyapps.watch.ui
+                                        .PageTitle("Downloads")
+                                    be.alwyapps.watch.ui.screens
+                                        .DownloadsHome()
+                                }
+                            Route.ManageDownloads -> DownloadsScreen()
+                            is Route.SeerrTitle ->
                                 be.alwyapps.watch.ui.screens
-                                    .DownloadsHome()
-                            }
-                        Route.ManageDownloads -> DownloadsScreen()
-                        is Route.SeerrTitle ->
-                            be.alwyapps.watch.ui.screens
-                                .SeerrTitleScreen(r.mediaType, r.tmdbId)
-                        is Route.SeerrSaga ->
-                            be.alwyapps.watch.ui.screens
-                                .SeerrSagaScreen(r.id, r.name)
-                        is Route.PlexSwitch ->
-                            be.alwyapps.watch.ui.screens.PlexSwitchScreen(r.accountId, onSwitched = {
-                                account = it
-                                nav.reset(Route.Home)
-                            })
-                        is Route.DownloadedShow ->
-                            be.alwyapps.watch.ui.screens
-                                .DownloadedShowScreen(r.seriesId, r.title)
-                        Route.Requests -> RequestsScreen()
-                        Route.LeavingSoon -> LeavingSoonScreen()
-                        Route.Triage -> TriageScreen()
-                        Route.KeepAdmin -> KeepAdminScreen()
-                        Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
-                        // Combined home: a page of another account's server runs as that account.
-                        is Route.Library ->
-                            CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { LibraryScreen(r.id, r.title) }
-                        is Route.Filtered ->
-                            CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) {
-                                LibraryGrid(r.libraryId, r.title, r.genreId, r.collectionId)
-                            }
-                        is Route.Detail ->
-                            CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { DetailScreen(r.itemId, r.season) }
+                                    .SeerrTitleScreen(r.mediaType, r.tmdbId)
+                            is Route.SeerrSaga ->
+                                be.alwyapps.watch.ui.screens
+                                    .SeerrSagaScreen(r.id, r.name)
+                            is Route.PlexSwitch ->
+                                be.alwyapps.watch.ui.screens.PlexSwitchScreen(r.accountId, onSwitched = {
+                                    account = it
+                                    nav.reset(Route.Home)
+                                })
+                            is Route.DownloadedShow ->
+                                be.alwyapps.watch.ui.screens
+                                    .DownloadedShowScreen(r.seriesId, r.title)
+                            Route.Requests -> RequestsScreen()
+                            Route.LeavingSoon -> LeavingSoonScreen()
+                            Route.Triage -> TriageScreen()
+                            Route.KeepAdmin -> KeepAdminScreen()
+                            Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
+                            // Combined home: a page of another account's server runs as that account.
+                            is Route.Library ->
+                                CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { LibraryScreen(r.id, r.title) }
+                            is Route.Filtered ->
+                                CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) {
+                                    LibraryGrid(r.libraryId, r.title, r.genreId, r.collectionId)
+                                }
+                            is Route.Detail ->
+                                CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { DetailScreen(r.itemId, r.season) }
+                        }
                     }
                 }
             }

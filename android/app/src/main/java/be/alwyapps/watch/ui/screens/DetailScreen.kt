@@ -131,8 +131,13 @@ fun DetailScreen(
             val fresh = changed > 0
             // The server's own "continue watching" / "next up" know best (cached with home).
             val home = runCatching { if (fresh) core.refreshHome(account, false) else core.cachedHome(account) }.getOrNull()
-            nextEp = home?.let { h -> h.continueWatching.firstOrNull { it.seriesId == itemId } }
-            if (nextEp != null) return@LaunchedEffect
+            // Assigned once at the end: a null in between would remove the Play button for a
+            // moment, and its return would pull the focus back to it.
+            val fromHome = home?.let { h -> h.continueWatching.firstOrNull { it.seriesId == itemId } }
+            if (fromHome != null) {
+                nextEp = fromHome
+                return@LaunchedEffect
+            }
             nextEp =
                 runCatching {
                     val seasons =
