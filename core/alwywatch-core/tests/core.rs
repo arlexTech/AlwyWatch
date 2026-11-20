@@ -420,7 +420,20 @@ fn seerr_through_the_keep_bridge() {
             .unwrap()
             .starts_with("https://image.tmdb.org/")
     );
+    // Switching the synced account (here the same one again) keeps Seerr through the bridge.
+    env.block(app.keep_connect(keep.uri(), s.account.id.clone(), "tok".into()))
+        .unwrap();
+    assert!(app.seerr_connection().unwrap().via_keep);
+    assert!(app.seerr_active());
     app.keep_disconnect().unwrap();
     assert!(!app.seerr_active());
     assert!(app.seerr_connection().is_none());
+    // A preset the user backed out of is forgotten.
+    app.keep_set_preset(keep.uri()).unwrap();
+    app.keep_clear_preset().unwrap();
+    assert!(
+        env.block(app.keep_onboard(s.account.id.clone(), "tok".into()))
+            .unwrap()
+            .is_none()
+    );
 }

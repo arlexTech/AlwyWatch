@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -70,6 +69,12 @@ import kotlinx.coroutines.launch
 private sealed interface Step {
     data object Choose : Step
 
+    /** "I have an AlwyWatch server": address, then the media servers it serves. */
+    data object AlwyWatch : Step
+
+    /** "I don't have one": Jellyfin or Plex directly. */
+    data object Direct : Step
+
     data object JellyfinUrl : Step
 
     data class Jellyfin(
@@ -92,12 +97,26 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
     val ctx = LocalContext.current
     val d = LocalDimens.current
     val scope = rememberCoroutineScope()
-    var step by remember { mutableStateOf<Step>(Step.Choose) }
+    // Steps visited, so Back returns to the previous one (AlwyWatch server list, or direct).
+    var history by remember { mutableStateOf(listOf<Step>(Step.Choose)) }
+    val step = history.last()
+
+    fun go(next: Step) {
+        history = history + next
+    }
+
+    fun back() {
+        if (history.size > 1) history = history.dropLast(1)
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     // Picked from an AlwyWatch server's list: Plex then selects that server by itself.
     var presetPlexId by remember { mutableStateOf<String?>(null) }
     androidx.activity.compose.ReportDrawn()
+    androidx.activity.compose.BackHandler(enabled = history.size > 1) {
+        back()
+        error = null
+    }
 
     fun finish(s: SignedIn) {
         ctx.services.tokens.put(s.account.id, s.token)
@@ -144,11 +163,13 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 IconAction(Icons.Back, "Back", {
-                    step = Step.Choose
+                    back()
                     error = null
                 })
                 Text(
                     when (step) {
+                        Step.AlwyWatch -> "AlwyWatch server"
+                        Step.Direct -> "Sign in"
                         Step.Plex, is Step.PlexServers -> "Plex"
                         else -> "Jellyfin"
                     },
@@ -158,9 +179,23 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
         }
         when (val s = step) {
             Step.Choose -> {
-                Text("Sign in with your existing account", style = MaterialTheme.typography.titleMedium)
-                ChoiceCard("Jellyfin", "Quick Connect or password", Icons.Library, { step = Step.JellyfinUrl }, Modifier.initialFocus())
-                ChoiceCard("Plex", "Sign in on plex.tv", Icons.Play, { step = Step.Plex })
+                Text("How do you watch?", style = MaterialTheme.typography.titleMedium)
+                ChoiceCard(
+                    "I have an AlwyWatch server",
+                    "Its address comes from your server's owner. Includes what's leaving soon and requests.",
+                    Icons.Hourglass,
+                    { go(Step.AlwyWatch) },
+                    Modifier.initialFocus(),
+                )
+                ChoiceCard(
+                    "I don't have one",
+                    "Sign in to Jellyfin or Plex directly. You can add an AlwyWatch server later in Settings.",
+                    Icons.Person,
+                    { go(Step.Direct) },
+                )
+            }
+
+            Step.AlwyWatch ->
                 AlwyWatchServerPicker(
                     busy = busy,
                     onPick = { url, entry ->
@@ -170,17 +205,26 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                                 ServerType.JELLYFIN -> {
                                     core.jellyfinServerInfo(entry.url)
                                     val quick = runCatching { core.jellyfinQuickConnectStart(entry.url) }.getOrNull()
-                                    step = Step.Jellyfin(entry.url, quick)
+                                    go(Step.Jellyfin(entry.url, quick))
                                 }
                                 ServerType.PLEX -> {
                                     presetPlexId = entry.id
-                                    step = Step.Plex
+                                    go(Step.Plex)
                                 }
                             }
                         }
                     },
                     onError = { error = it },
                 )
+
+            Step.Direct -> {
+                // No AlwyWatch server on this path: forget one picked earlier then backed out of.
+                LaunchedEffect(Unit) {
+                    core.keepClearPreset()
+                    presetPlexId = null
+                }
+                ChoiceCard("Jellyfin", "Quick Connect or password", Icons.Library, { go(Step.JellyfinUrl) }, Modifier.initialFocus())
+                ChoiceCard("Plex", "Sign in on plex.tv", Icons.Play, { go(Step.Plex) })
             }
 
             Step.JellyfinUrl -> {
@@ -192,7 +236,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                                 .normalizeServerUrl(url)
                         core.jellyfinServerInfo(normalized)
                         val quick = runCatching { core.jellyfinQuickConnectStart(normalized) }.getOrNull()
-                        step = Step.Jellyfin(normalized, quick)
+                        go(Step.Jellyfin(normalized, quick))
                     }
                 }
                 Field(
@@ -251,7 +295,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                                 // TV): get a fresh one instead of giving up.
                                 val fresh = runCatching { core.jellyfinQuickConnectStart(s.url) }.getOrNull()
                                 if (fresh != null) {
-                                    step = Step.Jellyfin(s.url, fresh)
+                                    history = history.dropLast(1) + Step.Jellyfin(s.url, fresh)
                                 } else {
                                     error = e.message
                                 }
@@ -305,7 +349,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                                 if (preset != null) {
                                     finish(core.plexConnect(token, preset, null))
                                 } else {
-                                    step = Step.PlexServers(token, servers)
+                                    go(Step.PlexServers(token, servers))
                                 }
                                 break
                             } catch (_: CoreException.Pending) {
@@ -377,12 +421,11 @@ private fun AlwyWatchServerPicker(
             }
         }
     }
-    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.weight(1f).height(1.dp).background(Outline))
-        Text("or", color = Subtle, style = MaterialTheme.typography.bodySmall)
-        Box(Modifier.weight(1f).height(1.dp).background(Outline))
-    }
-    Text("Got an AlwyWatch server address from your server's owner?", color = Muted, style = MaterialTheme.typography.bodyMedium)
+    Text(
+        "Enter the address your server's owner gave you, then pick the server you watch on.",
+        color = Muted,
+        style = MaterialTheme.typography.bodyMedium,
+    )
     Field(
         url,
         { url = it },
@@ -391,14 +434,19 @@ private fun AlwyWatchServerPicker(
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
         keyboardActions = KeyboardActions(onGo = { load() }),
-        modifier = Modifier.fillMaxWidth().dpadEscape(),
+        modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
     )
-    ActionButton("Show servers", { load() })
+    ActionButton("Show servers", { load() }, primary = entries == null)
     entries?.let { (base, list) ->
         if (list.isEmpty()) Text("This AlwyWatch server lists no media servers.", color = Muted)
-        for (e in list) {
-            val kind = if (e.kind == ServerType.PLEX) "Plex" else "Jellyfin"
-            ActionButton("${e.name} ($kind)", { if (!busy) onPick(base, e) }, primary = true)
+        list.forEach { e ->
+            val plex = e.kind == ServerType.PLEX
+            ChoiceCard(
+                e.name,
+                if (plex) "Plex · sign in on plex.tv" else "Jellyfin · Quick Connect or password",
+                if (plex) Icons.Play else Icons.Library,
+                { if (!busy) onPick(base, e) },
+            )
         }
     }
 }

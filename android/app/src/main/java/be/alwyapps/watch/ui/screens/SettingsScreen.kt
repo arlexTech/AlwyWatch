@@ -5,12 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,8 +41,6 @@ import be.alwyapps.watch.ui.PageTitle
 import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.ToggleRow
 import be.alwyapps.watch.ui.Value
-import be.alwyapps.watch.ui.dpadEscape
-import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
@@ -102,103 +98,8 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
             ListRow("Add a server", icon = Icons.Add, onClick = { nav.push(Route.AddServer) }, trailing = { Chevron() })
         }
 
-        val keep = remember(version) { core.keepConnection() }
-        Group("Leaving soon", footer = "Your AlwyWatch server shows what will be deleted and lets you keep it.") {
-            if (keep == null) {
-                var keepUrl by remember { mutableStateOf("") }
-                var keepError by remember { mutableStateOf<String?>(null) }
-                val scope = androidx.compose.runtime.rememberCoroutineScope()
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    be.alwyapps.watch.ui.Field(
-                        keepUrl,
-                        { keepUrl = it },
-                        Modifier.fillMaxWidth().dpadEscape(),
-                        label = { Text("AlwyWatch server address") },
-                        singleLine = true,
-                    )
-                    ActionButton("Connect as ${accounts.firstOrNull { it.id == current }?.userName ?: "this account"}", {
-                        val account = accounts.firstOrNull { it.id == current } ?: return@ActionButton
-                        val token =
-                            if (account.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) {
-                                ctx.services.tokens.get("${account.id}:plextv")
-                            } else {
-                                ctx.services.tokens.get(account.id)
-                            }
-                        if (token == null) {
-                            keepError = "Sign in to this account again first."
-                            return@ActionButton
-                        }
-                        scope.launch {
-                            try {
-                                core.keepConnect(
-                                    be.alwyapps.watch.core
-                                        .normalizeServerUrl(keepUrl),
-                                    account.id,
-                                    token,
-                                )
-                                keepError = null
-                                // Seerr through the same server when not set up yet (optional there).
-                                if (core.seerrConnection() == null) runCatching { core.seerrConnectBridge() }
-                                version++
-                            } catch (e: be.alwyapps.watch.core.CoreException) {
-                                keepError = e.message
-                            }
-                        }
-                    }, primary = true)
-                    keepError?.let { Text(it, color = be.alwyapps.watch.ui.Danger) }
-                }
-            } else {
-                ListRow(
-                    keep.userName + if (keep.isAdmin) " · admin" else "",
-                    subtitle = keep.baseUrl,
-                    icon = Icons.Hourglass,
-                    onClick = { nav.push(Route.LeavingSoon) },
-                    trailing = { Chevron() },
-                )
-                if (keep.isAdmin) {
-                    Divider()
-                    ListRow(
-                        "Admin",
-                        subtitle = "Rights and countdown",
-                        icon = Icons.Settings,
-                        onClick = { nav.push(Route.KeepAdmin) },
-                        trailing = { Chevron() },
-                    )
-                }
-                Divider()
-                ListRow("Disconnect", icon = Icons.Close, iconTint = be.alwyapps.watch.ui.Danger, onClick = {
-                    core.keepDisconnect()
-                    version++
-                })
-            }
-        }
-
-        val seerr = remember(version) { core.seerrConnection() }
-        Group("Requests") {
-            if (seerr == null) {
-                ListRow(
-                    "Connect Seerr",
-                    subtitle = "Ask for movies and shows",
-                    icon = Icons.Add,
-                    onClick = { nav.push(Route.SeerrConnect) },
-                    trailing = { Chevron() },
-                )
-            } else {
-                ListRow(
-                    seerr.userName,
-                    subtitle = if (seerr.viaKeep) "Seerr, through your AlwyWatch server" else "Seerr · ${seerr.baseUrl}",
-                    icon = Icons.Add,
-                    onClick = { nav.push(Route.Requests) },
-                    trailing = { Chevron() },
-                )
-                Divider()
-                ListRow("Disconnect", icon = Icons.Close, iconTint = be.alwyapps.watch.ui.Danger, onClick = {
-                    core.seerrSignOut()
-                    ctx.services.tokens.remove("seerr")
-                    version++
-                })
-            }
-        }
+        AlwyWatchServerGroup(accounts, version) { version++ }
+        RequestsGroup(version) { version++ }
 
         Group("Playback") {
             var matchRate by remember { mutableStateOf(settings.matchFrameRate) }

@@ -1366,8 +1366,9 @@ impl AlwyWatch {
         .await
     }
 
-    /// Connects the keep service as one of the signed-in accounts. `token` is that account's
-    /// Jellyfin token, or for Plex the plex.tv account token.
+    /// Connects the keep service as one of the signed-in accounts (or switches which account
+    /// syncs with it). `token` is that account's Jellyfin token, or for Plex the plex.tv
+    /// account token.
     pub async fn keep_connect(
         &self,
         url: String,
@@ -1379,23 +1380,38 @@ impl AlwyWatch {
             .into_iter()
             .find(|a| a.id == account_id)
             .ok_or(CoreError::NotFound)?;
-        self.run(|c| async move {
-            let base = net::normalize_base_url(&url)?;
-            let client = c.keep_client(&base, &account.server_id, &token);
-            let me = client.me().await?;
-            let conn = KeepConnection {
-                base_url: base,
-                account_id,
-                server_id: account.server_id,
-                user_name: me.name,
-                is_admin: me.is_admin,
-            };
-            c.store
-                .set_setting(KEEP_KEY, &serde_json::to_string(&conn).unwrap_or_default())?;
-            *c.keep.write().unwrap_or_else(|e| e.into_inner()) = Some(client);
-            Ok(conn)
-        })
-        .await
+        let conn = self
+            .run(|c| async move {
+                let base = net::normalize_base_url(&url)?;
+                let client = c.keep_client(&base, &account.server_id, &token);
+                let me = client.me().await?;
+                let conn = KeepConnection {
+                    base_url: base,
+                    account_id,
+                    server_id: account.server_id,
+                    user_name: me.name,
+                    is_admin: me.is_admin,
+                };
+                c.store
+                    .set_setting(KEEP_KEY, &serde_json::to_string(&conn).unwrap_or_default())?;
+                *c.keep.write().unwrap_or_else(|e| e.into_inner()) = Some(client);
+                // Another account or server: its list and votes differ.
+                c.store.cache_delete(LEAVING_KEY)?;
+                Ok(conn)
+            })
+            .await?;
+        // Seerr through the bridge acts as the synced account: follow the switch.
+        if self.seerr_connection().is_some_and(|s| s.via_keep) {
+            self.seerr_sign_out()?;
+            let _ = self.seerr_connect_bridge().await;
+        }
+        Ok(conn)
+    }
+
+    /// Forgets the AlwyWatch server picked on the add-server screen (the user went back and
+    /// chose to sign in directly).
+    pub fn keep_clear_preset(&self) -> Result<()> {
+        Ok(self.core.store.remove_setting(KEEP_PRESET_KEY)?)
     }
 
     /// Remembers the AlwyWatch server a user picked a media server from, so `keep_onboard`
