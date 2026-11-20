@@ -176,6 +176,15 @@ impl Store {
         Ok(())
     }
 
+    /// Marks every entry whose key starts with `prefix` as stale (shown, then refreshed).
+    pub fn cache_mark_stale_prefix(&self, prefix: &str) -> Result<()> {
+        self.conn().execute(
+            "UPDATE cache SET fetched_at = 0 WHERE substr(key, 1, ?2) = ?1",
+            rusqlite::params![prefix, prefix.chars().count() as i64],
+        )?;
+        Ok(())
+    }
+
     pub fn cache_delete(&self, key: &str) -> Result<()> {
         self.conn()
             .execute("DELETE FROM cache WHERE key = ?1", [key])?;
@@ -377,6 +386,21 @@ mod tests {
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
     struct Row {
         a: u32,
+    }
+
+    #[test]
+    fn mark_stale_by_prefix_only_touches_that_family() {
+        let s = Store::open_in_memory().unwrap();
+        s.cache_put("acct/a/episodes\u{1f}s\u{1f}1", &Row { a: 1 })
+            .unwrap();
+        s.cache_put("acct/a/episodesX", &Row { a: 2 }).unwrap();
+        s.cache_put("acct/b/episodes\u{1f}s\u{1f}1", &Row { a: 3 })
+            .unwrap();
+        s.cache_mark_stale_prefix("acct/a/episodes\u{1f}").unwrap();
+        let age = |k: &str| s.cache_get::<Row>(k).unwrap().unwrap().fetched_at;
+        assert_eq!(age("acct/a/episodes\u{1f}s\u{1f}1"), 0);
+        assert_ne!(age("acct/a/episodesX"), 0);
+        assert_ne!(age("acct/b/episodes\u{1f}s\u{1f}1"), 0);
     }
 
     #[test]

@@ -495,9 +495,9 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun report(event: PlaybackEvent) {
-        val p = player ?: return
-        val src = source ?: return
+    private fun report(event: PlaybackEvent): Job? {
+        val p = player ?: return null
+        val src = source ?: return null
         val report =
             ProgressReport(
                 itemId = itemId,
@@ -509,7 +509,7 @@ class PlayerActivity : ComponentActivity() {
                 audioIndex = null,
                 subtitleIndex = null,
             )
-        services.scope.launch { runCatching { core.reportProgress(account, report) } }
+        return services.scope.launch { runCatching { core.reportProgress(account, report) } }
     }
 
     private fun playNext() {
@@ -718,7 +718,15 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        report(PlaybackEvent.STOP)
+        val stop = report(PlaybackEvent.STOP)
+        // Once the server knows where we stopped, the screens behind show "Resume" at the right place.
+        services.scope.launch {
+            stop?.join()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                be.alwyapps.watch.ui.ItemsChanged
+                    .bump()
+            }
+        }
         // Watched episode: its download may be due for deletion, the next one for download.
         if (!services.isTv) {
             services.scope.launch {

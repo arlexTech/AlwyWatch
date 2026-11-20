@@ -245,6 +245,17 @@ impl Core {
         Ok(s)
     }
 
+    /// Positions or watched marks changed: everything showing them (home, items, episode and
+    /// season lists, library pages) is shown from cache, then refreshed on the next visit.
+    fn watch_state_changed(&self, account: &str) -> Result<()> {
+        self.store.cache_mark_stale(&key(account, &["home"]))?;
+        for family in ["item", "episodes", "seasons", "items"] {
+            self.store
+                .cache_mark_stale_prefix(&format!("{}\u{1f}", key(account, &[family])))?;
+        }
+        Ok(())
+    }
+
     /// Like `swr`, but offline (or on any error) falls back to whatever is cached.
     async fn swr_offline<T, F, Fut>(&self, key: &str, ttl: i64, fetch: F) -> Result<T>
     where
@@ -509,9 +520,7 @@ impl Core {
                 self.mark_watched(account, &report.item_id);
             }
             // Resume rails changed: keep showing them, but refresh on next visit.
-            self.store.cache_mark_stale(&key(account, &["home"]))?;
-            self.store
-                .cache_mark_stale(&key(account, &["item", &report.item_id]))?;
+            self.watch_state_changed(account)?;
         }
         match result {
             Ok(()) => Ok(()),
@@ -1250,9 +1259,7 @@ impl AlwyWatch {
             if played {
                 c.mark_watched(&account_id, &item_id);
             }
-            c.store.cache_mark_stale(&key(&account_id, &["home"]))?;
-            c.store
-                .cache_mark_stale(&key(&account_id, &["item", &item_id]))?;
+            c.watch_state_changed(&account_id)?;
             Ok(())
         })
         .await

@@ -106,6 +106,9 @@ fun DetailScreen(
             refresh = { core.refreshItem(account, itemId, it).item },
         )
     val item = res.value
+    // Back from the player, or watched state changed from a menu: positions and marks moved.
+    val changed = be.alwyapps.watch.ui.ItemsChanged.version
+    LaunchedEffect(changed) { if (changed > 0) res.reload() }
     // A season has no page of its own: its show, opened on that season.
     val parent = item?.seriesId
     if (item?.kind == ItemKind.SEASON && parent != null) {
@@ -123,18 +126,20 @@ fun DetailScreen(
     // Shows: the episode to continue with (first unwatched, or the one in progress).
     var nextEp by remember(itemId) { mutableStateOf<Item?>(null) }
     if (item?.kind == ItemKind.SERIES) {
-        LaunchedEffect(itemId) {
+        LaunchedEffect(itemId, changed) {
+            // After a change the caches are stale: ask the server (cheap, cached again after).
+            val fresh = changed > 0
             // The server's own "continue watching" / "next up" know best (cached with home).
-            val home = runCatching { core.cachedHome(account) }.getOrNull()
+            val home = runCatching { if (fresh) core.refreshHome(account, false) else core.cachedHome(account) }.getOrNull()
             nextEp = home?.let { h -> h.continueWatching.firstOrNull { it.seriesId == itemId } }
             if (nextEp != null) return@LaunchedEffect
             nextEp =
                 runCatching {
                     val seasons =
-                        core.cachedSeasons(account, itemId)?.items ?: core.refreshSeasons(account, itemId, false).items
+                        (if (fresh) null else core.cachedSeasons(account, itemId)?.items) ?: core.refreshSeasons(account, itemId, false).items
                     for (season in seasons.filter { !it.user.played }.ifEmpty { seasons.take(1) }) {
                         val eps =
-                            core.cachedEpisodes(account, itemId, season.id)?.items
+                            (if (fresh) null else core.cachedEpisodes(account, itemId, season.id)?.items)
                                 ?: core.refreshEpisodes(account, itemId, season.id, false).items
                         val ep = eps.firstOrNull { it.user.positionMs > 0u && !it.user.played } ?: eps.firstOrNull { !it.user.played }
                         if (ep != null) return@runCatching ep
