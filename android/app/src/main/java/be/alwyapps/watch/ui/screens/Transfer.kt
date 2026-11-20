@@ -18,6 +18,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -168,10 +170,16 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
                         Field(
                             code,
                             { code = it.filter(Char::isDigit).take(6) },
-                            Modifier.fillMaxWidth(),
+                            Modifier.fillMaxWidth().semantics {
+                                contentType =
+                                    androidx.compose.ui.autofill
+                                        .ContentType("oneTimeCode")
+                            },
                             placeholder = { Text("123456") },
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+                            // A plain number: as a password field, password managers offer to fill
+                            // and save it.
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = { lookUp() }),
                         )
                     }
