@@ -98,7 +98,9 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
     val d = LocalDimens.current
     val scope = rememberCoroutineScope()
     // Steps visited, so Back returns to the previous one (AlwyWatch server list, or direct).
-    var history by remember { mutableStateOf(listOf<Step>(Step.Choose)) }
+    // Already connected to an AlwyWatch server: start from its list (no "how do you watch").
+    val keep = remember { core.keepConnection() }
+    var history by remember { mutableStateOf(listOf<Step>(if (keep != null) Step.AlwyWatch else Step.Choose)) }
     val step = history.last()
 
     fun go(next: Step) {
@@ -155,7 +157,10 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
             .widthIn(max = 600.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        if (step == Step.Choose) {
+        if (history.size == 1 && step == Step.AlwyWatch) {
+            be.alwyapps.watch.ui
+                .PageTitle("Add a server", "From your AlwyWatch server, or any other.")
+        } else if (step == Step.Choose) {
             Column(Modifier.padding(top = 24.dp, bottom = 8.dp)) {
                 Text("AlwyWatch", style = MaterialTheme.typography.displayLarge)
                 Text("Your Jellyfin and Plex, fast and beautiful.", style = MaterialTheme.typography.bodyLarge, color = Muted)
@@ -198,6 +203,9 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
             Step.AlwyWatch ->
                 AlwyWatchServerPicker(
                     busy = busy,
+                    connectedUrl = keep?.baseUrl,
+                    signedIn = remember { core.accounts().map { it.serverId }.toSet() },
+                    onOther = { go(Step.Direct) },
                     onPick = { url, entry ->
                         attempt {
                             core.keepSetPreset(url)
@@ -403,10 +411,13 @@ private fun AlwyWatchServerPicker(
     busy: Boolean,
     onPick: (url: String, entry: ServerEntry) -> Unit,
     onError: (String?) -> Unit,
+    connectedUrl: String? = null,
+    signedIn: Set<String> = emptySet(),
+    onOther: () -> Unit = {},
 ) {
     val core = LocalCore.current
     val scope = rememberCoroutineScope()
-    var url by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf(connectedUrl.orEmpty()) }
     var entries by remember { mutableStateOf<Pair<String, List<ServerEntry>>?>(null) }
     val load = {
         onError(null)
@@ -421,33 +432,49 @@ private fun AlwyWatchServerPicker(
             }
         }
     }
-    Text(
-        "Enter the address your server's owner gave you, then pick the server you watch on.",
-        color = Muted,
-        style = MaterialTheme.typography.bodyMedium,
-    )
-    Field(
-        url,
-        { url = it },
-        placeholder = { Text("watch.example.org") },
-        pill = true,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-        keyboardActions = KeyboardActions(onGo = { load() }),
-        modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
-    )
-    ActionButton("Show servers", { load() }, primary = entries == null)
+    if (connectedUrl != null) {
+        // The connected server: its list right away, nothing to type.
+        LaunchedEffect(connectedUrl) { load() }
+        Text("On your AlwyWatch server (${connectedUrl.substringAfter("://")})", style = MaterialTheme.typography.titleMedium)
+        if (entries == null) Text("Loading…", color = Subtle)
+    }
+    if (connectedUrl == null) {
+        Text(
+            "Enter the address your server's owner gave you, then pick the server you watch on.",
+            color = Muted,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    if (connectedUrl == null) {
+        Field(
+            url,
+            { url = it },
+            placeholder = { Text("watch.example.org") },
+            pill = true,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { load() }),
+            modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
+        )
+        ActionButton("Show servers", { load() }, primary = entries == null)
+    }
     entries?.let { (base, list) ->
         if (list.isEmpty()) Text("This AlwyWatch server lists no media servers.", color = Muted)
-        list.forEach { e ->
+        list.forEachIndexed { i, e ->
             val plex = e.kind == ServerType.PLEX
+            val kind = if (plex) "Plex · sign in on plex.tv" else "Jellyfin · Quick Connect or password"
             ChoiceCard(
                 e.name,
-                if (plex) "Plex · sign in on plex.tv" else "Jellyfin · Quick Connect or password",
+                if (e.id in signedIn) "${if (plex) "Plex" else "Jellyfin"} · already signed in" else kind,
                 if (plex) Icons.Play else Icons.Library,
                 { if (!busy) onPick(base, e) },
+                if (i == 0 && connectedUrl != null) Modifier.initialFocus() else Modifier,
             )
         }
+    }
+    if (connectedUrl != null) {
+        Text("Somewhere else", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
+        ChoiceCard("Another server", "Jellyfin or Plex directly, not on your AlwyWatch server", Icons.Add, onOther)
     }
 }
 

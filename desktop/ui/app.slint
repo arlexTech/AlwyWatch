@@ -491,6 +491,8 @@ export component AppWindow inherits Window {
     callback add-keep-servers(string);
     callback add-keep-pick(string);
     in property <[ServerChoice]> preset-servers;
+    /// Add page opened while connected to an AlwyWatch server: its list comes first.
+    in property <bool> add-from-keep;
     callback use-account(string);
     callback remove-account(string);
     callback clear-cache();
@@ -862,8 +864,9 @@ export component AppWindow inherits Window {
                                 }
                                 if root.add-step == "alwywatch" : VerticalLayout {
                                     spacing: 12px;
-                                    Text { text: "Enter the address your server's owner gave you, then pick the server you watch on."; color: Palette.muted; wrap: word-wrap; }
-                                    HorizontalLayout {
+                                    if root.add-from-keep : Text { text: "On your AlwyWatch server"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                    if !root.add-from-keep : Text { text: "Enter the address your server's owner gave you, then pick the server you watch on."; color: Palette.muted; wrap: word-wrap; }
+                                    if !root.add-from-keep : HorizontalLayout {
                                         spacing: 10px;
                                         kserver := Field { placeholder: "watch.example.org"; accepted(t) => { root.add-keep-servers(t); } }
                                         Button { label: "Show servers"; primary: root.preset-servers.length == 0; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
@@ -873,6 +876,13 @@ export component AppWindow inherits Window {
                                         subtitle: s.subtitle;
                                         icon: s.plex ? @image-url("icons/play_arrow_fill1.svg") : @image-url("icons/video_library.svg");
                                         clicked => { root.add-keep-pick(s.id); }
+                                    }
+                                    if root.add-from-keep : Text { text: "Somewhere else"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                    if root.add-from-keep : ChoiceCard {
+                                        title: "Another server";
+                                        subtitle: "Jellyfin or Plex directly, not on your AlwyWatch server";
+                                        icon: @image-url("icons/add.svg");
+                                        clicked => { root.add-choose("direct"); }
                                     }
                                 }
                                 if root.add-step == "jellyfin-url" : VerticalLayout {

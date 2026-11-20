@@ -790,6 +790,7 @@ impl App {
                     t.ui().set_keep_message(SharedString::new());
                     t.ui().set_keep_choices(ModelRc::default());
                     t.refresh_keep_settings();
+                    t.refresh_settings();
                     // Seerr through the same server when not set up yet (optional there).
                     if t.core.seerr_connection().is_none() {
                         t.seerr_bridge(true);
@@ -1381,8 +1382,16 @@ impl App {
             }
             Route::Add => {
                 ui.set_page(Page::Add);
-                ui.set_add_step("choose".into());
                 ui.set_status(SharedString::new());
+                // Already connected to an AlwyWatch server: start from its list.
+                if let Some(k) = self.core.keep_connection() {
+                    ui.set_add_step("alwywatch".into());
+                    ui.set_add_from_keep(true);
+                    self.add_keep_servers(k.base_url);
+                } else {
+                    ui.set_add_from_keep(false);
+                    ui.set_add_step("choose".into());
+                }
             }
         }
     }
@@ -2309,16 +2318,24 @@ impl App {
     fn refresh_settings(&self) {
         let ui = self.ui();
         let current = self.account();
+        let keep = self.core.keep_connection();
         let rows: Vec<AccountRow> = self
             .core
             .accounts()
             .unwrap_or_default()
             .into_iter()
-            .map(|a| AccountRow {
-                current: Some(&a.id) == current.as_ref(),
-                label: sstr(format!("{} @ {}", a.user_name, a.server_name)),
-                detail: sstr(format!("{:?} · {}", a.kind, a.base_url)),
-                id: sstr(a.id),
+            .map(|a| {
+                let sync = match &keep {
+                    Some(k) if k.account_id == a.id => "synced with your AlwyWatch server",
+                    Some(_) => "not synced with your AlwyWatch server",
+                    None => "only on this device",
+                };
+                AccountRow {
+                    current: Some(&a.id) == current.as_ref(),
+                    label: sstr(format!("{} @ {}", a.user_name, a.server_name)),
+                    detail: sstr(format!("{:?} · {} · {sync}", a.kind, a.base_url)),
+                    id: sstr(a.id),
+                }
             })
             .collect();
         ui.set_accounts(ModelRc::new(VecModel::from(rows)));
@@ -2441,6 +2458,13 @@ impl App {
                 Err(e) => return report(&this, e),
             };
             let Some(t) = this.upgrade() else { return };
+            let signed_in: Vec<String> = t
+                .core
+                .accounts()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|a| a.server_id)
+                .collect();
             t.ui().set_preset_servers(ModelRc::new(VecModel::from(
                 list.iter()
                     .enumerate()
@@ -2449,10 +2473,11 @@ impl App {
                         ServerChoice {
                             id: sstr(i.to_string()),
                             title: sstr(&e.name),
-                            subtitle: if plex {
-                                "Plex · sign in on plex.tv"
-                            } else {
-                                "Jellyfin · Quick Connect or password"
+                            subtitle: match (plex, signed_in.contains(&e.id)) {
+                                (true, true) => "Plex · already signed in",
+                                (false, true) => "Jellyfin · already signed in",
+                                (true, false) => "Plex · sign in on plex.tv",
+                                (false, false) => "Jellyfin · Quick Connect or password",
                             }
                             .into(),
                             plex,
@@ -2774,6 +2799,7 @@ impl App {
             let _ = a.core.keep_disconnect();
             a.ui().set_keep_choices(ModelRc::default());
             a.refresh_keep_settings();
+            a.refresh_settings();
             // A bridged Seerr goes with it.
             a.refresh_seerr_settings();
         });

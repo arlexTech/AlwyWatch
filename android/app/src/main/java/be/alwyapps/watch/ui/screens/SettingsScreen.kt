@@ -64,12 +64,39 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
     ) {
         PageTitle("Settings")
 
-        Group("Accounts") {
+        // Which accounts sync with the AlwyWatch server (and which servers it serves).
+        val keep = remember(version) { core.keepConnection() }
+        var served by remember(version) { mutableStateOf<Set<String>?>(null) }
+        androidx.compose.runtime.LaunchedEffect(keep?.baseUrl) {
+            val url = keep?.baseUrl ?: return@LaunchedEffect
+            served = runCatching { core.keepServers(url).map { it.id }.toSet() }.getOrNull()
+        }
+        Group(
+            "Accounts",
+            footer =
+                if (keep != null) {
+                    "One account syncs with your AlwyWatch server at a time (leaving soon, keep choices, requests). " +
+                        "Change it under AlwyWatch server."
+                } else {
+                    null
+                },
+        ) {
             accounts.forEachIndexed { i, a ->
                 if (i > 0) Divider()
+                val sync =
+                    when {
+                        keep?.accountId == a.id -> "Synced with your AlwyWatch server"
+                        keep != null && served?.contains(a.serverId) == true -> "On your AlwyWatch server · not synced"
+                        keep != null && served == null -> null
+                        else -> "Only on this device"
+                    }
                 ListRow(
                     a.userName,
-                    subtitle = "${a.serverName} · ${if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) "Plex" else "Jellyfin"}",
+                    subtitle =
+                        listOfNotNull(
+                            "${a.serverName} · ${if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) "Plex" else "Jellyfin"}",
+                            sync,
+                        ).joinToString("\n"),
                     icon = Icons.Person,
                     iconTint = if (a.id == current) Accent else OnSurface,
                     onClick =
