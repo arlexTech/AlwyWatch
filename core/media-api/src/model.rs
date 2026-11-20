@@ -302,6 +302,15 @@ record! {
     }
 }
 
+record! {
+    /// A trailer: on the server (play it like any item) or elsewhere (a web page, e.g. YouTube).
+    pub struct Trailer {
+        pub title: String,
+        pub item_id: Option<String>,
+        pub url: Option<String>,
+    }
+}
+
 simple_enum! {
     pub enum PersonKind { Actor, Director, Writer, Producer, Other }
 }

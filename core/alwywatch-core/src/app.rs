@@ -1364,6 +1364,29 @@ impl AlwyWatch {
         .await
     }
 
+    /// Trailers of a movie or show (cached a day).
+    pub async fn trailers(&self, account_id: String, item_id: String) -> Result<Vec<Trailer>> {
+        self.run(|c| async move {
+            c.swr_offline(
+                &key(&account_id, &["trailers", &item_id]),
+                TTL_PEOPLE,
+                || async { Ok(c.server(&account_id)?.trailers(&item_id).await?) },
+            )
+            .await
+        })
+        .await
+    }
+
+    /// The show's theme song to play quietly on its page (not cached: it carries credentials).
+    pub async fn theme_song(
+        &self,
+        account_id: String,
+        item_id: String,
+    ) -> Result<Option<HttpRequest>> {
+        self.run(|c| async move { Ok(c.server(&account_id)?.theme_song(&item_id).await?) })
+            .await
+    }
+
     pub fn cached_people(&self, account_id: String, item_id: String) -> Option<Vec<Person>> {
         self.core
             .store
@@ -1375,7 +1398,9 @@ impl AlwyWatch {
 
     /// The account's watchlist on its server (Jellyfin favorites, Plex's plex.tv watchlist).
     pub fn cached_watchlist(&self, account_id: String) -> Option<ItemsResult> {
-        self.cached_list(&key(&account_id, &["watchlist"])).ok().flatten()
+        self.cached_list(&key(&account_id, &["watchlist"]))
+            .ok()
+            .flatten()
     }
 
     pub async fn refresh_watchlist(&self, account_id: String, force: bool) -> Result<ItemsResult> {

@@ -130,6 +130,22 @@ fun DetailScreen(
         }
         Unit
     }
+    // Trailers (server extras, else web links) and, on show pages, the theme song.
+    var trailers by remember(itemId) { mutableStateOf<List<be.alwyapps.watch.core.media.Trailer>>(emptyList()) }
+    LaunchedEffect(itemId) { runCatching { core.trailers(account, itemId) }.onSuccess { trailers = it } }
+    val playTrailer: (() -> Unit)? =
+        trailers.firstOrNull()?.let { t ->
+            {
+                val id = t.itemId
+                val url = t.url
+                if (id != null) {
+                    ctx.startActivity(PlayerActivity.intent(ctx, account, id, 0L))
+                } else if (url != null) {
+                    runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+                }
+            }
+        }
+    ThemeMusic(account, itemId, item?.kind == ItemKind.SERIES)
     // Cast and crew: cached first, then the server's.
     var people by remember(itemId) { mutableStateOf(core.cachedPeople(account, itemId).orEmpty()) }
     LaunchedEffect(itemId) { runCatching { core.people(account, itemId) }.onSuccess { people = it } }
@@ -279,6 +295,7 @@ fun DetailScreen(
                                         ActionButton(playLabel, playAction, Modifier.initialFocus(), primary = true, icon = Icons.Play)
                                     }
                                     fromStart?.let { ActionButton("From start", it) }
+                                    playTrailer?.let { IconAction(Icons.Movie, "Trailer", it) }
                                     if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
                                         IconAction(
                                             if (watchlisted) Icons.BookmarkFilled else Icons.Bookmark,
@@ -304,6 +321,9 @@ fun DetailScreen(
                                         CaptionAction("From start", fromStart) {
                                             Icon(Icons.Refresh, null, Modifier.size(22.dp))
                                         }
+                                    }
+                                    playTrailer?.let {
+                                        CaptionAction("Trailer", it) { Icon(Icons.Movie, null, Modifier.size(22.dp)) }
                                     }
                                     if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
                                         CaptionAction(if (watchlisted) "In my list" else "My list", toggleList, highlighted = watchlisted) {
@@ -713,6 +733,63 @@ private fun FileInfoDialog(
         confirmButton = { ActionButton("Close", onDismiss, primary = true) },
     )
 }
+
+/** The show's theme song, quietly, while its page is open (setting; like Plex). */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun ThemeMusic(
+    account: String,
+    itemId: String,
+    isShow: Boolean,
+) {
+    val core = LocalCore.current
+    val ctx = LocalContext.current
+    val enabled = isShow && remember { PlayerSettings(core, isTvDevice(ctx)).themeMusic }
+    var request by remember(itemId) { mutableStateOf<be.alwyapps.watch.core.media.HttpRequest?>(null) }
+    LaunchedEffect(itemId, enabled) {
+        if (enabled) request = runCatching { core.themeSong(account, itemId) }.getOrNull()
+    }
+    val req = request ?: return
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(req) {
+        val http =
+            androidx.media3.datasource.DefaultHttpDataSource
+                .Factory()
+                .setDefaultRequestProperties(req.headers.associate { it.name to it.value })
+        val p =
+            androidx.media3.exoplayer.ExoPlayer
+                .Builder(ctx)
+                .setMediaSourceFactory(
+                    androidx.media3.exoplayer.source
+                        .DefaultMediaSourceFactory(
+                            androidx.media3.datasource.DefaultDataSource
+                                .Factory(ctx, http),
+                        ),
+                ).build()
+        p.volume = 0.25f
+        p.setMediaItem(
+            androidx.media3.common.MediaItem
+                .fromUri(req.url),
+        )
+        p.prepare()
+        p.playWhenReady = true
+        // The app in the background (or the player on top): silence.
+        val observer =
+            androidx.lifecycle.LifecycleEventObserver { _, e ->
+                when (e) {
+                    androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> p.pause()
+                    else -> {}
+                }
+            }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            p.release()
+        }
+    }
+}
+
+private fun isTvDevice(ctx: android.content.Context) = ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
 
 /** "Cast" row: round photos, name and character (like Plex's cast row). */
 @Composable

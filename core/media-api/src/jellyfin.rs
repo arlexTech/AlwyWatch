@@ -193,6 +193,19 @@ struct QueryResult {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "PascalCase", default)]
+struct RemoteTrailersDto {
+    remote_trailers: Vec<RemoteTrailerDto>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+struct RemoteTrailerDto {
+    url: String,
+    name: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase", default)]
 struct PeopleDto {
     people: Vec<PersonDto>,
 }
@@ -992,6 +1005,64 @@ impl MediaServer for JellyfinClient {
         )
         .await?;
         Ok(convert_people(&self.session.base_url, d.people))
+    }
+
+    async fn trailers(&self, item_id: &str) -> Result<Vec<Trailer>> {
+        let local: Vec<BaseItemDto> = net::send_json(
+            self.req(
+                Method::GET,
+                &format!("/Items/{}/LocalTrailers", net::percent_encode(item_id)),
+            )
+            .query(&[("userId", self.uid())]),
+        )
+        .await
+        .unwrap_or_default();
+        let mut out: Vec<Trailer> = local
+            .into_iter()
+            .map(|t| Trailer {
+                title: t.name.unwrap_or_else(|| "Trailer".into()),
+                item_id: Some(t.id),
+                url: None,
+            })
+            .collect();
+        let item: RemoteTrailersDto = net::send_json(
+            self.req(
+                Method::GET,
+                &format!("/Items/{}", net::percent_encode(item_id)),
+            )
+            .query(&[("userId", self.uid()), ("fields", "RemoteTrailers")]),
+        )
+        .await?;
+        out.extend(
+            item.remote_trailers
+                .into_iter()
+                .filter(|t| !t.url.is_empty())
+                .map(|t| Trailer {
+                    title: t.name.unwrap_or_else(|| "Trailer".into()),
+                    item_id: None,
+                    url: Some(t.url),
+                }),
+        );
+        Ok(out)
+    }
+
+    async fn theme_song(&self, item_id: &str) -> Result<Option<HttpRequest>> {
+        let r: QueryResult = net::send_json(
+            self.req(
+                Method::GET,
+                &format!("/Items/{}/ThemeSongs", net::percent_encode(item_id)),
+            )
+            .query(&[("userId", self.uid()), ("inheritFromParent", "true")]),
+        )
+        .await?;
+        Ok(r.items.into_iter().next().map(|song| HttpRequest {
+            url: format!(
+                "{}/Audio/{}/stream?static=true",
+                self.session.base_url,
+                net::percent_encode(&song.id)
+            ),
+            headers: self.auth_headers(),
+        }))
     }
 
     async fn watchlist(&self, _plex_tv_token: Option<&str>) -> Result<Vec<Item>> {

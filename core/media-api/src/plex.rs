@@ -494,6 +494,11 @@ struct MetadataDto {
     genre: Vec<Tag>,
     #[serde(rename = "Guid")]
     guid: Vec<GuidDto>,
+    /// Theme song path (shows).
+    theme: Option<String>,
+    /// Extras: 1 = trailer.
+    extra_type: Option<u32>,
+    subtype: Option<String>,
     /// "plex://movie/5d7768…": the title in plex.tv's catalogue (watchlist).
     #[serde(rename = "guid")]
     plex_guid: Option<String>,
@@ -1186,6 +1191,33 @@ impl MediaServer for PlexClient {
     async fn people(&self, item_id: &str) -> Result<Vec<Person>> {
         let mut m = self.metadata(item_id).await?;
         Ok(convert_roles(&mut m))
+    }
+
+    async fn trailers(&self, item_id: &str) -> Result<Vec<Trailer>> {
+        let mc = self
+            .get(
+                &format!("/library/metadata/{}/extras", net::percent_encode(item_id)),
+                &[],
+            )
+            .await?;
+        Ok(mc
+            .metadata
+            .into_iter()
+            .filter(|m| m.extra_type == Some(1) || m.subtype.as_deref() == Some("trailer"))
+            .map(|m| Trailer {
+                title: m.title,
+                item_id: Some(m.rating_key),
+                url: None,
+            })
+            .collect())
+    }
+
+    async fn theme_song(&self, item_id: &str) -> Result<Option<HttpRequest>> {
+        let m = self.metadata(item_id).await?;
+        Ok(m.theme.filter(|t| t.starts_with('/')).map(|t| HttpRequest {
+            url: net::join(&self.session.base_url, &t),
+            headers: self.headers.clone(),
+        }))
     }
 
     async fn watchlist(&self, plex_tv_token: Option<&str>) -> Result<Vec<Item>> {

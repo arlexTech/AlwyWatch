@@ -237,6 +237,6 @@ class PlayerSettings(
 
     /** Show pages play the show's theme song quietly (like Plex). */
     var themeMusic: Boolean
-        get() = core.getSetting("ui.theme_music") != "0"
+        get() = core.getSetting("ui.theme_music")?.let { it == "1" } ?: isTv
         set(v) = core.setSetting("ui.theme_music", if (v) "1" else "0")
 }

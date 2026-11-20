@@ -65,6 +65,11 @@ pub trait MediaServer: Send + Sync {
     /// Skippable intro/credits spans, by start time. Empty when the server has not detected any.
     fn segments(&self, item_id: &str) -> impl Future<Output = Result<Vec<Segment>>> + Send;
     fn report_progress(&self, report: &ProgressReport) -> impl Future<Output = Result<()>> + Send;
+    /// Trailers of a movie or show (server extras first, then web ones).
+    fn trailers(&self, item_id: &str) -> impl Future<Output = Result<Vec<Trailer>>> + Send;
+    /// The show's theme song (Plex theme, Jellyfin theme songs), if the server has one.
+    fn theme_song(&self, item_id: &str)
+    -> impl Future<Output = Result<Option<HttpRequest>>> + Send;
     /// Cast first (in billing order), then directors and writers.
     fn people(&self, item_id: &str) -> impl Future<Output = Result<Vec<Person>>> + Send;
     /// Titles of the user's watchlist that this server has: Jellyfin favorites; Plex's
@@ -175,6 +180,12 @@ impl MediaServer for AnyServer {
     }
     async fn people(&self, item_id: &str) -> Result<Vec<Person>> {
         dispatch!(self, c => c.people(item_id).await)
+    }
+    async fn trailers(&self, item_id: &str) -> Result<Vec<Trailer>> {
+        dispatch!(self, c => c.trailers(item_id).await)
+    }
+    async fn theme_song(&self, item_id: &str) -> Result<Option<HttpRequest>> {
+        dispatch!(self, c => c.theme_song(item_id).await)
     }
     async fn watchlist(&self, plex_tv_token: Option<&str>) -> Result<Vec<Item>> {
         dispatch!(self, c => c.watchlist(plex_tv_token).await)

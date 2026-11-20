@@ -457,11 +457,13 @@ async fn people_and_favorites() {
     Mock::given(method("GET"))
         .and(path("/Items/m1"))
         .and(query_param("fields", "People"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Id": "m1", "People": [
-            {"Name": "Denis Villeneuve", "Id": "p2", "Type": "Director"},
-            {"Name": "Amy Adams", "Id": "p1", "Role": "Louise Banks", "Type": "Actor",
-             "PrimaryImageTag": "t1"}
-        ]})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"Id": "m1", "People": [
+                {"Name": "Denis Villeneuve", "Id": "p2", "Type": "Director"},
+                {"Name": "Amy Adams", "Id": "p1", "Role": "Louise Banks", "Type": "Actor",
+                 "PrimaryImageTag": "t1"}
+            ]})),
+        )
         .mount(&s)
         .await;
     Mock::given(method("GET"))

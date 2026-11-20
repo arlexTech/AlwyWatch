@@ -426,8 +426,10 @@ async fn people_and_the_plex_tv_watchlist() {
     Mock::given(method("GET"))
         .and(path("/library/all"))
         .and(query_param("guid", "plex://movie/5d776b59ad5437001f79c6f8"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {
-            "Metadata": [{"ratingKey": "77", "type": "movie", "title": "Arrival"}]}})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {
+            "Metadata": [{"ratingKey": "77", "type": "movie", "title": "Arrival"}]}})),
+        )
         .mount(&s)
         .await;
     Mock::given(method("GET"))
@@ -453,9 +455,48 @@ async fn people_and_the_plex_tv_watchlist() {
     assert_eq!(people[2].kind, PersonKind::Director);
 
     let list = c.watchlist(Some("account-token")).await.unwrap();
-    assert_eq!(list.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["77"]);
+    assert_eq!(
+        list.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(),
+        ["77"]
+    );
     assert!(c.watchlist(None).await.unwrap().is_empty());
     c.set_watchlisted("77", false, Some("account-token"))
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn trailers_and_theme_song() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/library/metadata/9/extras"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {
+            "Metadata": [
+                {"ratingKey": "101", "type": "clip", "title": "Trailer", "extraType": 1},
+                {"ratingKey": "102", "type": "clip", "title": "Behind the scenes", "extraType": 5}
+            ]}})),
+        )
+        .mount(&s)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/library/metadata/9"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {
+            "Metadata": [{"ratingKey": "9", "type": "show", "title": "Silo",
+                "theme": "/library/metadata/9/theme/1700000000"}]}})),
+        )
+        .mount(&s)
+        .await;
+    let c = PlexClient::new(session(&s.uri()), client_info(), http());
+    let t = c.trailers("9").await.unwrap();
+    assert_eq!(t.len(), 1);
+    assert_eq!(t[0].item_id.as_deref(), Some("101"));
+    let theme = c.theme_song("9").await.unwrap().unwrap();
+    assert_eq!(
+        theme.url,
+        format!("{}/library/metadata/9/theme/1700000000", s.uri())
+    );
+    // The token stays in headers, never in the URL.
+    assert!(theme.headers.iter().any(|h| h.name == "X-Plex-Token"));
 }
