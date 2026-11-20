@@ -87,6 +87,8 @@ record! {
         /// Full poster URL (through Seerr's image cache when enabled).
         pub poster_url: Option<String>,
         pub availability: Availability,
+        /// 0..1 while Radarr/Sonarr download it (None: not downloading).
+        pub download_progress: Option<f32>,
     }
 }
 
@@ -378,6 +380,27 @@ struct MediaInfoDto {
     status: Option<i64>,
     #[serde(default)]
     seasons: Vec<SeasonStatusDto>,
+    /// Radarr/Sonarr queue entries (only while actually downloading).
+    #[serde(default)]
+    download_status: Vec<DownloadStatusDto>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadStatusDto {
+    #[serde(default)]
+    size: f64,
+    #[serde(default)]
+    size_left: f64,
+}
+
+impl MediaInfoDto {
+    /// 0..1 when Radarr/Sonarr are downloading it, else None.
+    fn download_progress(&self) -> Option<f32> {
+        let size: f64 = self.download_status.iter().map(|d| d.size).sum();
+        let left: f64 = self.download_status.iter().map(|d| d.size_left).sum();
+        (size > 0.0).then(|| ((size - left) / size).clamp(0.0, 1.0) as f32)
+    }
 }
 
 #[derive(Deserialize)]
@@ -496,6 +519,7 @@ impl SeerrClient {
                 .filter(|y| !y.is_empty()),
             overview: r.overview.filter(|o| !o.is_empty()),
             poster_url: r.poster_path.as_deref().map(|p| self.poster_url(p)),
+            download_progress: r.media_info.as_ref().and_then(MediaInfoDto::download_progress),
             availability: availability(r.media_info.and_then(|m| m.status)),
         })
     }

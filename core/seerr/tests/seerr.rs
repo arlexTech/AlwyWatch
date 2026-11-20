@@ -107,13 +107,20 @@ async fn search_encodes_query_and_maps_results() {
             {"id": 136315, "mediaType": "tv", "name": "The Bear", "firstAirDate": "2022-06-23",
              "posterPath": "/p.jpg", "mediaInfo": {"status": 4}},
             {"id": 1, "mediaType": "person", "name": "Someone"},
-            {"id": 550, "mediaType": "movie", "title": "Fight Club", "releaseDate": "1999-10-15"}
+            {"id": 550, "mediaType": "movie", "title": "Fight Club", "releaseDate": "1999-10-15"},
+            {"id": 940721, "mediaType": "movie", "title": "Godzilla Minus One", "mediaInfo": {"status": 3,
+             "downloadStatus": [{"size": 1000.0, "sizeLeft": 250.0}]}},
+            {"id": 7, "mediaType": "movie", "title": "Approved only", "mediaInfo": {"status": 3}}
         ]})))
         .mount(&s)
         .await;
     let c = SeerrClient::new(http(), &s.uri(), "connect.sid=x", true);
     let r = c.search("the bear", 1).await.unwrap();
-    assert_eq!(r.len(), 2, "people are skipped");
+    assert_eq!(r.len(), 4, "people are skipped");
+    // Requested and actually downloading (Radarr's queue) vs requested only.
+    assert_eq!(r[2].availability, Availability::Processing);
+    assert_eq!(r[2].download_progress, Some(0.75));
+    assert_eq!(r[3].download_progress, None);
     assert_eq!(r[0].media_type, SeerrMediaType::Tv);
     assert_eq!(r[0].year.as_deref(), Some("2022"));
     assert_eq!(r[0].availability, Availability::PartiallyAvailable);

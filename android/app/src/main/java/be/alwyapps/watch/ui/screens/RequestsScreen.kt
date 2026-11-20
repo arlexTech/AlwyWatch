@@ -54,11 +54,16 @@ fun Availability.label(): String? =
     when (this) {
         Availability.AVAILABLE -> "Available"
         Availability.PARTIALLY_AVAILABLE -> "Partly available"
-        Availability.PROCESSING -> "Downloading"
-        Availability.PENDING -> "Requested"
+        // Seerr's "processing" = approved, not on the server yet (not necessarily downloading:
+        // see SeerrResult.stateLabel for that).
+        Availability.PROCESSING -> "Requested"
+        Availability.PENDING -> "Waiting for approval"
         Availability.BLOCKLISTED -> "Blocked"
         Availability.DELETED, Availability.UNKNOWN -> null
     }
+
+/** The precise state of a search result: "Downloading 42%" only when Radarr/Sonarr are on it. */
+fun SeerrResult.stateLabel(): String? = downloadProgress?.let { "Downloading ${(it * 100).toInt()}%" } ?: availability.label()
 
 fun RequestStatus.label(): String =
     when (this) {
@@ -194,7 +199,7 @@ fun RequestPanel(
                 Column(Modifier.weight(1f)) {
                     Text(r.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        listOfNotNull(r.year, if (r.mediaType == SeerrMediaType.TV) "Show" else "Movie", r.availability.label()).joinToString(" · "),
+                        listOfNotNull(r.year, if (r.mediaType == SeerrMediaType.TV) "Show" else "Movie", r.stateLabel()).joinToString(" · "),
                         color = Muted,
                         style = MaterialTheme.typography.bodyMedium,
                     )

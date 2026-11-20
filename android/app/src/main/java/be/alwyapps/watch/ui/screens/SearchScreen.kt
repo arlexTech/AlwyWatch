@@ -200,7 +200,7 @@ fun SearchScreen() {
                 Column(Modifier.width(d.posterWidth)) {
                     FocusCard(onClick = { requesting = r }) {
                         UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-                        r.availability.label()?.let { Badge(it, Modifier.align(Alignment.TopStart).padding(8.dp)) }
+                        r.stateLabel()?.let { Badge(it, Modifier.align(Alignment.TopStart).padding(8.dp)) }
                     }
                     Text(r.title, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(r.year ?: "", style = MaterialTheme.typography.bodySmall, color = Muted)
