@@ -496,10 +496,21 @@ fun DownloadRow(
                     refresh()
                 })
         }
-        IconAction(Icons.Delete, "Delete", {
-            core.removeDownload(dl.id)
-            refresh()
-        })
+        var confirm by remember { mutableStateOf(false) }
+        if (confirm) {
+            be.alwyapps.watch.ui.ConfirmDialog(
+                if (dl.done) "Delete the download?" else "Cancel the download?",
+                "${dl.title.split(" · ").first()} (${dl.progressLabel()}) will be removed from this phone.",
+                confirm = if (dl.done) "Delete" else "Cancel download",
+                onConfirm = {
+                    core.removeDownload(dl.id)
+                    DownloadPending.changed()
+                    refresh()
+                },
+                onDismiss = { confirm = false },
+            )
+        }
+        IconAction(Icons.Delete, "Delete", { confirm = true })
     }
 }
 
@@ -690,12 +701,24 @@ fun DownloadSheet(
                     }
                 }, primary = true, icon = Icons.Download)
                 val all = remember { runCatching { core.downloads() }.getOrDefault(emptyList()).filter { it.accountId == account } }
+                // Deleting asks first: (question, what to delete).
+                var ask by remember { mutableStateOf<Pair<String, List<Download>>?>(null) }
+                ask?.let { (question, list) ->
+                    be.alwyapps.watch.ui.ConfirmDialog(
+                        question,
+                        "%.1f GB will be freed on this phone.".format(list.sumOf { it.downloaded.toLong() } / 1e9),
+                        onConfirm = {
+                            list.forEach { core.removeDownload(it.id) }
+                            DownloadPending.changed()
+                            onDismiss()
+                        },
+                        onDismiss = { ask = null },
+                    )
+                }
                 val mine = episode?.let { ep -> all.firstOrNull { it.itemId == ep.id } }
                 if (mine != null) {
                     ActionButton(if (mine.done) "Remove this episode" else "Cancel this episode", {
-                        core.removeDownload(mine.id)
-                        DownloadPending.changed()
-                        onDismiss()
+                        ask = (if (mine.done) "Remove this episode's download?" else "Cancel this episode's download?") to listOf(mine)
                     }, icon = Icons.Delete)
                 }
                 // The whole show: cancel what is still downloading, or remove everything.
@@ -703,16 +726,12 @@ fun DownloadSheet(
                 val running = show.filter { !it.done }
                 if (running.isNotEmpty()) {
                     ActionButton("Cancel ${running.size} downloading", {
-                        running.forEach { core.removeDownload(it.id) }
-                        DownloadPending.changed()
-                        onDismiss()
+                        ask = "Cancel ${running.size} downloads in progress?" to running
                     }, icon = Icons.Close)
                 }
                 if (show.any { it.done }) {
                     ActionButton("Remove all ${show.size} downloads", {
-                        show.forEach { core.removeDownload(it.id) }
-                        DownloadPending.changed()
-                        onDismiss()
+                        ask = "Remove all ${show.size} downloads of $seriesTitle?" to show
                     }, icon = Icons.Delete)
                 }
                 if (existing != null) {

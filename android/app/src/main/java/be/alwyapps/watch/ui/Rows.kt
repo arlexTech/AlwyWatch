@@ -172,3 +172,27 @@ fun Value(text: String) = Text(text, style = MaterialTheme.typography.bodyMedium
 /** Trailing chevron for rows that open something. */
 @Composable
 fun Chevron() = Icon(Icons.ChevronRight, null, Modifier.size(22.dp), tint = Subtle)
+
+/** "Are you sure?" before deleting something. */
+@Composable
+fun ConfirmDialog(
+    title: String,
+    text: String,
+    confirm: String = "Delete",
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text, color = Muted) },
+        confirmButton = {
+            ActionButton(confirm, {
+                onConfirm()
+                onDismiss()
+            }, primary = true)
+        },
+        dismissButton = { ActionButton("Cancel", onDismiss) },
+        containerColor = Background,
+    )
+}

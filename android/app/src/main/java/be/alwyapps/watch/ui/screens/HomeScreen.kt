@@ -129,7 +129,10 @@ fun HomeScreen() {
     LaunchedEffect(changed) { if (changed > 0) reload() }
     // "Fully drawn" = rails on screen (from cache or network), for startup benchmarks.
     androidx.activity.compose.ReportDrawnWhen { merged != null || error != null }
-    androidx.compose.runtime.CompositionLocalProvider(LocalOwners provides (merged?.second ?: emptyMap())) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalOwners provides (merged?.second ?: emptyMap()),
+        be.alwyapps.watch.ui.LocalServerBadges provides combined,
+    ) {
         if (d.isTv) TvHome(merged?.first, error, reload) else PhoneHome(merged?.first, error, reload)
     }
 }

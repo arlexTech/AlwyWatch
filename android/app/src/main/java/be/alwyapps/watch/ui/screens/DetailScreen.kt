@@ -436,7 +436,7 @@ private fun rememberDownloadToggle(
     if (confirm && dl != null) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text("Remove the download?") },
+            title = { Text(if (dl.state == DownloadState.COMPLETED) "Remove the download?" else "Cancel the download?") },
             text = { Text("${item.title} (${dl.progressLabel()}) will be deleted from this phone.") },
             confirmButton = {
                 ActionButton("Remove", {
@@ -460,11 +460,8 @@ private fun rememberDownloadToggle(
                     startDownloads(ctx)
                 }
             }
-            dl.state == DownloadState.COMPLETED -> confirm = true
-            else -> {
-                core.removeDownload(dl.id)
-                DownloadPending.changed()
-            }
+            // Finished or not, deleting asks first.
+            else -> confirm = true
         }
     }
 }

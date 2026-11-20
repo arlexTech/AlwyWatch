@@ -298,6 +298,7 @@ fun PosterCard(
     Column(modifier.width(width)) {
         FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus, onLongClick = item.menuable { menu = true }) {
             RemoteImage(item.id, item.poster(), width, Modifier.fillMaxWidth().aspectRatio(2f / 3f), contentDescription = item.title)
+            ItemServerBadge(item)
             item.progress()?.let { ProgressBar(it, Modifier.align(Alignment.BottomCenter).padding(8.dp)) }
             if (item.user.played) {
                 Box(
@@ -349,6 +350,7 @@ fun LandscapeCard(
     Column(modifier.width(width)) {
         FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus, onLongClick = item.menuable { menu = true }) {
             RemoteImage(item.id, item.thumb(), width, Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentDescription = item.title)
+            ItemServerBadge(item)
             Box(
                 Modifier
                     .matchParentSize()
@@ -707,4 +709,68 @@ fun Modifier.initialFocus(enabled: Boolean = LocalDimens.current.isTv): Modifier
     val fr = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { fr.requestFocus() } }
     return focusRequester(fr)
+}
+
+/** Set where several servers are mixed (combined home, search): cards show which server. */
+val LocalServerBadges = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/**
+ * A small mark of the server an account belongs to: a chevron in Plex's yellow, a triangle in
+ * Jellyfin's purple-to-blue (simple shapes, not the brands' logo files).
+ */
+@Composable
+fun ServerBadge(
+    accountId: String,
+    modifier: Modifier = Modifier,
+) {
+    val plex = accountId.startsWith("plex:")
+    Box(
+        modifier
+            .size(22.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .padding(5.dp)
+            .drawBehind {
+                val w = size.width
+                val h = size.height
+                if (plex) {
+                    val chevron =
+                        androidx.compose.ui.graphics.Path().apply {
+                            moveTo(w * 0.22f, 0f)
+                            lineTo(w * 0.52f, 0f)
+                            lineTo(w * 0.86f, h / 2)
+                            lineTo(w * 0.52f, h)
+                            lineTo(w * 0.22f, h)
+                            lineTo(w * 0.56f, h / 2)
+                            close()
+                        }
+                    drawPath(chevron, Color(0xFFE5A00D))
+                } else {
+                    val outer =
+                        androidx.compose.ui.graphics.Path().apply {
+                            moveTo(w / 2, 0f)
+                            lineTo(w, h)
+                            lineTo(0f, h)
+                            close()
+                        }
+                    drawPath(outer, Brush.linearGradient(listOf(Color(0xFFAA5CC3), Color(0xFF00A4DC)), Offset(0f, 0f), Offset(w, h)))
+                    val inner =
+                        androidx.compose.ui.graphics.Path().apply {
+                            moveTo(w / 2, h * 0.42f)
+                            lineTo(w * 0.72f, h * 0.86f)
+                            lineTo(w * 0.28f, h * 0.86f)
+                            close()
+                        }
+                    drawPath(inner, Color.Black.copy(alpha = 0.72f))
+                }
+            },
+    )
+}
+
+/** The server badge of an item, when the screen mixes servers. */
+@Composable
+private fun BoxScope.ItemServerBadge(item: Item) {
+    if (!LocalServerBadges.current) return
+    val owner = LocalItemOwners.current[item.id] ?: return
+    ServerBadge(owner, Modifier.align(Alignment.TopStart).padding(8.dp))
 }

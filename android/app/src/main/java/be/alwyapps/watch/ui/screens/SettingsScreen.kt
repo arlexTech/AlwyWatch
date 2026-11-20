@@ -72,6 +72,36 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
             val url = keep?.baseUrl ?: return@LaunchedEffect
             served = runCatching { core.keepServers(url).map { it.id }.toSet() }.getOrNull()
         }
+        // Several servers: shown together (one preferred for titles on both) or one at a time.
+        var together by remember { mutableStateOf(core.getSetting(COMBINED_KEY) != "0") }
+        if (accounts.size > 1) {
+            Group(null, footer = "Together, the home mixes every server; a title on several is shown once, from the preferred one.") {
+                ToggleRow(
+                    "Show all servers together",
+                    together,
+                    {
+                        together = it
+                        core.setSetting(COMBINED_KEY, if (it) "1" else "0")
+                    },
+                    subtitle = if (together) "Tap an account to make it the preferred one" else "One server at a time: tap an account to switch",
+                )
+            }
+        }
+        var removing by remember { mutableStateOf<be.alwyapps.watch.core.Account?>(null) }
+        removing?.let { a ->
+            be.alwyapps.watch.ui.ConfirmDialog(
+                "Remove ${a.userName}?",
+                "You'll be signed out of ${a.serverName} on this device. Its downloads stay until you delete them.",
+                confirm = "Remove",
+                onConfirm = {
+                    core.removeAccount(a.id)
+                    ctx.services.tokens.remove(a.id)
+                    version++
+                    if (a.id == current) onAccountChanged(core.accounts().firstOrNull()?.id)
+                },
+                onDismiss = { removing = null },
+            )
+        }
         Group(
             "Accounts",
             footer =
@@ -82,6 +112,8 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                     null
                 },
         ) {
+            // Together: the preferred account is also the one in use (search, leaving soon…).
+            val main = if (together && accounts.size > 1) core.getSetting(PREFERRED_KEY)?.takeIf { p -> accounts.any { it.id == p } } ?: current else current
             accounts.forEachIndexed { i, a ->
                 if (i > 0) Divider()
                 val sync =
@@ -99,10 +131,11 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                             sync,
                         ).joinToString("\n"),
                     icon = Icons.Person,
-                    iconTint = if (a.id == current) Accent else OnSurface,
+                    iconTint = if (a.id == main) Accent else OnSurface,
                     onClick =
-                        if (a.id != current) {
+                        if (a.id != main) {
                             {
+                                core.setSetting(PREFERRED_KEY, a.id)
                                 core.setSetting("current_account", a.id)
                                 onAccountChanged(a.id)
                             }
@@ -111,58 +144,17 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                         },
                     trailing = {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (a.id == current) Value("In use")
+                            if (a.id == main) Value(if (together && accounts.size > 1) "Preferred" else "In use")
                             if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) {
                                 IconAction(Icons.Person, "Switch Plex user", { nav.push(Route.PlexSwitch(a.id)) })
                             }
-                            IconAction(Icons.Delete, "Remove ${a.userName}", {
-                                core.removeAccount(a.id)
-                                ctx.services.tokens.remove(a.id)
-                                version++
-                                if (a.id == current) onAccountChanged(core.accounts().firstOrNull()?.id)
-                            })
+                            IconAction(Icons.Delete, "Remove ${a.userName}", { removing = a })
                         }
                     },
                 )
             }
             Divider()
             ListRow("Add a server", icon = Icons.Add, onClick = { nav.push(Route.AddServer) }, trailing = { Chevron() })
-        }
-
-        if (accounts.size > 1) {
-            Group("Servers", footer = "Together, the home mixes every server; a title on several is shown once, from the preferred one.") {
-                var together by remember { mutableStateOf(core.getSetting(COMBINED_KEY) != "0") }
-                ToggleRow(
-                    "Show all servers together",
-                    together,
-                    {
-                        together = it
-                        core.setSetting(COMBINED_KEY, if (it) "1" else "0")
-                    },
-                    subtitle = if (together) "Movies and shows of every server in one home" else "One server at a time: tap an account above to switch",
-                )
-                if (together) {
-                    var preferred by remember { mutableStateOf(core.getSetting(PREFERRED_KEY) ?: current) }
-                    Divider()
-                    Text(
-                        "Prefer for titles on several servers",
-                        Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp),
-                        style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
-                    )
-                    accounts.forEach { a ->
-                        ListRow(
-                            "${a.serverName} (${if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) "Plex" else "Jellyfin"})",
-                            icon = if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) Icons.Play else Icons.Library,
-                            iconTint = if (a.id == preferred) Accent else OnSurface,
-                            onClick = {
-                                preferred = a.id
-                                core.setSetting(PREFERRED_KEY, a.id)
-                            },
-                            trailing = { if (a.id == preferred) Value("Preferred") },
-                        )
-                    }
-                }
-            }
         }
 
         AlwyWatchServerGroup(accounts, version) { version++ }

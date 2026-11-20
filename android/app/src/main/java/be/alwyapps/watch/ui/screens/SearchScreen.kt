@@ -154,7 +154,10 @@ fun SearchScreen() {
         }
         if (showMine) {
             items(results, key = { (_, i) -> i.id }) { (a, i) ->
-                androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalItemOwners provides mapOf(i.id to a)) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    be.alwyapps.watch.ui.LocalItemOwners provides mapOf(i.id to a),
+                    be.alwyapps.watch.ui.LocalServerBadges provides (results.map { it.first }.distinct().size > 1),
+                ) {
                     PosterCard(i, d.posterWidth, onClick = { nav.push(Route.Detail(i.id, account = a)) }, showTitle = true)
                 }
             }
