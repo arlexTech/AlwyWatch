@@ -195,9 +195,21 @@ fun ItemMenu(
                     ItemsChanged.bump()
                 }
             }
-            ListRow(if (played) "Mark unwatched" else "Mark watched", icon = Icons.Check, onClick = {
-                act { core.setPlayed(account, item.id, !played) }
-            })
+            val started = item.user.positionMs > 0u
+            if (!played) {
+                ListRow("Mark watched", icon = Icons.Check, onClick = { act { core.setPlayed(account, item.id, true) } })
+            }
+            // Watched, or partly watched: back to unwatched (forgets where it stopped).
+            if (played || started) {
+                ListRow("Mark unwatched", subtitle = if (started && !played) "Forgets where you stopped" else null, icon = Icons.Refresh, onClick = {
+                    act { core.setPlayed(account, item.id, false) }
+                })
+            }
+            if (!played && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)) {
+                ListRow("Remove from Continue watching", icon = Icons.Close, onClick = {
+                    act { core.removeFromContinueWatching(account, item.id) }
+                })
+            }
             val sid = item.seriesId
             if (item.kind == ItemKind.EPISODE && sid != null) {
                 ListRow("Go to the show", icon = Icons.Tv, onClick = {

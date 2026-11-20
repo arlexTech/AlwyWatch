@@ -867,6 +867,16 @@ impl MediaServer for PlexClient {
             .collect())
     }
 
+    async fn remove_from_continue_watching(&self, item_id: &str) -> Result<bool> {
+        // Plex's own "Remove from Continue Watching" (in progress and on deck alike).
+        net::send(
+            self.req(Method::PUT, "/actions/removeFromContinueWatching")
+                .query(&[("ratingKey", item_id)]),
+        )
+        .await?;
+        Ok(true)
+    }
+
     async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
         let mc = self
             .get(

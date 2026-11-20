@@ -46,6 +46,12 @@ pub trait MediaServer: Send + Sync {
         &self,
         series_ids: &[String],
     ) -> impl Future<Output = Result<std::collections::HashMap<String, i64>>> + Send;
+    /// Takes an item out of "continue watching" on the server. Returns false when the server
+    /// has no such thing for it (the caller then hides it locally).
+    fn remove_from_continue_watching(
+        &self,
+        item_id: &str,
+    ) -> impl Future<Output = Result<bool>> + Send;
     /// Genres present in a library.
     fn genres(&self, library_id: &str) -> impl Future<Output = Result<Vec<Genre>>> + Send;
     /// Collections (Jellyfin box sets, Plex collections) of a library.
@@ -129,6 +135,9 @@ impl MediaServer for AnyServer {
     }
     async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
         dispatch!(self, c => c.genres(library_id).await)
+    }
+    async fn remove_from_continue_watching(&self, item_id: &str) -> Result<bool> {
+        dispatch!(self, c => c.remove_from_continue_watching(item_id).await)
     }
     async fn shows_last_watched(
         &self,

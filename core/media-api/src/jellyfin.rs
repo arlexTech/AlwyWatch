@@ -773,6 +773,13 @@ impl MediaServer for JellyfinClient {
         Ok(out)
     }
 
+    async fn remove_from_continue_watching(&self, item_id: &str) -> Result<bool> {
+        // Marking unplayed forgets the position (and the last played date): out of "resume".
+        // Next episodes have nothing to forget: Jellyfin cannot hide them, the caller does.
+        self.set_played(item_id, false).await?;
+        Ok(false)
+    }
+
     async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
         let p = vec![
             ("userId", self.uid().to_owned()),

@@ -415,6 +415,26 @@ impl Core {
         }
     }
 
+    /// Drops items the user took out of "continue watching" here, unless watched since.
+    fn without_hidden(&self, account: &str, items: Vec<Item>) -> Vec<Item> {
+        items
+            .into_iter()
+            .filter(|i| {
+                let hidden_at = self
+                    .store
+                    .setting(&hidden_key(account, &i.id))
+                    .ok()
+                    .flatten()
+                    .and_then(|v| v.parse::<i64>().ok());
+                match hidden_at {
+                    None => true,
+                    // Its show (or itself) was watched after hiding it: back in the list.
+                    Some(h) => i.user.last_played_at.is_some_and(|t| t > h),
+                }
+            })
+            .collect()
+    }
+
     /// Watched on this device (offline included): for deletion rules and "next N episodes",
     /// remembered even after the download is gone and before the server hears about it.
     fn mark_watched(&self, account: &str, item_id: &str) {
@@ -840,7 +860,10 @@ impl AlwyWatch {
             .cache_get::<Home>(&key(&account_id, &["home"]))?
             .map(|c| Home {
                 fetched_at: c.fetched_at,
-                continue_watching: continue_watching(&c.value.resume, &c.value.next_up),
+                continue_watching: self.core.without_hidden(
+                    &account_id,
+                    continue_watching(&c.value.resume, &c.value.next_up),
+                ),
                 ..c.value
             }))
     }
@@ -853,7 +876,8 @@ impl AlwyWatch {
                 .await?;
             Ok(Home {
                 fetched_at: at,
-                continue_watching: continue_watching(&home.resume, &home.next_up),
+                continue_watching: c
+                    .without_hidden(&account_id, continue_watching(&home.resume, &home.next_up)),
                 ..home
             })
         })
@@ -1049,6 +1073,28 @@ impl AlwyWatch {
     pub async fn search(&self, account_id: String, query: String, limit: u32) -> Result<Vec<Item>> {
         self.run(|c| async move { Ok(c.server(&account_id)?.search(&query, limit).await?) })
             .await
+    }
+
+    /// Takes an item out of "continue watching": on the server when it can (Plex; Jellyfin
+    /// for titles in progress), else hidden on this device until it is watched again.
+    pub async fn remove_from_continue_watching(
+        &self,
+        account_id: String,
+        item_id: String,
+    ) -> Result<()> {
+        self.run(|c| async move {
+            let done = c
+                .server(&account_id)?
+                .remove_from_continue_watching(&item_id)
+                .await?;
+            if !done {
+                c.store
+                    .set_setting(&hidden_key(&account_id, &item_id), &unix_now().to_string())?;
+            }
+            c.store.cache_mark_stale(&key(&account_id, &["home"]))?;
+            Ok(())
+        })
+        .await
     }
 
     pub async fn set_played(
@@ -2020,6 +2066,10 @@ fn requests_key(all: bool) -> &'static str {
     } else {
         "seerr/requests"
     }
+}
+
+fn hidden_key(account: &str, item_id: &str) -> String {
+    format!("cw-hidden\u{1f}{account}\u{1f}{item_id}")
 }
 
 fn watched_key(account: &str, item_id: &str) -> String {
