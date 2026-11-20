@@ -439,6 +439,10 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
         }
+        if (!ui.visible && ui.nearEnd && (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)) {
+            // The "Next episode" prompt has the focus: OK goes to it.
+            return super.dispatchKeyEvent(event)
+        }
         if (!ui.visible) {
             // Hidden: ←/→ seek right away (like every TV player), other keys wake the controls.
             when (event.keyCode) {

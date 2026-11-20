@@ -78,6 +78,9 @@ class PlayerUi {
     var playing by mutableStateOf(false)
     var buffering by mutableStateOf(true)
 
+    /** Last seconds of an episode with a next one: show the "Next episode" prompt. */
+    var nearEnd by mutableStateOf(false)
+
     /** Bumped on every interaction: restarts the auto-hide timer. */
     var touch by mutableIntStateOf(0)
 
@@ -116,6 +119,14 @@ fun PlayerOverlay(
             }
             delay(250)
         }
+    }
+    // "Up next" prompt: checked once a second while there is a next episode.
+    LaunchedEffect(ui.hasNext) {
+        while (ui.hasNext) {
+            player()?.let { ui.nearEnd = it.duration > 0 && it.duration - it.currentPosition in 1..40_000 }
+            delay(1000)
+        }
+        ui.nearEnd = false
     }
     // Auto-hide after 4 s without interaction while playing.
     LaunchedEffect(ui.touch, ui.playing, ui.tracksOpen) {
@@ -218,6 +229,16 @@ fun PlayerOverlay(
                     }
                 }
             }
+        }
+        AnimatedVisibility(
+            ui.nearEnd && !ui.visible && !ui.tracksOpen,
+            Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(if (tv) 48.dp else 24.dp),
+            enter = fadeIn() + slideInHorizontally { it / 2 },
+            exit = fadeOut(),
+        ) {
+            val upNext = remember { FocusRequester() }
+            LaunchedEffect(Unit) { runCatching { upNext.requestFocus() } }
+            Box(Modifier.focusRequester(upNext)) { PillButton(Icons.SkipNext, "Next episode", onNext) }
         }
         if (ui.buffering) {
             Box(
