@@ -48,7 +48,9 @@ data class Dimens(
 private val PhoneDimens =
     Dimens(isTv = false, gutter = 20.dp, posterWidth = 118.dp, landscapeWidth = 248.dp, railSpacing = 12.dp, focusScale = 1f, radius = 14.dp)
 private val TvDimens =
-    Dimens(isTv = true, gutter = 56.dp, posterWidth = 150.dp, landscapeWidth = 300.dp, railSpacing = 20.dp, focusScale = 1.07f, radius = 16.dp)
+    // Plex's sizes on a 1080p TV: 120 dp posters 16 dp apart, content 64 dp from the edge (the
+    // menu floats over it).
+    Dimens(isTv = true, gutter = 64.dp, posterWidth = 120.dp, landscapeWidth = 240.dp, railSpacing = 16.dp, focusScale = 1.07f, radius = 8.dp)
 
 val LocalDimens = staticCompositionLocalOf { PhoneDimens }
 

@@ -38,9 +38,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -112,7 +115,13 @@ fun AppScaffold(content: @Composable () -> Unit) {
         return
     }
     // Wide touch screens (tablets in landscape, foldables): a side rail like TV, always labelled.
-    if (rail) {
+    if (d.isTv) {
+        // Like Plex: the menu floats over the content as a small pill of icons.
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().then(if (edgeToEdge) Modifier else Modifier.padding(top = 24.dp))) { content() }
+            TvMenu(tabs, selected) { nav.reset(it) }
+        }
+    } else if (rail) {
         Row(Modifier.fillMaxSize()) {
             SideRail(tabs, selected, alwaysExpanded = !d.isTv) { nav.reset(it) }
             val inner =
@@ -231,6 +240,111 @@ private fun SideRail(
     ) {
         for (t in tabs) RailItem(t, t.route == selected, expanded) { select(t.route) }
         Spacer(Modifier.height(32.dp))
+    }
+}
+
+/**
+ * TV menu like Plex: a small pill of icons at the left edge; focused, it opens over the content
+ * into a labelled list (the current page focused first).
+ */
+@Composable
+private fun TvMenu(
+    tabs: List<Tab>,
+    selected: Route,
+    onSelect: (Route) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val fm = androidx.compose.ui.platform.LocalFocusManager.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val current =
+        remember {
+            androidx.compose.ui.focus
+                .FocusRequester()
+        }
+    val select: (Route) -> Unit = { route ->
+        onSelect(route)
+        scope.launch {
+            kotlinx.coroutines.delay(60)
+            fm.moveFocus(androidx.compose.ui.focus.FocusDirection.Right)
+        }
+    }
+    val shade by androidx.compose.animation.core
+        .animateFloatAsState(if (open) 1f else 0f, tween(160), label = "menu")
+    Box(
+        Modifier
+            .fillMaxHeight()
+            .width(340.dp)
+            .graphicsLayer { alpha = shade }
+            .background(
+                Brush.horizontalGradient(
+                    0f to Color.Black.copy(alpha = 0.96f),
+                    0.55f to Color.Black.copy(alpha = 0.88f),
+                    1f to Color.Transparent,
+                ),
+            ),
+    )
+    Column(
+        Modifier
+            .fillMaxHeight()
+            .padding(start = 12.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Column(
+            Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(if (open) Color.Transparent else Color.Black.copy(alpha = 0.55f))
+                .onFocusChanged { open = it.hasFocus }
+                .focusProperties { onEnter = { runCatching { current.requestFocus() } } }
+                .focusGroup()
+                .padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            for (t in tabs) {
+                val on = t.route == selected
+                TvMenuItem(t, on, open, if (on) Modifier.focusRequester(current) else Modifier) { select(t.route) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvMenuItem(
+    tab: Tab,
+    selected: Boolean,
+    open: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val fg =
+        if (focused) {
+            Color.Black
+        } else if (selected) {
+            Color.White
+        } else {
+            Subtle
+        }
+    Row(
+        modifier
+            .then(if (open) Modifier.width(168.dp) else Modifier)
+            .clip(RoundedCornerShape(50))
+            .background(if (focused) Color.White else Color.Transparent)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(if (selected) tab.selectedIcon else tab.icon, tab.label, Modifier.size(18.dp), tint = fg)
+        if (open) {
+            Text(
+                tab.label,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                color = fg,
+                maxLines = 1,
+            )
+        }
     }
 }
 
