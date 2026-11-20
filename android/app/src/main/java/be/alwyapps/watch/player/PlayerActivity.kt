@@ -90,7 +90,13 @@ class PlayerActivity : ComponentActivity() {
             androidx.compose.ui.platform.ComposeView(this).apply {
                 setContent {
                     be.alwyapps.watch.ui.AlwyTheme(isTv = services.isTv) {
-                        PlayerOverlay(ui, { player }, onBack = { finish() }, onNext = { playNext() })
+                        PlayerOverlay(
+                            ui,
+                            { player },
+                            onBack = { finish() },
+                            onNext = { playNext() },
+                            onPip = if (pipSupported) ({ enterPip() }) else null,
+                        )
                     }
                 }
             }
@@ -113,6 +119,7 @@ class PlayerActivity : ComponentActivity() {
         startMs: Long,
     ) {
         itemId = id
+        showTitle(id)
         // Downloaded: play the local original file (works offline; progress is queued).
         core.downloadedFile(account, id)?.let { path ->
             val local =
@@ -142,19 +149,6 @@ class PlayerActivity : ComponentActivity() {
             startPlayer(local, source!!, transcoding = false, startMs)
             findNextEpisode()
             return
-        }
-        core.cachedItem(account, id)?.item?.let { item ->
-            if (item.kind == ItemKind.EPISODE) {
-                ui.title = item.title
-                ui.subtitle =
-                    listOfNotNull(
-                        item.seriesTitle,
-                        if (item.seasonNumber != null && item.episodeNumber != null) "S${item.seasonNumber} · E${item.episodeNumber}" else null,
-                    ).joinToString("  ·  ")
-            } else {
-                ui.title = item.title
-                ui.subtitle = item.year?.toString() ?: ""
-            }
         }
         val profile = DeviceProfiles.get(this)
         val pi =
@@ -462,6 +456,88 @@ class PlayerActivity : ComponentActivity() {
             ui.touch++
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    // Another title started while this one plays (e.g. from the app behind a PiP window).
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val acct = intent.getStringExtra(EXTRA_ACCOUNT) ?: return
+        val id = intent.getStringExtra(EXTRA_ITEM) ?: return
+        if (acct == account && id == itemId) return
+        report(PlaybackEvent.STOP)
+        account = acct
+        nextEpisodeId = null
+        prefetchedNext = false
+        ui.hasNext = false
+        lifecycleScope.launch { load(id, intent.getLongExtra(EXTRA_START, 0L)) }
+    }
+
+    /** Show (or movie) name, then "S1 · E2 · Episode" or the year. Works offline. */
+    private fun showTitle(id: String) {
+        val item = core.cachedItem(account, id)?.item
+        if (item != null) {
+            if (item.kind == ItemKind.EPISODE) {
+                ui.title = item.seriesTitle ?: item.title
+                ui.subtitle =
+                    listOfNotNull(
+                        if (item.seasonNumber != null && item.episodeNumber != null) "S${item.seasonNumber} · E${item.episodeNumber}" else null,
+                        item.title.takeIf { item.seriesTitle != null },
+                    ).joinToString(" · ")
+            } else {
+                ui.title = item.title
+                ui.subtitle = item.year?.toString() ?: ""
+            }
+            return
+        }
+        // Not cached: the download's title ("Show · S1 · E2 · Episode").
+        val saved = runCatching { core.downloads() }.getOrNull()?.firstOrNull { it.accountId == account && it.itemId == id }?.title ?: return
+        ui.title = saved.substringBefore(" · ")
+        ui.subtitle = saved.substringAfter(" · ", "")
+    }
+
+    private val pipSupported by lazy {
+        !services.isTv && packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
+
+    private fun pipParams(): android.app.PictureInPictureParams {
+        val size = player?.videoSize
+        // Android accepts 1:2.39 to 2.39:1.
+        val ratio =
+            if (size != null && size.width > 0 && size.height > 0) {
+                val w = size.width * size.pixelWidthHeightRatio
+                android.util.Rational(
+                    w.toInt().coerceIn((size.height / 2.39f).toInt() + 1, (size.height * 2.39f).toInt()),
+                    size.height,
+                )
+            } else {
+                android.util.Rational(16, 9)
+            }
+        return android.app.PictureInPictureParams
+            .Builder()
+            .setAspectRatio(ratio)
+            .build()
+    }
+
+    private fun enterPip() {
+        if (!pipSupported) return
+        ui.visible = false
+        runCatching { enterPictureInPictureMode(pipParams()) }
+    }
+
+    // Home button while a video plays: keep watching in a small window.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (player?.isPlaying == true) enterPip()
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        ui.pip = isInPictureInPictureMode
+        if (!isInPictureInPictureMode) ui.poke()
     }
 
     override fun onStop() {

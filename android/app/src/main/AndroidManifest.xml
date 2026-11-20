@@ -36,10 +36,12 @@
         <activity
             android:name=".player.PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:autoRemoveFromRecents="true"
             android:exported="false"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:screenOrientation="sensorLandscape"
-            android:supportsPictureInPicture="false" />
+            android:supportsPictureInPicture="true"
+            android:taskAffinity="be.alwyapps.watch.player" />
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

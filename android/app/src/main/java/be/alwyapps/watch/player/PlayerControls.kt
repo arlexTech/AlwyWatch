@@ -78,6 +78,9 @@ class PlayerUi {
     var playing by mutableStateOf(false)
     var buffering by mutableStateOf(true)
 
+    /** In a picture-in-picture window: no controls at all (the system draws its own). */
+    var pip by mutableStateOf(false)
+
     /** Last seconds of an episode with a next one: show the "Next episode" prompt. */
     var nearEnd by mutableStateOf(false)
 
@@ -104,7 +107,9 @@ fun PlayerOverlay(
     player: () -> Player?,
     onBack: () -> Unit,
     onNext: () -> Unit,
+    onPip: (() -> Unit)? = null,
 ) {
+    if (ui.pip) return
     val tv = LocalDimens.current.isTv
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
@@ -159,12 +164,17 @@ fun PlayerOverlay(
                         ),
                 )
                 Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = if (tv) 56.dp else 20.dp, vertical = if (tv) 36.dp else 16.dp)) {
-                    // Top: back + title.
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        if (!tv) RoundButton(Icons.Back, "Back", onBack, size = 44)
-                        Column {
-                            if (ui.subtitle.isNotEmpty()) Text(ui.subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 1)
+                    // Top: what is playing on the left; picture-in-picture and close on the right.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.weight(1f)) {
                             Text(ui.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (ui.subtitle.isNotEmpty()) {
+                                Text(ui.subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        if (!tv) {
+                            onPip?.let { RoundButton(Icons.PictureInPicture, "Picture in picture", it, size = 44) }
+                            RoundButton(Icons.Close, "Close", onBack, size = 44)
                         }
                     }
                     Spacer(Modifier.weight(1f))

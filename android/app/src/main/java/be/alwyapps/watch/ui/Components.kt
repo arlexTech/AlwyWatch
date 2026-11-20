@@ -61,7 +61,10 @@ import be.alwyapps.watch.core.media.ItemKind
 
 // ----- Item helpers ---------------------------------------------------------------------------
 
-fun Item.poster() = images.firstOrNull { it.kind == ImageKind.PRIMARY }
+/** 2:3 artwork; for an episode, its show's poster (its own primary image is a still). */
+fun Item.poster() =
+    images.firstOrNull { it.kind == ImageKind.SERIES_PRIMARY }.takeIf { kind == ItemKind.EPISODE }
+        ?: images.firstOrNull { it.kind == ImageKind.PRIMARY }
 
 fun Item.backdrop() = images.firstOrNull { it.kind == ImageKind.BACKDROP }
 
@@ -217,7 +220,16 @@ fun PosterCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(item.subtitle(), style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1)
+            Text(
+                if (item.kind == ItemKind.EPISODE && item.seasonNumber != null && item.episodeNumber != null) {
+                    "S${item.seasonNumber} · E${item.episodeNumber}"
+                } else {
+                    item.subtitle()
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = Muted,
+                maxLines = 1,
+            )
         }
     }
 }
@@ -266,13 +278,25 @@ fun SectionHeader(
     modifier: Modifier = Modifier,
     action: String? = null,
     onAction: (() -> Unit)? = null,
+    subtitle: String? = null,
+    onTitle: (() -> Unit)? = null,
 ) {
     val d = LocalDimens.current
     Row(
         modifier.fillMaxWidth().padding(horizontal = d.gutter),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        Column(
+            Modifier
+                .weight(1f)
+                .then(if (onTitle != null && !d.isTv) Modifier.clickable(onClick = onTitle) else Modifier),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (onTitle != null && !d.isTv) Icon(Icons.ChevronRight, null, Modifier.size(22.dp), tint = Muted)
+            }
+            subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1) }
+        }
         if (action != null && onAction != null) {
             FocusCard(onClick = onAction, shape = RoundedCornerShape(50)) {
                 Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -310,11 +334,13 @@ fun Rail(
     landscape: Boolean = false,
     focusKey: String? = null,
     defaultFocus: Boolean = false,
+    subtitle: String? = null,
+    onSeeAll: (() -> Unit)? = null,
 ) {
     if (items.isEmpty()) return
     val d = LocalDimens.current
     Column(Modifier.padding(top = if (d.isTv) 18.dp else 24.dp)) {
-        SectionHeader(title)
+        SectionHeader(title, subtitle = subtitle, onTitle = onSeeAll)
         TvScrollSpec(leading = d.gutter) {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = d.gutter, vertical = if (d.isTv) 14.dp else 12.dp),

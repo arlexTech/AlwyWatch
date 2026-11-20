@@ -53,20 +53,30 @@ data class Tab(
     val selectedIcon: ImageVector = icon,
 )
 
-/** Which routes are top-level (bars visible); everything else is full screen. */
-fun Route.isTopLevel(): Boolean =
+/**
+ * Which routes are top-level (bars visible); everything else is full screen. On phones,
+ * search, downloads and settings open from the home top bar (like Plex), full screen.
+ */
+fun Route.isTopLevel(rail: Boolean): Boolean =
     when (this) {
-        Route.Home, Route.Search, Route.LeavingSoon, Route.Requests, Route.Downloads, Route.Settings -> true
+        Route.Home, Route.LeavingSoon, Route.Requests -> true
+        Route.Search, Route.Downloads, Route.Settings -> rail
         is Route.Library -> true
         else -> false
     }
+
+/** TV and wide screens navigate with a side rail; phones with the top bar and a bottom bar. */
+@Composable
+fun usesRail(): Boolean = LocalDimens.current.isTv || androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840
 
 @Composable
 fun tabs(): List<Tab> {
     val core = LocalCore.current
     val d = LocalDimens.current
-    val out = mutableListOf(Tab(Route.Home, "Home", Icons.Home, Icons.HomeFilled), Tab(Route.Search, "Search", Icons.Search))
-    if (d.isTv || androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840) {
+    val rail = usesRail()
+    val out = mutableListOf(Tab(Route.Home, "Home", Icons.Home, Icons.HomeFilled))
+    if (rail) out += Tab(Route.Search, "Search", Icons.Search)
+    if (rail) {
         // Libraries as destinations (from the cached home: no network).
         val account = LocalAccount.current
         val libs = androidx.compose.runtime.remember(account) { runCatching { core.cachedHome(account)?.libraries }.getOrNull().orEmpty() }
@@ -76,10 +86,9 @@ fun tabs(): List<Tab> {
         }
     }
     if (core.keepActive()) out += Tab(Route.LeavingSoon, "Leaving", Icons.Hourglass)
-    // Phones: five slots at most; with "leaving soon" connected, requests live in Search.
-    if (core.seerrActive() && (d.isTv || !core.keepActive())) out += Tab(Route.Requests, "Requests", Icons.Add)
-    if (!d.isTv) out += Tab(Route.Downloads, "Downloads", Icons.Download)
-    out += Tab(Route.Settings, "Settings", Icons.Settings)
+    if (core.seerrActive()) out += Tab(Route.Requests, "Requests", Icons.Add)
+    if (rail && !d.isTv) out += Tab(Route.Downloads, "Downloads", Icons.Download)
+    if (rail) out += Tab(Route.Settings, "Settings", Icons.Settings)
     return out
 }
 
@@ -88,7 +97,8 @@ fun tabs(): List<Tab> {
 fun AppScaffold(content: @Composable () -> Unit) {
     val nav = LocalNavigator.current
     val d = LocalDimens.current
-    val showBars = nav.current.isTopLevel()
+    val rail = usesRail()
+    val showBars = nav.current.isTopLevel(rail)
     // Artwork screens draw under the status bar; the others keep clear of it.
     val edgeToEdge = nav.current == Route.Home || nav.current is Route.Detail || nav.current == Route.AddServer
     if (!showBars) {
@@ -97,9 +107,13 @@ fun AppScaffold(content: @Composable () -> Unit) {
     }
     val tabs = tabs()
     val selected = tabs.firstOrNull { it.route == nav.current }?.route ?: tabs.first().route
+    // Phone with nothing but Home to switch to: no bottom bar at all.
+    if (!rail && tabs.size < 2) {
+        Box(if (edgeToEdge) Modifier.fillMaxSize().navigationBarsPadding().imePadding() else Modifier.fillMaxSize().safeDrawingPadding()) { content() }
+        return
+    }
     // Wide touch screens (tablets in landscape, foldables): a side rail like TV, always labelled.
-    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840
-    if (d.isTv || wide) {
+    if (rail) {
         Row(Modifier.fillMaxSize()) {
             SideRail(tabs, selected, alwaysExpanded = !d.isTv) { nav.reset(it) }
             val inner =
