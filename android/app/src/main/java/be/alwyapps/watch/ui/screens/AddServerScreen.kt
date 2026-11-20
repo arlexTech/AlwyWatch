@@ -72,6 +72,11 @@ private sealed interface Step {
     /** "I have an AlwyWatch server": address, then the media servers it serves. */
     data object AlwyWatch : Step
 
+    /** Accounts copied from a signed-in device, through this AlwyWatch server. */
+    data class Receive(
+        val url: String,
+    ) : Step
+
     /** "I don't have one": Jellyfin or Plex directly. */
     data object Direct : Step
 
@@ -214,6 +219,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 Text(
                     when (step) {
                         Step.AlwyWatch -> "AlwyWatch server"
+                        is Step.Receive -> "Copy from a device"
                         Step.Direct -> "Sign in"
                         Step.Plex, is Step.PlexServers, is Step.PlexUsers -> "Plex"
                         else -> "Jellyfin"
@@ -249,7 +255,10 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     busy = busy,
                     onPick = { url, entry -> pick(url, entry) },
                     onError = { error = it },
+                    onCopy = { url -> go(Step.Receive(url)) },
                 )
+
+            is Step.Receive -> ReceiveFromDevice(s.url, onDone = onSignedIn)
             Step.Direct -> {
                 // No AlwyWatch server on this path: forget one picked earlier then backed out of.
                 LaunchedEffect(Unit) {
@@ -454,6 +463,7 @@ private fun AlwyWatchServerPicker(
     busy: Boolean,
     onPick: (url: String, entry: ServerEntry) -> Unit,
     onError: (String?) -> Unit,
+    onCopy: (url: String) -> Unit = {},
 ) {
     val core = LocalCore.current
     val scope = rememberCoroutineScope()
@@ -491,6 +501,11 @@ private fun AlwyWatchServerPicker(
     entries?.let { (base, list) ->
         if (list.isEmpty()) Text("This AlwyWatch server lists no media servers.", color = Muted)
         list.forEach { e -> ServerCard(e) { if (!busy) onPick(base, e) } }
+        // Already signed in elsewhere: copy everything instead of signing in again.
+        Text("Already using AlwyWatch on another device?", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
+        ChoiceCard("Copy from another device", "Your accounts and settings, approved on a device where you're signed in", Icons.Download, {
+            onCopy(base)
+        })
     }
 }
 

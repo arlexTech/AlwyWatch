@@ -49,18 +49,9 @@ class Services(
             be.alwyapps.watch.core.NativeTls
                 .ensure(app)
             val core = AlwyWatch(config())
-            for (account in core.accounts()) {
-                tokens.get(account.id)?.let { core.activateAccount(account.id, it) }
-            }
-            core.keepConnection()?.let { k ->
-                val account = core.accounts().firstOrNull { it.id == k.accountId }
-                val token =
-                    if (account?.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) tokens.get("${k.accountId}:plextv") else tokens.get(k.accountId)
-                token?.let { runCatching { core.keepActivate(it) } }
-            }
+            activate(core)
             be.alwyapps.watch.keep.KeepReminderWorker
                 .schedule(app)
-            if (core.seerrConnection() != null) tokens.get("seerr")?.let { runCatching { core.seerrActivate(it) } }
             watchNetwork(core)
             // Deletion rules, "next N episodes", and downloads interrupted by a reboot or a
             // killed process (they continue on their own).
@@ -70,6 +61,23 @@ class Services(
                 .get(app)
             core
         }
+
+    /**
+     * Attaches stored accounts and connections to their tokens (secure storage). At startup,
+     * and after accounts arrive from another device.
+     */
+    fun activate(core: AlwyWatch) {
+        for (account in core.accounts()) {
+            tokens.get(account.id)?.let { runCatching { core.activateAccount(account.id, it) } }
+        }
+        core.keepConnection()?.let { k ->
+            val account = core.accounts().firstOrNull { it.id == k.accountId }
+            val token =
+                if (account?.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) tokens.get("${k.accountId}:plextv") else tokens.get(k.accountId)
+            token?.let { runCatching { core.keepActivate(it) } }
+        }
+        if (core.seerrConnection() != null) tokens.get("seerr")?.let { runCatching { core.seerrActivate(it) } }
+    }
 
     private fun config(): CoreConfig {
         val prefs = app.getSharedPreferences("device", Context.MODE_PRIVATE)

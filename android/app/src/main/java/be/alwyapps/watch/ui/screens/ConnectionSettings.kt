@@ -221,6 +221,16 @@ fun AlwyWatchServerGroup(
                 }, trailing = { Chevron() })
             }
             Divider()
+            var adding by remember { mutableStateOf(false) }
+            if (adding) SendToDeviceDialog { adding = false }
+            ListRow(
+                "Add a device",
+                subtitle = "Copy your accounts and settings to a new phone, tablet or TV",
+                icon = Icons.Add,
+                onClick = { adding = true },
+                trailing = { Chevron() },
+            )
+            Divider()
             ListRow("Stop syncing", subtitle = "Leaving soon and keep choices disappear from this device", icon = Icons.Close, iconTint = Danger, onClick = {
                 core.keepDisconnect()
                 onChanged()
