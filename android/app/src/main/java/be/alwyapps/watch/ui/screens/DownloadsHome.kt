@@ -130,10 +130,12 @@ private fun Download.episodeTitle(): String = title.split(" · ").last()
 private fun gb(b: ULong) = "%.1f GB".format(b.toDouble() / 1e9)
 
 fun Download.status(): String {
-    val size = total?.let { "${gb(downloaded)} / ${gb(it)}" } ?: gb(downloaded)
+    // "42% · 0.8 GB" (the total size), or what is there when the size is unknown.
+    val size =
+        total?.takeIf { it > 0uL }?.let { "${(downloaded.toLong() * 100 / it.toLong()).coerceIn(0, 100)}% · ${gb(it)}" } ?: gb(downloaded)
     return when (state) {
         DownloadState.QUEUED -> "Queued · $size"
-        DownloadState.RUNNING -> "Downloading · $size"
+        DownloadState.RUNNING -> "Downloading $size"
         DownloadState.PAUSED -> "Paused · $size"
         DownloadState.PAUSED_NO_SPACE -> "Paused: storage full. Free some space, then resume."
         DownloadState.WAITING -> "Waiting for the network · $size"

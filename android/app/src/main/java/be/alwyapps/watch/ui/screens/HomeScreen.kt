@@ -341,7 +341,11 @@ private fun PhoneHome(
         // The accounts this home shows (all of them when servers are shown together).
         val shownAccounts = owners.values.toSet().ifEmpty { setOf(account) }
         val completed = downloads.filter { it.accountId in shownAccounts && it.state == DownloadState.COMPLETED }
-        val active = downloads.count { it.accountId in shownAccounts && it.state != DownloadState.COMPLETED }
+        val running = downloads.filter { it.accountId in shownAccounts && it.state != DownloadState.COMPLETED }
+        val active = running.size
+        // Overall progress of what is downloading.
+        val runningTotal = running.sumOf { (it.total ?: 0uL).toLong() }
+        val runningPct = if (runningTotal > 0) (running.sumOf { it.downloaded.toLong() } * 100 / runningTotal).toInt() else null
         val offlineResult =
             if (offline && h != null) {
                 remember(h, completed.map { it.accountId to it.itemId }) {
@@ -359,7 +363,7 @@ private fun PhoneHome(
                 if (offline && active > 0) {
                     item(key = "active") {
                         ActionButton(
-                            "Downloading $active · manage",
+                            "Downloading $active" + (runningPct?.let { " · $it%" } ?: "") + " · manage",
                             { nav.push(Route.ManageDownloads) },
                             Modifier.padding(horizontal = d.gutter, vertical = 8.dp),
                             icon = Icons.Download,
