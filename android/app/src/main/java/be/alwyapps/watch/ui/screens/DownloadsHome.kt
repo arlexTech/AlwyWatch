@@ -53,6 +53,7 @@ import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.media.ItemKind
 import be.alwyapps.watch.downloads.DownloadWorker
 import be.alwyapps.watch.player.PlayerActivity
+import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.Badge
@@ -162,6 +163,32 @@ fun rememberDownloads(): Pair<List<Download>, () -> Unit> {
 }
 
 /**
+ * Items (or shows) whose download was just asked for: buttons show a spinner at once, before
+ * the server answers with the file to fetch. [changed] makes download lists re-read now.
+ */
+object DownloadPending {
+    private val ids = androidx.compose.runtime.mutableStateListOf<String>()
+    var version by mutableIntStateOf(0)
+        private set
+
+    fun contains(id: String) = id in ids
+
+    fun add(id: String) {
+        ids.add(id)
+        version++
+    }
+
+    fun remove(id: String) {
+        ids.remove(id)
+        version++
+    }
+
+    fun changed() {
+        version++
+    }
+}
+
+/**
  * This account's downloads by item id, kept current: every second while something downloads,
  * every few seconds otherwise (so a download started elsewhere shows up too).
  */
@@ -172,7 +199,8 @@ fun rememberDownloadMap(): Map<String, Download> {
 
     fun read() = runCatching { core.downloads() }.getOrDefault(emptyList()).filter { it.accountId == account }.associateBy { it.itemId }
     var map by remember(account) { mutableStateOf(read()) }
-    LaunchedEffect(account) {
+    LaunchedEffect(account, DownloadPending.version) {
+        map = read()
         while (true) {
             delay(if (map.values.any { !it.done }) 1000 else 3000)
             map = read()
@@ -190,20 +218,67 @@ fun Download.progressLabel(): String =
         if (t > 0) "${(downloaded.toLong() * 100 / t).coerceIn(0, 100)}%" else "…"
     }
 
+/** Determinate ring (download progress). */
+@Composable
+fun ProgressRing(
+    fraction: Float,
+    size: androidx.compose.ui.unit.Dp = 40.dp,
+) {
+    Box(contentAlignment = Alignment.Center) {
+        androidx.compose.material3.CircularProgressIndicator(
+            progress = { fraction.coerceIn(0f, 1f) },
+            modifier = Modifier.size(size),
+            color = Accent,
+            trackColor = Color.White.copy(alpha = 0.15f),
+            strokeWidth = 3.dp,
+        )
+        Text("${(fraction * 100).toInt().coerceIn(0, 100)}", style = MaterialTheme.typography.labelMedium, color = Color.White)
+    }
+}
+
 /**
- * Download state in one round button: the download icon, a ring filling up with the
- * percentage while downloading, a check once downloaded.
+ * The icon part of a download button: download arrow; a spinning ring while starting; a ring
+ * filling up with the percentage while downloading; a filled download icon once downloaded
+ * (on the accent background the button gives it).
  */
+@Composable
+fun DownloadStateIcon(
+    dl: Download?,
+    pending: Boolean = false,
+    size: androidx.compose.ui.unit.Dp = 40.dp,
+) {
+    val t = dl?.total?.toLong() ?: 0L
+    when {
+        dl == null && !pending -> Icon(Icons.Download, "Download", Modifier.size(22.dp))
+        dl == null || (!dl.done && (dl.downloaded == 0uL || t == 0L) && dl.state != DownloadState.PAUSED) ->
+            androidx.compose.material3.CircularProgressIndicator(
+                Modifier.size(size),
+                color = Accent,
+                trackColor = Color.White.copy(alpha = 0.15f),
+                strokeWidth = 3.dp,
+            )
+        dl.done -> Icon(Icons.Download, "Downloaded", Modifier.size(22.dp), tint = Color.Black)
+        dl.state == DownloadState.PAUSED || dl.state == DownloadState.PAUSED_NO_SPACE || dl.state == DownloadState.FAILED ->
+            Box(contentAlignment = Alignment.Center) {
+                ProgressRing(dl.downloaded.toLong().toFloat() / t.coerceAtLeast(1), size)
+                Icon(Icons.Pause, "Paused", Modifier.size(16.dp), tint = Muted)
+            }
+        else -> ProgressRing(dl.downloaded.toLong().toFloat() / t, size)
+    }
+}
+
+/** Round download button (episode rows) around [DownloadStateIcon]. */
 @Composable
 fun DownloadStateButton(
     dl: Download?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     size: androidx.compose.ui.unit.Dp = 46.dp,
+    pending: Boolean = false,
 ) {
     val label =
         when {
-            dl == null -> "Download"
+            dl == null -> if (pending) "Starting download" else "Download"
             dl.done -> "Downloaded, ${dl.progressLabel()}"
             else -> "Downloading, ${dl.progressLabel()}"
         }
@@ -214,33 +289,7 @@ fun DownloadStateButton(
             .background(if (dl?.done == true) Accent else SurfaceHigh)
             .clickable(onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) {
-        when {
-            dl == null -> Icon(Icons.Download, label, Modifier.size(22.dp))
-            dl.done -> Icon(Icons.Check, label, Modifier.size(22.dp), tint = Color.Black)
-            else -> {
-                val t = dl.total?.toLong() ?: 0L
-                val fraction = if (t > 0) (dl.downloaded.toLong().toFloat() / t).coerceIn(0f, 1f) else 0f
-                androidx.compose.material3.CircularProgressIndicator(
-                    progress = { fraction },
-                    modifier = Modifier.size(size - 6.dp),
-                    color = Accent,
-                    trackColor = Color.White.copy(alpha = 0.15f),
-                    strokeWidth = 3.dp,
-                )
-                when (dl.state) {
-                    DownloadState.PAUSED, DownloadState.PAUSED_NO_SPACE, DownloadState.FAILED ->
-                        Icon(Icons.Pause, label, Modifier.size(18.dp), tint = Muted)
-                    else ->
-                        Text(
-                            if (t > 0) "${(fraction * 100).toInt()}" else "…",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = androidx.compose.ui.graphics.Color.White,
-                        )
-                }
-            }
-        }
-    }
+    ) { DownloadStateIcon(dl, pending, size - 6.dp) }
 }
 
 /** Next to the button: "Downloading 42% · 0.3 / 0.8 GB" or "Downloaded · 0.8 GB". */
@@ -616,7 +665,12 @@ fun DownloadSheet(
                     if (busy) return@ActionButton
                     busy = true
                     if (android.os.Build.VERSION.SDK_INT >= 33) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                    scope.launch {
+                    // The page's button spins right away.
+                    val marker = if (choice == "episode") episode!!.id else seriesId
+                    DownloadPending.add(marker)
+                    onDismiss()
+                    // App-wide scope: the sheet (and its scope) is gone once dismissed.
+                    ctx.services.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
                         try {
                             when (choice) {
                                 "episode" -> core.downloadItem(account, episode!!.id, rule)
@@ -625,18 +679,39 @@ fun DownloadSheet(
                                 else -> core.setAutoDownload(account, seriesId, seriesTitle, count.toUInt(), rule)
                             }
                             startDownloads(ctx)
-                            onDismiss()
                         } catch (e: CoreException) {
-                            error = e.message
+                            android.widget.Toast
+                                .makeText(ctx, e.message, android.widget.Toast.LENGTH_LONG)
+                                .show()
                         } finally {
                             busy = false
+                            DownloadPending.remove(marker)
                         }
                     }
                 }, primary = true, icon = Icons.Download)
-                val mine = episode?.let { ep -> runCatching { core.downloads() }.getOrNull()?.firstOrNull { it.accountId == account && it.itemId == ep.id } }
+                val all = remember { runCatching { core.downloads() }.getOrDefault(emptyList()).filter { it.accountId == account } }
+                val mine = episode?.let { ep -> all.firstOrNull { it.itemId == ep.id } }
                 if (mine != null) {
                     ActionButton(if (mine.done) "Remove this episode" else "Cancel this episode", {
                         core.removeDownload(mine.id)
+                        DownloadPending.changed()
+                        onDismiss()
+                    }, icon = Icons.Delete)
+                }
+                // The whole show: cancel what is still downloading, or remove everything.
+                val show = all.filter { it.episode?.seriesId == seriesId }
+                val running = show.filter { !it.done }
+                if (running.isNotEmpty()) {
+                    ActionButton("Cancel ${running.size} downloading", {
+                        running.forEach { core.removeDownload(it.id) }
+                        DownloadPending.changed()
+                        onDismiss()
+                    }, icon = Icons.Close)
+                }
+                if (show.any { it.done }) {
+                    ActionButton("Remove all ${show.size} downloads", {
+                        show.forEach { core.removeDownload(it.id) }
+                        DownloadPending.changed()
                         onDismiss()
                     }, icon = Icons.Delete)
                 }

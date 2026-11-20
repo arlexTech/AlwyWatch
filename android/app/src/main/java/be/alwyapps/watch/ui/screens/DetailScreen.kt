@@ -4,6 +4,7 @@ package be.alwyapps.watch.ui.screens
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,7 @@ import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.media.ItemKind
 import be.alwyapps.watch.player.DeviceProfiles
 import be.alwyapps.watch.player.PlayerActivity
+import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.ErrorBanner
@@ -187,88 +189,83 @@ fun DetailScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             if (item.kind == ItemKind.EPISODE) {
-                                // The show and the season, one tap away.
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    item.seriesId?.let { sid ->
-                                        ActionButton(item.seriesTitle ?: "Show", { nav.push(Route.Detail(sid)) }, icon = Icons.Tv)
-                                        if (item.seasonId != null && item.seasonNumber != null) {
-                                            ActionButton("Season ${item.seasonNumber}", { nav.push(Route.Detail(sid, item.seasonId)) })
-                                        }
-                                    }
+                                // The show first (like Plex): its name or logo, leading to the
+                                // episode's season. The episode's own title comes second.
+                                val sid = item.seriesId
+                                Row(
+                                    Modifier.then(
+                                        if (sid != null) Modifier.clickable { nav.push(Route.Detail(sid, item.seasonId)) } else Modifier,
+                                    ),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Box(Modifier.weight(1f, fill = false)) { TitleArt(item, if (d.isTv) 460.dp else 280.dp, big = d.isTv) }
+                                    if (sid != null) Icon(Icons.ChevronRight, "Open the show", Modifier.size(32.dp), tint = Muted)
                                 }
-                                Text(item.title, style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(item.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             } else {
                                 TitleArt(item, if (d.isTv) 460.dp else 300.dp, big = d.isTv)
                             }
                             HeroMeta(item)
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (playable) {
-                                    val resumable = item.user.positionMs > 0u
-                                    ActionButton(
-                                        if (resumable) "Resume" else "Play",
-                                        { play(ctx, account, item, fromStart = false) },
-                                        Modifier.initialFocus(),
-                                        primary = true,
-                                        icon = Icons.Play,
-                                    )
+                            val resumable = playable && item.user.positionMs > 0u
+                            val playLabel: String?
+                            val playAction: (() -> Unit)?
+                            if (playable) {
+                                playLabel = if (resumable) "Resume" else "Play"
+                                playAction = { play(ctx, account, item, fromStart = false) }
+                            } else if (nextEp != null) {
+                                val ep = nextEp!!
+                                val label = "S${ep.seasonNumber ?: 1} · E${ep.episodeNumber ?: 1}"
+                                playLabel = if (ep.user.positionMs > 0u) "Resume $label" else "Play $label"
+                                playAction = { play(ctx, account, ep, fromStart = false) }
+                            } else {
+                                playLabel = null
+                                playAction = null
+                            }
+                            val toggleWatched = {
+                                scope.launch {
+                                    runCatching { core.setPlayed(account, item.id, !item.user.played) }
+                                    res.reload()
+                                }
+                                Unit
+                            }
+                            if (d.isTv) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (playLabel != null && playAction != null) {
+                                        ActionButton(playLabel, playAction, Modifier.initialFocus(), primary = true, icon = Icons.Play)
+                                    }
                                     if (resumable) ActionButton("From start", { play(ctx, account, item, fromStart = true) })
-                                }
-                                nextEp?.let { ep ->
-                                    val label = "S${ep.seasonNumber ?: 1} · E${ep.episodeNumber ?: 1}"
-                                    ActionButton(
-                                        if (ep.user.positionMs > 0u) "Resume $label" else "Play $label",
-                                        { play(ctx, account, ep, fromStart = false) },
-                                        Modifier.initialFocus(),
-                                        primary = true,
-                                        icon = Icons.Play,
+                                    IconAction(
+                                        Icons.Check,
+                                        if (item.user.played) "Mark unwatched" else "Mark watched",
+                                        toggleWatched,
+                                        active = item.user.played,
                                     )
                                 }
-                                IconAction(
-                                    Icons.Check,
-                                    if (item.user.played) "Mark unwatched" else "Mark watched",
-                                    {
-                                        scope.launch {
-                                            runCatching { core.setPlayed(account, item.id, !item.user.played) }
-                                            res.reload()
+                            } else {
+                                // Phones, like Plex: one wide play button, then labelled actions.
+                                if (playLabel != null && playAction != null) {
+                                    ActionButton(playLabel, playAction, Modifier.fillMaxWidth(), primary = true, icon = Icons.Play)
+                                }
+                                Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                    if (resumable) {
+                                        CaptionAction("From start", { play(ctx, account, item, fromStart = true) }) {
+                                            Icon(Icons.Refresh, null, Modifier.size(22.dp))
                                         }
-                                    },
-                                    active = item.user.played,
-                                )
-                                if (!d.isTv) {
+                                    }
+                                    CaptionAction(if (item.user.played) "Watched" else "Mark watched", toggleWatched, highlighted = item.user.played) {
+                                        Icon(Icons.Check, null, Modifier.size(22.dp), tint = if (item.user.played) Color.Black else OnSurface)
+                                    }
                                     when (item.kind) {
-                                        ItemKind.MOVIE -> DownloadButton(item, dls[item.id])
-                                        // Episode or show: this one, its season, the whole show, next N.
-                                        ItemKind.EPISODE -> DownloadStateButton(dls[item.id], { sheet = true })
-                                        ItemKind.SERIES -> {
-                                            val mine = dls.values.filter { it.episode?.seriesId == item.id }
-                                            DownloadStateButton(
-                                                mine.firstOrNull { it.state != DownloadState.COMPLETED } ?: mine.firstOrNull(),
-                                                { sheet = true },
-                                            )
-                                        }
+                                        ItemKind.MOVIE -> DownloadAction(item, dls[item.id], toggle = true) {}
+                                        // Episode or show: the sheet (this one, a season, the show, next N).
+                                        ItemKind.EPISODE -> DownloadAction(item, dls[item.id], toggle = false) { sheet = true }
+                                        ItemKind.SERIES -> SeriesDownloadAction(item, dls.values.filter { it.episode?.seriesId == item.id }) { sheet = true }
                                         else -> {}
                                     }
                                 }
                             }
-                            val downloadNote =
-                                when (item.kind) {
-                                    ItemKind.SERIES -> {
-                                        val mine = dls.values.filter { it.episode?.seriesId == item.id }
-                                        val done = mine.filter { it.state == DownloadState.COMPLETED }
-                                        val running = mine.size - done.size
-                                        listOfNotNull(
-                                            if (done.isNotEmpty()) {
-                                                "${done.size} downloaded · %.1f GB".format(done.sumOf { (it.total ?: it.downloaded).toLong() } / 1e9)
-                                            } else {
-                                                null
-                                            },
-                                            if (running > 0) "$running downloading" else null,
-                                        ).joinToString(" · ").ifEmpty { null }
-                                    }
-                                    else -> dls[item.id]?.summary()
-                                }
-                            listOfNotNull(item.remaining(), downloadNote).joinToString("  ·  ").ifEmpty { null }?.let {
-                                Text(it, style = MaterialTheme.typography.bodySmall, color = Muted)
+                            item.remaining()?.let { left ->
+                                Text(left, style = MaterialTheme.typography.bodySmall, color = Muted)
                             }
                         }
                     }
@@ -323,15 +320,109 @@ private fun Chip(text: String) {
     )
 }
 
+/** Round button with a caption under it (the action row of phone detail pages, like Plex). */
+@Composable
+private fun CaptionAction(
+    caption: String,
+    onClick: () -> Unit,
+    highlighted: Boolean = false,
+    icon: @Composable () -> Unit,
+) {
+    Column(
+        Modifier
+            .width(84.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(50))
+                .background(if (highlighted) Accent else be.alwyapps.watch.ui.SurfaceHigh),
+            contentAlignment = Alignment.Center,
+        ) { icon() }
+        Text(
+            caption,
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
+            maxLines = 2,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+    }
+}
+
+/** What the download caption says: "Download", "Starting…", "Downloading 42%", "Downloaded · 0.5 GB". */
+private fun downloadCaption(
+    dl: be.alwyapps.watch.core.downloads.Download?,
+    pending: Boolean,
+): String =
+    when {
+        dl == null -> if (pending) "Starting…" else "Download"
+        dl.state == DownloadState.COMPLETED -> "Downloaded · ${dl.progressLabel()}"
+        dl.state == DownloadState.PAUSED -> "Paused · ${dl.progressLabel()}"
+        dl.state == DownloadState.WAITING -> "Waiting for network"
+        dl.state == DownloadState.FAILED -> "Download failed"
+        dl.downloaded == 0uL -> "Starting…"
+        else -> "Downloading ${dl.progressLabel()}"
+    }
+
 /**
- * Download toggle for a movie or an episode: downloads it (default deletion rule); while it
- * downloads, tapping cancels; once downloaded, tapping asks before removing it.
+ * Download action of a movie or an episode page. Movies ([toggle]): download, cancel while
+ * downloading, remove (after asking) once downloaded. Episodes open the sheet instead.
  */
 @Composable
-private fun DownloadButton(
+private fun DownloadAction(
     item: Item,
     dl: be.alwyapps.watch.core.downloads.Download?,
+    toggle: Boolean,
+    onOpen: () -> Unit,
 ) {
+    val pending = DownloadPending.contains(item.id) && dl == null
+    val click = rememberDownloadToggle(item, dl)
+    CaptionAction(downloadCaption(dl, pending), if (toggle) click else onOpen, highlighted = dl?.state == DownloadState.COMPLETED) {
+        DownloadStateIcon(dl, pending)
+    }
+}
+
+/** A show's download action: what is downloading or downloaded for it. */
+@Composable
+private fun SeriesDownloadAction(
+    series: Item,
+    mine: List<be.alwyapps.watch.core.downloads.Download>,
+    onOpen: () -> Unit,
+) {
+    val active = mine.filter { it.state != DownloadState.COMPLETED }
+    val done = mine.size - active.size
+    val pending = DownloadPending.contains(series.id) && mine.isEmpty()
+    val caption =
+        when {
+            pending -> "Starting…"
+            active.isNotEmpty() -> "Downloading ${active.size}"
+            done > 0 -> "$done downloaded"
+            else -> "Download"
+        }
+    // The ring follows the whole batch.
+    val total = mine.sumOf { (it.total ?: 0uL).toLong() }
+    val got = mine.sumOf { it.downloaded.toLong() }
+    CaptionAction(caption, onOpen, highlighted = active.isEmpty() && done > 0) {
+        when {
+            pending || (active.isNotEmpty() && got == 0L) -> DownloadStateIcon(null, pending = true)
+            active.isNotEmpty() -> ProgressRing(if (total > 0) got.toFloat() / total else 0f)
+            done > 0 -> Icon(Icons.Download, null, Modifier.size(22.dp), tint = Color.Black)
+            else -> Icon(Icons.Download, null, Modifier.size(22.dp))
+        }
+    }
+}
+
+/** Download/cancel/remove for a movie or an episode row (asks before removing a finished one). */
+@Composable
+private fun rememberDownloadToggle(
+    item: Item,
+    dl: be.alwyapps.watch.core.downloads.Download?,
+): () -> Unit {
     val core = LocalCore.current
     val account = LocalAccount.current
     val ctx = LocalContext.current
@@ -350,6 +441,7 @@ private fun DownloadButton(
             confirmButton = {
                 ActionButton("Remove", {
                     core.removeDownload(dl.id)
+                    DownloadPending.changed()
                     confirm = false
                 }, primary = true)
             },
@@ -357,19 +449,34 @@ private fun DownloadButton(
             containerColor = be.alwyapps.watch.ui.Background,
         )
     }
-    DownloadStateButton(dl, {
+    return {
         when {
             dl == null -> {
                 if (android.os.Build.VERSION.SDK_INT >= 33) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                scope.launch {
+                DownloadPending.add(item.id)
+                ctx.services.scope.launch(kotlinx.coroutines.Dispatchers.Main) {
                     runCatching { core.downloadItem(account, item.id, null) }
+                    DownloadPending.remove(item.id)
                     startDownloads(ctx)
                 }
             }
             dl.state == DownloadState.COMPLETED -> confirm = true
-            else -> core.removeDownload(dl.id)
+            else -> {
+                core.removeDownload(dl.id)
+                DownloadPending.changed()
+            }
         }
-    })
+    }
+}
+
+/** Episode rows: the round download button alone. */
+@Composable
+private fun DownloadButton(
+    item: Item,
+    dl: be.alwyapps.watch.core.downloads.Download?,
+) {
+    val pending = DownloadPending.contains(item.id) && dl == null
+    DownloadStateButton(dl, rememberDownloadToggle(item, dl), pending = pending)
 }
 
 @Composable
