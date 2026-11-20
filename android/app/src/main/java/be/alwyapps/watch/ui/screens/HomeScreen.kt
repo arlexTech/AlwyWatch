@@ -338,71 +338,78 @@ private fun PhoneHome(
     Column(Modifier.fillMaxSize()) {
         HomeTopBar(offline) { setOffline(!offline) }
         val (downloads, _) = rememberDownloads()
-        val completed = downloads.filter { it.accountId == account && it.state == DownloadState.COMPLETED }
-        val active = downloads.count { it.accountId == account && it.state != DownloadState.COMPLETED }
-        val shown =
+        // The accounts this home shows (all of them when servers are shown together).
+        val shownAccounts = owners.values.toSet().ifEmpty { setOf(account) }
+        val completed = downloads.filter { it.accountId in shownAccounts && it.state == DownloadState.COMPLETED }
+        val active = downloads.count { it.accountId in shownAccounts && it.state != DownloadState.COMPLETED }
+        val offlineResult =
             if (offline && h != null) {
-                remember(h, completed.map { it.itemId }) { offlineHome(h, completed) { id -> core.cachedItem(account, id)?.item } }
+                remember(h, completed.map { it.accountId to it.itemId }) {
+                    offlineHome(h, completed) { acct, id -> runCatching { core.cachedItem(acct, id)?.item }.getOrNull() }
+                }
             } else {
-                h
+                null
             }
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            state = rememberPersistentListState("home.$account"),
-        ) {
-            if (offline && active > 0) {
-                item(key = "active") {
-                    ActionButton(
-                        "Downloading $active · manage",
-                        { nav.push(Route.ManageDownloads) },
-                        Modifier.padding(horizontal = d.gutter, vertical = 8.dp),
-                        icon = Icons.Download,
-                    )
-                }
-            }
-            if (!offline) {
-                item(key = "status") {
-                    ServerStatus(onDownloads = { setOffline(true) }, onReachable = {
-                        // Back online after a failure: refresh what the cache showed.
-                        if (reachable == false) reload()
-                        reachable = it
-                    })
-                }
-            }
-            // The status card already says what is wrong with the server.
-            if (reachable != false && !offline) error?.let { msg -> item(key = "error") { ErrorBanner(msg, reload) } }
-            val h = shown
-            if (h == null) {
-                if (reachable != false && !offline) items(3) { SkeletonRail() }
-            } else {
-                if (!offline) {
-                    item(key = "libraries") {
-                        LazyRow(
-                            contentPadding = PaddingValues(start = d.gutter, end = d.gutter, top = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            items(h.libraries.filter { it.kind != LibraryKind.OTHER }, key = { it.id }) { lib ->
-                                ActionButton(
-                                    lib.title,
-                                    { nav.push(Route.Library(lib.id, lib.title, owners[lib.id])) },
-                                    icon = if (lib.kind == LibraryKind.SHOWS) Icons.Tv else Icons.Movie,
-                                )
-                            }
-                        }
-                    }
-                }
-                item(key = "rails") { Column { Rails(h, null, offline) } }
-                if (h.continueWatching.isEmpty() && h.latest.all { it.items.isEmpty() }) {
-                    item {
-                        Text(
-                            if (offline) "Nothing downloaded yet. Download from a movie or show page." else "Nothing here yet.",
-                            Modifier.padding(d.gutter),
-                            color = Muted,
+        val shown = offlineResult?.first ?: h
+        androidx.compose.runtime.CompositionLocalProvider(LocalOwners provides (owners + offlineResult?.second.orEmpty())) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                state = rememberPersistentListState("home.$account"),
+            ) {
+                if (offline && active > 0) {
+                    item(key = "active") {
+                        ActionButton(
+                            "Downloading $active · manage",
+                            { nav.push(Route.ManageDownloads) },
+                            Modifier.padding(horizontal = d.gutter, vertical = 8.dp),
+                            icon = Icons.Download,
                         )
                     }
                 }
+                if (!offline) {
+                    item(key = "status") {
+                        ServerStatus(onDownloads = { setOffline(true) }, onReachable = {
+                            // Back online after a failure: refresh what the cache showed.
+                            if (reachable == false) reload()
+                            reachable = it
+                        })
+                    }
+                }
+                // The status card already says what is wrong with the server.
+                if (reachable != false && !offline) error?.let { msg -> item(key = "error") { ErrorBanner(msg, reload) } }
+                val h = shown
+                if (h == null) {
+                    if (reachable != false && !offline) items(3) { SkeletonRail() }
+                } else {
+                    if (!offline) {
+                        item(key = "libraries") {
+                            LazyRow(
+                                contentPadding = PaddingValues(start = d.gutter, end = d.gutter, top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                items(h.libraries.filter { it.kind != LibraryKind.OTHER }, key = { it.id }) { lib ->
+                                    ActionButton(
+                                        lib.title,
+                                        { nav.push(Route.Library(lib.id, lib.title, owners[lib.id])) },
+                                        icon = if (lib.kind == LibraryKind.SHOWS) Icons.Tv else Icons.Movie,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    item(key = "rails") { Column { Rails(h, null, offline) } }
+                    if (h.continueWatching.isEmpty() && h.latest.all { it.items.isEmpty() }) {
+                        item {
+                            Text(
+                                if (offline) "Nothing downloaded yet. Download from a movie or show page." else "Nothing here yet.",
+                                Modifier.padding(d.gutter),
+                                color = Muted,
+                            )
+                        }
+                    }
+                }
+                item { Spacer(Modifier.height(32.dp)) }
             }
-            item { Spacer(Modifier.height(32.dp)) }
         }
     }
 }
@@ -414,17 +421,22 @@ private fun PhoneHome(
 private fun offlineHome(
     h: Home,
     done: List<Download>,
-    cached: (String) -> Item?,
-): Home {
+    cached: (account: String, id: String) -> Item?,
+): Pair<Home, Map<String, String>> {
+    val owners = mutableMapOf<String, String>()
     val ids = done.map { it.itemId }.toSet()
-    val items = done.mapNotNull { cached(it.itemId) }
-    val movies = items.filter { it.kind == ItemKind.MOVIE }
+    // Every server's downloads, each looked up with its own account.
+    val items = done.mapNotNull { d -> cached(d.accountId, d.itemId)?.also { owners[it.id] = d.accountId } }
+    val movies = items.filter { it.kind == ItemKind.MOVIE }.distinctBy { it.sameAs() }
     // Shows: from the download's metadata, or (older downloads) its cached episode.
-    val seriesIds = (done.mapNotNull { it.episode?.seriesId } + items.mapNotNull { it.seriesId }).distinct()
+    val seriesIds =
+        (done.mapNotNull { d -> d.episode?.let { it.seriesId to d.accountId } } + items.mapNotNull { i -> i.seriesId?.let { it to owners.getValue(i.id) } })
+            .distinctBy { it.first }
     val shows =
-        seriesIds.mapNotNull { sid ->
-            cached(sid) ?: items.firstOrNull { it.seriesId == sid }?.showFor()
-        }
+        seriesIds
+            .mapNotNull { (sid, acct) ->
+                (cached(acct, sid) ?: items.firstOrNull { it.seriesId == sid }?.showFor())?.also { owners[it.id] = acct }
+            }.distinctBy { it.sameAs() }
     // One library per kind gets them (downloads don't know their library).
     val used = mutableSetOf<LibraryKind>()
     val latest =
@@ -439,7 +451,7 @@ private fun offlineHome(
                 }
             rail.copy(items = items)
         }
-    return h.copy(continueWatching = h.continueWatching.filter { it.id in ids }, latest = latest)
+    return h.copy(continueWatching = h.continueWatching.filter { it.id in ids }, latest = latest) to owners
 }
 
 /** Plex-style bar: the name on the left; search, downloads and you (settings) on the right. */

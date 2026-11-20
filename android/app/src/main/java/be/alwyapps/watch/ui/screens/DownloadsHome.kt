@@ -530,7 +530,7 @@ fun DownloadedShowScreen(
     val (list, refresh) = rememberDownloads()
     val eps =
         list
-            .filter { it.accountId == account }
+            // Any server's: a show downloaded from another server than the one in use.
             .filter { dl ->
                 // Older downloads have no show metadata: their cached episode or title tell.
                 dl.showKey()?.first == seriesId ||
