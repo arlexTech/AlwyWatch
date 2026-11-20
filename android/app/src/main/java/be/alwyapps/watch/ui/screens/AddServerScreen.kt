@@ -342,30 +342,41 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
             }
 
             Step.Plex -> {
-                // TV: short code for plex.tv/link. Phone: open the Plex login page.
-                val strong = !d.isTv
-                var code by remember { mutableStateOf<String?>(null) }
+                // Phone: a browser sign-in (long PIN) plus a short code for plex.tv/link on any
+                // device; TV: the short code only. Whichever gets linked first wins.
+                val browser = !d.isTv
+                var shortCode by remember { mutableStateOf<String?>(null) }
+                var authUrl by remember { mutableStateOf<String?>(null) }
                 LaunchedEffect(Unit) {
                     try {
-                        val pin = core.plexCreatePin(strong)
-                        code = pin.code
-                        if (strong && pin.authUrl.isNotEmpty()) {
-                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pin.authUrl))) }
-                        }
+                        val short = core.plexCreatePin(false)
+                        shortCode = short.code
+                        val long = if (browser) runCatching { core.plexCreatePin(true) }.getOrNull() else null
+                        authUrl = long?.authUrl?.takeIf { it.isNotEmpty() }
+                        authUrl?.let { openInBrowser(ctx, it) }
+                        val pins = listOfNotNull(short.id, long?.id)
                         while (true) {
                             delay(2000)
-                            try {
-                                val token = core.plexCheckPin(pin.id)
-                                val servers = core.plexServers(token)
-                                val preset = servers.firstOrNull { it.machineId == presetPlexId }
-                                if (preset != null) {
-                                    finish(core.plexConnect(token, preset, null))
-                                } else {
-                                    go(Step.PlexServers(token, servers))
-                                }
-                                break
-                            } catch (_: CoreException.Pending) {
+                            val token =
+                                pins.firstNotNullOfOrNull { id ->
+                                    try {
+                                        core.plexCheckPin(id).also { error = null }
+                                    } catch (_: CoreException.Pending) {
+                                        null
+                                    } catch (e: CoreException.Network) {
+                                        // A blip while waiting: say so, keep waiting.
+                                        error = e.message
+                                        null
+                                    }
+                                } ?: continue
+                            val servers = core.plexServers(token)
+                            val preset = servers.firstOrNull { it.machineId == presetPlexId }
+                            if (preset != null) {
+                                finish(core.plexConnect(token, preset, null))
+                            } else {
+                                go(Step.PlexServers(token, servers))
                             }
+                            break
                         }
                     } catch (e: CoreException) {
                         error = e.message
@@ -378,15 +389,16 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                         .background(SurfaceColor)
                         .border(1.dp, Outline, RoundedCornerShape(24.dp))
                         .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    if (strong) {
-                        Text("Finish signing in to Plex in your browser, then come back here.", style = MaterialTheme.typography.titleMedium)
-                    } else {
-                        Text("PLEX.TV/LINK", style = MaterialTheme.typography.labelSmall, color = Accent)
-                        Text(code ?: "…", style = MaterialTheme.typography.displayLarge)
-                        Text("On your phone or computer, go to plex.tv/link and enter this code.", color = Muted)
+                    authUrl?.let { url ->
+                        Text("Sign in on plex.tv in your browser, then come back here.", style = MaterialTheme.typography.titleMedium)
+                        ActionButton("Open plex.tv", { openInBrowser(ctx, url) }, Modifier.initialFocus(), primary = true)
+                        Text("Or, on any device", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = Subtle)
                     }
+                    Text("PLEX.TV/LINK", style = MaterialTheme.typography.labelSmall, color = Accent)
+                    Text(shortCode ?: "…", style = MaterialTheme.typography.displayLarge)
+                    Text("Go to plex.tv/link and enter this code.", color = Muted)
                     Text("Waiting for Plex…", style = MaterialTheme.typography.bodySmall, color = Subtle)
                 }
             }
@@ -530,6 +542,25 @@ private fun ConnectedChoices(
         if (list != null && list.isEmpty()) Modifier.initialFocus() else Modifier,
     )
     ChoiceCard("Plex", "Sign in on plex.tv", Icons.Play, onPlex)
+}
+
+/**
+ * Opens a web page in the browser, not in an app that claims the link: with the Plex app
+ * installed, app.plex.tv would open there and the sign-in would never reach us.
+ */
+private fun openInBrowser(
+    ctx: android.content.Context,
+    url: String,
+) {
+    val view = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val browser =
+        ctx.packageManager
+            .resolveActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://example.org")), android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo
+            ?.packageName
+            ?.takeIf { it != "android" } // "android" = the chooser: no default browser set
+    runCatching { ctx.startActivity(if (browser != null) Intent(view).setPackage(browser) else view) }
+        .onFailure { runCatching { ctx.startActivity(view) } }
 }
 
 /** Big tappable card for the sign-in choices. */

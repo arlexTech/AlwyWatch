@@ -66,9 +66,16 @@ impl From<reqwest::Error> for Error {
         if e.is_decode() {
             return Error::decode(e.without_url().to_string());
         }
-        Error::Network {
-            message: e.to_string(),
+        // "error sending request" alone says nothing: add the causes (DNS, TLS, refused…).
+        let e = e.without_url();
+        let mut message = e.to_string();
+        let mut source = std::error::Error::source(&e);
+        while let Some(cause) = source {
+            message.push_str(": ");
+            message.push_str(&cause.to_string());
+            source = cause.source();
         }
+        Error::Network { message }
     }
 }
 
@@ -90,10 +97,67 @@ pub fn init_tls() {
     });
 }
 
+/// Android: TLS against the system CA store read straight from disk, instead of the platform
+/// verifier. That one validates through Java, whose revocation check falls back to downloading
+/// the issuer's CRL: 11 MB for plex.tv's DigiCert CA, parsed into hundreds of MB of heap (the
+/// app froze or ran out of memory on Plex sign-in). Android apps don't trust user-added CAs by
+/// default, so the system store is what the platform verifier used anyway.
+#[cfg(target_os = "android")]
+fn tls(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+    use std::sync::OnceLock;
+    static CONFIG: OnceLock<Option<rustls::ClientConfig>> = OnceLock::new();
+    let config = CONFIG.get_or_init(|| {
+        let roots = android_roots();
+        if roots.is_empty() {
+            return None;
+        }
+        let mut c = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        c.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+        Some(c)
+    });
+    match config {
+        Some(c) => builder.tls_backend_preconfigured(c.clone()),
+        // Nothing readable (should not happen): keep the platform verifier.
+        None => builder,
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn tls(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+    builder
+}
+
+/// Android's trusted CAs: the updatable Conscrypt store (Android 14+) or the system one. Files
+/// are PEM followed by a text dump, which the PEM reader skips.
+#[cfg(target_os = "android")]
+fn android_roots() -> rustls::RootCertStore {
+    use rustls::pki_types::{CertificateDer, pem::PemObject};
+    let mut roots = rustls::RootCertStore::empty();
+    for dir in ["/apex/com.android.conscrypt/cacerts", "/system/etc/security/cacerts"] {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(certs) = CertificateDer::pem_file_iter(entry.path()) else {
+                continue;
+            };
+            for cert in certs.flatten() {
+                let _ = roots.add(cert);
+            }
+        }
+        if !roots.is_empty() {
+            break;
+        }
+    }
+    roots
+}
+
 /// Builds the shared client for API calls (short timeouts, gzip handled by servers' defaults).
 pub fn api_client(user_agent: &str) -> Result<reqwest::Client> {
     init_tls();
-    reqwest::Client::builder()
+    tls(reqwest::Client::builder())
         .user_agent(user_agent)
         .connect_timeout(Duration::from_secs(5))
         .read_timeout(Duration::from_secs(30))
@@ -105,7 +169,7 @@ pub fn api_client(user_agent: &str) -> Result<reqwest::Client> {
 /// Builds a client for large transfers: no read deadline beyond stalls, longer pool life.
 pub fn transfer_client(user_agent: &str) -> Result<reqwest::Client> {
     init_tls();
-    reqwest::Client::builder()
+    tls(reqwest::Client::builder())
         .user_agent(user_agent)
         .connect_timeout(Duration::from_secs(10))
         .read_timeout(Duration::from_secs(60))
