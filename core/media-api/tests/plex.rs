@@ -391,3 +391,71 @@ async fn intro_and_credits_markers() {
         ]
     );
 }
+
+#[tokio::test]
+async fn people_and_the_plex_tv_watchlist() {
+    let s = MockServer::start().await;
+    let tv = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/library/metadata/77"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {
+                "Metadata": [{"ratingKey": "77", "type": "movie", "title": "Arrival",
+                    "guid": "plex://movie/5d776b59ad5437001f79c6f8",
+                    "Role": [{"tag": "Amy Adams", "role": "Louise Banks",
+                        "thumb": "https://metadata-static.plex.tv/a.jpg"},
+                        {"tag": "Jeremy Renner", "role": "Ian", "thumb": "/library/x"}],
+                    "Director": [{"tag": "Denis Villeneuve"}]}]
+            }})),
+        )
+        .mount(&s)
+        .await;
+    // The watchlist comes from plex.tv with the account token, not the server's.
+    Mock::given(method("GET"))
+        .and(path("/library/sections/watchlist/all"))
+        .and(header("X-Plex-Token", "account-token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {"Metadata": [
+                {"ratingKey": "5d776b59ad5437001f79c6f8", "type": "movie", "title": "Arrival",
+                 "guid": "plex://movie/5d776b59ad5437001f79c6f8"},
+                {"ratingKey": "abc", "type": "movie", "title": "Not here", "guid": "plex://movie/abc"}
+            ]}})),
+        )
+        .mount(&tv)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/library/all"))
+        .and(query_param("guid", "plex://movie/5d776b59ad5437001f79c6f8"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {
+            "Metadata": [{"ratingKey": "77", "type": "movie", "title": "Arrival"}]}})))
+        .mount(&s)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/library/all"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {}})))
+        .mount(&s)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/actions/removeFromWatchlist"))
+        .and(query_param("ratingKey", "5d776b59ad5437001f79c6f8"))
+        .and(header("X-Plex-Token", "account-token"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&tv)
+        .await;
+    let c = PlexClient::new(session(&s.uri()), client_info(), http()).with_discover(&tv.uri());
+    let people = c.people("77").await.unwrap();
+    assert_eq!(people.len(), 3);
+    assert_eq!(people[0].name, "Amy Adams");
+    assert_eq!(people[0].role.as_deref(), Some("Louise Banks"));
+    // Server-relative photos need a token: dropped.
+    assert_eq!(people[1].photo_url, None);
+    assert_eq!(people[2].kind, PersonKind::Director);
+
+    let list = c.watchlist(Some("account-token")).await.unwrap();
+    assert_eq!(list.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["77"]);
+    assert!(c.watchlist(None).await.unwrap().is_empty());
+    c.set_watchlisted("77", false, Some("account-token"))
+        .await
+        .unwrap();
+}

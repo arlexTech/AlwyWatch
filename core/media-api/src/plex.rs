@@ -12,6 +12,8 @@ use crate::model::*;
 use crate::{Error, MediaServer, Result, header};
 
 pub const PLEX_TV: &str = "https://plex.tv";
+/// plex.tv's catalogue service: the account's watchlist.
+pub const PLEX_DISCOVER: &str = "https://discover.provider.plex.tv";
 const LIBRARY_IDENTIFIER: &str = "com.plexapp.plugins.library";
 
 fn plex_headers(client: &ClientInfo) -> Vec<Header> {
@@ -402,6 +404,42 @@ struct Tag {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
+struct RoleDto {
+    tag: String,
+    role: Option<String>,
+    thumb: Option<String>,
+}
+
+fn convert_roles(m: &mut MetadataDto) -> Vec<Person> {
+    let mut out = Vec::new();
+    for (list, kind) in [
+        (std::mem::take(&mut m.roles), PersonKind::Actor),
+        (std::mem::take(&mut m.directors), PersonKind::Director),
+        (std::mem::take(&mut m.writers), PersonKind::Writer),
+    ] {
+        for r in list.into_iter().filter(|r| !r.tag.is_empty()) {
+            out.push(Person {
+                name: r.tag,
+                role: r.role.filter(|x| !x.is_empty()),
+                kind,
+                // Photos from plex.tv's metadata servers are public; server paths need a token.
+                photo_url: r.thumb.filter(|t| t.starts_with("http")),
+            });
+        }
+    }
+    out
+}
+
+/// The plex.tv catalogue id of a title ("plex://movie/5d77…" → "5d77…").
+fn discover_key(plex_guid: &str) -> Option<&str> {
+    plex_guid
+        .strip_prefix("plex://")
+        .and_then(|rest| rest.rsplit('/').next())
+        .filter(|k| !k.is_empty())
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
 struct GuidDto {
     id: String,
 }
@@ -456,6 +494,15 @@ struct MetadataDto {
     genre: Vec<Tag>,
     #[serde(rename = "Guid")]
     guid: Vec<GuidDto>,
+    /// "plex://movie/5d7768…": the title in plex.tv's catalogue (watchlist).
+    #[serde(rename = "guid")]
+    plex_guid: Option<String>,
+    #[serde(rename = "Role")]
+    roles: Vec<RoleDto>,
+    #[serde(rename = "Director")]
+    directors: Vec<RoleDto>,
+    #[serde(rename = "Writer")]
+    writers: Vec<RoleDto>,
     thumb: Option<String>,
     art: Option<String>,
     parent_thumb: Option<String>,
@@ -546,6 +593,7 @@ pub struct PlexClient {
     session: Session,
     http: Client,
     headers: Vec<Header>,
+    discover: String,
 }
 
 impl PlexClient {
@@ -556,7 +604,40 @@ impl PlexClient {
             session,
             http,
             headers,
+            discover: PLEX_DISCOVER.into(),
         }
+    }
+
+    /// For tests: point at a mock plex.tv catalogue.
+    pub fn with_discover(mut self, url: &str) -> Self {
+        self.discover = url.trim_end_matches('/').to_owned();
+        self
+    }
+
+    /// A plex.tv catalogue request with the account token (not the server's).
+    fn discover_req(&self, method: Method, path: &str, token: &str) -> RequestBuilder {
+        let headers: Vec<Header> = self
+            .headers
+            .iter()
+            .filter(|h| h.name != "X-Plex-Token")
+            .cloned()
+            .chain(std::iter::once(header("X-Plex-Token", token)))
+            .collect();
+        apply(
+            self.http
+                .request(method, format!("{}{path}", self.discover)),
+            &headers,
+        )
+    }
+
+    async fn metadata(&self, id: &str) -> Result<MetadataDto> {
+        let mc = self
+            .get(
+                &format!("/library/metadata/{}", net::percent_encode(id)),
+                &[("includeGuids", "1".into())],
+            )
+            .await?;
+        mc.metadata.into_iter().next().ok_or(Error::NotFound)
     }
 
     fn req(&self, method: Method, path: &str) -> RequestBuilder {
@@ -1099,6 +1180,68 @@ impl MediaServer for PlexClient {
             p.push(("duration", d.to_string()));
         }
         net::send(self.req(Method::GET, "/:/timeline").query(&p)).await?;
+        Ok(())
+    }
+
+    async fn people(&self, item_id: &str) -> Result<Vec<Person>> {
+        let mut m = self.metadata(item_id).await?;
+        Ok(convert_roles(&mut m))
+    }
+
+    async fn watchlist(&self, plex_tv_token: Option<&str>) -> Result<Vec<Item>> {
+        let Some(token) = plex_tv_token else {
+            return Ok(vec![]);
+        };
+        let e: Envelope = net::send_json(
+            self.discover_req(Method::GET, "/library/sections/watchlist/all", token)
+                .query(&[("includeCollections", "1"), ("includeExternalMedia", "1")]),
+        )
+        .await?;
+        let mut out = Vec::new();
+        // Only what this server has, in watchlist order.
+        for w in e.mc.metadata {
+            let Some(guid) = w.plex_guid.filter(|g| g.starts_with("plex://")) else {
+                continue;
+            };
+            let found = self
+                .get(
+                    "/library/all",
+                    &[("guid", guid.clone()), ("includeGuids", "1".into())],
+                )
+                .await;
+            if let Ok(mc) = found
+                && let Some(m) = mc.metadata.into_iter().next()
+            {
+                out.push(convert_item(m));
+            }
+        }
+        Ok(out)
+    }
+
+    async fn set_watchlisted(
+        &self,
+        item_id: &str,
+        on: bool,
+        plex_tv_token: Option<&str>,
+    ) -> Result<()> {
+        let token = plex_tv_token.ok_or(Error::Unauthorized)?;
+        let m = self.metadata(item_id).await?;
+        let key = m
+            .plex_guid
+            .as_deref()
+            .and_then(discover_key)
+            .ok_or(Error::NotFound)?
+            .to_owned();
+        let action = if on {
+            "/actions/addToWatchlist"
+        } else {
+            "/actions/removeFromWatchlist"
+        };
+        net::send(
+            self.discover_req(Method::PUT, action, token)
+                .query(&[("ratingKey", key)]),
+        )
+        .await?;
         Ok(())
     }
 

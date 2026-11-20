@@ -450,3 +450,43 @@ async fn media_segments() {
         ]
     );
 }
+
+#[tokio::test]
+async fn people_and_favorites() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items/m1"))
+        .and(query_param("fields", "People"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Id": "m1", "People": [
+            {"Name": "Denis Villeneuve", "Id": "p2", "Type": "Director"},
+            {"Name": "Amy Adams", "Id": "p1", "Role": "Louise Banks", "Type": "Actor",
+             "PrimaryImageTag": "t1"}
+        ]})))
+        .mount(&s)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("filters", "IsFavorite"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": [
+            {"Id": "m1", "Name": "Arrival", "Type": "Movie", "UserData": {"IsFavorite": true}}
+        ], "TotalRecordCount": 1})))
+        .mount(&s)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/UserFavoriteItems/m1"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    let people = c.people("m1").await.unwrap();
+    assert_eq!(people[0].name, "Amy Adams");
+    assert_eq!(
+        people[0].photo_url.as_deref(),
+        Some(format!("{}/Items/p1/Images/Primary?tag=t1&maxWidth=240", s.uri()).as_str())
+    );
+    assert_eq!(people[1].kind, PersonKind::Director);
+    let fav = c.watchlist(None).await.unwrap();
+    assert_eq!(fav[0].id, "m1");
+    c.set_watchlisted("m1", true, None).await.unwrap();
+}

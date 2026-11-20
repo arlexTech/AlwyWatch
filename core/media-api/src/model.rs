@@ -303,6 +303,22 @@ record! {
 }
 
 simple_enum! {
+    pub enum PersonKind { Actor, Director, Writer, Producer, Other }
+}
+
+record! {
+    /// Someone in the cast or crew of a title.
+    pub struct Person {
+        pub name: String,
+        /// The character (actors) or the job.
+        pub role: Option<String>,
+        pub kind: PersonKind,
+        /// Absolute URL of a photo that needs no credentials.
+        pub photo_url: Option<String>,
+    }
+}
+
+simple_enum! {
     /// Part of an episode or movie that can be skipped.
     pub enum SegmentKind { Intro, Credits, Recap, Preview, Commercial }
 }

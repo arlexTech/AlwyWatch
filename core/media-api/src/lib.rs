@@ -65,6 +65,20 @@ pub trait MediaServer: Send + Sync {
     /// Skippable intro/credits spans, by start time. Empty when the server has not detected any.
     fn segments(&self, item_id: &str) -> impl Future<Output = Result<Vec<Segment>>> + Send;
     fn report_progress(&self, report: &ProgressReport) -> impl Future<Output = Result<()>> + Send;
+    /// Cast first (in billing order), then directors and writers.
+    fn people(&self, item_id: &str) -> impl Future<Output = Result<Vec<Person>>> + Send;
+    /// Titles of the user's watchlist that this server has: Jellyfin favorites; Plex's
+    /// plex.tv watchlist (needs the plex.tv account token), matched to this server's library.
+    fn watchlist(
+        &self,
+        plex_tv_token: Option<&str>,
+    ) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn set_watchlisted(
+        &self,
+        item_id: &str,
+        on: bool,
+        plex_tv_token: Option<&str>,
+    ) -> impl Future<Output = Result<()>> + Send;
     fn set_played(&self, item_id: &str, played: bool) -> impl Future<Output = Result<()>> + Send;
     /// The original file (never a transcode), so downloads can be resumed.
     fn download_source(&self, item_id: &str)
@@ -158,6 +172,20 @@ impl MediaServer for AnyServer {
     }
     async fn report_progress(&self, report: &ProgressReport) -> Result<()> {
         dispatch!(self, c => c.report_progress(report).await)
+    }
+    async fn people(&self, item_id: &str) -> Result<Vec<Person>> {
+        dispatch!(self, c => c.people(item_id).await)
+    }
+    async fn watchlist(&self, plex_tv_token: Option<&str>) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.watchlist(plex_tv_token).await)
+    }
+    async fn set_watchlisted(
+        &self,
+        item_id: &str,
+        on: bool,
+        plex_tv_token: Option<&str>,
+    ) -> Result<()> {
+        dispatch!(self, c => c.set_watchlisted(item_id, on, plex_tv_token).await)
     }
     async fn set_played(&self, item_id: &str, played: bool) -> Result<()> {
         dispatch!(self, c => c.set_played(item_id, played).await)

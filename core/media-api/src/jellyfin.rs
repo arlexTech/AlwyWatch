@@ -193,6 +193,57 @@ struct QueryResult {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "PascalCase", default)]
+struct PeopleDto {
+    people: Vec<PersonDto>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+struct PersonDto {
+    name: String,
+    id: String,
+    role: Option<String>,
+    #[serde(rename = "Type")]
+    kind: String,
+    primary_image_tag: Option<String>,
+}
+
+fn convert_people(base_url: &str, list: Vec<PersonDto>) -> Vec<Person> {
+    let mut out: Vec<Person> = list
+        .into_iter()
+        .filter(|p| !p.name.is_empty())
+        .map(|p| {
+            let kind = match p.kind.as_str() {
+                "Actor" | "GuestStar" => PersonKind::Actor,
+                "Director" => PersonKind::Director,
+                "Writer" => PersonKind::Writer,
+                "Producer" => PersonKind::Producer,
+                _ => PersonKind::Other,
+            };
+            // Jellyfin serves images without credentials.
+            let photo_url = p.primary_image_tag.map(|t| {
+                format!(
+                    "{}/Items/{}/Images/Primary?tag={}&maxWidth=240",
+                    base_url.trim_end_matches('/'),
+                    net::percent_encode(&p.id),
+                    net::percent_encode(&t)
+                )
+            });
+            Person {
+                name: p.name,
+                role: p.role.filter(|r| !r.is_empty()),
+                kind,
+                photo_url,
+            }
+        })
+        .collect();
+    // Stable: cast keeps its billing order.
+    out.sort_by_key(|p| p.kind != PersonKind::Actor);
+    out
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
 struct BaseItemDto {
     id: String,
     name: Option<String>,
@@ -928,6 +979,46 @@ impl MediaServer for JellyfinClient {
             "SubtitleStreamIndex": r.subtitle_index,
         });
         net::send(self.req(Method::POST, path).json(&body)).await?;
+        Ok(())
+    }
+
+    async fn people(&self, item_id: &str) -> Result<Vec<Person>> {
+        let d: PeopleDto = net::send_json(
+            self.req(
+                Method::GET,
+                &format!("/Items/{}", net::percent_encode(item_id)),
+            )
+            .query(&[("userId", self.uid()), ("fields", "People")]),
+        )
+        .await?;
+        Ok(convert_people(&self.session.base_url, d.people))
+    }
+
+    async fn watchlist(&self, _plex_tv_token: Option<&str>) -> Result<Vec<Item>> {
+        let mut p = self.list_params();
+        p.push(("filters", "IsFavorite".into()));
+        p.push(("recursive", "true".into()));
+        p.push(("includeItemTypes", "Movie,Series".into()));
+        p.push(("sortBy", "DateCreated".into()));
+        p.push(("sortOrder", "Descending".into()));
+        Ok(self.convert_all(self.query("/Items", &p).await?.items))
+    }
+
+    async fn set_watchlisted(
+        &self,
+        item_id: &str,
+        on: bool,
+        _plex_tv_token: Option<&str>,
+    ) -> Result<()> {
+        let method = if on { Method::POST } else { Method::DELETE };
+        net::send(
+            self.req(
+                method,
+                &format!("/UserFavoriteItems/{}", net::percent_encode(item_id)),
+            )
+            .query(&[("userId", self.uid())]),
+        )
+        .await?;
         Ok(())
     }
 

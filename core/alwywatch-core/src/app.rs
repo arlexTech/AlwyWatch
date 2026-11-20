@@ -22,6 +22,8 @@ const TTL_HOME: i64 = 30;
 const TTL_LIST: i64 = 120;
 const TTL_DETAIL: i64 = 300;
 const TTL_SEGMENTS: i64 = 6 * 3600;
+const TTL_PEOPLE: i64 = 24 * 3600;
+const TTL_WATCHLIST: i64 = 120;
 const PLAYBACK_INFO_TTL: Duration = Duration::from_secs(120);
 const IMAGE_WIDTHS: [u32; 7] = [160, 240, 320, 480, 720, 1080, 1920];
 
@@ -208,6 +210,8 @@ pub struct Core {
     transfer_keys: Mutex<HashMap<String, keep_service::transfer::Recipient>>,
     /// Signed-in device: the key the user checked, by code (sealing uses exactly that one).
     transfer_peers: Mutex<HashMap<String, Vec<u8>>>,
+    /// plex.tv account tokens by account (Plex's watchlist lives on plex.tv).
+    plex_tv: RwLock<HashMap<String, String>>,
     /// Queued offline position snapshot per (account, item): row id in the pending queue.
     snapshots: Mutex<HashMap<(String, String), i64>>,
 }
@@ -292,6 +296,25 @@ impl Core {
             &key(account, &["segments", item_id]),
             TTL_SEGMENTS,
             || async { Ok(self.server(account)?.segments(item_id).await?) },
+        )
+        .await
+    }
+
+    fn plex_tv_token(&self, account: &str) -> Option<String> {
+        self.plex_tv
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(account)
+            .cloned()
+    }
+
+    async fn watchlist(&self, account: &str, force: bool) -> Result<(Vec<Item>, i64)> {
+        let token = self.plex_tv_token(account);
+        self.swr(
+            &key(account, &["watchlist"]),
+            TTL_WATCHLIST,
+            force,
+            || async { Ok(self.server(account)?.watchlist(token.as_deref()).await?) },
         )
         .await
     }
@@ -828,6 +851,7 @@ impl AlwyWatch {
                 snapshots: Mutex::new(HashMap::new()),
                 transfer_keys: Mutex::new(HashMap::new()),
                 transfer_peers: Mutex::new(HashMap::new()),
+                plex_tv: RwLock::new(HashMap::new()),
             }),
             rt,
         }))
@@ -1316,6 +1340,100 @@ impl AlwyWatch {
     pub async fn segments(&self, account_id: String, item_id: String) -> Result<Vec<Segment>> {
         self.run(|c| async move { c.segments(&account_id, &item_id).await })
             .await
+    }
+
+    /// The plex.tv account token of a Plex account (from its PIN sign-in), for the watchlist.
+    pub fn set_plex_account_token(&self, account_id: String, token: String) {
+        self.core
+            .plex_tv
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(account_id, token);
+    }
+
+    /// Cast and crew of a title (cached a day; works offline from cache).
+    pub async fn people(&self, account_id: String, item_id: String) -> Result<Vec<Person>> {
+        self.run(|c| async move {
+            c.swr_offline(
+                &key(&account_id, &["people", &item_id]),
+                TTL_PEOPLE,
+                || async { Ok(c.server(&account_id)?.people(&item_id).await?) },
+            )
+            .await
+        })
+        .await
+    }
+
+    pub fn cached_people(&self, account_id: String, item_id: String) -> Option<Vec<Person>> {
+        self.core
+            .store
+            .cache_get::<Vec<Person>>(&key(&account_id, &["people", &item_id]))
+            .ok()
+            .flatten()
+            .map(|c| c.value)
+    }
+
+    /// The account's watchlist on its server (Jellyfin favorites, Plex's plex.tv watchlist).
+    pub fn cached_watchlist(&self, account_id: String) -> Option<ItemsResult> {
+        self.cached_list(&key(&account_id, &["watchlist"])).ok().flatten()
+    }
+
+    pub async fn refresh_watchlist(&self, account_id: String, force: bool) -> Result<ItemsResult> {
+        self.run(|c| async move {
+            let (items, at) = c.watchlist(&account_id, force).await?;
+            Ok(ItemsResult {
+                items,
+                fetched_at: at,
+            })
+        })
+        .await
+    }
+
+    /// Whether a title is on the watchlist, from the cache (no network).
+    pub fn is_watchlisted(&self, account_id: String, item_id: String) -> bool {
+        let listed = self
+            .cached_watchlist(account_id.clone())
+            .is_some_and(|w| w.items.iter().any(|i| i.id == item_id));
+        listed
+            || self
+                .cached_item(account_id, item_id)
+                .ok()
+                .flatten()
+                .is_some_and(|i| i.item.user.favorite)
+    }
+
+    /// Adds to or removes from the watchlist; the cached list follows at once.
+    pub async fn set_watchlisted(
+        &self,
+        account_id: String,
+        item_id: String,
+        on: bool,
+    ) -> Result<()> {
+        self.run(|c| async move {
+            let token = c.plex_tv_token(&account_id);
+            c.server(&account_id)?
+                .set_watchlisted(&item_id, on, token.as_deref())
+                .await?;
+            let k = key(&account_id, &["watchlist"]);
+            let mut list: Vec<Item> = c
+                .store
+                .cache_get::<Vec<Item>>(&k)?
+                .map(|x| x.value)
+                .unwrap_or_default();
+            list.retain(|i| i.id != item_id);
+            let item_key = key(&account_id, &["item", &item_id]);
+            if let Some(mut cached) = c.store.cache_get::<Item>(&item_key)?.map(|x| x.value) {
+                cached.user.favorite = on;
+                c.store.cache_put(&item_key, &cached)?;
+                if on {
+                    list.insert(0, cached);
+                }
+            }
+            c.store.cache_put(&k, &list)?;
+            c.store.cache_mark_stale(&k)?;
+            Ok(())
+        })
+        .await
     }
 
     /// The previous and next episodes of an episode, across seasons. Works offline from cache.
