@@ -626,3 +626,103 @@ fn continue_watching_hides_removed_next_episodes_until_watched_again() {
             .is_empty()
     );
 }
+
+/// A fake relay: remembers the registered key and the sealed bundle like the real server.
+struct Relay(std::sync::Arc<std::sync::Mutex<(Option<String>, Option<String>)>>);
+
+impl wiremock::Respond for Relay {
+    fn respond(&self, req: &wiremock::Request) -> ResponseTemplate {
+        let mut st = self.0.lock().unwrap();
+        let p = req.url.path();
+        match (req.method.as_str(), p) {
+            ("POST", "/v1/transfer") => {
+                let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap();
+                st.0 = Some(body["public_key"].as_str().unwrap().to_owned());
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"code": "123456", "handle": "h", "expires_in": 600}))
+            }
+            ("GET", "/v1/transfer/123456") => ResponseTemplate::new(200)
+                .set_body_json(json!({"public_key": st.0.clone().unwrap(), "device": "Tablet"})),
+            ("PUT", "/v1/transfer/123456") => {
+                let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap();
+                st.1 = Some(body["sealed"].as_str().unwrap().to_owned());
+                ResponseTemplate::new(204)
+            }
+            ("GET", "/v1/transfer/poll/h") => match st.1.take() {
+                Some(s) => ResponseTemplate::new(200).set_body_json(json!({"sealed": s})),
+                None => ResponseTemplate::new(202),
+            },
+            _ => ResponseTemplate::new(404),
+        }
+    }
+}
+
+#[test]
+fn accounts_move_to_a_new_device_sealed_end_to_end() {
+    let env = Env::new();
+    let s = env.sign_in();
+    let app = env.app();
+    let keep = env.block(MockServer::start());
+    env.block(
+        Mock::given(path("/v1/me"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "user_key": "jellyfin:srv:u1", "name": "alice", "server_id": "srv", "is_admin": false,
+                "forever_count": 0, "rights": {"can_keep_forever": true, "max_forever": null, "max_keep_days": null}
+            })))
+            .mount(&keep),
+    );
+    let state = std::sync::Arc::new(std::sync::Mutex::new((None, None)));
+    env.block(
+        Mock::given(wiremock::matchers::path_regex("^/v1/transfer"))
+            .respond_with(Relay(state.clone()))
+            .mount(&keep),
+    );
+    env.block(app.keep_connect(keep.uri(), s.account.id.clone(), "tok".into()))
+        .unwrap();
+    app.set_setting("ui.combined".into(), "1".into()).unwrap();
+
+    // New device: a code and a check number; nothing yet.
+    let code = env
+        .block(app.transfer_start(keep.uri(), "Tablet".into()))
+        .unwrap();
+    assert_eq!(code.code, "123456");
+    assert!(
+        env.block(app.transfer_receive(keep.uri(), code.handle.clone()))
+            .unwrap()
+            .is_none()
+    );
+
+    // Signed-in device: same check number, then sends its config sealed to that key.
+    let req = env.block(app.transfer_peer("123456".into())).unwrap();
+    assert_eq!(
+        (req.device.as_str(), req.check.as_str()),
+        ("Tablet", code.check.as_str())
+    );
+    let bundle = app.export_config(vec!["ui.combined".into()]).unwrap();
+    env.block(app.transfer_send("123456".into(), bundle.clone()))
+        .unwrap();
+    let sealed = state.lock().unwrap().1.clone().unwrap();
+    assert!(
+        !sealed.contains("alice") && !sealed.contains(&s.account.id),
+        "the relay sees ciphertext only"
+    );
+
+    // New device opens it and restores the accounts.
+    let got = env
+        .block(app.transfer_receive(keep.uri(), code.handle))
+        .unwrap()
+        .unwrap();
+    assert_eq!(got, bundle);
+    let other = Env::new();
+    let fresh = other.app();
+    assert_eq!(
+        fresh.import_config(got).unwrap(),
+        vec![s.account.id.clone()]
+    );
+    assert_eq!(fresh.accounts().unwrap()[0].id, s.account.id);
+    assert_eq!(fresh.keep_connection().unwrap().user_name, "alice");
+    assert_eq!(
+        fresh.get_setting("ui.combined".into()).unwrap().as_deref(),
+        Some("1")
+    );
+}

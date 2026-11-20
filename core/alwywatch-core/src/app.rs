@@ -187,6 +187,10 @@ pub struct Core {
     image_permits: Semaphore,
     servers: RwLock<HashMap<String, Arc<AnyServer>>>,
     playback: Mutex<HashMap<String, (Instant, PlaybackInfo)>>,
+    /// New device: transfer keys waiting for their bundle, by handle.
+    transfer_keys: Mutex<HashMap<String, keep_service::transfer::Recipient>>,
+    /// Signed-in device: the key the user checked, by code (sealing uses exactly that one).
+    transfer_peers: Mutex<HashMap<String, Vec<u8>>>,
     /// Queued offline position snapshot per (account, item): row id in the pending queue.
     snapshots: Mutex<HashMap<(String, String), i64>>,
 }
@@ -688,6 +692,8 @@ impl AlwyWatch {
                 servers: RwLock::new(HashMap::new()),
                 playback: Mutex::new(HashMap::new()),
                 snapshots: Mutex::new(HashMap::new()),
+                transfer_keys: Mutex::new(HashMap::new()),
+                transfer_peers: Mutex::new(HashMap::new()),
             }),
             rt,
         }))
@@ -1782,6 +1788,35 @@ pub struct KeepConnection {
     pub is_admin: bool,
 }
 
+/// New device: what to show while waiting for another device to approve.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TransferCode {
+    /// Six digits to type on the signed-in device.
+    pub code: String,
+    /// Four digits that must match on both screens.
+    pub check: String,
+    /// To wait with (`transfer_receive`).
+    pub handle: String,
+    pub expires_in: u64,
+}
+
+/// Signed-in device: who asks for the accounts.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TransferRequest {
+    pub device: String,
+    pub check: String,
+}
+
+/// Accounts, connections and chosen settings, to set up another device (tokens are added by
+/// the platform, which keeps them in its secure storage).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ConfigBundle {
+    accounts: Vec<Account>,
+    keep: Option<KeepConnection>,
+    seerr: Option<SeerrConnection>,
+    settings: Vec<(String, String)>,
+}
+
 /// A show set to "keep the next `count` episodes downloaded".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct AutoDownload {
@@ -1831,6 +1866,155 @@ impl Core {
 
 #[uniffi::export]
 impl AlwyWatch {
+    // ----- moving to a new device -------------------------------------------------------------
+
+    /// New device: registers a one-time key with the AlwyWatch server at `url` and returns the
+    /// code to type on a signed-in device. No sign-in needed.
+    pub async fn transfer_start(&self, url: String, device: String) -> Result<TransferCode> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            let key = keep_service::transfer::Recipient::new().map_err(internal)?;
+            let started = keep_service::KeepClient::transfer_start(
+                &c.http,
+                &base,
+                &keep_service::transfer::TransferStart {
+                    public_key: keep_service::transfer::to_hex(key.public_key()),
+                    device,
+                },
+            )
+            .await?;
+            let check = keep_service::transfer::check_number(key.public_key());
+            c.transfer_keys
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(started.handle.clone(), key);
+            Ok(TransferCode {
+                code: started.code,
+                check,
+                handle: started.handle,
+                expires_in: started.expires_in,
+            })
+        })
+        .await
+    }
+
+    /// New device: the bundle once approved (None while waiting). Opening it consumes the key.
+    pub async fn transfer_receive(&self, url: String, handle: String) -> Result<Option<String>> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            let Some(sealed) =
+                keep_service::KeepClient::transfer_poll(&c.http, &base, &handle).await?
+            else {
+                return Ok(None);
+            };
+            let key = c
+                .transfer_keys
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&handle)
+                .ok_or(CoreError::NotFound)?;
+            let bytes = keep_service::transfer::from_hex(&sealed.sealed).ok_or_else(|| {
+                CoreError::Invalid {
+                    detail: "corrupted transfer".into(),
+                }
+            })?;
+            let plain = key.open(&bytes).map_err(|e| CoreError::Invalid {
+                detail: e.to_string(),
+            })?;
+            String::from_utf8(plain)
+                .map(Some)
+                .map_err(|_| CoreError::Invalid {
+                    detail: "corrupted transfer".into(),
+                })
+        })
+        .await
+    }
+
+    /// Signed-in device: who asks with this code, and the check number to compare.
+    pub async fn transfer_peer(&self, code: String) -> Result<TransferRequest> {
+        self.run(|c| async move {
+            let peer = c.keep()?.transfer_peer(code.trim()).await?;
+            let key = keep_service::transfer::from_hex(&peer.public_key).ok_or_else(|| {
+                CoreError::Invalid {
+                    detail: "invalid key".into(),
+                }
+            })?;
+            let check = keep_service::transfer::check_number(&key);
+            c.transfer_peers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(code.trim().to_owned(), key);
+            Ok(TransferRequest {
+                device: peer.device,
+                check,
+            })
+        })
+        .await
+    }
+
+    /// Signed-in device: seals `bundle` to the key checked with `transfer_peer` and sends it.
+    pub async fn transfer_send(&self, code: String, bundle: String) -> Result<()> {
+        self.run(|c| async move {
+            let key = c
+                .transfer_peers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(code.trim())
+                .ok_or(CoreError::NotFound)?;
+            let sealed = keep_service::transfer::seal(&key, bundle.as_bytes()).map_err(internal)?;
+            c.keep()?
+                .transfer_send(
+                    code.trim(),
+                    &keep_service::transfer::TransferSealed {
+                        sealed: keep_service::transfer::to_hex(&sealed),
+                    },
+                )
+                .await?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Accounts, AlwyWatch server and Seerr connections, and the given settings, as JSON.
+    pub fn export_config(&self, setting_keys: Vec<String>) -> Result<String> {
+        let settings = setting_keys
+            .into_iter()
+            .filter_map(|k| self.core.store.setting(&k).ok().flatten().map(|v| (k, v)))
+            .collect();
+        let bundle = ConfigBundle {
+            accounts: self.accounts()?,
+            keep: self.keep_connection(),
+            seerr: self.seerr_connection(),
+            settings,
+        };
+        serde_json::to_string(&bundle).map_err(internal)
+    }
+
+    /// Restores what `export_config` produced; returns the account ids (the platform then
+    /// stores their tokens and activates them as at startup).
+    pub fn import_config(&self, json: String) -> Result<Vec<String>> {
+        let b: ConfigBundle = serde_json::from_str(&json).map_err(|e| CoreError::Invalid {
+            detail: format!("unreadable transfer: {e}"),
+        })?;
+        for a in &b.accounts {
+            self.core.store.put_account(&a.id, a)?;
+        }
+        if let Some(k) = &b.keep {
+            self.core
+                .store
+                .set_setting(KEEP_KEY, &serde_json::to_string(k).map_err(internal)?)?;
+        }
+        if let Some(s) = &b.seerr {
+            self.core
+                .store
+                .set_setting(SEERR_KEY, &serde_json::to_string(s).map_err(internal)?)?;
+        }
+        for (k, v) in &b.settings {
+            self.core.store.set_setting(k, v)?;
+        }
+        Ok(b.accounts.into_iter().map(|a| a.id).collect())
+    }
+
     /// Media servers a keep service serves (public), to offer them without typing URLs.
     pub async fn keep_servers(&self, url: String) -> Result<Vec<ServerEntry>> {
         self.run(|c| async move {
@@ -2130,6 +2314,12 @@ fn requests_key(all: bool) -> &'static str {
         "seerr/requests-all"
     } else {
         "seerr/requests"
+    }
+}
+
+fn internal(e: impl std::fmt::Display) -> CoreError {
+    CoreError::Internal {
+        detail: e.to_string(),
     }
 }
 
