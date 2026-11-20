@@ -106,6 +106,11 @@ private fun Root(core: AlwyWatch) {
                                     .DownloadsHome()
                             }
                         Route.ManageDownloads -> DownloadsScreen()
+                        is Route.PlexSwitch ->
+                            be.alwyapps.watch.ui.screens.PlexSwitchScreen(r.accountId, onSwitched = {
+                                account = it
+                                nav.reset(Route.Home)
+                            })
                         is Route.DownloadedShow ->
                             be.alwyapps.watch.ui.screens
                                 .DownloadedShowScreen(r.seriesId, r.title)

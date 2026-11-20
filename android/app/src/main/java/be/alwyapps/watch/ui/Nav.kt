@@ -46,6 +46,11 @@ sealed interface Route {
 
     data object ManageDownloads : Route
 
+    /** Switch to another member of a Plex Home for this account. */
+    data class PlexSwitch(
+        val accountId: String,
+    ) : Route
+
     /** A library narrowed to a genre or a collection (from its Categories / Collections tabs). */
     data class Filtered(
         val libraryId: String,
@@ -70,6 +75,7 @@ sealed interface Route {
             is Detail -> if (season != null) "item\u001f$itemId\u001f$season" else "item\u001f$itemId"
             is DownloadedShow -> "dlshow\u001f$seriesId\u001f$title"
             ManageDownloads -> "dlmanage"
+            is PlexSwitch -> "plexswitch\u001f$accountId"
             is Filtered -> "filtered\u001f$libraryId\u001f$title\u001f${genreId.orEmpty()}\u001f${collectionId.orEmpty()}"
         }
 
@@ -91,6 +97,7 @@ sealed interface Route {
                 "item" -> if (p.size >= 2) Detail(p[1], p.getOrNull(2)) else null
                 "dlshow" -> if (p.size == 3) DownloadedShow(p[1], p[2]) else null
                 "dlmanage" -> ManageDownloads
+                "plexswitch" -> if (p.size == 2) PlexSwitch(p[1]) else null
                 "filtered" -> if (p.size == 5) Filtered(p[1], p[2], p[3].ifEmpty { null }, p[4].ifEmpty { null }) else null
                 else -> null
             }

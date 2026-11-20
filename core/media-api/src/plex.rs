@@ -54,6 +54,19 @@ pub struct PlexUser {
     pub title: String,
 }
 
+/// A member of a Plex Home (several people on one Plex account).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct PlexHomeUser {
+    pub uuid: String,
+    pub title: String,
+    /// Avatar URL on plex.tv.
+    pub thumb: Option<String>,
+    pub admin: bool,
+    /// Switching to this user needs its PIN.
+    pub protected: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct PlexConnection {
@@ -178,6 +191,71 @@ impl PlexAuth {
         pin.auth_token
             .filter(|t| !t.is_empty())
             .ok_or(Error::Pending)
+    }
+
+    /// The people of the account's Plex Home (empty or one: not a Plex Home).
+    pub async fn home_users(&self, account_token: &str) -> Result<Vec<PlexHomeUser>> {
+        #[derive(Deserialize, Default)]
+        #[serde(default)]
+        struct HomeDto {
+            users: Vec<HomeUserDto>,
+        }
+        #[derive(Deserialize, Default)]
+        #[serde(default)]
+        struct HomeUserDto {
+            uuid: String,
+            title: String,
+            username: Option<String>,
+            thumb: Option<String>,
+            admin: bool,
+            protected: bool,
+        }
+        let home: HomeDto =
+            net::send_json(self.req(Method::GET, "/api/v2/home/users", Some(account_token)))
+                .await?;
+        Ok(home
+            .users
+            .into_iter()
+            .map(|u| PlexHomeUser {
+                title: if u.title.is_empty() {
+                    u.username.unwrap_or_default()
+                } else {
+                    u.title
+                },
+                uuid: u.uuid,
+                thumb: u.thumb.filter(|t| !t.is_empty()),
+                admin: u.admin,
+                protected: u.protected,
+            })
+            .collect())
+    }
+
+    /// Switches to another member of the Plex Home; returns that user's token (it replaces the
+    /// account token from then on: their servers, watch state and permissions).
+    pub async fn switch_home_user(
+        &self,
+        account_token: &str,
+        uuid: &str,
+        pin: Option<&str>,
+    ) -> Result<String> {
+        #[derive(Deserialize, Default)]
+        #[serde(default, rename_all = "camelCase")]
+        struct SwitchDto {
+            auth_token: String,
+        }
+        let mut req = self.req(
+            Method::POST,
+            &format!("/api/v2/home/users/{}/switch", net::percent_encode(uuid)),
+            Some(account_token),
+        );
+        if let Some(pin) = pin.filter(|p| !p.is_empty()) {
+            req = req.query(&[("pin", pin)]);
+        }
+        let r: SwitchDto = net::send_json(req).await?;
+        if r.auth_token.is_empty() {
+            return Err(Error::invalid("Plex did not return a token for this user"));
+        }
+        Ok(r.auth_token)
     }
 
     pub async fn user(&self, account_token: &str) -> Result<PlexUser> {

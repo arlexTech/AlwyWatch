@@ -84,6 +84,12 @@ private sealed interface Step {
 
     data object Plex : Step
 
+    /** Plex Home: who is watching (the account token stays for switching later). */
+    data class PlexUsers(
+        val accountToken: String,
+        val users: List<be.alwyapps.watch.core.media.PlexHomeUser>,
+    ) : Step
+
     data class PlexServers(
         val accountToken: String,
         val servers: List<PlexServerResource>,
@@ -120,8 +126,12 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
         error = null
     }
 
+    // Plex Home: the account's own token, kept to switch user later from Settings.
+    var plexHomeToken by remember { mutableStateOf<String?>(null) }
+
     fun finish(s: SignedIn) {
         ctx.services.tokens.put(s.account.id, s.token)
+        plexHomeToken?.let { ctx.services.tokens.put("${s.account.id}:plexhome", it) }
         // Plex: the plex.tv account token is what Seerr and the keep service accept.
         s.plexAccountToken?.let { ctx.services.tokens.put("${s.account.id}:plextv", it) }
         core.setSetting("current_account", s.account.id)
@@ -129,6 +139,17 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
         val keepToken = s.plexAccountToken ?: s.token
         ctx.services.scope.launch { runCatching { core.keepOnboard(s.account.id, keepToken) } }
         onSignedIn(s.account.id)
+    }
+
+    // After the Plex sign-in (and the user choice): the server picked earlier, or the list.
+    suspend fun plexServersFor(token: String) {
+        val servers = core.plexServers(token)
+        val preset = servers.firstOrNull { it.machineId == presetPlexId }
+        if (preset != null) {
+            finish(core.plexConnect(token, preset, null))
+        } else {
+            go(Step.PlexServers(token, servers))
+        }
     }
 
     fun attempt(block: suspend () -> Unit) {
@@ -194,7 +215,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     when (step) {
                         Step.AlwyWatch -> "AlwyWatch server"
                         Step.Direct -> "Sign in"
-                        Step.Plex, is Step.PlexServers -> "Plex"
+                        Step.Plex, is Step.PlexServers, is Step.PlexUsers -> "Plex"
                         else -> "Jellyfin"
                     },
                     style = MaterialTheme.typography.headlineMedium,
@@ -369,12 +390,13 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                                         null
                                     }
                                 } ?: continue
-                            val servers = core.plexServers(token)
-                            val preset = servers.firstOrNull { it.machineId == presetPlexId }
-                            if (preset != null) {
-                                finish(core.plexConnect(token, preset, null))
+                            // Several people on this Plex account: ask who is watching first.
+                            val users = runCatching { core.plexHomeUsers(token) }.getOrDefault(emptyList())
+                            if (users.size > 1) {
+                                plexHomeToken = token
+                                go(Step.PlexUsers(token, users))
                             } else {
-                                go(Step.PlexServers(token, servers))
+                                plexServersFor(token)
                             }
                             break
                         }
@@ -402,6 +424,11 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     Text("Waiting for Plex…", style = MaterialTheme.typography.bodySmall, color = Subtle)
                 }
             }
+
+            is Step.PlexUsers ->
+                PlexUserPicker(s.accountToken, s.users, busy) { userToken ->
+                    attempt { plexServersFor(userToken) }
+                }
 
             is Step.PlexServers -> {
                 Text("Choose a server", style = MaterialTheme.typography.titleMedium)
@@ -563,9 +590,79 @@ private fun openInBrowser(
         .onFailure { runCatching { ctx.startActivity(view) } }
 }
 
+/**
+ * "Who's watching?" for a Plex Home: one card per member; a protected one asks for its PIN.
+ * [onUser] gets the token of the chosen user.
+ */
+@Composable
+fun PlexUserPicker(
+    accountToken: String,
+    users: List<be.alwyapps.watch.core.media.PlexHomeUser>,
+    busy: Boolean,
+    onUser: (String) -> Unit,
+) {
+    val core = LocalCore.current
+    val scope = rememberCoroutineScope()
+    var asking by remember { mutableStateOf<be.alwyapps.watch.core.media.PlexHomeUser?>(null) }
+    var pin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var switching by remember { mutableStateOf(false) }
+
+    fun switch(
+        u: be.alwyapps.watch.core.media.PlexHomeUser,
+        pin: String?,
+    ) {
+        if (switching || busy) return
+        switching = true
+        error = null
+        scope.launch {
+            try {
+                onUser(core.plexSwitchUser(accountToken, u.uuid, pin))
+            } catch (_: CoreException.Unauthorized) {
+                error = "Wrong PIN."
+            } catch (e: CoreException) {
+                error = e.message
+            } finally {
+                switching = false
+            }
+        }
+    }
+    Text("Who's watching?", style = MaterialTheme.typography.titleMedium)
+    users.forEachIndexed { i, u ->
+        ChoiceCard(
+            u.title,
+            listOfNotNull(if (u.admin) "Account owner" else null, if (u.protected) "PIN" else null).joinToString(" · ").ifEmpty { "Plex Home" },
+            Icons.Person,
+            {
+                if (u.protected) {
+                    asking = u
+                    pin = ""
+                } else {
+                    switch(u, null)
+                }
+            },
+            if (i == 0) Modifier.initialFocus() else Modifier,
+        )
+        if (asking == u) {
+            Field(
+                pin,
+                { pin = it.filter(Char::isDigit).take(4) },
+                label = { Text("PIN for ${u.title}") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { switch(u, pin) }),
+                modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
+            )
+            ActionButton(if (switching) "Checking…" else "Continue", { switch(u, pin) }, primary = true)
+        }
+    }
+    error?.let { Text(it, color = Danger) }
+}
+
 /** Big tappable card for the sign-in choices. */
 @Composable
-private fun ChoiceCard(
+internal fun ChoiceCard(
     title: String,
     subtitle: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -595,5 +692,87 @@ private fun ChoiceCard(
             }
             Chevron()
         }
+    }
+}
+
+/**
+ * Settings → switch Plex user: the members of this account's Plex Home; the chosen one replaces
+ * the account (same server, their watch state), and keeps syncing with the AlwyWatch server.
+ */
+@Composable
+fun PlexSwitchScreen(
+    accountId: String,
+    onSwitched: (String) -> Unit,
+) {
+    val core = LocalCore.current
+    val ctx = LocalContext.current
+    val d = LocalDimens.current
+    val tokens = ctx.services.tokens
+    val account = remember { core.accounts().firstOrNull { it.id == accountId } }
+    // The Plex Home's own token (kept at sign-in), else this user's: both can list and switch.
+    val homeToken = remember { tokens.get("$accountId:plexhome") ?: tokens.get("$accountId:plextv") }
+    var users by remember { mutableStateOf<List<be.alwyapps.watch.core.media.PlexHomeUser>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(homeToken) {
+        if (homeToken == null) {
+            error = "Sign in to Plex again to switch user."
+            return@LaunchedEffect
+        }
+        try {
+            users = core.plexHomeUsers(homeToken)
+        } catch (e: CoreException) {
+            error = e.message
+        }
+    }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = d.gutter, vertical = 16.dp)
+            .widthIn(max = 600.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        be.alwyapps.watch.ui
+            .PageTitle("Switch Plex user", account?.let { "${it.userName} on ${it.serverName}" })
+        val list = users
+        when {
+            list == null && error == null -> Text("Loading…", color = Subtle)
+            list != null && list.size < 2 -> Text("This Plex account has no other users (it is not a Plex Home).", color = Muted)
+            list != null && homeToken != null && account != null ->
+                PlexUserPicker(homeToken, list, busy) { userToken ->
+                    busy = true
+                    scope.launch {
+                        try {
+                            val server =
+                                core.plexServers(userToken).firstOrNull { it.machineId == account.serverId }
+                                    ?: throw CoreException.Invalid("This user has no access to ${account.serverName}.")
+                            val s = core.plexConnect(userToken, server, null)
+                            tokens.put(s.account.id, s.token)
+                            s.plexAccountToken?.let { tokens.put("${s.account.id}:plextv", it) }
+                            tokens.put("${s.account.id}:plexhome", homeToken)
+                            // The AlwyWatch server followed the old user: follow the new one.
+                            val keep = core.keepConnection()
+                            if (keep?.accountId == accountId) {
+                                runCatching { core.keepConnect(keep.baseUrl, s.account.id, s.plexAccountToken ?: s.token) }
+                            }
+                            if (s.account.id != accountId) {
+                                core.removeAccount(accountId)
+                                tokens.remove(accountId)
+                                tokens.remove("$accountId:plextv")
+                                tokens.remove("$accountId:plexhome")
+                            }
+                            core.setSetting("current_account", s.account.id)
+                            onSwitched(s.account.id)
+                        } catch (e: CoreException) {
+                            error = e.message
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }
+        }
+        error?.let { Text(it, color = Danger) }
     }
 }

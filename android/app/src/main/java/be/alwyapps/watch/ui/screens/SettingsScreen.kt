@@ -112,6 +112,9 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                     trailing = {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             if (a.id == current) Value("In use")
+                            if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) {
+                                IconAction(Icons.Person, "Switch Plex user", { nav.push(Route.PlexSwitch(a.id)) })
+                            }
                             IconAction(Icons.Delete, "Remove ${a.userName}", {
                                 core.removeAccount(a.id)
                                 ctx.services.tokens.remove(a.id)

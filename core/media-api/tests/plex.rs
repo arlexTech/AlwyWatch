@@ -309,3 +309,49 @@ async fn expired_token_maps_to_unauthorized() {
     let c = PlexClient::new(session(&s.uri()), client_info(), http());
     assert_eq!(c.libraries().await.unwrap_err(), Error::Unauthorized);
 }
+
+#[tokio::test]
+async fn plex_home_users_and_switch_with_pin() {
+    let tv = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v2/home/users"))
+        .and(header("X-Plex-Token", "owner"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 1, "name": "Home",
+            "users": [
+                {"id": 1, "uuid": "u-owner", "title": "Owner", "admin": true, "protected": false, "thumb": "https://plex.tv/a.png"},
+                {"id": 2, "uuid": "u-me", "title": "", "username": "me", "admin": false, "protected": true}
+            ]
+        })))
+        .mount(&tv)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v2/home/users/u-me/switch"))
+        .and(query_param("pin", "1234"))
+        .respond_with(
+            ResponseTemplate::new(201).set_body_json(json!({"id": 2, "authToken": "me-token"})),
+        )
+        .mount(&tv)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v2/home/users/u-me/switch"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&tv)
+        .await;
+    let auth = PlexAuth::with_plex_tv(http(), client_info(), &tv.uri());
+    let users = auth.home_users("owner").await.unwrap();
+    assert_eq!(users.len(), 2);
+    assert_eq!(users[1].title, "me", "falls back to the username");
+    assert!(users[1].protected && users[0].admin);
+    assert_eq!(
+        auth.switch_home_user("owner", "u-me", Some("1234"))
+            .await
+            .unwrap(),
+        "me-token"
+    );
+    assert_eq!(
+        auth.switch_home_user("owner", "u-me", Some("0000")).await,
+        Err(net::Error::Unauthorized),
+        "wrong PIN"
+    );
+}

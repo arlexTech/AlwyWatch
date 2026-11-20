@@ -26,7 +26,7 @@ pub use keep_service::{
 };
 pub use media_api::jellyfin::QuickConnectCode;
 pub use media_api::model::*;
-pub use media_api::plex::{PlexPin, PlexServerResource};
+pub use media_api::plex::{PlexHomeUser, PlexPin, PlexServerResource};
 pub use seerr::{
     Availability, QuickConnect as SeerrQuickConnect, RequestStatus, SeerrInfo, SeerrLogin,
     SeerrMediaType, SeerrRequest, SeerrResult, SeerrSeason,

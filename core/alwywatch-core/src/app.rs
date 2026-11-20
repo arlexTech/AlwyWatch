@@ -767,6 +767,34 @@ impl AlwyWatch {
         .await
     }
 
+    /// Members of the signed-in account's Plex Home ("who's watching?"); one or none when the
+    /// account is not a Plex Home.
+    pub async fn plex_home_users(&self, account_token: String) -> Result<Vec<PlexHomeUser>> {
+        self.run(|c| async move {
+            Ok(PlexAuth::new(c.http.clone(), c.client.clone())
+                .home_users(&account_token)
+                .await?)
+        })
+        .await
+    }
+
+    /// Switches to a Plex Home member (`pin` when the user is protected). Returns the token to
+    /// use instead of the account token (`plex_servers`, `plex_connect`). A wrong PIN is
+    /// `Unauthorized`.
+    pub async fn plex_switch_user(
+        &self,
+        account_token: String,
+        uuid: String,
+        pin: Option<String>,
+    ) -> Result<String> {
+        self.run(|c| async move {
+            Ok(PlexAuth::new(c.http.clone(), c.client.clone())
+                .switch_home_user(&account_token, &uuid, pin.as_deref())
+                .await?)
+        })
+        .await
+    }
+
     /// Connects to one Plex server. `preferred_url` (e.g. a custom address) is tried first.
     pub async fn plex_connect(
         &self,
