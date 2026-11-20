@@ -881,3 +881,64 @@ async fn dry_run_writes_nothing_to_maintainerr_or_seerr() {
         .await;
     assert_eq!(s, StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn admin_links_a_user_to_an_existing_seerr_user_without_creating_one() {
+    // Dry run: Seerr may not be written to, yet linking an existing user works.
+    let e = env_with(true).await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(201))
+        .expect(0)
+        .mount(&e.seerr)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/user"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"results": [
+            {"id": 13, "displayName": "alex", "email": "alex@example.org"}
+        ]})))
+        .mount(&e.seerr)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/auth/me"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"id": 13, "displayName": "alex"})),
+        )
+        .mount(&e.seerr)
+        .await;
+    // Bob has no Seerr account of his own: refused until linked.
+    let (_, bob) = e.call("GET", "/v1/me", "jfsrv", "jf-bob", None).await;
+    let bob_key = bob["user_key"].as_str().unwrap().to_owned();
+    assert_eq!(
+        e.call("GET", "/v1/seerr", "jfsrv", "jf-bob", None).await.0,
+        StatusCode::FORBIDDEN
+    );
+    // Only admins see Seerr's users and link.
+    assert_eq!(
+        e.call("GET", "/v1/admin/seerr-users", "jfsrv", "jf-bob", None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (s, users) = e
+        .call("GET", "/v1/admin/seerr-users", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(
+        (s, users[0]["name"].clone()),
+        (StatusCode::OK, json!("alex"))
+    );
+    let (s, u) = e
+        .call(
+            "PUT",
+            &format!("/v1/admin/users/{bob_key}/seerr"),
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"seerr_user_id": 13})),
+        )
+        .await;
+    assert_eq!((s, u["seerr_user_id"].clone()), (StatusCode::OK, json!(13)));
+    let (s, info) = e.call("GET", "/v1/seerr", "jfsrv", "jf-bob", None).await;
+    assert_eq!(
+        (s, info["seerr_user_id"].clone()),
+        (StatusCode::OK, json!(13))
+    );
+}

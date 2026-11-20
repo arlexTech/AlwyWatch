@@ -135,6 +135,30 @@ impl Bridge {
     }
 
     /// The caller's Seerr user id, linking or creating it on first use.
+    /// Seerr's users (as the API key's admin), for linking by hand.
+    pub async fn users(&self) -> Result<Vec<keep_service::SeerrUser>, BridgeError> {
+        #[derive(Deserialize)]
+        struct Page {
+            #[serde(default)]
+            results: Vec<SeerrUserDto>,
+        }
+        let page: Page = net::send_json(self.req(Method::GET, "user?take=5000&skip=0", None))
+            .await
+            .map_err(Self::unavailable)?;
+        Ok(page
+            .results
+            .into_iter()
+            .map(|u| keep_service::SeerrUser {
+                id: u.id,
+                name: u
+                    .display_name
+                    .filter(|n| !n.is_empty())
+                    .or(u.email)
+                    .unwrap_or_else(|| format!("user {}", u.id)),
+            })
+            .collect())
+    }
+
     pub async fn link(&self, db: &Db, id: &Identity) -> Result<i64, BridgeError> {
         if let Some(u) = db.seerr_link(&id.user_key).map_err(Self::unavailable)? {
             return Ok(u);

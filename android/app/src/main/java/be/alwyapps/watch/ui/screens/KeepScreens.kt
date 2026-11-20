@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -535,12 +536,71 @@ fun KeepAdminScreen() {
     var armed by remember { mutableStateOf<Pair<Long, UInt>?>(null) }
     val items = remember { core.cachedLeavingSoon().orEmpty() }
     val collections = items.mapNotNull { i -> i.collectionId?.let { it to (i.collectionTitle ?: "Collection $it") } }.distinct()
+    // Seerr's users, to link people to the Seerr account they already have.
+    var seerrUsers by remember { mutableStateOf<List<be.alwyapps.watch.core.keep.SeerrUser>>(emptyList()) }
+    var linking by remember { mutableStateOf<AdminUser?>(null) }
     LaunchedEffect(Unit) {
         try {
             users = core.keepAdminUsers()
         } catch (e: CoreException) {
             message = e.message
         }
+        seerrUsers = runCatching { core.keepAdminSeerrUsers() }.getOrDefault(emptyList())
+    }
+    linking?.let { u ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { linking = null },
+            containerColor = be.alwyapps.watch.ui.Background,
+            title = { Text("Requests of ${u.name}") },
+            text = {
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    item {
+                        be.alwyapps.watch.ui.ListRow(
+                            "Automatic",
+                            subtitle = "Their own Seerr account (created if needed)",
+                            onClick = {
+                                linking = null
+                                scope.launch {
+                                    runCatching { core.keepAdminLinkSeerr(u.userKey, null) }.onSuccess { nu ->
+                                        users = users?.map { if (it.userKey == nu.userKey) nu else it }
+                                    }
+                                }
+                            },
+                            trailing = {
+                                if (u.seerrUserId == null) {
+                                    be.alwyapps.watch.ui
+                                        .Value("✓")
+                                }
+                            },
+                        )
+                    }
+                    items(seerrUsers.size) { i ->
+                        val su = seerrUsers[i]
+                        be.alwyapps.watch.ui.ListRow(
+                            su.name,
+                            onClick = {
+                                linking = null
+                                scope.launch {
+                                    try {
+                                        val nu = core.keepAdminLinkSeerr(u.userKey, su.id)
+                                        users = users?.map { if (it.userKey == nu.userKey) nu else it }
+                                    } catch (e: CoreException) {
+                                        message = e.message
+                                    }
+                                }
+                            },
+                            trailing = {
+                                if (u.seerrUserId == su.id) {
+                                    be.alwyapps.watch.ui
+                                        .Value("✓")
+                                }
+                            },
+                        )
+                    }
+                }
+            },
+            confirmButton = { ActionButton("Close", { linking = null }) },
+        )
     }
 
     fun update(
@@ -616,7 +676,11 @@ fun KeepAdminScreen() {
                     Column(Modifier.padding(bottom = 12.dp)) {
                         be.alwyapps.watch.ui.ListRow(
                             u.name + if (u.isAdmin) " · admin" else "",
-                            subtitle = "${u.foreverCount} kept forever",
+                            subtitle =
+                                listOf(
+                                    if (u.userKey.startsWith("plex:")) "Plex" else "Jellyfin",
+                                    "${u.foreverCount} kept forever",
+                                ).joinToString(" · "),
                             icon = be.alwyapps.watch.ui.Icons.Person,
                         )
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -630,6 +694,12 @@ fun KeepAdminScreen() {
                                     val next = listOf<UInt?>(null, 5u, 10u, 25u)
                                     update(u, r.copy(maxForever = next[(next.indexOf(r.maxForever) + 1) % next.size]))
                                 })
+                            }
+                            if (seerrUsers.isNotEmpty()) {
+                                item {
+                                    val linked = seerrUsers.firstOrNull { it.id == u.seerrUserId }?.name
+                                    ActionButton("Requests as: ${linked ?: "automatic"}", { linking = u })
+                                }
                             }
                             item {
                                 ActionButton("Max days: ${r.maxKeepDays ?: "∞"}", {

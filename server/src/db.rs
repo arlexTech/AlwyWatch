@@ -240,6 +240,7 @@ impl Db {
                 Ok(AdminUser {
                     rights: self.rights(&k)?,
                     forever_count: self.forever_count(&k)?,
+                    seerr_user_id: self.seerr_link(&k)?,
                     user_key: k,
                     name,
                     server_id,

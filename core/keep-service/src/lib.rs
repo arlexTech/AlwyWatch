@@ -175,6 +175,24 @@ record! {
         pub rights: Rights,
         pub forever_count: u32,
         pub last_seen: i64,
+        /// The Seerr user their requests go to (linked automatically or by an admin).
+        #[serde(default)]
+        pub seerr_user_id: Option<i64>,
+    }
+}
+
+record! {
+    /// A Seerr user, for admins linking AlwyWatch users to existing Seerr accounts.
+    pub struct SeerrUser {
+        pub id: i64,
+        pub name: String,
+    }
+}
+
+record! {
+    /// `PUT /v1/admin/users/{user}/seerr`: link to this Seerr user, or unlink (None).
+    pub struct SeerrLinkRequest {
+        pub seerr_user_id: Option<i64>,
     }
 }
 
@@ -353,6 +371,27 @@ impl KeepClient {
 
     pub async fn admin_users(&self) -> Result<Vec<AdminUser>> {
         net::send_json(self.req(Method::GET, "/admin/users")).await
+    }
+
+    /// Seerr's users (admins), to link AlwyWatch users to them.
+    pub async fn admin_seerr_users(&self) -> Result<Vec<SeerrUser>> {
+        net::send_json(self.req(Method::GET, "/admin/seerr-users")).await
+    }
+
+    /// Links a user's requests to an existing Seerr user (None: back to automatic).
+    pub async fn admin_link_seerr(
+        &self,
+        user_key: &str,
+        seerr_user_id: Option<i64>,
+    ) -> Result<AdminUser> {
+        net::send_json(
+            self.req(
+                Method::PUT,
+                &format!("/admin/users/{}/seerr", net::percent_encode(user_key)),
+            )
+            .json(&SeerrLinkRequest { seerr_user_id }),
+        )
+        .await
     }
 
     pub async fn admin_set_rights(&self, user_key: &str, rights: &Rights) -> Result<AdminUser> {

@@ -27,6 +27,8 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/votes/{key}", put(vote).delete(unvote))
         .route("/v1/admin/users", get(admin_users))
         .route("/v1/admin/users/{user}/rights", put(admin_rights))
+        .route("/v1/admin/users/{user}/seerr", put(admin_link_seerr))
+        .route("/v1/admin/seerr-users", get(admin_seerr_users))
         .route(
             "/v1/admin/collections/{id}/countdown",
             post(admin_countdown),
@@ -257,6 +259,47 @@ async fn unvote(
 
 async fn admin_users(State(s): State<Shared>, Admin(_): Admin) -> Result<impl IntoResponse, Error> {
     Ok(Json(s.db.users().map_err(internal)?))
+}
+
+async fn admin_seerr_users(
+    State(s): State<Shared>,
+    Admin(_): Admin,
+) -> Result<impl IntoResponse, Error> {
+    let bridge = s
+        .seerr
+        .as_ref()
+        .ok_or(BridgeError::Disabled)
+        .map_err(bridge_err)?;
+    Ok(Json(bridge.users().await.map_err(bridge_err)?))
+}
+
+/// Links a user's requests to an existing Seerr user (the person already has one), or back to
+/// automatic linking. Only the AlwyWatch database changes: nothing is written to Seerr.
+async fn admin_link_seerr(
+    State(s): State<Shared>,
+    Admin(admin): Admin,
+    Path(user): Path<String>,
+    Json(r): Json<keep_service::SeerrLinkRequest>,
+) -> Result<impl IntoResponse, Error> {
+    if !s.db.user_exists(&user).map_err(internal)? {
+        return Err(Error(StatusCode::NOT_FOUND, "unknown user".into()));
+    }
+    match r.seerr_user_id {
+        Some(id) => s.db.set_seerr_link(&user, id, false).map_err(internal)?,
+        None => s.db.forget_seerr_link(&user).map_err(internal)?,
+    }
+    s.db.log(
+        &admin.user_key,
+        "seerr-link",
+        &format!("{user} -> {:?} (by admin)", r.seerr_user_id),
+    );
+    let u =
+        s.db.users()
+            .map_err(internal)?
+            .into_iter()
+            .find(|u| u.user_key == user)
+            .ok_or_else(|| internal("vanished"))?;
+    Ok(Json(u))
 }
 
 async fn admin_rights(

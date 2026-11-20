@@ -471,7 +471,10 @@ fn seerr_through_the_keep_bridge() {
         .unwrap();
     assert_eq!(conn.bridge_account.as_deref(), Some(s.account.id.as_str()));
     app.seerr_activate_bridge("tok".into()).unwrap();
-    assert_eq!(env.block(app.seerr_search("the matrix".into())).unwrap()[0].tmdb_id, 603);
+    assert_eq!(
+        env.block(app.seerr_search("the matrix".into())).unwrap()[0].tmdb_id,
+        603
+    );
     // Switching the synced account (here the same one again) keeps Seerr through the bridge.
     env.block(app.keep_connect(keep.uri(), s.account.id.clone(), "tok".into()))
         .unwrap();
