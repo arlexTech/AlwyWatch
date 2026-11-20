@@ -154,107 +154,26 @@ internal fun preferredFirst(
 /** Which account each item (and library) of a combined home comes from. */
 private val LocalOwners = be.alwyapps.watch.ui.LocalItemOwners
 
-/**
- * The same title on two servers: same TMDB/IMDB/TVDB id; episodes by show, season and number.
- */
+/** The same title on two servers (rules in the core, shared with the desktop app). */
 internal fun Item.sameAs(): String =
-    when (kind) {
-        ItemKind.EPISODE -> "ep:${seriesTitle?.lowercase()}:$seasonNumber:$episodeNumber"
-        // Shows by name: rails build some from a new episode, without the show's ids.
-        ItemKind.SERIES -> "show:${title.lowercase().filter { it.isLetterOrDigit() }}"
-        else ->
-            providerIds.tmdb?.let { "tmdb:$kind:$it" }
-                ?: providerIds.imdb?.let { "imdb:$it" }
-                ?: providerIds.tvdb?.let { "tvdb:$kind:$it" }
-                ?: "title:$kind:${title.lowercase()}:$year"
-    }
+    be.alwyapps.watch.core
+        .sameAs(this)
 
 /**
- * Continue watching across servers: all by recency (the core dates every entry), one per show;
- * a title on several servers comes from the preferred one.
- */
-private fun mergeByRecency(
-    homes: List<Pair<String, Home>>,
-    owners: MutableMap<String, String>,
-): List<Item> {
-    val preferredCopy = mutableMapOf<String, Pair<String, Item>>()
-    for ((a, h) in homes) for (i in h.continueWatching) preferredCopy.putIfAbsent(i.sameAs(), a to i)
-    val shows = mutableSetOf<String>()
-    return homes
-        .flatMap { (_, h) -> h.continueWatching }
-        .sortedByDescending { it.user.lastPlayedAt ?: 0L }
-        .filter { shows.add(if (it.kind == ItemKind.EPISODE) "show:${it.seriesTitle?.lowercase()}" else it.sameAs()) }
-        .map { i ->
-            val (owner, chosen) = preferredCopy.getValue(i.sameAs())
-            owners[chosen.id] = owner
-            chosen
-        }
-}
-
-/**
- * Several homes as one: rails of the same kind merged (alternating servers, preferred first),
- * a title on several servers kept once (from the first, preferred, server). Returns the home
- * and the owner account of every item and library.
+ * Several homes as one (the core merges: duplicates from the preferred, first, server; one
+ * continue-watching row by recency). Returns the home and the owner account of every item and
+ * library.
  */
 private fun mergeHomes(homes: List<Pair<String, Home>>): Pair<Home, Map<String, String>> {
-    val owners = mutableMapOf<String, String>()
-
-    fun merge(lists: List<Pair<String, List<Item>>>): List<Item> {
-        val seen = mutableSetOf<String>()
-        val out = mutableListOf<Item>()
-        val max = lists.maxOfOrNull { it.second.size } ?: 0
-        // Every server's copies first, so the preferred one wins duplicates.
-        val firstOwner = mutableMapOf<String, Pair<String, Item>>()
-        for ((a, items) in lists) for (i in items) firstOwner.putIfAbsent(i.sameAs(), a to i)
-        for (n in 0 until max) {
-            for ((_, items) in lists) {
-                val i = items.getOrNull(n) ?: continue
-                val k = i.sameAs()
-                if (!seen.add(k)) continue
-                val (owner, chosen) = firstOwner.getValue(k)
-                owners[chosen.id] = owner
-                out += chosen
-            }
-        }
-        return out
-    }
-    if (homes.size == 1) {
-        val (a, h) = homes.single()
-        (h.continueWatching + h.latest.flatMap { it.items }).forEach { owners[it.id] = a }
-        h.libraries.forEach { owners[it.id] = a }
-        return h to owners
-    }
-    val first = homes.first().second
-    // One rail per library kind (Movies, Shows), titled after the preferred server's.
-    val kinds = homes.flatMap { (_, h) -> h.latest.map { it.library.kind } }.distinct()
-    val latest =
-        kinds.flatMap { kind ->
-            if (kind == LibraryKind.OTHER) {
-                homes.flatMap { (a, h) -> h.latest.filter { it.library.kind == kind }.onEach { r -> r.items.forEach { owners[it.id] = a } } }
-            } else {
-                val rails = homes.flatMap { (a, h) -> h.latest.filter { it.library.kind == kind }.map { a to it } }
-                val (libOwner, lead) = rails.first()
-                owners[lead.library.id] = libOwner
-                listOf(lead.copy(items = merge(rails.map { (a, r) -> a to r.items })))
-            }
-        }
-    // Library buttons: the preferred server's, plus kinds only another server has.
-    val libraries = mutableListOf<be.alwyapps.watch.core.media.MediaLibrary>()
-    for ((a, h) in homes) {
-        for (lib in h.libraries) {
-            if (libraries.none { it.kind == lib.kind && lib.kind != LibraryKind.OTHER }) {
-                libraries += lib
-                owners[lib.id] = a
-            }
-        }
-    }
-    // One server's "continue watching" can be another's "next up": show it once, in progress.
-    return first.copy(
-        continueWatching = mergeByRecency(homes, owners),
-        libraries = libraries,
-        latest = latest,
-        fetchedAt = homes.minOf { it.second.fetchedAt },
-    ) to owners
+    val m =
+        be.alwyapps.watch.core
+            .mergeHomes(
+                homes.map { (a, h) ->
+                    be.alwyapps.watch.core
+                        .AccountHome(a, h)
+                },
+            )
+    return m.home to m.owners
 }
 
 @Composable

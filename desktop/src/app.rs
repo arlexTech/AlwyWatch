@@ -58,6 +58,9 @@ struct State {
     rail_models: Vec<Rc<VecModel<Card>>>,
     /// Item metadata for everything currently on screen, by id (for play/prefetch/next episode).
     items: HashMap<String, Item>,
+    /// Account each item/library id comes from (several servers on one home). Ids not listed
+    /// belong to the current account.
+    owners: HashMap<String, String>,
     jellyfin_url: String,
     plex_token: String,
     plex_servers: Vec<PlexServerResource>,
@@ -155,6 +158,7 @@ impl App {
                 episodes_model: Rc::new(VecModel::default()),
                 rail_models: vec![],
                 items: HashMap::new(),
+                owners: HashMap::new(),
                 jellyfin_url: String::new(),
                 plex_token: String::new(),
                 plex_servers: vec![],
@@ -289,7 +293,7 @@ impl App {
     }
 
     fn download(self: &Rc<Self>, id: String) {
-        let Some(account) = self.account() else {
+        let Some(account) = self.account_of(&id) else {
             return;
         };
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
@@ -1296,6 +1300,21 @@ impl App {
         self.state.borrow().account.clone()
     }
 
+    /// The account an item (or library) belongs to: its server on a combined home, else the
+    /// current account.
+    fn account_of(&self, id: &str) -> Option<String> {
+        let owner = self.state.borrow().owners.get(id).cloned();
+        owner.or_else(|| self.account())
+    }
+
+    /// Items loaded through `account` (episodes, seasons, library pages) belong to it.
+    fn own(&self, items: &[Item], account: &str) {
+        let mut st = self.state.borrow_mut();
+        for i in items {
+            st.owners.insert(i.id.clone(), account.to_owned());
+        }
+    }
+
     fn set_error(&self, e: Option<CoreError>) {
         self.ui()
             .set_error(sstr(e.map(|e| e.to_string()).unwrap_or_default()));
@@ -1408,7 +1427,7 @@ impl App {
         px: u32,
         apply: impl Fn(&Rc<Self>, Image) + 'static,
     ) {
-        let Some(account) = self.account() else {
+        let Some(account) = self.account_of(&item.id) else {
             return;
         };
         let Some(r) = image_ref(item, kind).or_else(|| image_ref(item, ImageKind::Primary)) else {
@@ -1497,7 +1516,7 @@ impl App {
             let row = offset + n;
             let mut card = self.card(i);
             let key = image_ref(i, kind)
-                .map(|r| format!("{}|{}|{px}", self.account().unwrap_or_default(), r.path));
+                .map(|r| format!("{}|{}|{px}", self.account_of(&i.id).unwrap_or_default(), r.path));
             if let Some(img) = key.and_then(|k| self.images.borrow().get(&k).cloned()) {
                 card.image = img;
             }
@@ -1524,10 +1543,14 @@ impl App {
 
     fn render_home(self: &Rc<Self>, home: &Home) {
         let ui = self.ui();
-        let mut rails: Vec<(String, Vec<Item>)> = vec![
-            ("Continue watching".into(), home.resume.clone()),
-            ("Next up".into(), home.next_up.clone()),
-        ];
+        // One row like Plex: in progress and next episodes, most recent first (older caches
+        // without the merged list fall back to building it here).
+        let cw = if home.continue_watching.is_empty() {
+            alwywatch_core::continue_watching(&home.resume, &home.next_up)
+        } else {
+            home.continue_watching.clone()
+        };
+        let mut rails: Vec<(String, Vec<Item>)> = vec![("Continue watching".into(), cw)];
         rails.extend(
             home.latest
                 .iter()
@@ -1537,7 +1560,7 @@ impl App {
         let models: Vec<Rc<VecModel<Card>>> =
             rails.iter().map(|_| Rc::new(VecModel::default())).collect();
         // What the user is watching: landscape stills; the rest: posters.
-        let landscape = |t: &str| t == "Continue watching" || t == "Next up";
+        let landscape = |t: &str| t == "Continue watching";
         for ((t, items), m) in rails.iter().zip(&models) {
             if landscape(t) {
                 self.fill(m, items, ImageKind::Backdrop, 640, 0);
@@ -1632,24 +1655,81 @@ impl App {
         });
     }
 
-    fn load_home(self: &Rc<Self>) {
-        let Some(account) = self.account() else {
-            return;
+    /// Accounts shown on the home: every signed-in one ("all servers together", the default,
+    /// same setting as Android), the preferred one first; else only the current account.
+    fn home_accounts(&self) -> Vec<String> {
+        let Some(current) = self.account() else {
+            return vec![];
         };
-        match self.core.cached_home(account.clone()) {
-            Ok(Some(h)) => self.render_home(&h),
-            _ => self.ui().set_status("Loading…".into()),
+        let setting = |k: &str| self.core.get_setting(k.to_owned()).ok().flatten();
+        if setting("ui.combined").as_deref() == Some("0") {
+            return vec![current];
+        }
+        let preferred = setting("ui.preferred_account").unwrap_or(current);
+        let mut all: Vec<String> = self
+            .core
+            .accounts()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|a| a.id)
+            .collect();
+        all.sort_by_key(|a| *a != preferred);
+        all
+    }
+
+    fn render_merged(self: &Rc<Self>, homes: Vec<AccountHome>) {
+        let merged = merge_homes(homes);
+        self.state.borrow_mut().owners.extend(merged.owners);
+        self.render_home(&merged.home);
+    }
+
+    fn load_home(self: &Rc<Self>) {
+        let accounts = self.home_accounts();
+        if accounts.is_empty() {
+            return;
+        }
+        let cached: Vec<AccountHome> = accounts
+            .iter()
+            .filter_map(|a| {
+                let home = self.core.cached_home(a.clone()).ok().flatten()?;
+                Some(AccountHome {
+                    account_id: a.clone(),
+                    home,
+                })
+            })
+            .collect();
+        if cached.is_empty() {
+            self.ui().set_status("Loading…".into());
+        } else {
+            self.render_merged(cached.clone());
         }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
-            let r = core.refresh_home(account, false).await;
+            let mut fresh = Vec::new();
+            let mut error = None;
+            for a in accounts {
+                match core.refresh_home(a.clone(), false).await {
+                    Ok(home) => fresh.push(AccountHome {
+                        account_id: a,
+                        home,
+                    }),
+                    // A server that does not answer keeps its cached rails.
+                    Err(e) => {
+                        if let Some(c) = cached.iter().find(|c| c.account_id == a) {
+                            fresh.push(c.clone());
+                        }
+                        error = Some(e);
+                    }
+                }
+            }
             let Some(this) = this.upgrade() else { return };
             if this.ui().get_page() != Page::Home {
                 return;
             }
-            match r {
-                Ok(h) => this.render_home(&h),
-                Err(e) => this.set_error(Some(e)),
+            if fresh.is_empty() {
+                this.set_error(error);
+            } else {
+                this.render_merged(fresh);
             }
         })
         .ok();
@@ -1690,7 +1770,7 @@ impl App {
     }
 
     fn open_library(self: &Rc<Self>, library: String, sort: SortBy) {
-        let Some(account) = self.account() else {
+        let Some(account) = self.account_of(&library) else {
             return;
         };
         self.render_sorts(sort);
@@ -1703,6 +1783,7 @@ impl App {
             .core
             .cached_items(account.clone(), Self::query(&library, sort, loaded))
         {
+            self.own(&p.page.items, &account);
             self.fill(
                 &model,
                 &p.page.items,
@@ -1727,9 +1808,6 @@ impl App {
     }
 
     fn load_page(self: &Rc<Self>, start: u32) {
-        let Some(account) = self.account() else {
-            return;
-        };
         let (library, sort) = {
             let mut st = self.state.borrow_mut();
             let Some(g) = st.grid.as_mut() else { return };
@@ -1739,15 +1817,22 @@ impl App {
             g.loading = true;
             (g.library.clone(), g.sort)
         };
+        let Some(account) = self.account_of(&library) else {
+            if let Some(g) = self.state.borrow_mut().grid.as_mut() {
+                g.loading = false;
+            }
+            return;
+        };
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             let r = core
-                .refresh_items(account, Self::query(&library, sort, start), false)
+                .refresh_items(account.clone(), Self::query(&library, sort, start), false)
                 .await;
             let Some(this) = this.upgrade() else { return };
             let model = this.state.borrow().grid_model.clone();
             match r {
                 Ok(p) => {
+                    this.own(&p.page.items, &account);
                     let same = this
                         .state
                         .borrow()
@@ -1914,7 +1999,7 @@ impl App {
     }
 
     fn load_detail(self: &Rc<Self>, id: String) {
-        let Some(account) = self.account() else {
+        let Some(account) = self.account_of(&id) else {
             return;
         };
         {
@@ -1977,21 +2062,23 @@ impl App {
     }
 
     fn load_seasons(self: &Rc<Self>, series: String) {
-        let Some(account) = self.account() else {
+        let Some(account) = self.account_of(&series) else {
             return;
         };
         self.state.borrow_mut().series = Some(series.clone());
         if let Ok(Some(r)) = self.core.cached_seasons(account.clone(), series.clone()) {
+            self.own(&r.items, &account);
             self.render_seasons(&r.items);
         }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
-            let r = core.refresh_seasons(account, series.clone(), false).await;
+            let r = core.refresh_seasons(account.clone(), series.clone(), false).await;
             let Some(this) = this.upgrade() else { return };
             if this.state.borrow().series.as_deref() != Some(&series) {
                 return;
             }
             if let Ok(r) = r {
+                this.own(&r.items, &account);
                 this.render_seasons(&r.items);
             }
         })
@@ -1999,10 +2086,10 @@ impl App {
     }
 
     fn select_season(self: &Rc<Self>, season: String) {
-        let Some(account) = self.account() else {
+        let Some(series) = self.state.borrow().series.clone() else {
             return;
         };
-        let Some(series) = self.state.borrow().series.clone() else {
+        let Some(account) = self.account_of(&series) else {
             return;
         };
         self.state.borrow_mut().season = Some(season.clone());
@@ -2016,7 +2103,9 @@ impl App {
         }
         let model = self.state.borrow().episodes_model.clone();
         model.set_vec(vec![]);
-        let show = |this: &Rc<Self>, eps: &[Item]| {
+        let acct = account.clone();
+        let show = move |this: &Rc<Self>, eps: &[Item]| {
+            this.own(eps, &acct);
             let model = this.state.borrow().episodes_model.clone();
             this.fill(&model, eps, ImageKind::Primary, EPISODE_PX, 0);
             for (n, e) in eps.iter().enumerate() {
@@ -2102,7 +2191,7 @@ impl App {
     }
 
     fn prefetch(&self, id: &str) {
-        let Some(account) = self.account() else {
+        let Some(account) = self.account_of(id) else {
             return;
         };
         let playable = self
@@ -2126,7 +2215,7 @@ impl App {
     }
 
     fn play(self: &Rc<Self>, id: String, from_start: bool) {
-        let Some(account) = self.account() else {
+        let Some(account) = self.account_of(&id) else {
             return;
         };
         self.play_for(account, id, from_start);
@@ -2275,7 +2364,7 @@ impl App {
     }
 
     fn toggle_played(self: &Rc<Self>, id: String) {
-        let Some(account) = self.account() else {
+        let Some(account) = self.account_of(&id) else {
             return;
         };
         let played = self
