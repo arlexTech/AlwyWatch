@@ -1445,7 +1445,7 @@ impl App {
                 self.fill(m, items, ImageKind::Primary, POSTER_PX, 0);
             }
         }
-        let rail_vec: Vec<Rail> = rails
+        let mut rail_vec: Vec<Rail> = rails
             .iter()
             .zip(&models)
             .map(|((t, _), m)| Rail {
@@ -1454,6 +1454,54 @@ impl App {
                 landscape: landscape(t),
             })
             .collect();
+        // Leaving soon (from the keep service cache), after what the user is watching.
+        if self.core.keep_active()
+            && let Ok(Some(list)) = self.core.cached_leaving_soon()
+        {
+            let leaving: Vec<&LeavingItem> = list
+                .iter()
+                .filter(|i| matches!(i.protection, Protection::None | Protection::Extended))
+                .take(15)
+                .collect();
+            if !leaving.is_empty() {
+                let model = Rc::new(VecModel::from(
+                    leaving
+                        .iter()
+                        .map(|i| Card {
+                            id: sstr(format!("leaving:{}", i.key)),
+                            title: sstr(&i.title),
+                            subtitle: Self::leaving_row(i).when,
+                            image: Image::default(),
+                            progress: 0.0,
+                            played: false,
+                        })
+                        .collect::<Vec<_>>(),
+                ));
+                for (row, i) in leaving.iter().enumerate() {
+                    let Some(url) = i.poster_url.clone() else {
+                        continue;
+                    };
+                    let m = Rc::downgrade(&model);
+                    self.load_url_image(url, move |_, img| {
+                        if let Some(m) = m.upgrade()
+                            && let Some(mut c) = m.row_data(row)
+                        {
+                            c.image = img;
+                            m.set_row_data(row, c);
+                        }
+                    });
+                }
+                let at = rail_vec.iter().take_while(|r| r.landscape).count();
+                rail_vec.insert(
+                    at,
+                    Rail {
+                        title: "Leaving soon".into(),
+                        items: ModelRc::from(model),
+                        landscape: false,
+                    },
+                );
+            }
+        }
         // Hero: the first title with artwork (then whatever the user points at).
         if let Some(first) = rails
             .iter()
@@ -2532,7 +2580,13 @@ impl App {
             ui.window()
                 .dispatch_event(slint::platform::WindowEvent::KeyReleased { text });
         });
-        on!(on_open_item, |a, id| a.navigate(Route::Detail(id.into())));
+        on!(on_open_item, |a, id| {
+            if id.starts_with("leaving:") {
+                a.navigate(Route::Leaving);
+            } else {
+                a.navigate(Route::Detail(id.into()));
+            }
+        });
         on!(on_prefetch, |a, id| {
             a.prefetch(&id);
             if a.ui().get_page() == Page::Home {
