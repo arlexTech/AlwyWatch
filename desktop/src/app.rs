@@ -35,15 +35,36 @@ enum Route {
     Triage,
     KeepAdmin,
     Library(String, String),
+    /// A library narrowed to a genre or a collection: library, title, genre, collection.
+    Filtered(String, String, Option<String>, Option<String>),
     Detail(String),
     Search,
     Settings,
     Add,
 }
 
-struct GridState {
+/// What a poster grid shows: a library (sorted), or one of its genres or collections.
+#[derive(Clone, PartialEq)]
+struct GridKey {
     library: String,
     sort: SortBy,
+    genre: Option<String>,
+    collection: Option<String>,
+}
+
+impl GridKey {
+    fn library(library: String, sort: SortBy) -> Self {
+        GridKey {
+            library,
+            sort,
+            genre: None,
+            collection: None,
+        }
+    }
+}
+
+struct GridState {
+    key: GridKey,
     loaded: u32,
     total: u32,
     loading: bool,
@@ -102,6 +123,9 @@ pub struct App {
 fn sstr(s: impl AsRef<str>) -> SharedString {
     SharedString::from(s.as_ref())
 }
+
+/// Tabs of a library page, the first by default.
+const LIBRARY_TABS: [&str; 4] = ["recommended", "browse", "collections", "categories"];
 
 /// "plex" or "jellyfin": the server behind an account id, for the card marks.
 fn server_kind(account: &str) -> &'static str {
@@ -1376,7 +1400,24 @@ impl App {
                 ui.set_page(Page::Library);
                 ui.set_library_id(sstr(&id));
                 ui.set_grid_title(sstr(&title));
-                self.open_library(id, SortBy::Title);
+                let tab = self
+                    .account_of(&id)
+                    .and_then(|a| self.core.get_setting(Self::tab_key(&a, &id)).ok().flatten())
+                    .filter(|t| LIBRARY_TABS.contains(&t.as_str()))
+                    .unwrap_or_else(|| LIBRARY_TABS[0].to_owned());
+                self.show_library_tab(&id, &tab);
+            }
+            Route::Filtered(library, title, genre, collection) => {
+                ui.set_page(Page::Library);
+                ui.set_library_id(sstr(&library));
+                ui.set_grid_title(sstr(&title));
+                ui.set_library_tab(SharedString::new());
+                self.open_grid(GridKey {
+                    library,
+                    sort: SortBy::Title,
+                    genre,
+                    collection,
+                });
             }
             Route::Detail(id) => {
                 ui.set_page(Page::Detail);
@@ -1762,17 +1803,184 @@ impl App {
 
     // ----- library grid ---------------------------------------------------------------------
 
-    fn query(library: &str, sort: SortBy, start: u32) -> ItemQuery {
+    fn tab_key(account: &str, library: &str) -> String {
+        format!("ui.libtab.{account}.{library}")
+    }
+
+    /// A library like Plex: Recommended (the home's rails, this library's kind only), Browse
+    /// (the whole library, sortable), Collections and Categories (genres). The tab is remembered.
+    fn show_library_tab(self: &Rc<Self>, library: &str, tab: &str) {
+        let Some(account) = self.account_of(library) else {
+            return;
+        };
+        let ui = self.ui();
+        ui.set_library_tab(sstr(tab));
+        let _ = self
+            .core
+            .set_setting(Self::tab_key(&account, library), tab.to_owned());
+        // Only Browse pages through the grid.
+        self.state.borrow_mut().grid = None;
+        self.state.borrow().grid_model.set_vec(vec![]);
+        match tab {
+            "browse" => self.open_grid(GridKey::library(library.to_owned(), SortBy::Title)),
+            "collections" => self.load_collections(account, library.to_owned()),
+            "categories" => self.load_genres(account, library.to_owned()),
+            _ => self.load_recommended(account, library.to_owned()),
+        }
+    }
+
+    /// The home's rails of the library's server, keeping this library's kind only.
+    fn load_recommended(self: &Rc<Self>, account: String, library: String) {
+        let (acct, lib) = (account.clone(), library.clone());
+        let render = move |this: &Rc<Self>, home: &Home| {
+            let (account, library) = (&acct, &lib);
+            let kind = home
+                .libraries
+                .iter()
+                .find(|l| &l.id == library)
+                .map(|l| l.kind);
+            let keep = |i: &Item| match kind {
+                Some(LibraryKind::Movies) => i.kind == ItemKind::Movie,
+                Some(LibraryKind::Shows) => {
+                    matches!(i.kind, ItemKind::Episode | ItemKind::Series)
+                }
+                _ => true,
+            };
+            let cw: Vec<Item> = home
+                .continue_watching
+                .iter()
+                .filter(|i| keep(i))
+                .cloned()
+                .collect();
+            let added = home
+                .latest
+                .iter()
+                .find(|r| &r.library.id == library)
+                .map(|r| r.items.clone())
+                .unwrap_or_default();
+            this.own(&cw, account);
+            this.own(&added, account);
+            let mut rails = vec![];
+            for (title, items, landscape) in [
+                ("Continue watching", cw, true),
+                ("Recently added", added, false),
+            ] {
+                if items.is_empty() {
+                    continue;
+                }
+                let m = Rc::new(VecModel::default());
+                if landscape {
+                    this.fill(&m, &items, ImageKind::Backdrop, 640, 0, false);
+                } else {
+                    this.fill(&m, &items, ImageKind::Primary, POSTER_PX, 0, false);
+                }
+                rails.push(Rail {
+                    title: sstr(title),
+                    items: ModelRc::from(m),
+                    landscape,
+                });
+            }
+            this.ui().set_lib_rails(ModelRc::new(VecModel::from(rails)));
+        };
+        self.ui().set_lib_rails(ModelRc::default());
+        if let Ok(Some(h)) = self.core.cached_home(account.clone()) {
+            render(self, &h);
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.refresh_home(account.clone(), false).await;
+            let Some(this) = this.upgrade() else { return };
+            if this.ui().get_library_tab() != "recommended" {
+                return;
+            }
+            match r {
+                Ok(h) => render(&this, &h),
+                Err(e) => this.set_error(Some(e)),
+            }
+        })
+        .ok();
+    }
+
+    /// A library's collections as posters; one opens its titles.
+    fn load_collections(self: &Rc<Self>, account: String, library: String) {
+        let acct = account.clone();
+        let render = move |this: &Rc<Self>, cols: &[Item]| {
+            this.own(cols, &acct);
+            let model = this.state.borrow().grid_model.clone();
+            model.set_vec(vec![]);
+            this.fill(&model, cols, ImageKind::Primary, POSTER_PX, 0, false);
+            this.ui().set_status(sstr(if cols.is_empty() {
+                "No collections in this library."
+            } else {
+                ""
+            }));
+        };
+        if let Some(c) = self
+            .core
+            .cached_collections(account.clone(), library.clone())
+        {
+            render(self, &c);
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core
+                .refresh_collections(account.clone(), library.clone(), false)
+                .await;
+            let Some(this) = this.upgrade() else { return };
+            if this.ui().get_library_tab() != "collections" {
+                return;
+            }
+            match r {
+                Ok(c) => render(&this, &c),
+                Err(e) => this.set_error(Some(e)),
+            }
+        })
+        .ok();
+    }
+
+    /// A library's genres; one opens the library narrowed to it.
+    fn load_genres(self: &Rc<Self>, account: String, library: String) {
+        let render = |this: &Rc<Self>, genres: &[Genre]| {
+            let rows: Vec<NamedId> = genres
+                .iter()
+                .map(|g| NamedId {
+                    id: sstr(&g.id),
+                    title: sstr(&g.name),
+                    selected: false,
+                })
+                .collect();
+            this.ui().set_genres(ModelRc::new(VecModel::from(rows)));
+        };
+        self.ui().set_genres(ModelRc::default());
+        if let Some(g) = self.core.cached_genres(account.clone(), library.clone()) {
+            render(self, &g);
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.refresh_genres(account, library, false).await;
+            let Some(this) = this.upgrade() else { return };
+            if this.ui().get_library_tab() != "categories" {
+                return;
+            }
+            match r {
+                Ok(g) => render(&this, &g),
+                Err(e) => this.set_error(Some(e)),
+            }
+        })
+        .ok();
+    }
+
+    fn query(k: &GridKey, start: u32) -> ItemQuery {
         ItemQuery {
-            library_id: Some(library.to_owned()),
+            library_id: Some(k.library.clone()),
             start,
             limit: PAGE,
-            sort_by: sort,
-            descending: sort != SortBy::Title,
+            sort_by: k.sort,
+            descending: k.sort != SortBy::Title,
             unplayed_only: false,
             search: None,
-            genre_id: None,
-            collection_id: None,
+            genre_id: k.genre.clone(),
+            collection_id: k.collection.clone(),
         }
     }
 
@@ -1794,11 +2002,16 @@ impl App {
         )));
     }
 
-    fn open_library(self: &Rc<Self>, library: String, sort: SortBy) {
-        let Some(account) = self.account_of(&library) else {
+    fn open_grid(self: &Rc<Self>, key: GridKey) {
+        let Some(account) = self.account_of(&key.library) else {
             return;
         };
-        self.render_sorts(sort);
+        // A collection keeps its own order (saga order); libraries and genres sort.
+        if key.collection.is_none() {
+            self.render_sorts(key.sort);
+        } else {
+            self.ui().set_sorts(ModelRc::default());
+        }
         let model = self.state.borrow().grid_model.clone();
         model.set_vec(vec![]);
         // Every cached page at once: the grid appears complete instantly.
@@ -1806,7 +2019,7 @@ impl App {
         let mut total = 0u32;
         while let Ok(Some(p)) = self
             .core
-            .cached_items(account.clone(), Self::query(&library, sort, loaded))
+            .cached_items(account.clone(), Self::query(&key, loaded))
         {
             self.own(&p.page.items, &account);
             self.fill(
@@ -1824,8 +2037,7 @@ impl App {
             }
         }
         self.state.borrow_mut().grid = Some(GridState {
-            library,
-            sort,
+            key,
             loaded,
             total,
             loading: false,
@@ -1834,16 +2046,16 @@ impl App {
     }
 
     fn load_page(self: &Rc<Self>, start: u32) {
-        let (library, sort) = {
+        let key = {
             let mut st = self.state.borrow_mut();
             let Some(g) = st.grid.as_mut() else { return };
             if g.loading {
                 return;
             }
             g.loading = true;
-            (g.library.clone(), g.sort)
+            g.key.clone()
         };
-        let Some(account) = self.account_of(&library) else {
+        let Some(account) = self.account_of(&key.library) else {
             if let Some(g) = self.state.borrow_mut().grid.as_mut() {
                 g.loading = false;
             }
@@ -1852,7 +2064,7 @@ impl App {
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             let r = core
-                .refresh_items(account.clone(), Self::query(&library, sort, start), false)
+                .refresh_items(account.clone(), Self::query(&key, start), false)
                 .await;
             let Some(this) = this.upgrade() else { return };
             let model = this.state.borrow().grid_model.clone();
@@ -1864,7 +2076,7 @@ impl App {
                         .borrow()
                         .grid
                         .as_ref()
-                        .is_some_and(|g| g.library == library && g.sort == sort);
+                        .is_some_and(|g| g.key == key);
                     if same {
                         this.fill(
                             &model,
@@ -2925,6 +3137,25 @@ impl App {
         ]);
     }
 
+    /// Test hook used by headless screenshots: the made-up home's Movies library on `tab`.
+    pub fn test_library(self: &Rc<Self>, tab: &str) {
+        self.navigate(Route::Library("pl".into(), "Movies".into()));
+        self.show_library_tab("pl", tab);
+        if tab == "categories" {
+            let names = ["Action", "Comedy", "Drama", "Science Fiction", "Thriller"];
+            self.ui().set_genres(ModelRc::new(VecModel::from(
+                names
+                    .iter()
+                    .map(|n| NamedId {
+                        id: sstr(n),
+                        title: sstr(n),
+                        selected: false,
+                    })
+                    .collect::<Vec<_>>(),
+            )));
+        }
+    }
+
     /// Test hook used by headless screenshots.
     pub fn test_seerr(self: &Rc<Self>, url: String) {
         self.navigate(Route::Settings);
@@ -2966,8 +3197,18 @@ impl App {
                 .dispatch_event(slint::platform::WindowEvent::KeyReleased { text });
         });
         on!(on_open_item, |a, id| {
+            let collection = a
+                .state
+                .borrow()
+                .items
+                .get(id.as_str())
+                .filter(|i| i.kind == ItemKind::Collection)
+                .map(|i| i.title.clone());
             if id.starts_with("leaving:") {
                 a.navigate(Route::Leaving);
+            } else if let Some(title) = collection {
+                let library = a.ui().get_library_id().to_string();
+                a.navigate(Route::Filtered(library, title, None, Some(id.into())));
             } else {
                 a.navigate(Route::Detail(id.into()));
             }
@@ -2989,12 +3230,26 @@ impl App {
                 "released" => SortBy::ReleaseDate,
                 _ => SortBy::Title,
             };
-            let lib = a.state.borrow().grid.as_ref().map(|g| g.library.clone());
-            if let Some(lib) = lib {
-                a.open_library(lib, sort);
+            let key = a.state.borrow().grid.as_ref().map(|g| g.key.clone());
+            if let Some(key) = key {
+                a.open_grid(GridKey { sort, ..key });
             }
         });
         on!(on_grid_scrolled, |a, f| a.grid_scrolled(f));
+        on!(on_library_tab_chosen, |a, tab| {
+            let library = a.ui().get_library_id().to_string();
+            a.show_library_tab(&library, &tab);
+        });
+        on!(on_open_genre, |a, id, name| {
+            let ui = a.ui();
+            let (library, title) = (ui.get_library_id().to_string(), ui.get_grid_title());
+            a.navigate(Route::Filtered(
+                library,
+                format!("{name} · {title}"),
+                Some(id.into()),
+                None,
+            ));
+        });
         on!(on_play, |a, id, from_start| a.play(id.into(), from_start));
         on!(on_toggle_played, |a, id| a.toggle_played(id.into()));
         on!(on_select_season, |a, id| a.select_season(id.into()));

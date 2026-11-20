@@ -490,6 +490,11 @@ export component AppWindow inherits Window {
     in property <[Card]> grid;
     in property <[NamedId]> sorts;
     in property <string> library-id;
+    // Library page tab: recommended | browse | collections | categories; empty on a genre or
+    // collection page.
+    in property <string> library-tab;
+    in property <[Rail]> lib-rails;
+    in property <[NamedId]> genres;
     // Detail
     in property <Detail> detail;
     in property <[NamedId]> seasons;
@@ -538,6 +543,8 @@ export component AppWindow inherits Window {
     callback open-library(string, string);
     callback set-sort(string);
     callback grid-scrolled(float);
+    callback library-tab-chosen(string);
+    callback open-genre(string, string); // id, name
     callback play(string, bool);
     callback toggle-played(string);
     callback select-season(string);
@@ -726,7 +733,7 @@ export component AppWindow inherits Window {
                             spacing: 10px;
                             PageTitle { title: root.grid-title; }
                             Rectangle { horizontal-stretch: 1; }
-                            HorizontalLayout {
+                            if root.library-tab == "browse" || root.library-tab == "" : HorizontalLayout {
                                 spacing: 8px;
                                 alignment: end;
                                 for s in root.sorts : Button {
@@ -737,6 +744,48 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
+                        if root.page == Page.library && root.library-tab != "" : HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            for t in [
+                                { id: "recommended", title: "Recommended" },
+                                { id: "browse", title: "Browse" },
+                                { id: "collections", title: "Collections" },
+                                { id: "categories", title: "Categories" },
+                            ] : Button {
+                                label: t.title;
+                                primary: root.library-tab == t.id;
+                                clicked => { root.library-tab-chosen(t.id); }
+                            }
+                        }
+                        if root.page == Page.library && root.library-tab == "recommended" : ScrollView {
+                            VerticalLayout {
+                                spacing: 22px;
+                                padding-bottom: 32px;
+                                alignment: start;
+                                for rail in root.lib-rails : RailView {
+                                    rail: rail;
+                                    open(id) => { root.open-item(id); }
+                                    hovered(id) => { root.prefetch(id); }
+                                }
+                                if root.lib-rails.length == 0 : Text { text: "Nothing in progress or recently added."; color: Palette.muted; }
+                            }
+                        }
+                        if root.page == Page.library && root.library-tab == "categories" : ScrollView {
+                            property <int> gcols: max(1, floor((self.visible-width - 10px) / 236px));
+                            content-height: ceil(root.genres.length / self.gcols) * 60px + 20px;
+                            for g[i] in root.genres : Button {
+                                x: mod(i, parent.gcols) * 236px + 4px;
+                                y: floor(i / parent.gcols) * 60px + 4px;
+                                width: 224px;
+                                label: g.title;
+                                clicked => { root.open-genre(g.id, g.title); }
+                            }
+                        }
+                        if root.page == Page.library && root.library-tab == "collections" && root.grid.length == 0 : Text {
+                            text: root.status;
+                            color: Palette.muted;
+                        }
                         if root.page == Page.search : VerticalLayout {
                             spacing: 14px;
                             PageTitle { title: "Search"; }
@@ -746,7 +795,7 @@ export component AppWindow inherits Window {
                                 edited(t) => { root.search(t); }
                             }
                         }
-                        grid := ScrollView {
+                        if root.page == Page.search || root.library-tab == "browse" || root.library-tab == "collections" || root.library-tab == "" : grid := ScrollView {
                             property <int> cols: max(1, floor((self.visible-width - 10px) / 176px));
                             content-height: ceil(root.grid.length / self.cols) * 312px + 20px;
                             scrolled => {
