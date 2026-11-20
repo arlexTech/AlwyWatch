@@ -43,6 +43,8 @@ export struct Detail {
     logo: image,
     playable: bool,
     resumable: bool,
+    /// Where Resume starts, e.g. "9:12".
+    resume-at: string,
     played: bool,
     is-series: bool,
 }
@@ -775,7 +777,7 @@ export component AppWindow inherits Window {
                                         spacing: 10px;
                                         alignment: start;
                                         if root.detail.playable : Button {
-                                            label: root.detail.resumable ? "Resume" : "Play";
+                                            label: root.detail.resumable ? "Resume from " + root.detail.resume-at : "Play";
                                             primary: true;
                                             has-icon: true;
                                             icon: @image-url("icons/play_arrow_fill1.svg");

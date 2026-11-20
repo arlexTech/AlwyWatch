@@ -1815,6 +1815,7 @@ impl App {
             logo: Image::default(),
             playable,
             resumable: playable && i.user.position_ms > 0,
+            resume_at: sstr(clock(i.user.position_ms)),
             played: i.user.played,
             is_series: i.kind == ItemKind::Series,
         }
@@ -2927,4 +2928,25 @@ async fn async_sleep(d: Duration) {
         let _ = tx.send(());
     });
     let _ = rx.await;
+}
+
+/// "9:12" or "1:02:03".
+fn clock(ms: u64) -> String {
+    let s = ms / 1000;
+    let (h, m, sec) = (s / 3600, s % 3600 / 60, s % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{sec:02}")
+    } else {
+        format!("{m}:{sec:02}")
+    }
+}
+
+#[cfg(test)]
+mod clock_tests {
+    #[test]
+    fn formats_like_the_android_player() {
+        assert_eq!(super::clock(552_000), "9:12");
+        assert_eq!(super::clock(3_723_000), "1:02:03");
+        assert_eq!(super::clock(0), "0:00");
+    }
 }
