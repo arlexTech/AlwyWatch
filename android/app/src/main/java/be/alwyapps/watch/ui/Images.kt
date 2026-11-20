@@ -136,7 +136,8 @@ fun RemoteImage(
     alignment: androidx.compose.ui.Alignment = androidx.compose.ui.Alignment.Center,
 ) {
     val core = LocalCore.current
-    val account = LocalAccount.current
+    // Combined home: an item from another server loads its art from there.
+    val account = LocalItemOwners.current[itemId] ?: LocalAccount.current
     val px = with(LocalDensity.current) { width.roundToPx() }
     var bitmap by remember(ref?.path, px) {
         mutableStateOf(ref?.let { Images.cachedInMemory(Images.key(account, it, px)) })
@@ -237,3 +238,6 @@ object BlurHash {
         }.getOrNull()
     }
 }
+
+/** Which account each item comes from on screens that mix servers (combined home). */
+val LocalItemOwners = androidx.compose.runtime.staticCompositionLocalOf<Map<String, String>> { emptyMap() }

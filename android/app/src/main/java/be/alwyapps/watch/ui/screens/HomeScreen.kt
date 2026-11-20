@@ -146,7 +146,7 @@ private fun preferredFirst(
 }
 
 /** Which account each item (and library) of a combined home comes from. */
-private val LocalOwners = androidx.compose.runtime.staticCompositionLocalOf<Map<String, String>> { emptyMap() }
+private val LocalOwners = be.alwyapps.watch.ui.LocalItemOwners
 
 /**
  * The same title on two servers: same TMDB/IMDB/TVDB id; episodes by show, season and number.
@@ -218,9 +218,12 @@ private fun mergeHomes(homes: List<Pair<String, Home>>): Pair<Home, Map<String, 
             }
         }
     }
+    // One server's "continue watching" can be another's "next up": show it once, in progress.
+    val resume = merge(homes.map { (a, h) -> a to h.resume })
+    val inProgress = resume.map { it.sameAs() }.toSet()
     return first.copy(
-        resume = merge(homes.map { (a, h) -> a to h.resume }),
-        nextUp = merge(homes.map { (a, h) -> a to h.nextUp }),
+        resume = resume,
+        nextUp = merge(homes.map { (a, h) -> a to h.nextUp }).filter { it.sameAs() !in inProgress },
         libraries = libraries,
         latest = latest,
         fetchedAt = homes.minOf { it.second.fetchedAt },
