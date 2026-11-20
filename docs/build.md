@@ -53,7 +53,9 @@ to update.
 ANDROID_SERIAL=<device> ./gradlew :app:generateBaselineProfile -Palwywatch.abis=<its ABI>
 ANDROID_SERIAL=<device> ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest -Palwywatch.abis=<its ABI>
 ```
-The profile is written to `app/src/release/generated/baselineProfiles/` and committed. Some
+The profile is written to `app/src/release/generated/baselineProfiles/` and committed.
+Generating it **clears the app's data** on that device (sign-in included): use a test device.
+Generate it with an account signed in on a copy you can lose, so the profile covers the home screen. Some
 vendor ROMs (ColorOS/OxygenOS) freeze backgrounded apps, which blocks the profile-save broadcast:
 use an emulator or a stock-Android device for generation.
 

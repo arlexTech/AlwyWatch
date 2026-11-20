@@ -48,6 +48,9 @@ Run with `ANDROID_SERIAL=<device> scripts/ci.sh bench`.
 
 ### APK size (release, R8, signed)
 
+After the redesign (Manrope font +165 KB, new screens): arm64 **8.75 MB**, armv7 8.1 MB,
+x86_64 9.05 MB, universal 22.6 MB. Before:
+
 | APK | Native libs uncompressed (AGP default) | **Compressed (shipped)** |
 |---|---|---|
 | arm64-v8a | 16.2 MB | **8.5 MB** |
