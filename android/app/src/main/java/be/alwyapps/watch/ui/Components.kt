@@ -722,14 +722,15 @@ val LocalServerBadges = androidx.compose.runtime.staticCompositionLocalOf { fals
 fun ServerBadge(
     accountId: String,
     modifier: Modifier = Modifier,
+    diameter: Dp = 22.dp,
 ) {
     val plex = accountId.startsWith("plex:")
     Box(
         modifier
-            .size(22.dp)
+            .size(diameter)
             .clip(RoundedCornerShape(50))
             .background(Color.Black.copy(alpha = 0.72f))
-            .padding(5.dp)
+            .padding(diameter * 0.23f)
             .drawBehind {
                 val w = size.width
                 val h = size.height

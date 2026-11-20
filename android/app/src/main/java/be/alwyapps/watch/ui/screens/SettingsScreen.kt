@@ -24,7 +24,6 @@ import be.alwyapps.watch.BuildConfig
 import be.alwyapps.watch.core.coreVersion
 import be.alwyapps.watch.player.PlayerSettings
 import be.alwyapps.watch.services
-import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.Chevron
 import be.alwyapps.watch.ui.Divider
@@ -37,7 +36,6 @@ import be.alwyapps.watch.ui.LocalAccount
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.LocalNavigator
-import be.alwyapps.watch.ui.OnSurface
 import be.alwyapps.watch.ui.PageTitle
 import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.ToggleRow
@@ -130,8 +128,11 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                             "${a.serverName} · ${if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) "Plex" else "Jellyfin"}",
                             sync,
                         ).joinToString("\n"),
-                    icon = Icons.Person,
-                    iconTint = if (a.id == main) Accent else OnSurface,
+                    // Plex or Jellyfin, at a glance.
+                    leading = {
+                        be.alwyapps.watch.ui
+                            .ServerBadge(a.id, diameter = if (d.isTv) 40.dp else 34.dp)
+                    },
                     onClick =
                         if (a.id != main) {
                             {

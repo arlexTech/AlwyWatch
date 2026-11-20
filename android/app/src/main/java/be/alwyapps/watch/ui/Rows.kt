@@ -92,6 +92,7 @@ fun ListRow(
     iconTint: Color = OnSurface,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    leading: (@Composable () -> Unit)? = null,
 ) {
     val d = LocalDimens.current
     val interaction = remember { MutableInteractionSource() }
@@ -106,7 +107,8 @@ fun ListRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        if (icon != null) {
+        leading?.invoke()
+        if (icon != null && leading == null) {
             Box(
                 Modifier
                     .size(if (d.isTv) 40.dp else 34.dp)
