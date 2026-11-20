@@ -316,6 +316,7 @@ fun LeavingSoonScreen() {
             ) {
                 FocusCard(
                     onClick = { open = if (expanded) null else item.key },
+                    glow = false,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(d.radius + 4.dp),
                 ) {

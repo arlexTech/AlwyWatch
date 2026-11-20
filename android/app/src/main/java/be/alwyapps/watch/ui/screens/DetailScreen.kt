@@ -531,6 +531,7 @@ private fun Episodes(
         for (ep in eps.value.orEmpty()) {
             FocusCard(
                 onClick = { play(ctx, account, ep, fromStart = false) },
+                glow = false,
                 modifier =
                     Modifier.fillMaxWidth().onFocusChanged {
                         if (it.isFocused) core.prefetchPlaybackInfo(account, ep.id, DeviceProfiles.get(ctx))

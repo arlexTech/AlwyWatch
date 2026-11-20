@@ -128,6 +128,8 @@ fun FocusCard(
     shape: Shape = RoundedCornerShape(LocalDimens.current.radius),
     onFocus: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    // The TV focus glow is a shadow: behind see-through content it shows as a grey band.
+    glow: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val d = LocalDimens.current
@@ -140,7 +142,7 @@ fun FocusCard(
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-            }.then(if (focused && d.isTv) Modifier.shadow(24.dp, shape, ambientColor = Color.White, spotColor = Color.White) else Modifier)
+            }.then(if (focused && d.isTv && glow) Modifier.shadow(24.dp, shape, ambientColor = Color.White, spotColor = Color.White) else Modifier)
             .clip(shape)
             .then(if (focused && d.isTv) Modifier.border(2.5.dp, Color.White, shape) else Modifier)
             // Long press (touch, or holding OK on a remote): the item's menu.

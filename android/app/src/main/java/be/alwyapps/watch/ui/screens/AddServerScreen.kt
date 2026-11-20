@@ -684,7 +684,7 @@ internal fun ChoiceCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+    FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), glow = false) {
         Row(
             Modifier
                 .fillMaxWidth()
