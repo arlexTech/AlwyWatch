@@ -62,6 +62,9 @@ fun SearchScreen() {
     val d = LocalDimens.current
     // Survives opening a result and coming back (screens are disposed by the navigator).
     var query by rememberSaveable { mutableStateOf(SearchMemory.query) }
+    // A "not in your library" result being requested (panel above the results).
+    var requesting by remember { mutableStateOf<be.alwyapps.watch.core.seerr.SeerrResult?>(null) }
+    var requestMessage by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(query) { SearchMemory.query = query }
     var results by remember { mutableStateOf<List<Item>>(emptyList()) }
     var requestable by remember { mutableStateOf<List<SeerrResult>>(emptyList()) }
@@ -118,6 +121,17 @@ fun SearchScreen() {
         }
         items(results, key = { it.id }) { PosterCard(it, d.posterWidth, onClick = { nav.push(Route.Detail(it.id)) }, showTitle = true) }
         if (requestable.isNotEmpty()) {
+            requesting?.let { r ->
+                item(span = { GridItemSpan(maxLineSpan) }, key = "request-${r.tmdbId}") {
+                    RequestPanel(r, onDone = { msg ->
+                        requesting = null
+                        requestMessage = msg.ifEmpty { null }
+                    })
+                }
+            }
+            requestMessage?.let { msg ->
+                item(span = { GridItemSpan(maxLineSpan) }, key = "request-msg") { Text(msg, color = be.alwyapps.watch.ui.Accent) }
+            }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(Modifier.padding(top = 12.dp)) {
                     Text("Not in your library", style = MaterialTheme.typography.titleMedium)
@@ -126,10 +140,7 @@ fun SearchScreen() {
             }
             items(requestable, key = { "seerr-${it.mediaType}-${it.tmdbId}" }) { r ->
                 Column(Modifier.width(d.posterWidth)) {
-                    FocusCard(onClick = {
-                        PendingRequest.set(query, r)
-                        nav.push(Route.Requests)
-                    }) {
+                    FocusCard(onClick = { requesting = r }) {
                         UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
                         r.availability.label()?.let { Badge(it, Modifier.align(Alignment.TopStart).padding(8.dp)) }
                     }

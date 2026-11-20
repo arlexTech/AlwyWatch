@@ -196,7 +196,7 @@ async fn my_requests_with_titles_and_season_list() {
         .mount(&s)
         .await;
     let c = SeerrClient::new(http(), &s.uri(), "connect.sid=x", false);
-    let reqs = c.requests(20).await.unwrap();
+    let reqs = c.requests(20, false).await.unwrap();
     assert_eq!(reqs[0].status, RequestStatus::Completed);
     assert_eq!(reqs[0].title.as_deref(), Some("Fight Club"));
     assert_eq!(

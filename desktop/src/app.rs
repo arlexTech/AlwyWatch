@@ -927,12 +927,12 @@ impl App {
                 .collect();
             this.seerr_cards(cards, AppWindow::set_seerr_mine);
         };
-        if let Ok(Some(list)) = self.core.cached_seerr_requests() {
+        if let Ok(Some(list)) = self.core.cached_seerr_requests(false) {
             render(self, list);
         }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
-            let r = core.refresh_seerr_requests(false).await;
+            let r = core.refresh_seerr_requests(false, false).await;
             let Some(t) = this.upgrade() else { return };
             match r {
                 Ok(list) => render(&t, list),
@@ -1088,7 +1088,7 @@ impl App {
                 Err(e) => format!("Could not request {}: {e}", r.title),
             }));
             t.ui().set_seerr_panel(SeerrPanel::default());
-            let _ = core.refresh_seerr_requests(true).await;
+            let _ = core.refresh_seerr_requests(true, false).await;
             t.load_seerr_requests();
         })
         .ok();

@@ -59,7 +59,7 @@ data class Tab(
  */
 fun Route.isTopLevel(rail: Boolean): Boolean =
     when (this) {
-        Route.Home, Route.LeavingSoon, Route.Requests -> true
+        Route.Home, Route.LeavingSoon -> true
         Route.Search, Route.Downloads, Route.Settings -> rail
         is Route.Library -> true
         else -> false
@@ -86,7 +86,6 @@ fun tabs(): List<Tab> {
         }
     }
     if (core.keepActive()) out += Tab(Route.LeavingSoon, "Leaving", Icons.Hourglass)
-    if (core.seerrActive()) out += Tab(Route.Requests, "Requests", Icons.Add)
     if (rail && !d.isTv) out += Tab(Route.Downloads, "Downloads", Icons.Download)
     if (rail) out += Tab(Route.Settings, "Settings", Icons.Settings)
     return out

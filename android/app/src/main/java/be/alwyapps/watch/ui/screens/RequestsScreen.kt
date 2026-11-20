@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,7 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.CoreException
@@ -44,16 +42,12 @@ import be.alwyapps.watch.core.seerr.SeerrResult
 import be.alwyapps.watch.core.seerr.SeerrSeason
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
-import be.alwyapps.watch.ui.Field
-import be.alwyapps.watch.ui.FocusCard
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.UrlImage
-import be.alwyapps.watch.ui.dpadEscape
 import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.rememberSwr
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 fun Availability.label(): String? =
@@ -75,44 +69,17 @@ fun RequestStatus.label(): String =
         RequestStatus.COMPLETED -> "Available"
     }
 
-/** Search hands a Seerr result over to the requests screen (query + chosen title). */
-object PendingRequest {
-    private var value: Pair<String, SeerrResult>? = null
-
-    fun set(
-        query: String,
-        result: SeerrResult,
-    ) {
-        value = query to result
-    }
-
-    fun take(): Pair<String, SeerrResult>? = value.also { value = null }
-}
-
-/** Seerr: search TMDB, request movies or seasons, follow my requests. */
+/**
+ * Seerr requests, to follow them: mine, or everyone's (for Seerr users allowed to see them).
+ * New requests are made from the global search.
+ */
 @Composable
 fun RequestsScreen() {
     val core = LocalCore.current
     val d = LocalDimens.current
-    val handoff = remember { PendingRequest.take() }
-    var query by rememberSaveable { mutableStateOf(handoff?.first ?: "") }
-    var results by remember { mutableStateOf<List<SeerrResult>>(emptyList()) }
-    var selected by remember { mutableStateOf<SeerrResult?>(handoff?.second) }
-    var message by remember { mutableStateOf<String?>(null) }
-    val mine = rememberSwr("seerr-requests", cached = { core.cachedSeerrRequests() }, refresh = { core.refreshSeerrRequests(it) })
-    LaunchedEffect(query) {
-        if (query.length < 2) {
-            results = emptyList()
-            return@LaunchedEffect
-        }
-        delay(350)
-        try {
-            results = core.seerrSearch(query)
-            message = null
-        } catch (e: CoreException) {
-            message = e.message
-        }
-    }
+    var all by rememberSaveable { mutableStateOf(false) }
+    val list =
+        rememberSwr("seerr-requests", all, cached = { core.cachedSeerrRequests(all) }, refresh = { core.refreshSeerrRequests(it, all) })
     LazyVerticalGrid(
         GridCells.Adaptive(d.posterWidth + 8.dp),
         Modifier.fillMaxSize(),
@@ -121,75 +88,36 @@ fun RequestsScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 be.alwyapps.watch.ui
-                    .PageTitle("Requests", "Ask for a movie or a show; it is added when ready.")
-                Field(
-                    query,
-                    { query = it },
-                    Modifier.fillMaxWidth().dpadEscape(),
-                    placeholder = { Text("Find a movie or a show…") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    leadingIcon = be.alwyapps.watch.ui.Icons.Search,
-                    pill = true,
-                )
+                    .PageTitle("Requests", "To ask for something new, search for it.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionButton("Mine", { all = false }, Modifier.initialFocus(), primary = !all)
+                    ActionButton("Everyone", { all = true }, primary = all)
+                }
             }
         }
-        message?.takeIf { it.isNotEmpty() }?.let {
+        list.error?.let { msg ->
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
-                    it,
-                    Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(be.alwyapps.watch.ui.SurfaceHigh)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    color = Accent,
+                    if (all && msg.startsWith("sign in again")) "Only Seerr managers can see everyone's requests." else msg,
+                    color = Muted,
                 )
             }
         }
-        selected?.let { r ->
-            item(span = { GridItemSpan(maxLineSpan) }, key = "sel-${r.tmdbId}") {
-                RequestPanel(r, onDone = { msg ->
-                    message = msg
-                    selected = null
-                    mine.reload()
-                })
-            }
+        val items = list.value.orEmpty()
+        if (items.isEmpty() && list.value != null) {
+            item(span = { GridItemSpan(maxLineSpan) }) { Text(if (all) "No requests." else "You haven't requested anything yet.", color = Muted) }
         }
-        items(results, key = { "${it.mediaType}-${it.tmdbId}" }) { r ->
-            Column(Modifier.width(d.posterWidth)) {
-                FocusCard(onClick = { selected = r }) {
-                    UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-                    r.availability.label()?.let {
-                        be.alwyapps.watch.ui.Badge(
-                            it,
-                            Modifier.align(Alignment.TopStart).padding(8.dp),
-                            color = if (r.availability == Availability.AVAILABLE) be.alwyapps.watch.ui.Success else Color.Black.copy(alpha = 0.6f),
-                            textColor = if (r.availability == Availability.AVAILABLE) Color.Black else Color.White,
-                        )
-                    }
-                }
-                Text(r.title, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(r.year ?: "", color = Muted, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        if (query.length < 2) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("My requests", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.titleMedium)
-            }
-            mine.error?.let { item(span = { GridItemSpan(maxLineSpan) }) { Text(it, color = Muted) } }
-            val list = mine.value.orEmpty()
-            if (list.isEmpty() && mine.value != null) {
-                item(span = { GridItemSpan(maxLineSpan) }) { Text("No requests yet.", color = Muted) }
-            }
-            items(list, key = { "req-${it.id}" }) { MyRequest(it) }
-        }
+        items(items, key = { "req-${it.id}" }) { MyRequest(it, showWho = all) }
     }
 }
 
 @Composable
-private fun MyRequest(r: SeerrRequest) {
+private fun MyRequest(
+    r: SeerrRequest,
+    showWho: Boolean = false,
+) {
     val d = LocalDimens.current
     Column(Modifier.width(d.posterWidth)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(d.radius))) {
@@ -211,13 +139,19 @@ private fun MyRequest(r: SeerrRequest) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(r.createdAt.take(10), color = Muted, style = MaterialTheme.typography.bodySmall)
+        Text(
+            listOfNotNull(r.requestedBy.takeIf { showWho && it.isNotEmpty() }, r.createdAt.take(10)).joinToString(" · "),
+            color = Muted,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
-/** Request a movie, or pick seasons of a show. */
+/** Request a movie, or pick seasons of a show (shown by the global search). */
 @Composable
-private fun RequestPanel(
+fun RequestPanel(
     r: SeerrResult,
     onDone: (String) -> Unit,
 ) {

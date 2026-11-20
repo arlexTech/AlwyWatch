@@ -1566,6 +1566,7 @@ impl AlwyWatch {
                 .set_setting(SEERR_KEY, &serde_json::to_string(&conn).unwrap_or_default())?;
             *c.seerr.write().unwrap_or_else(|e| e.into_inner()) = None;
             c.store.cache_delete("seerr/requests")?;
+            c.store.cache_delete("seerr/requests-all")?;
             Ok(conn)
         })
         .await
@@ -1596,6 +1597,7 @@ impl AlwyWatch {
         *self.core.seerr.write().unwrap_or_else(|e| e.into_inner()) = None;
         self.core.store.remove_setting(SEERR_KEY)?;
         self.core.store.cache_delete("seerr/requests")?;
+        self.core.store.cache_delete("seerr/requests-all")?;
         Ok(())
     }
 
@@ -1619,6 +1621,7 @@ impl AlwyWatch {
         self.run(|c| async move {
             let r = c.seerr()?.request(media_type, tmdb_id, &seasons).await?;
             c.store.cache_mark_stale("seerr/requests")?;
+            c.store.cache_mark_stale("seerr/requests-all")?;
             Ok(r)
         })
         .await
@@ -1628,25 +1631,31 @@ impl AlwyWatch {
         self.run(|c| async move {
             c.seerr()?.cancel(request_id).await?;
             c.store.cache_mark_stale("seerr/requests")?;
+            c.store.cache_mark_stale("seerr/requests-all")?;
             Ok(())
         })
         .await
     }
 
-    pub fn cached_seerr_requests(&self) -> Result<Option<Vec<SeerrRequest>>> {
+    /// `all`: everyone's requests (Seerr users allowed to see them), else the user's own.
+    pub fn cached_seerr_requests(&self, all: bool) -> Result<Option<Vec<SeerrRequest>>> {
         Ok(self
             .core
             .store
-            .cache_get::<Vec<SeerrRequest>>("seerr/requests")?
+            .cache_get::<Vec<SeerrRequest>>(requests_key(all))?
             .map(|c| c.value))
     }
 
-    pub async fn refresh_seerr_requests(&self, force: bool) -> Result<Vec<SeerrRequest>> {
+    pub async fn refresh_seerr_requests(
+        &self,
+        force: bool,
+        all: bool,
+    ) -> Result<Vec<SeerrRequest>> {
         self.run(|c| async move {
             let client = c.seerr()?;
             let (v, _) = c
-                .swr("seerr/requests", TTL_HOME, force, || async {
-                    Ok(client.requests(50).await?)
+                .swr(requests_key(all), TTL_HOME, force, || async {
+                    Ok(client.requests(50, all).await?)
                 })
                 .await?;
             Ok(v)
@@ -1969,6 +1978,14 @@ impl AlwyWatch {
             Ok(r)
         })
         .await
+    }
+}
+
+fn requests_key(all: bool) -> &'static str {
+    if all {
+        "seerr/requests-all"
+    } else {
+        "seerr/requests"
     }
 }
 

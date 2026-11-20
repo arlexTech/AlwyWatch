@@ -274,8 +274,8 @@ fun RequestsGroup(
             )
         } else {
             ListRow(
-                seerr.userName,
-                subtitle = if (seerr.viaKeep) "Through your AlwyWatch server" else "Seerr · ${seerr.baseUrl}",
+                "Requests",
+                subtitle = "Yours and everyone's · as ${seerr.userName}" + if (seerr.viaKeep) ", through your AlwyWatch server" else "",
                 icon = Icons.Add,
                 iconTint = Accent,
                 onClick = { nav.push(Route.Requests) },

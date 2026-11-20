@@ -118,7 +118,7 @@ private fun Root(core: AlwyWatch) {
                         Route.LeavingSoon -> LeavingSoonScreen()
                         Route.Triage -> TriageScreen()
                         Route.KeepAdmin -> KeepAdminScreen()
-                        Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.reset(Route.Requests) })
+                        Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
                         // Combined home: a page of another account's server runs as that account.
                         is Route.Library ->
                             CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { LibraryScreen(r.id, r.title) }

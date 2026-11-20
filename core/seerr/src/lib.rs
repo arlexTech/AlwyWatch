@@ -595,17 +595,19 @@ impl SeerrClient {
     }
 
     /// The signed-in user's requests (all requests for managers), newest first, with titles.
-    pub async fn requests(&self, take: u32) -> Result<Vec<SeerrRequest>> {
+    /// Recent requests: the user's own, or everyone's when `all` (needs the right to view
+    /// requests in Seerr, else `Unauthorized`).
+    pub async fn requests(&self, take: u32, all: bool) -> Result<Vec<SeerrRequest>> {
         #[derive(Deserialize)]
         struct Page {
             #[serde(default)]
             results: Vec<serde_json::Value>,
         }
-        let me = self.me().await?;
-        let path = format!(
-            "/request?take={take}&skip=0&sort=added&sortDirection=desc&requestedBy={}",
-            me.id
-        );
+        let mut path = format!("/request?take={take}&skip=0&sort=added&sortDirection=desc");
+        if !all {
+            let me = self.me().await?;
+            path.push_str(&format!("&requestedBy={}", me.id));
+        }
         let p: Page = net::send_json(self.req(Method::GET, &path)).await?;
         let mut out: Vec<SeerrRequest> = p
             .results
