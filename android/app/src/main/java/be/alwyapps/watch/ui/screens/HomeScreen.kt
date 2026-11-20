@@ -93,7 +93,7 @@ fun rememberPersistentListState(key: String): LazyListState {
 
 /** Hero candidates: what the user is in the middle of, then what is new, with artwork. */
 private fun featured(h: Home): List<Item> =
-    (h.resume + h.nextUp + h.latest.flatMap { it.items.take(4) })
+    (h.continueWatching + h.latest.flatMap { it.items.take(4) })
         .distinctBy { if (it.kind == ItemKind.EPISODE) it.seriesId ?: it.id else it.id }
         .filter { it.backdrop() != null }
         .take(8)
@@ -162,6 +162,28 @@ private fun Item.sameAs(): String =
     }
 
 /**
+ * Continue watching across servers: all by recency (the core dates every entry), one per show;
+ * a title on several servers comes from the preferred one.
+ */
+private fun mergeByRecency(
+    homes: List<Pair<String, Home>>,
+    owners: MutableMap<String, String>,
+): List<Item> {
+    val preferredCopy = mutableMapOf<String, Pair<String, Item>>()
+    for ((a, h) in homes) for (i in h.continueWatching) preferredCopy.putIfAbsent(i.sameAs(), a to i)
+    val shows = mutableSetOf<String>()
+    return homes
+        .flatMap { (_, h) -> h.continueWatching }
+        .sortedByDescending { it.user.lastPlayedAt ?: 0L }
+        .filter { shows.add(if (it.kind == ItemKind.EPISODE) "show:${it.seriesTitle?.lowercase()}" else it.sameAs()) }
+        .map { i ->
+            val (owner, chosen) = preferredCopy.getValue(i.sameAs())
+            owners[chosen.id] = owner
+            chosen
+        }
+}
+
+/**
  * Several homes as one: rails of the same kind merged (alternating servers, preferred first),
  * a title on several servers kept once (from the first, preferred, server). Returns the home
  * and the owner account of every item and library.
@@ -190,7 +212,7 @@ private fun mergeHomes(homes: List<Pair<String, Home>>): Pair<Home, Map<String, 
     }
     if (homes.size == 1) {
         val (a, h) = homes.single()
-        (h.resume + h.nextUp + h.latest.flatMap { it.items }).forEach { owners[it.id] = a }
+        (h.continueWatching + h.latest.flatMap { it.items }).forEach { owners[it.id] = a }
         h.libraries.forEach { owners[it.id] = a }
         return h to owners
     }
@@ -219,11 +241,8 @@ private fun mergeHomes(homes: List<Pair<String, Home>>): Pair<Home, Map<String, 
         }
     }
     // One server's "continue watching" can be another's "next up": show it once, in progress.
-    val resume = merge(homes.map { (a, h) -> a to h.resume })
-    val inProgress = resume.map { it.sameAs() }.toSet()
     return first.copy(
-        resume = resume,
-        nextUp = merge(homes.map { (a, h) -> a to h.nextUp }).filter { it.sameAs() !in inProgress },
+        continueWatching = mergeByRecency(homes, owners),
         libraries = libraries,
         latest = latest,
         fetchedAt = homes.minOf { it.second.fetchedAt },
@@ -250,8 +269,7 @@ private fun Rails(
     }
     val first =
         when {
-            h.resume.isNotEmpty() -> "resume"
-            h.nextUp.isNotEmpty() -> "next"
+            h.continueWatching.isNotEmpty() -> "resume"
             else ->
                 h.latest
                     .firstOrNull { it.items.isNotEmpty() }
@@ -260,8 +278,8 @@ private fun Rails(
         }
     // TV: 16:9 cards under the hero. Phones: posters with progress, like Plex.
     val landscape = d.isTv
-    Rail("Continue watching", h.resume, open, onFocus, landscape = landscape, focusKey = "home", defaultFocus = first == "resume")
-    Rail("Next up", h.nextUp, open, onFocus, landscape = landscape, focusKey = "home", defaultFocus = first == "next")
+    // Like Plex: in progress and next episodes together, most recently watched first.
+    Rail("Continue watching", h.continueWatching, open, onFocus, landscape = landscape, focusKey = "home", defaultFocus = first == "resume")
     // After what the user is watching, before the "new" rails.
     if (core.keepActive() && !offline) LeavingSoonRail()
     val account = LocalAccount.current
@@ -366,7 +384,7 @@ private fun PhoneHome(
                     }
                 }
                 item(key = "rails") { Column { Rails(h, null, offline) } }
-                if (h.resume.isEmpty() && h.nextUp.isEmpty() && h.latest.all { it.items.isEmpty() }) {
+                if (h.continueWatching.isEmpty() && h.latest.all { it.items.isEmpty() }) {
                     item {
                         Text(
                             if (offline) "Nothing downloaded yet. Download from a movie or show page." else "Nothing here yet.",
@@ -413,7 +431,7 @@ private fun offlineHome(
                 }
             rail.copy(items = items)
         }
-    return h.copy(resume = h.resume.filter { it.id in ids }, nextUp = h.nextUp.filter { it.id in ids }, latest = latest)
+    return h.copy(continueWatching = h.continueWatching.filter { it.id in ids }, latest = latest)
 }
 
 /** Plex-style bar: the name on the left; search, downloads and you (settings) on the right. */
@@ -667,7 +685,7 @@ private fun TvHome(
     val featured = remember(h) { h?.let(::featured).orEmpty() }
     var hero by remember(featured) {
         val remembered = be.alwyapps.watch.ui.FocusMemory["home"]
-        val all = h?.let { it.resume + it.nextUp + it.latest.flatMap { r -> r.items } }.orEmpty()
+        val all = h?.let { it.continueWatching + it.latest.flatMap { r -> r.items } }.orEmpty()
         mutableStateOf(all.firstOrNull { remembered?.endsWith("|${it.id}") == true && it.backdrop() != null } ?: featured.firstOrNull())
     }
     BoxWithConstraints(Modifier.fillMaxSize().ambientGlow(hero?.ambient())) {

@@ -74,6 +74,11 @@ pub struct LibraryRail {
 pub struct Home {
     pub resume: Vec<Item>,
     pub next_up: Vec<Item>,
+    /// Like Plex's "Continue watching": in-progress titles and the next episode of shows being
+    /// watched, one entry per show, most recent activity first. `user.last_played_at` holds
+    /// that activity time (estimated for next episodes, which have none of their own).
+    #[serde(default)]
+    pub continue_watching: Vec<Item>,
     pub libraries: Vec<MediaLibrary>,
     pub latest: Vec<LibraryRail>,
     /// Unix seconds when this was fetched from the server.
@@ -272,6 +277,8 @@ impl Core {
             next_up: next_up.unwrap_or_default(),
             libraries,
             latest: latest.into_iter().map(|(_, r)| r).collect(),
+            // Filled from resume and next_up when handed out (also for older caches).
+            continue_watching: Vec::new(),
             fetched_at: store::now(),
         })
     }
@@ -825,6 +832,7 @@ impl AlwyWatch {
             .cache_get::<Home>(&key(&account_id, &["home"]))?
             .map(|c| Home {
                 fetched_at: c.fetched_at,
+                continue_watching: continue_watching(&c.value.resume, &c.value.next_up),
                 ..c.value
             }))
     }
@@ -837,6 +845,7 @@ impl AlwyWatch {
                 .await?;
             Ok(Home {
                 fetched_at: at,
+                continue_watching: continue_watching(&home.resume, &home.next_up),
                 ..home
             })
         })
@@ -1981,6 +1990,35 @@ impl AlwyWatch {
     }
 }
 
+/// Merges in-progress items and next episodes into one list by recency (see
+/// [`Home::continue_watching`]). Servers return next episodes ordered by how recently their
+/// show was watched, but only some carry a date: each gets its own date, capped so it never
+/// jumps ahead of the one before it (keeping the server's order), or just below it.
+pub fn continue_watching(resume: &[Item], next_up: &[Item]) -> Vec<Item> {
+    let now = unix_now();
+    let mut all: Vec<Item> = resume.to_vec();
+    let mut prev = now;
+    for ep in next_up {
+        let at = ep
+            .user
+            .last_played_at
+            .filter(|t| *t <= prev)
+            .unwrap_or(prev - 1);
+        prev = at;
+        let mut e = ep.clone();
+        e.user.last_played_at = Some(at);
+        all.push(e);
+    }
+    all.sort_by_key(|i| std::cmp::Reverse(i.user.last_played_at.unwrap_or(0)));
+    // One entry per show: its most recent one (an episode in progress beats the next one).
+    let mut seen = std::collections::HashSet::new();
+    all.retain(|i| match (&i.kind, &i.series_id) {
+        (ItemKind::Episode, Some(s)) => seen.insert(s.clone()),
+        _ => seen.insert(i.id.clone()),
+    });
+    all
+}
+
 fn requests_key(all: bool) -> &'static str {
     if all {
         "seerr/requests-all"
@@ -2019,5 +2057,66 @@ impl AlwyWatch {
                 items: c.value,
                 fetched_at: c.fetched_at,
             }))
+    }
+}
+
+#[cfg(test)]
+mod continue_watching_tests {
+    use super::*;
+
+    fn ep(id: &str, series: &str, at: Option<i64>, pos: u64) -> Item {
+        Item {
+            id: id.into(),
+            kind: ItemKind::Episode,
+            title: id.into(),
+            sort_title: None,
+            overview: None,
+            year: None,
+            runtime_ms: None,
+            community_rating: None,
+            official_rating: None,
+            genres: vec![],
+            provider_ids: ProviderIds::default(),
+            series_id: Some(series.into()),
+            series_title: Some(series.into()),
+            season_id: None,
+            season_number: Some(1),
+            episode_number: Some(1),
+            child_count: None,
+            premiere_date: None,
+            images: vec![],
+            user: UserData {
+                played: false,
+                position_ms: pos,
+                play_count: 0,
+                favorite: false,
+                last_played_at: at,
+                unplayed_count: None,
+            },
+        }
+    }
+
+    #[test]
+    fn mixes_in_progress_and_next_episodes_by_recency() {
+        let now = unix_now();
+        // In progress: a (2 h ago), b (5 days ago). Next up, in the server's order:
+        // c (dated 1 h ago), d (no date), b2 (same show as b), e (dated 10 days ago).
+        let resume = [
+            ep("a", "A", Some(now - 7200), 10),
+            ep("b", "B", Some(now - 5 * 86400), 10),
+        ];
+        let next = [
+            ep("c", "C", Some(now - 3600), 0),
+            ep("d", "D", None, 0),
+            ep("b2", "B", None, 0),
+            ep("e", "E", Some(now - 10 * 86400), 0),
+        ];
+        let ids: Vec<String> = continue_watching(&resume, &next)
+            .into_iter()
+            .map(|i| i.id)
+            .collect();
+        // d sits just below c (server order); b2 just below d, so it beats b's older date;
+        // one entry per show.
+        assert_eq!(ids, ["c", "d", "b2", "a", "e"]);
     }
 }

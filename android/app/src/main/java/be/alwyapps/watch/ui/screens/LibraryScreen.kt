@@ -206,11 +206,7 @@ private fun Recommended(
             item {
                 Column {
                     be.alwyapps.watch.ui
-                        .Rail("Continue watching", h.resume.filter(keep), open, focusKey = "lib.$id")
-                    if (kind != be.alwyapps.watch.core.media.LibraryKind.MOVIES) {
-                        be.alwyapps.watch.ui
-                            .Rail("Next up", h.nextUp.filter(keep), open, focusKey = "lib.$id")
-                    }
+                        .Rail("Continue watching", h.continueWatching.filter(keep), open, focusKey = "lib.$id")
                     h.latest.firstOrNull { it.library.id == id }?.let { rail ->
                         be.alwyapps.watch.ui
                             .Rail("Recently added", rail.items, open, focusKey = "lib.$id")

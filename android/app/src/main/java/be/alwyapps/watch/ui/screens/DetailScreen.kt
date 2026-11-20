@@ -117,7 +117,7 @@ fun DetailScreen(
         LaunchedEffect(itemId) {
             // The server's own "continue watching" / "next up" know best (cached with home).
             val home = runCatching { core.cachedHome(account) }.getOrNull()
-            nextEp = home?.let { h -> (h.resume + h.nextUp).firstOrNull { it.seriesId == itemId } }
+            nextEp = home?.let { h -> h.continueWatching.firstOrNull { it.seriesId == itemId } }
             if (nextEp != null) return@LaunchedEffect
             nextEp =
                 runCatching {
