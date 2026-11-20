@@ -40,6 +40,12 @@ pub trait MediaServer: Send + Sync {
         limit: u32,
     ) -> impl Future<Output = Result<Vec<Item>>> + Send;
     fn search(&self, query: &str, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    /// When each of these shows last had an episode watched to the end (unix seconds); shows
+    /// never finished an episode of are left out. Orders "continue watching".
+    fn shows_last_watched(
+        &self,
+        series_ids: &[String],
+    ) -> impl Future<Output = Result<std::collections::HashMap<String, i64>>> + Send;
     /// Genres present in a library.
     fn genres(&self, library_id: &str) -> impl Future<Output = Result<Vec<Genre>>> + Send;
     /// Collections (Jellyfin box sets, Plex collections) of a library.
@@ -123,6 +129,12 @@ impl MediaServer for AnyServer {
     }
     async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
         dispatch!(self, c => c.genres(library_id).await)
+    }
+    async fn shows_last_watched(
+        &self,
+        series_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, i64>> {
+        dispatch!(self, c => c.shows_last_watched(series_ids).await)
     }
     async fn collections(&self, library_id: &str) -> Result<Vec<Item>> {
         dispatch!(self, c => c.collections(library_id).await)

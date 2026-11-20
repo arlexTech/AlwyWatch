@@ -271,10 +271,18 @@ impl Core {
             }
         }
         latest.sort_by_key(|(i, _)| *i);
+        // Next episodes are dated by when their show was last really watched (an episode
+        // finished), not by brief starts; undated ones go last in "continue watching".
+        let mut next_up = next_up.unwrap_or_default();
+        let shows: Vec<String> = next_up.iter().filter_map(|e| e.series_id.clone()).collect();
+        let watched = srv.shows_last_watched(&shows).await.unwrap_or_default();
+        for e in &mut next_up {
+            e.user.last_played_at = e.series_id.as_ref().and_then(|s| watched.get(s).copied());
+        }
         Ok(Home {
             // Resume/next-up failures (e.g. a server without on-deck) degrade to empty rails.
             resume: resume.unwrap_or_default(),
-            next_up: next_up.unwrap_or_default(),
+            next_up,
             libraries,
             latest: latest.into_iter().map(|(_, r)| r).collect(),
             // Filled from resume and next_up when handed out (also for older caches).
@@ -1991,24 +1999,11 @@ impl AlwyWatch {
 }
 
 /// Merges in-progress items and next episodes into one list by recency (see
-/// [`Home::continue_watching`]). Servers return next episodes ordered by how recently their
-/// show was watched, but only some carry a date: each gets its own date, capped so it never
-/// jumps ahead of the one before it (keeping the server's order), or just below it.
+/// [`Home::continue_watching`]): in-progress items by their own date, next episodes by when
+/// their show was last watched (set by `fetch_home`); undated next episodes last, in the
+/// server's order (the sort is stable).
 pub fn continue_watching(resume: &[Item], next_up: &[Item]) -> Vec<Item> {
-    let now = unix_now();
-    let mut all: Vec<Item> = resume.to_vec();
-    let mut prev = now;
-    for ep in next_up {
-        let at = ep
-            .user
-            .last_played_at
-            .filter(|t| *t <= prev)
-            .unwrap_or(prev - 1);
-        prev = at;
-        let mut e = ep.clone();
-        e.user.last_played_at = Some(at);
-        all.push(e);
-    }
+    let mut all: Vec<Item> = resume.iter().chain(next_up).cloned().collect();
     all.sort_by_key(|i| std::cmp::Reverse(i.user.last_played_at.unwrap_or(0)));
     // One entry per show: its most recent one (an episode in progress beats the next one).
     let mut seen = std::collections::HashSet::new();
@@ -2099,24 +2094,23 @@ mod continue_watching_tests {
     #[test]
     fn mixes_in_progress_and_next_episodes_by_recency() {
         let now = unix_now();
-        // In progress: a (2 h ago), b (5 days ago). Next up, in the server's order:
-        // c (dated 1 h ago), d (no date), b2 (same show as b), e (dated 10 days ago).
+        // In progress: a (2 h ago), b (5 days ago). Next up, dated by their show's last
+        // finished episode: c (1 h ago), d (never: undated), b2 (show B, 1 day ago), e (10 days).
         let resume = [
             ep("a", "A", Some(now - 7200), 10),
             ep("b", "B", Some(now - 5 * 86400), 10),
         ];
         let next = [
-            ep("c", "C", Some(now - 3600), 0),
             ep("d", "D", None, 0),
-            ep("b2", "B", None, 0),
+            ep("c", "C", Some(now - 3600), 0),
+            ep("b2", "B", Some(now - 86400), 0),
             ep("e", "E", Some(now - 10 * 86400), 0),
         ];
         let ids: Vec<String> = continue_watching(&resume, &next)
             .into_iter()
             .map(|i| i.id)
             .collect();
-        // d sits just below c (server order); b2 just below d, so it beats b's older date;
-        // one entry per show.
-        assert_eq!(ids, ["c", "d", "b2", "a", "e"]);
+        // Newest first, one per show (b2 is more recent than b), undated d last.
+        assert_eq!(ids, ["c", "a", "b2", "e", "d"]);
     }
 }

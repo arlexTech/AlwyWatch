@@ -743,6 +743,36 @@ impl MediaServer for JellyfinClient {
         })
     }
 
+    async fn shows_last_watched(
+        &self,
+        series_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, i64>> {
+        // One request: the most recently finished episodes; the first one per show is its date.
+        // (LastPlayedDate also moves when an episode is merely started: only played ones count.)
+        let mut p = self.list_params();
+        p.push(("recursive", "true".into()));
+        p.push(("includeItemTypes", "Episode".into()));
+        p.push(("filters", "IsPlayed".into()));
+        p.push(("sortBy", "DatePlayed".into()));
+        p.push(("sortOrder", "Descending".into()));
+        p.push(("limit", "300".into()));
+        p.push(("enableTotalRecordCount", "false".into()));
+        let mut out = std::collections::HashMap::new();
+        for d in self.query("/Items", &p).await?.items {
+            let at = d
+                .user_data
+                .as_ref()
+                .and_then(|u| u.last_played_date.as_deref())
+                .and_then(iso_to_unix);
+            if let (Some(s), Some(at)) = (d.series_id.clone(), at)
+                && series_ids.contains(&s)
+            {
+                out.entry(s).or_insert(at);
+            }
+        }
+        Ok(out)
+    }
+
     async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
         let p = vec![
             ("userId", self.uid().to_owned()),

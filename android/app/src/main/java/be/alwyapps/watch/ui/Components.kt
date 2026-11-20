@@ -341,8 +341,16 @@ fun Rail(
     val d = LocalDimens.current
     Column(Modifier.padding(top = if (d.isTv) 18.dp else 24.dp)) {
         SectionHeader(title, subtitle = subtitle, onTitle = onSeeAll)
+        // A refresh can put new titles in front: the row shows them (a lazy row would otherwise
+        // keep its old first item in place and hide the new ones to its left).
+        val rowState =
+            androidx.compose.foundation.lazy
+                .rememberLazyListState()
+        val head = items.first().id
+        LaunchedEffect(head) { if (rowState.firstVisibleItemIndex != 0) rowState.scrollToItem(0) }
         TvScrollSpec(leading = d.gutter) {
             LazyRow(
+                state = rowState,
                 contentPadding = PaddingValues(horizontal = d.gutter, vertical = if (d.isTv) 14.dp else 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
             ) {

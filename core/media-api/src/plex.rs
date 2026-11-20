@@ -847,6 +847,26 @@ impl MediaServer for PlexClient {
         })
     }
 
+    async fn shows_last_watched(
+        &self,
+        series_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, i64>> {
+        // A show's lastViewedAt: when one of its episodes was last watched to the end. Plex
+        // takes several ids in one request.
+        if series_ids.is_empty() {
+            return Ok(Default::default());
+        }
+        let ids: Vec<String> = series_ids.iter().map(|i| net::percent_encode(i)).collect();
+        let mc = self
+            .get(&format!("/library/metadata/{}", ids.join(",")), &[])
+            .await?;
+        Ok(mc
+            .metadata
+            .into_iter()
+            .filter_map(|m| Some((m.rating_key, m.last_viewed_at?)))
+            .collect())
+    }
+
     async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
         let mc = self
             .get(
