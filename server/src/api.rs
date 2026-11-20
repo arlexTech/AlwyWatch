@@ -36,6 +36,14 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/seerr", get(seerr_info))
         .route("/v1/seerr/api/v1/{*path}", any(seerr_forward))
         .route("/v1/hooks/{source}/{secret}", post(hook))
+        .route("/v1/together", post(together_create))
+        .route("/v1/together/{code}", put(together_update))
+        .route("/v1/together/{code}/join", post(together_join))
+        .route("/v1/together/{code}/wait", get(together_wait))
+        .route(
+            "/v1/together/{code}/members/{member}",
+            axum::routing::delete(together_leave),
+        )
         .route("/v1/transfer", post(transfer_start))
         .route("/v1/transfer/poll/{handle}", get(transfer_poll))
         .route("/v1/transfer/{code}", get(transfer_peer).put(transfer_send))
@@ -120,6 +128,85 @@ impl FromRequestParts<Shared> for Admin {
         }
         Ok(Admin(id))
     }
+}
+
+// ----- watch together -------------------------------------------------------------------------
+
+fn together_error(e: crate::together::TogetherError) -> Error {
+    use crate::together::TogetherError as E;
+    match e {
+        E::NotFound => Error(StatusCode::NOT_FOUND, "unknown or closed room".into()),
+        E::Busy => Error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "too many rooms open, try again later".into(),
+        ),
+        E::Full => Error(StatusCode::CONFLICT, "this room is full".into()),
+        E::Forbidden => Error(StatusCode::FORBIDDEN, "not your seat in this room".into()),
+    }
+}
+
+async fn together_create(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Json(c): Json<keep_service::together::TogetherCreate>,
+) -> Result<Json<keep_service::together::TogetherJoined>, Error> {
+    s.rooms
+        .create(c, &id.name, &id.user_key)
+        .map(Json)
+        .map_err(together_error)
+}
+
+async fn together_join(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(code): Path<String>,
+) -> Result<Json<keep_service::together::TogetherJoined>, Error> {
+    s.rooms
+        .join(&code, &id.name, &id.user_key)
+        .map(Json)
+        .map_err(together_error)
+}
+
+async fn together_update(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(code): Path<String>,
+    Json(u): Json<keep_service::together::TogetherUpdate>,
+) -> Result<Json<keep_service::together::TogetherState>, Error> {
+    s.rooms
+        .update(&code, u, &id.user_key)
+        .map(Json)
+        .map_err(together_error)
+}
+
+#[derive(Deserialize)]
+struct WaitQuery {
+    after: u64,
+    member: String,
+}
+
+async fn together_wait(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(code): Path<String>,
+    Query(q): Query<WaitQuery>,
+) -> Result<Json<keep_service::together::TogetherState>, Error> {
+    s.rooms
+        .wait(&code, &q.member, &id.user_key, q.after)
+        .await
+        .map(Json)
+        .map_err(together_error)
+}
+
+async fn together_leave(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path((code, member)): Path<(String, String)>,
+) -> Result<StatusCode, Error> {
+    s.rooms
+        .leave(&code, &member, &id.user_key)
+        .map_err(together_error)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ----- device-to-device transfer ----------------------------------------------------------------

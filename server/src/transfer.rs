@@ -152,7 +152,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 /// OS-seeded randomness through std (see `seerr::random_password`): avoids a rand dependency.
-fn random_u64() -> u64 {
+pub(crate) fn random_u64() -> u64 {
     use std::hash::{BuildHasher, RandomState};
     RandomState::new().hash_one(Instant::now())
 }

@@ -35,6 +35,8 @@ pub struct State {
     write_lock: tokio::sync::Mutex<()>,
     /// Pending device-to-device transfers (in memory only).
     pub transfers: crate::transfer::Transfers,
+    /// Watch together rooms (in memory only).
+    pub rooms: crate::together::Rooms,
 }
 
 pub type Shared = Arc<State>;
@@ -73,6 +75,7 @@ impl State {
             watch: Notify::new(),
             jf_index: Mutex::new(HashMap::new()),
             transfers: Default::default(),
+            rooms: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),
         }
     }

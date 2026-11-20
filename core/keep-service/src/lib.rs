@@ -9,6 +9,7 @@
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!();
 
+pub mod together;
 pub mod transfer;
 
 use net::Result;
@@ -319,6 +320,72 @@ impl KeepClient {
             )
             .json(sealed),
         )
+        .await?;
+        Ok(())
+    }
+
+    /// Watch together: opens a room (the caller is its first member).
+    pub async fn together_create(
+        &self,
+        create: &together::TogetherCreate,
+    ) -> Result<together::TogetherJoined> {
+        net::send_json(self.req(Method::POST, "/together").json(create)).await
+    }
+
+    pub async fn together_join(&self, code: &str) -> Result<together::TogetherJoined> {
+        net::send_json(self.req(
+            Method::POST,
+            &format!("/together/{}/join", net::percent_encode(code)),
+        ))
+        .await
+    }
+
+    pub async fn together_update(
+        &self,
+        code: &str,
+        update: &together::TogetherUpdate,
+    ) -> Result<together::TogetherState> {
+        net::send_json(
+            self.req(
+                Method::PUT,
+                &format!("/together/{}", net::percent_encode(code)),
+            )
+            .json(update),
+        )
+        .await
+    }
+
+    /// The room once it changed past `after`, or after about 25 s (a long poll: give the
+    /// request a longer timeout).
+    pub async fn together_wait(
+        &self,
+        code: &str,
+        member: &str,
+        after: u64,
+    ) -> Result<together::TogetherState> {
+        net::send_json(
+            self.req(
+                Method::GET,
+                &format!(
+                    "/together/{}/wait?after={after}&member={}",
+                    net::percent_encode(code),
+                    net::percent_encode(member)
+                ),
+            )
+            .timeout(std::time::Duration::from_secs(together::WAIT_SECS + 15)),
+        )
+        .await
+    }
+
+    pub async fn together_leave(&self, code: &str, member: &str) -> Result<()> {
+        net::send(self.req(
+            Method::DELETE,
+            &format!(
+                "/together/{}/members/{}",
+                net::percent_encode(code),
+                net::percent_encode(member)
+            ),
+        ))
         .await?;
         Ok(())
     }
