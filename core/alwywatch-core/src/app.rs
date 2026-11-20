@@ -148,6 +148,8 @@ fn items_key(account: &str, q: &ItemQuery) -> String {
             if q.descending { "d" } else { "a" },
             if q.unplayed_only { "u" } else { "-" },
             q.search.as_deref().unwrap_or(""),
+            q.genre_id.as_deref().unwrap_or(""),
+            q.collection_id.as_deref().unwrap_or(""),
             &q.start.to_string(),
             &q.limit.to_string(),
         ],
@@ -844,6 +846,62 @@ impl AlwyWatch {
                 page,
                 fetched_at: at,
             })
+        })
+        .await
+    }
+
+    pub fn cached_genres(&self, account_id: String, library_id: String) -> Option<Vec<Genre>> {
+        self.core
+            .store
+            .cache_get::<Vec<Genre>>(&key(&account_id, &["genres", &library_id]))
+            .ok()
+            .flatten()
+            .map(|c| c.value)
+    }
+
+    /// A library's genres ("categories"), cached.
+    pub async fn refresh_genres(
+        &self,
+        account_id: String,
+        library_id: String,
+        force: bool,
+    ) -> Result<Vec<Genre>> {
+        self.run(|c| async move {
+            let srv = c.server(&account_id)?;
+            let k = key(&account_id, &["genres", &library_id]);
+            Ok(c.swr(&k, TTL_LIST, force, || async {
+                Ok(srv.genres(&library_id).await?)
+            })
+            .await?
+            .0)
+        })
+        .await
+    }
+
+    pub fn cached_collections(&self, account_id: String, library_id: String) -> Option<Vec<Item>> {
+        self.core
+            .store
+            .cache_get::<Vec<Item>>(&key(&account_id, &["collections", &library_id]))
+            .ok()
+            .flatten()
+            .map(|c| c.value)
+    }
+
+    /// A library's collections, cached; open one with `ItemQuery::collection_id`.
+    pub async fn refresh_collections(
+        &self,
+        account_id: String,
+        library_id: String,
+        force: bool,
+    ) -> Result<Vec<Item>> {
+        self.run(|c| async move {
+            let srv = c.server(&account_id)?;
+            let k = key(&account_id, &["collections", &library_id]);
+            Ok(c.swr(&k, TTL_LIST, force, || async {
+                Ok(srv.collections(&library_id).await?)
+            })
+            .await?
+            .0)
         })
         .await
     }

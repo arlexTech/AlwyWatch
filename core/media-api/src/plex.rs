@@ -710,6 +710,25 @@ impl MediaServer for PlexClient {
     }
 
     async fn items(&self, q: &ItemQuery) -> Result<Page> {
+        if let Some(c) = &q.collection_id {
+            let p = [
+                ("X-Plex-Container-Start", q.start.to_string()),
+                ("X-Plex-Container-Size", q.limit.to_string()),
+                ("includeGuids", "1".into()),
+            ];
+            let mc = self
+                .get(
+                    &format!("/library/collections/{}/children", net::percent_encode(c)),
+                    &p,
+                )
+                .await?;
+            let items = self.convert_all(mc.metadata);
+            return Ok(Page {
+                start: mc.offset.unwrap_or(q.start),
+                total: mc.total_size.unwrap_or(items.len() as u32),
+                items,
+            });
+        }
         let Some(lib) = &q.library_id else {
             // Plex has no cross-library listing; search covers the "all" case.
             let items = self
@@ -730,6 +749,9 @@ impl MediaServer for PlexClient {
         if q.unplayed_only {
             p.push(("unwatched", "1".into()));
         }
+        if let Some(g) = &q.genre_id {
+            p.push(("genre", g.clone()));
+        }
         if let Some(s) = q.search.as_ref().filter(|s| !s.is_empty()) {
             p.push(("title", s.clone()));
         }
@@ -745,6 +767,39 @@ impl MediaServer for PlexClient {
             total: mc.total_size.unwrap_or(items.len() as u32),
             items,
         })
+    }
+
+    async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
+        let mc = self
+            .get(
+                &format!(
+                    "/library/sections/{}/genre",
+                    net::percent_encode(library_id)
+                ),
+                &[],
+            )
+            .await?;
+        Ok(mc
+            .directory
+            .into_iter()
+            .map(|d| Genre {
+                id: d.key,
+                name: d.title,
+            })
+            .collect())
+    }
+
+    async fn collections(&self, library_id: &str) -> Result<Vec<Item>> {
+        let mc = self
+            .get(
+                &format!(
+                    "/library/sections/{}/collections",
+                    net::percent_encode(library_id)
+                ),
+                &[("includeGuids", "1".into())],
+            )
+            .await?;
+        Ok(self.convert_all(mc.metadata))
     }
 
     async fn item(&self, id: &str) -> Result<Item> {

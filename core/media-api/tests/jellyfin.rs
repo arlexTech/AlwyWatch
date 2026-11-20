@@ -379,3 +379,43 @@ async fn played_toggle_and_download_source() {
     assert_eq!(d.size, Some(123));
     assert_eq!(d.request.url, format!("{}/Items/i1/Download", s.uri()));
 }
+
+#[tokio::test]
+async fn genres_collections_and_their_items() {
+    let s = MockServer::start().await;
+    Mock::given(path("/Genres"))
+        .and(wiremock::matchers::query_param("parentId", "lib"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"Items": [{"Id": "g1", "Name": "Action", "Type": "Genre"}]})),
+        )
+        .mount(&s)
+        .await;
+    Mock::given(path("/Items"))
+        .and(wiremock::matchers::query_param(
+            "includeItemTypes",
+            "BoxSet",
+        ))
+        .and(wiremock::matchers::query_param("parentId", "lib"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"Items": [{"Id": "c1", "Name": "Saga", "Type": "BoxSet"}]})),
+        )
+        .mount(&s)
+        .await;
+    Mock::given(path("/Items"))
+        .and(wiremock::matchers::query_param("parentId", "c1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"Items": [{"Id": "m1", "Name": "Part 1", "Type": "Movie"}], "TotalRecordCount": 1}),
+        ))
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    let g = c.genres("lib").await.unwrap();
+    assert_eq!((g[0].id.as_str(), g[0].name.as_str()), ("g1", "Action"));
+    let cols = c.collections("lib").await.unwrap();
+    assert_eq!(cols[0].kind, ItemKind::Collection);
+    let mut q = ItemQuery::library("lib", 0, 20);
+    q.collection_id = Some("c1".into());
+    assert_eq!(c.items(&q).await.unwrap().items[0].id, "m1");
+}

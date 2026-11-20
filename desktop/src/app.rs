@@ -1665,6 +1665,8 @@ impl App {
             descending: sort != SortBy::Title,
             unplayed_only: false,
             search: None,
+            genre_id: None,
+            collection_id: None,
         }
     }
 

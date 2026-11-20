@@ -162,6 +162,18 @@ record! {
         pub descending: bool,
         pub unplayed_only: bool,
         pub search: Option<String>,
+        /// Only this genre (an id from `genres`).
+        pub genre_id: Option<String>,
+        /// The items of this collection instead of the library's.
+        pub collection_id: Option<String>,
+    }
+}
+
+record! {
+    /// A genre of a library, to browse it ("categories").
+    pub struct Genre {
+        pub id: String,
+        pub name: String,
     }
 }
 
@@ -175,6 +187,8 @@ impl ItemQuery {
             descending: false,
             unplayed_only: false,
             search: None,
+            genre_id: None,
+            collection_id: None,
         }
     }
 }

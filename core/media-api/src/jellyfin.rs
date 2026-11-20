@@ -702,8 +702,16 @@ impl MediaServer for JellyfinClient {
 
     async fn items(&self, q: &ItemQuery) -> Result<Page> {
         let mut p = self.list_params();
-        p.push(("recursive", "true".into()));
-        p.push(("includeItemTypes", "Movie,Series".into()));
+        // A collection's own items are its direct children (any library).
+        if let Some(c) = &q.collection_id {
+            p.push(("parentId", c.clone()));
+        } else {
+            p.push(("recursive", "true".into()));
+            p.push(("includeItemTypes", "Movie,Series".into()));
+        }
+        if let Some(g) = &q.genre_id {
+            p.push(("genreIds", g.clone()));
+        }
         p.push(("startIndex", q.start.to_string()));
         p.push(("limit", q.limit.to_string()));
         p.push(("sortBy", sort_param(q.sort_by).into()));
@@ -717,7 +725,7 @@ impl MediaServer for JellyfinClient {
             .into(),
         ));
         p.push(("enableTotalRecordCount", "true".into()));
-        if let Some(lib) = &q.library_id {
+        if let (Some(lib), None) = (&q.library_id, &q.collection_id) {
             p.push(("parentId", lib.clone()));
         }
         if q.unplayed_only {
@@ -733,6 +741,33 @@ impl MediaServer for JellyfinClient {
             total: r.total_record_count.unwrap_or(items.len() as u32),
             items,
         })
+    }
+
+    async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
+        let p = vec![
+            ("userId", self.uid().to_owned()),
+            ("parentId", library_id.to_owned()),
+            ("sortBy", "SortName".into()),
+        ];
+        Ok(self
+            .query("/Genres", &p)
+            .await?
+            .items
+            .into_iter()
+            .map(|d| Genre {
+                id: d.id,
+                name: d.name.unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    async fn collections(&self, library_id: &str) -> Result<Vec<Item>> {
+        let mut p = self.list_params();
+        p.push(("parentId", library_id.to_owned()));
+        p.push(("includeItemTypes", "BoxSet".into()));
+        p.push(("recursive", "true".into()));
+        p.push(("sortBy", "SortName".into()));
+        Ok(self.convert_all(self.query("/Items", &p).await?.items))
     }
 
     async fn item(&self, id: &str) -> Result<Item> {

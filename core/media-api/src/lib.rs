@@ -40,6 +40,10 @@ pub trait MediaServer: Send + Sync {
         limit: u32,
     ) -> impl Future<Output = Result<Vec<Item>>> + Send;
     fn search(&self, query: &str, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    /// Genres present in a library.
+    fn genres(&self, library_id: &str) -> impl Future<Output = Result<Vec<Genre>>> + Send;
+    /// Collections (Jellyfin box sets, Plex collections) of a library.
+    fn collections(&self, library_id: &str) -> impl Future<Output = Result<Vec<Item>>> + Send;
     /// Playback sources, original file first. Transcoding is only offered as a fallback.
     fn playback_info(
         &self,
@@ -116,6 +120,12 @@ impl MediaServer for AnyServer {
     }
     async fn search(&self, query: &str, limit: u32) -> Result<Vec<Item>> {
         dispatch!(self, c => c.search(query, limit).await)
+    }
+    async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
+        dispatch!(self, c => c.genres(library_id).await)
+    }
+    async fn collections(&self, library_id: &str) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.collections(library_id).await)
     }
     async fn playback_info(&self, item_id: &str, profile: &DeviceProfile) -> Result<PlaybackInfo> {
         dispatch!(self, c => c.playback_info(item_id, profile).await)
