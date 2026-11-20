@@ -376,8 +376,7 @@ fun DownloadedShowScreen(
                 dl.showKey()?.first == seriesId ||
                     dl.showKey()?.second == title ||
                     (dl.episode == null && cached(core, account, dl.itemId)?.seriesId == seriesId)
-            }
-            .sortedWith(compareBy({ it.seasonEpisode().first }, { it.seasonEpisode().second }))
+            }.sortedWith(compareBy({ it.seasonEpisode().first }, { it.seasonEpisode().second }))
     var auto by remember { mutableStateOf(core.autoDownloadOf(account, seriesId)) }
     LazyColumn(
         Modifier.fillMaxSize(),
