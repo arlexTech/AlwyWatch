@@ -21,6 +21,7 @@ use crate::*;
 const TTL_HOME: i64 = 30;
 const TTL_LIST: i64 = 120;
 const TTL_DETAIL: i64 = 300;
+const TTL_SEGMENTS: i64 = 6 * 3600;
 const PLAYBACK_INFO_TTL: Duration = Duration::from_secs(120);
 const IMAGE_WIDTHS: [u32; 7] = [160, 240, 320, 480, 720, 1080, 1920];
 
@@ -102,6 +103,13 @@ pub struct PageResult {
 pub struct ItemResult {
     pub item: Item,
     pub fetched_at: i64,
+}
+
+/// The episodes around the one playing (previous/next buttons, "next episode").
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct AdjacentEpisodes {
+    pub previous: Option<Item>,
+    pub next: Option<Item>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -235,6 +243,104 @@ impl Core {
         let s = self.register(session);
         self.store.put_account(&s.account.id, &s.account)?;
         Ok(s)
+    }
+
+    /// Like `swr`, but offline (or on any error) falls back to whatever is cached.
+    async fn swr_offline<T, F, Fut>(&self, key: &str, ttl: i64, fetch: F) -> Result<T>
+    where
+        T: Serialize + serde::de::DeserializeOwned,
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T>>,
+    {
+        match self.swr(key, ttl, false, fetch).await {
+            Ok((v, _)) => Ok(v),
+            Err(e) => match self.store.cache_get::<T>(key)? {
+                Some(c) => Ok(c.value),
+                None => Err(e),
+            },
+        }
+    }
+
+    async fn episodes_offline(
+        &self,
+        account: &str,
+        series: &str,
+        season: &str,
+    ) -> Result<Vec<Item>> {
+        self.swr_offline(
+            &key(account, &["episodes", series, season]),
+            TTL_DETAIL,
+            || async { Ok(self.server(account)?.episodes(series, season).await?) },
+        )
+        .await
+    }
+
+    /// Skippable intro/credits spans of an item (cached: they work offline once fetched).
+    async fn segments(&self, account: &str, item_id: &str) -> Result<Vec<Segment>> {
+        self.swr_offline(
+            &key(account, &["segments", item_id]),
+            TTL_SEGMENTS,
+            || async { Ok(self.server(account)?.segments(item_id).await?) },
+        )
+        .await
+    }
+
+    /// The episodes before and after this one, across seasons (specials aside).
+    async fn adjacent_episodes(&self, account: &str, item_id: &str) -> Result<AdjacentEpisodes> {
+        let none = AdjacentEpisodes {
+            previous: None,
+            next: None,
+        };
+        let item: Item = self
+            .swr_offline(&key(account, &["item", item_id]), TTL_DETAIL, || async {
+                Ok(self.server(account)?.item(item_id).await?)
+            })
+            .await?;
+        if item.kind != ItemKind::Episode {
+            return Ok(none);
+        }
+        let (Some(series), Some(season)) = (item.series_id, item.season_id) else {
+            return Ok(none);
+        };
+        let eps = self.episodes_offline(account, &series, &season).await?;
+        let Some(idx) = eps.iter().position(|e| e.id == item_id) else {
+            return Ok(none);
+        };
+        let mut previous = idx.checked_sub(1).and_then(|i| eps.get(i).cloned());
+        let mut next = eps.get(idx + 1).cloned();
+        if previous.is_none() || next.is_none() {
+            let seasons: Vec<Item> = self
+                .swr_offline(&key(account, &["seasons", &series]), TTL_DETAIL, || async {
+                    Ok(self.server(account)?.seasons(&series).await?)
+                })
+                .await
+                .unwrap_or_default();
+            let seasons: Vec<&Item> = seasons
+                .iter()
+                .filter(|s| s.season_number != Some(0) || s.id == season)
+                .collect();
+            if let Some(si) = seasons.iter().position(|s| s.id == season) {
+                if previous.is_none()
+                    && let Some(s) = si.checked_sub(1).and_then(|i| seasons.get(i))
+                {
+                    previous = self
+                        .episodes_offline(account, &series, &s.id)
+                        .await
+                        .ok()
+                        .and_then(|e| e.last().cloned());
+                }
+                if next.is_none()
+                    && let Some(s) = seasons.get(si + 1)
+                {
+                    next = self
+                        .episodes_offline(account, &series, &s.id)
+                        .await
+                        .ok()
+                        .and_then(|e| e.first().cloned());
+                }
+            }
+        }
+        Ok(AdjacentEpisodes { previous, next })
     }
 
     /// Returns the cached value when it is fresh enough, otherwise fetches and stores.
@@ -482,6 +588,8 @@ impl Core {
     ) -> Result<i64> {
         let srv = self.server(account_id)?;
         let src = srv.download_source(item_id).await?;
+        // Skip intro/credits must work offline too.
+        let _ = self.segments(account_id, item_id).await;
         // A readable title ("Show · S1 · E2 · Title"): given, cached, else ask the server
         // (episodes started from a show page are only cached as part of a list).
         let item = match known {
@@ -1194,6 +1302,22 @@ impl AlwyWatch {
         profile: DeviceProfile,
     ) -> Result<PlaybackInfo> {
         self.run(|c| async move { c.playback_info(&account_id, &item_id, &profile).await })
+            .await
+    }
+
+    /// Skippable intro and credits of an item; empty when the server detected none.
+    pub async fn segments(&self, account_id: String, item_id: String) -> Result<Vec<Segment>> {
+        self.run(|c| async move { c.segments(&account_id, &item_id).await })
+            .await
+    }
+
+    /// The previous and next episodes of an episode, across seasons. Works offline from cache.
+    pub async fn adjacent_episodes(
+        &self,
+        account_id: String,
+        item_id: String,
+    ) -> Result<AdjacentEpisodes> {
+        self.run(|c| async move { c.adjacent_episodes(&account_id, &item_id).await })
             .await
     }
 

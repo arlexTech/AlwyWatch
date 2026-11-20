@@ -302,6 +302,20 @@ record! {
     }
 }
 
+simple_enum! {
+    /// Part of an episode or movie that can be skipped.
+    pub enum SegmentKind { Intro, Credits, Recap, Preview, Commercial }
+}
+
+record! {
+    /// A skippable span (Plex markers, Jellyfin media segments), in milliseconds.
+    pub struct Segment {
+        pub kind: SegmentKind,
+        pub start_ms: u64,
+        pub end_ms: u64,
+    }
+}
+
 record! {
     /// Original-file download (never a transcode, so it can be resumed).
     pub struct DownloadSource {

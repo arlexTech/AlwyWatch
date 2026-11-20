@@ -406,6 +406,38 @@ struct GuidDto {
     id: String,
 }
 
+/// Intro and credits markers (`includeMarkers=1`), detected by the server.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct MarkerDto {
+    #[serde(rename = "type")]
+    kind: String,
+    start_time_offset: u64,
+    end_time_offset: u64,
+}
+
+fn convert_markers(markers: Vec<MarkerDto>) -> Vec<Segment> {
+    let mut out: Vec<Segment> = markers
+        .into_iter()
+        .filter(|m| m.end_time_offset > m.start_time_offset)
+        .filter_map(|m| {
+            let kind = match m.kind.as_str() {
+                "intro" => SegmentKind::Intro,
+                "credits" => SegmentKind::Credits,
+                "commercial" => SegmentKind::Commercial,
+                _ => return None,
+            };
+            Some(Segment {
+                kind,
+                start_ms: m.start_time_offset,
+                end_ms: m.end_time_offset,
+            })
+        })
+        .collect();
+    out.sort_by_key(|s| s.start_ms);
+    out
+}
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct MetadataDto {
@@ -432,6 +464,8 @@ struct MetadataDto {
     parent_rating_key: Option<String>,
     grandparent_rating_key: Option<String>,
     grandparent_title: Option<String>,
+    #[serde(rename = "Marker")]
+    marker: Vec<MarkerDto>,
     parent_title: Option<String>,
     parent_index: Option<u32>,
     index: Option<u32>,
@@ -1031,6 +1065,21 @@ impl MediaServer for PlexClient {
             play_session_id: None,
             sources,
         })
+    }
+
+    async fn segments(&self, item_id: &str) -> Result<Vec<Segment>> {
+        let mc = self
+            .get(
+                &format!("/library/metadata/{}", net::percent_encode(item_id)),
+                &[("includeMarkers", "1".into())],
+            )
+            .await?;
+        Ok(mc
+            .metadata
+            .into_iter()
+            .next()
+            .map(|m| convert_markers(m.marker))
+            .unwrap_or_default())
     }
 
     async fn report_progress(&self, r: &ProgressReport) -> Result<()> {

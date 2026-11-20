@@ -419,3 +419,34 @@ async fn genres_collections_and_their_items() {
     q.collection_id = Some("c1".into());
     assert_eq!(c.items(&q).await.unwrap().items[0].id, "m1");
 }
+
+#[tokio::test]
+async fn media_segments() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/MediaSegments/e1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": [
+            {"Type": "Outro", "StartTicks": 25_000_000_000_i64, "EndTicks": 26_000_000_000_i64},
+            {"Type": "Intro", "StartTicks": 0, "EndTicks": 900_000_000},
+            {"Type": "Unknown", "StartTicks": 1, "EndTicks": 2}
+        ], "TotalRecordCount": 3})))
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    let segs = c.segments("e1").await.unwrap();
+    assert_eq!(
+        segs,
+        vec![
+            Segment {
+                kind: SegmentKind::Intro,
+                start_ms: 0,
+                end_ms: 90_000
+            },
+            Segment {
+                kind: SegmentKind::Credits,
+                start_ms: 2_500_000,
+                end_ms: 2_600_000
+            },
+        ]
+    );
+}

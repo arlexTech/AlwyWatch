@@ -62,6 +62,8 @@ pub trait MediaServer: Send + Sync {
         item_id: &str,
         profile: &DeviceProfile,
     ) -> impl Future<Output = Result<PlaybackInfo>> + Send;
+    /// Skippable intro/credits spans, by start time. Empty when the server has not detected any.
+    fn segments(&self, item_id: &str) -> impl Future<Output = Result<Vec<Segment>>> + Send;
     fn report_progress(&self, report: &ProgressReport) -> impl Future<Output = Result<()>> + Send;
     fn set_played(&self, item_id: &str, played: bool) -> impl Future<Output = Result<()>> + Send;
     /// The original file (never a transcode), so downloads can be resumed.
@@ -150,6 +152,9 @@ impl MediaServer for AnyServer {
     }
     async fn playback_info(&self, item_id: &str, profile: &DeviceProfile) -> Result<PlaybackInfo> {
         dispatch!(self, c => c.playback_info(item_id, profile).await)
+    }
+    async fn segments(&self, item_id: &str) -> Result<Vec<Segment>> {
+        dispatch!(self, c => c.segments(item_id).await)
     }
     async fn report_progress(&self, report: &ProgressReport) -> Result<()> {
         dispatch!(self, c => c.report_progress(report).await)

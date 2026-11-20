@@ -900,6 +900,16 @@ impl MediaServer for JellyfinClient {
         })
     }
 
+    async fn segments(&self, item_id: &str) -> Result<Vec<Segment>> {
+        // Jellyfin 10.10+: filled by a segment provider (e.g. the Intro Skipper plugin).
+        let r: SegmentsDto = net::send_json(self.req(
+            Method::GET,
+            &format!("/MediaSegments/{}", net::percent_encode(item_id)),
+        ))
+        .await?;
+        Ok(convert_segments(r.items))
+    }
+
     async fn report_progress(&self, r: &ProgressReport) -> Result<()> {
         let path = match r.event {
             PlaybackEvent::Start => "/Sessions/Playing",
@@ -999,6 +1009,45 @@ impl MediaServer for JellyfinClient {
             headers: self.auth_headers(),
         }
     }
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+struct SegmentsDto {
+    items: Vec<SegmentDto>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+struct SegmentDto {
+    #[serde(rename = "Type")]
+    kind: String,
+    start_ticks: i64,
+    end_ticks: i64,
+}
+
+fn convert_segments(list: Vec<SegmentDto>) -> Vec<Segment> {
+    let mut out: Vec<Segment> = list
+        .into_iter()
+        .filter(|s| s.end_ticks > s.start_ticks && s.start_ticks >= 0)
+        .filter_map(|s| {
+            let kind = match s.kind.as_str() {
+                "Intro" => SegmentKind::Intro,
+                "Outro" => SegmentKind::Credits,
+                "Recap" => SegmentKind::Recap,
+                "Preview" => SegmentKind::Preview,
+                "Commercial" => SegmentKind::Commercial,
+                _ => return None,
+            };
+            Some(Segment {
+                kind,
+                start_ms: ticks_to_ms(s.start_ticks),
+                end_ms: ticks_to_ms(s.end_ticks),
+            })
+        })
+        .collect();
+    out.sort_by_key(|s| s.start_ms);
+    out
 }
 
 #[cfg(test)]

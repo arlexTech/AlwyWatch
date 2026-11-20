@@ -355,3 +355,39 @@ async fn plex_home_users_and_switch_with_pin() {
         "wrong PIN"
     );
 }
+
+#[tokio::test]
+async fn intro_and_credits_markers() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/library/metadata/77"))
+        .and(query_param("includeMarkers", "1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {
+                "Metadata": [{"ratingKey": "77", "type": "episode", "title": "Ep", "Marker": [
+                    {"type": "credits", "startTimeOffset": 2_500_000, "endTimeOffset": 2_600_000},
+                    {"type": "intro", "startTimeOffset": 30_000, "endTimeOffset": 95_000},
+                    {"type": "bookmark", "startTimeOffset": 1, "endTimeOffset": 2}
+                ]}]
+            }})),
+        )
+        .mount(&s)
+        .await;
+    let c = PlexClient::new(session(&s.uri()), client_info(), http());
+    let segs = c.segments("77").await.unwrap();
+    assert_eq!(
+        segs,
+        vec![
+            Segment {
+                kind: SegmentKind::Intro,
+                start_ms: 30_000,
+                end_ms: 95_000
+            },
+            Segment {
+                kind: SegmentKind::Credits,
+                start_ms: 2_500_000,
+                end_ms: 2_600_000
+            },
+        ]
+    );
+}

@@ -16,6 +16,7 @@ uniffi::setup_scaffolding!();
 mod android;
 mod app;
 mod error;
+mod playback;
 
 pub use app::*;
 pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
@@ -27,6 +28,7 @@ pub use keep_service::{
 pub use media_api::jellyfin::QuickConnectCode;
 pub use media_api::model::*;
 pub use media_api::plex::{PlexHomeUser, PlexPin, PlexServerResource};
+pub use playback::{PlaybackPrompt, playback_prompt};
 pub use seerr::{
     Availability, QuickConnect as SeerrQuickConnect, RequestStatus, SeerrCast, SeerrCollection,
     SeerrCollectionRef, SeerrDetails, SeerrInfo, SeerrLogin, SeerrMediaType, SeerrRequest,
