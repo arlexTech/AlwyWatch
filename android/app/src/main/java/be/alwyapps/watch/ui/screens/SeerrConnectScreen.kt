@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -78,22 +77,33 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(d.gutter)
+            .padding(horizontal = d.gutter, vertical = 16.dp)
             .widthIn(max = 640.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Connect Seerr", style = MaterialTheme.typography.titleLarge)
+        be.alwyapps.watch.ui
+            .PageTitle("Requests", "Connect Seerr to ask for movies and shows")
         val i = info
         if (i == null && core.keepActive()) {
             // Works whatever media server the user signed in with (Seerr itself serves one type).
-            Text("Through your AlwyWatch server: no extra sign-in.", color = Muted)
-            ActionButton("Use my AlwyWatch server", {
-                attempt {
-                    core.seerrConnectBridge()
-                    onDone()
-                }
-            }, primary = true)
-            Text("Or connect Seerr directly:", color = Muted)
+            be.alwyapps.watch.ui.Group(null, footer = "No extra sign-in: your AlwyWatch server links your Seerr account.") {
+                be.alwyapps.watch.ui.ListRow(
+                    "Use my AlwyWatch server",
+                    subtitle = "Recommended",
+                    icon = be.alwyapps.watch.ui.Icons.Hourglass,
+                    onClick = {
+                        attempt {
+                            core.seerrConnectBridge()
+                            onDone()
+                        }
+                    },
+                    trailing = {
+                        be.alwyapps.watch.ui
+                            .Chevron()
+                    },
+                )
+            }
+            Text("Or connect Seerr directly", style = MaterialTheme.typography.titleSmall, color = Muted)
         }
         if (i == null) {
             val submit = { attempt { info = core.seerrInfo(normalizeServerUrl(url)) } }
@@ -101,18 +111,21 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                 url,
                 { url = it },
                 Modifier.fillMaxWidth().dpadEscape().initialFocus(),
-                label = { Text("Seerr address") },
                 placeholder = { Text("requests.example.org") },
+                pill = true,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { submit() }),
             )
             ActionButton("Continue", { submit() }, primary = true)
         } else {
-            Text("${i.title} at ${i.baseUrl}", color = Muted)
+            Text("${i.title} · ${i.baseUrl}", color = Muted)
             when (method) {
                 null ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
                         for (m in i.logins) {
                             when (m) {
                                 SeerrLogin.PLEX -> ActionButton("Sign in with Plex", { method = m }, Modifier.initialFocus(), primary = true)
