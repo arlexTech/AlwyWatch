@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import be.alwyapps.watch.core.downloads.DownloadState
 import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.media.ItemKind
 import be.alwyapps.watch.player.DeviceProfiles
@@ -134,6 +135,7 @@ fun DetailScreen(
     // Season shown in the episode list (a show page opened from an episode's "Season N").
     var selectedSeason by remember(itemId) { mutableStateOf<Item?>(null) }
     var sheet by remember { mutableStateOf(false) }
+    val dls = if (d.isTv) emptyMap() else rememberDownloadMap()
     if (sheet && item != null) {
         val show = item.showFor()
         if (show != null) {
@@ -162,11 +164,17 @@ fun DetailScreen(
                             background = Color.Transparent,
                         )
                     }
+                    // Top: status bar legibility. Bottom: the title and buttons stay readable on
+                    // bright artwork.
                     Box(
                         Modifier.fillMaxSize().background(
                             Brush.verticalGradient(
                                 0f to Color.Black.copy(alpha = 0.5f),
                                 0.2f to Color.Transparent,
+                                0.45f to Color.Transparent,
+                                1f to
+                                    be.alwyapps.watch.ui.Background
+                                        .copy(alpha = 0.9f),
                             ),
                         ),
                     )
@@ -228,16 +236,39 @@ fun DetailScreen(
                                 )
                                 if (!d.isTv) {
                                     when (item.kind) {
-                                        ItemKind.MOVIE -> DownloadButton(item)
+                                        ItemKind.MOVIE -> DownloadButton(item, dls[item.id])
                                         // Episode or show: this one, its season, the whole show, next N.
-                                        ItemKind.EPISODE, ItemKind.SERIES ->
-                                            IconAction(Icons.Download, "Download…", { sheet = true }, active = false)
+                                        ItemKind.EPISODE -> DownloadStateButton(dls[item.id], { sheet = true })
+                                        ItemKind.SERIES -> {
+                                            val mine = dls.values.filter { it.episode?.seriesId == item.id }
+                                            DownloadStateButton(
+                                                mine.firstOrNull { it.state != DownloadState.COMPLETED } ?: mine.firstOrNull(),
+                                                { sheet = true },
+                                            )
+                                        }
                                         else -> {}
                                     }
                                 }
                             }
-                            item.remaining()?.let { left ->
-                                Text(left, style = MaterialTheme.typography.bodySmall, color = Muted)
+                            val downloadNote =
+                                when (item.kind) {
+                                    ItemKind.SERIES -> {
+                                        val mine = dls.values.filter { it.episode?.seriesId == item.id }
+                                        val done = mine.filter { it.state == DownloadState.COMPLETED }
+                                        val running = mine.size - done.size
+                                        listOfNotNull(
+                                            if (done.isNotEmpty()) {
+                                                "${done.size} downloaded · %.1f GB".format(done.sumOf { (it.total ?: it.downloaded).toLong() } / 1e9)
+                                            } else {
+                                                null
+                                            },
+                                            if (running > 0) "$running downloading" else null,
+                                        ).joinToString(" · ").ifEmpty { null }
+                                    }
+                                    else -> dls[item.id]?.summary()
+                                }
+                            listOfNotNull(item.remaining(), downloadNote).joinToString("  ·  ").ifEmpty { null }?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = Muted)
                             }
                         }
                     }
@@ -271,7 +302,7 @@ fun DetailScreen(
                         }
                     }
                 }
-                if (item.kind == ItemKind.SERIES) item(key = "seasons") { Seasons(item, season) { selectedSeason = it } }
+                if (item.kind == ItemKind.SERIES) item(key = "seasons") { Seasons(item, season, dls) { selectedSeason = it } }
             }
             item { Spacer(Modifier.height(40.dp)) }
         }
@@ -293,63 +324,59 @@ private fun Chip(text: String) {
 }
 
 /**
- * Download toggle for a movie or an episode: downloads it (default deletion rule), or removes
- * the download when it is already there.
+ * Download toggle for a movie or an episode: downloads it (default deletion rule); while it
+ * downloads, tapping cancels; once downloaded, tapping asks before removing it.
  */
 @Composable
-private fun DownloadButton(item: Item) {
+private fun DownloadButton(
+    item: Item,
+    dl: be.alwyapps.watch.core.downloads.Download?,
+) {
     val core = LocalCore.current
     val account = LocalAccount.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    fun current() = runCatching { core.downloads() }.getOrNull()?.firstOrNull { it.accountId == account && it.itemId == item.id }
-    var dl by remember(item.id) { mutableStateOf(current()) }
-    var failed by remember { mutableStateOf(false) }
-    // Follows the download while it runs.
-    LaunchedEffect(item.id, dl?.state) {
-        while (dl != null && dl?.state != be.alwyapps.watch.core.downloads.DownloadState.COMPLETED) {
-            kotlinx.coroutines.delay(2000)
-            dl = current()
-        }
-    }
+    var confirm by remember { mutableStateOf(false) }
     val permission =
         androidx.activity.compose.rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts
                 .RequestPermission(),
         ) { }
-    val done = dl?.state == be.alwyapps.watch.core.downloads.DownloadState.COMPLETED
-    val label =
+    if (confirm && dl != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Remove the download?") },
+            text = { Text("${item.title} (${dl.progressLabel()}) will be deleted from this phone.") },
+            confirmButton = {
+                ActionButton("Remove", {
+                    core.removeDownload(dl.id)
+                    confirm = false
+                }, primary = true)
+            },
+            dismissButton = { ActionButton("Keep", { confirm = false }) },
+            containerColor = be.alwyapps.watch.ui.Background,
+        )
+    }
+    DownloadStateButton(dl, {
         when {
-            failed -> "Download failed"
-            dl == null -> "Download"
-            done -> "Downloaded: tap to remove"
-            else -> "Downloading: tap to cancel"
-        }
-    IconAction(if (done) Icons.Check else Icons.Download, label, {
-        val existing = dl
-        if (existing != null) {
-            core.removeDownload(existing.id)
-            dl = null
-            return@IconAction
-        }
-        if (android.os.Build.VERSION.SDK_INT >= 33) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        scope.launch {
-            try {
-                dl = core.downloadItem(account, item.id, null)
-                failed = false
-                startDownloads(ctx)
-            } catch (e: be.alwyapps.watch.core.CoreException) {
-                failed = true
+            dl == null -> {
+                if (android.os.Build.VERSION.SDK_INT >= 33) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                scope.launch {
+                    runCatching { core.downloadItem(account, item.id, null) }
+                    startDownloads(ctx)
+                }
             }
+            dl.state == DownloadState.COMPLETED -> confirm = true
+            else -> core.removeDownload(dl.id)
         }
-    }, active = dl != null)
+    })
 }
 
 @Composable
 private fun Seasons(
     series: Item,
     initial: String?,
+    dls: Map<String, be.alwyapps.watch.core.downloads.Download>,
     onSelected: (Item) -> Unit,
 ) {
     val core = LocalCore.current
@@ -370,13 +397,14 @@ private fun Seasons(
     LazyRow(contentPadding = PaddingValues(horizontal = d.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(list, key = { it.id }) { s -> ActionButton(s.title, { selected = s }, primary = s.id == selected.id) }
     }
-    Episodes(series.id, selected.id)
+    Episodes(series.id, selected.id, dls)
 }
 
 @Composable
 private fun Episodes(
     seriesId: String,
     seasonId: String,
+    dls: Map<String, be.alwyapps.watch.core.downloads.Download>,
 ) {
     val core = LocalCore.current
     val account = LocalAccount.current
@@ -430,7 +458,11 @@ private fun Episodes(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            listOfNotNull(ep.runtimeMs?.let { formatRuntime(it.toLong()) }, ep.remaining()).joinToString(" · "),
+                            listOfNotNull(
+                                ep.runtimeMs?.let { formatRuntime(it.toLong()) },
+                                ep.remaining(),
+                                dls[ep.id]?.let { if (it.state == DownloadState.COMPLETED) it.progressLabel() else "downloading ${it.progressLabel()}" },
+                            ).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
                             color = Subtle,
                         )
@@ -439,7 +471,7 @@ private fun Episodes(
                         }
                     }
                     // Phones/tablets: download an episode straight from the list.
-                    if (!d.isTv) DownloadButton(ep)
+                    if (!d.isTv) DownloadButton(ep, dls[ep.id])
                 }
             }
         }

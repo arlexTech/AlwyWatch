@@ -161,6 +161,99 @@ fun rememberDownloads(): Pair<List<Download>, () -> Unit> {
     return list to { tick++ }
 }
 
+/**
+ * This account's downloads by item id, kept current: every second while something downloads,
+ * every few seconds otherwise (so a download started elsewhere shows up too).
+ */
+@Composable
+fun rememberDownloadMap(): Map<String, Download> {
+    val core = LocalCore.current
+    val account = LocalAccount.current
+
+    fun read() = runCatching { core.downloads() }.getOrDefault(emptyList()).filter { it.accountId == account }.associateBy { it.itemId }
+    var map by remember(account) { mutableStateOf(read()) }
+    LaunchedEffect(account) {
+        while (true) {
+            delay(if (map.values.any { !it.done }) 1000 else 3000)
+            map = read()
+        }
+    }
+    return map
+}
+
+/** "42%" while downloading, "0.8 GB" once done. */
+fun Download.progressLabel(): String =
+    if (done) {
+        gb(total ?: downloaded)
+    } else {
+        val t = total?.toLong() ?: 0L
+        if (t > 0) "${(downloaded.toLong() * 100 / t).coerceIn(0, 100)}%" else "…"
+    }
+
+/**
+ * Download state in one round button: the download icon, a ring filling up with the
+ * percentage while downloading, a check once downloaded.
+ */
+@Composable
+fun DownloadStateButton(
+    dl: Download?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 46.dp,
+) {
+    val label =
+        when {
+            dl == null -> "Download"
+            dl.done -> "Downloaded, ${dl.progressLabel()}"
+            else -> "Downloading, ${dl.progressLabel()}"
+        }
+    Box(
+        modifier
+            .size(size)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(if (dl?.done == true) Accent else SurfaceHigh)
+            .clickable(onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            dl == null -> Icon(Icons.Download, label, Modifier.size(22.dp))
+            dl.done -> Icon(Icons.Check, label, Modifier.size(22.dp), tint = Color.Black)
+            else -> {
+                val t = dl.total?.toLong() ?: 0L
+                val fraction = if (t > 0) (dl.downloaded.toLong().toFloat() / t).coerceIn(0f, 1f) else 0f
+                androidx.compose.material3.CircularProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier.size(size - 6.dp),
+                    color = Accent,
+                    trackColor = Color.White.copy(alpha = 0.15f),
+                    strokeWidth = 3.dp,
+                )
+                when (dl.state) {
+                    DownloadState.PAUSED, DownloadState.PAUSED_NO_SPACE, DownloadState.FAILED ->
+                        Icon(Icons.Pause, label, Modifier.size(18.dp), tint = Muted)
+                    else ->
+                        Text(
+                            if (t > 0) "${(fraction * 100).toInt()}" else "…",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = androidx.compose.ui.graphics.Color.White,
+                        )
+                }
+            }
+        }
+    }
+}
+
+/** Next to the button: "Downloading 42% · 0.3 / 0.8 GB" or "Downloaded · 0.8 GB". */
+fun Download.summary(): String =
+    when {
+        done -> "Downloaded · ${gb(total ?: downloaded)}"
+        state == DownloadState.WAITING -> "Waiting for the network · ${progressLabel()}"
+        state == DownloadState.PAUSED -> "Paused · ${progressLabel()}"
+        state == DownloadState.FAILED -> "Download failed"
+        state == DownloadState.PAUSED_NO_SPACE -> "Paused: storage full"
+        else -> "Downloading ${progressLabel()}" + (total?.let { " · ${gb(downloaded)} / ${gb(it)}" } ?: "")
+    }
+
 private fun cached(
     core: AlwyWatch,
     account: String,
@@ -311,7 +404,14 @@ fun DownloadRow(
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // "Show · S2 · E6 · Title": the show, then the episode on its own line.
+            val parts = label.split(" · ")
+            if (parts.size >= 3) {
+                Text(parts.first(), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(parts.drop(1).joinToString(" · "), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            } else {
+                Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
             Text(
                 dl.status(),
                 color = if (dl.state == DownloadState.FAILED || dl.state == DownloadState.PAUSED_NO_SPACE) Danger else Muted,
@@ -511,7 +611,7 @@ fun DownloadSheet(
             Text("Delete them", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.titleMedium)
             RuleChips(rule) { rule = it }
             error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodySmall) }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ActionButton(if (busy) "Adding…" else "Download", {
                     if (busy) return@ActionButton
                     busy = true
@@ -533,6 +633,13 @@ fun DownloadSheet(
                         }
                     }
                 }, primary = true, icon = Icons.Download)
+                val mine = episode?.let { ep -> runCatching { core.downloads() }.getOrNull()?.firstOrNull { it.accountId == account && it.itemId == ep.id } }
+                if (mine != null) {
+                    ActionButton(if (mine.done) "Remove this episode" else "Cancel this episode", {
+                        core.removeDownload(mine.id)
+                        onDismiss()
+                    }, icon = Icons.Delete)
+                }
                 if (existing != null) {
                     ActionButton("Stop keeping next", {
                         scope.launch {
