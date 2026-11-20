@@ -73,6 +73,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = AppWindow::new()?;
     let app = app::App::new(core.clone(), &ui, tokens);
     // Test hook (headless screenshots): start the Jellyfin sign-in with this address.
+    if std::env::var("ALWYWATCH_TEST_PAGE").as_deref() == Ok("settings") {
+        app.test_settings();
+    }
     if let Ok(url) = std::env::var("ALWYWATCH_TEST_SEERR_URL") {
         app.test_seerr(url);
     }

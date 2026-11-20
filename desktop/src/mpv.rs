@@ -27,7 +27,15 @@ pub struct MpvEventEndFile {
     pub error: c_int,
 }
 
+#[repr(C)]
+struct MpvEventClientMessage {
+    num_args: c_int,
+    args: *const *const c_char,
+}
+
 pub const EVENT_SHUTDOWN: c_int = 1;
+/// `script-message` sent by a key we bound (see `define-section` in the player).
+pub const EVENT_CLIENT_MESSAGE: c_int = 16;
 pub const EVENT_END_FILE: c_int = 7;
 pub const EVENT_FILE_LOADED: c_int = 8;
 pub const END_FILE_EOF: c_int = 0;
@@ -177,16 +185,40 @@ impl Mpv {
         (rc >= 0).then_some(v != 0)
     }
 
-    /// Next event (id, end-file reason if any). `timeout` in seconds.
-    pub fn wait_event(&self, timeout: f64) -> (c_int, Option<c_int>) {
-        // SAFETY: the returned pointer is valid until the next wait_event call; we copy out.
+    /// Next event. `timeout` in seconds.
+    pub fn wait_event(&self, timeout: f64) -> Event {
+        // SAFETY: the returned pointer and its data are valid until the next wait_event call;
+        // everything is copied out before returning.
         unsafe {
             let ev = &*(self.api.wait_event)(self.h, timeout);
             let reason = (ev.event_id == EVENT_END_FILE && !ev.data.is_null())
                 .then(|| (*(ev.data as *const MpvEventEndFile)).reason);
-            (ev.event_id, reason)
+            let message = if ev.event_id == EVENT_CLIENT_MESSAGE && !ev.data.is_null() {
+                let m = &*(ev.data as *const MpvEventClientMessage);
+                (0..m.num_args.max(0) as usize)
+                    .map(|i| *m.args.add(i))
+                    .filter(|p| !p.is_null())
+                    .map(|p| CStr::from_ptr(p).to_string_lossy().into_owned())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            Event {
+                id: ev.event_id,
+                reason,
+                message,
+            }
         }
     }
+}
+
+/// A copied-out mpv event.
+pub struct Event {
+    pub id: c_int,
+    /// End-file reason, for `EVENT_END_FILE`.
+    pub reason: Option<c_int>,
+    /// Arguments of a client message (`script-message a b` gives `["a", "b"]`).
+    pub message: Vec<String>,
 }
 
 impl Drop for Mpv {

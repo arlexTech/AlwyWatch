@@ -412,6 +412,36 @@ component Group inherits VerticalLayout {
     }
 }
 
+/// A labelled on/off switch row (settings).
+component SettingToggle inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <bool> on;
+    callback clicked();
+    VerticalLayout {
+        alignment: center;
+        Text { text: root.title; color: Palette.text; font-weight: 700; }
+        Text { text: root.subtitle; color: Palette.muted; font-size: 12px; }
+    }
+    Rectangle { horizontal-stretch: 1; }
+    Focusable {
+        width: 48px;
+        height: 28px;
+        border-radius: 14px;
+        background: root.on ? Palette.accent : Palette.surface-high;
+        y: (parent.height - self.height) / 2;
+        clicked => { root.clicked(); }
+        Rectangle {
+            x: root.on ? parent.width - 24px : 4px;
+            width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            background: #ffffff;
+            animate x { duration: 150ms; }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "AlwyWatch";
     preferred-width: 1280px;
@@ -447,6 +477,8 @@ export component AppWindow inherits Window {
     in property <string> cache-size;
     in property <string> about;
     in-out property <bool> spdif;
+    in property <bool> auto-skip-intro;
+    in property <bool> auto-next: true;
     in-out property <string> search-text;
     in property <[DownloadRow]> downloads;
     // Seerr
@@ -497,6 +529,8 @@ export component AppWindow inherits Window {
     callback remove-account(string);
     callback clear-cache();
     callback toggle-spdif();
+    /// Flips a boolean setting ("1"/"0") and refreshes the switches.
+    callback toggle-setting(string);
     callback download(string);
     callback download-action(int, string); // pause | resume | remove
     callback play-download(string, string); // account, item
@@ -1304,29 +1338,23 @@ export component AppWindow inherits Window {
                             }
                             Group {
                                 title: "PLAYBACK";
-                                HorizontalLayout {
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Text { text: "Audio passthrough"; color: Palette.text; font-weight: 700; }
-                                        Text { text: "Send Dolby/DTS untouched to an HDMI or S/PDIF receiver."; color: Palette.muted; font-size: 12px; }
-                                    }
-                                    Rectangle { horizontal-stretch: 1; }
-                                    Focusable {
-                                        width: 48px;
-                                        height: 28px;
-                                        border-radius: 14px;
-                                        background: root.spdif ? Palette.accent : Palette.surface-high;
-                                        y: (parent.height - self.height) / 2;
-                                        clicked => { root.toggle-spdif(); }
-                                        Rectangle {
-                                            x: root.spdif ? parent.width - 24px : 4px;
-                                            width: 20px;
-                                            height: 20px;
-                                            border-radius: 10px;
-                                            background: #ffffff;
-                                            animate x { duration: 150ms; }
-                                        }
-                                    }
+                                SettingToggle {
+                                    title: "Audio passthrough";
+                                    subtitle: "Send Dolby/DTS untouched to an HDMI or S/PDIF receiver.";
+                                    on: root.spdif;
+                                    clicked => { root.toggle-spdif(); }
+                                }
+                                SettingToggle {
+                                    title: "Skip intros automatically";
+                                    subtitle: "Otherwise press S when the intro starts.";
+                                    on: root.auto-skip-intro;
+                                    clicked => { root.toggle-setting("player.auto_skip_intro"); }
+                                }
+                                SettingToggle {
+                                    title: "Play next episode during credits";
+                                    subtitle: "After a 10 second countdown, which C cancels.";
+                                    on: root.auto-next;
+                                    clicked => { root.toggle-setting("player.auto_next"); }
                                 }
                             }
                             Group {

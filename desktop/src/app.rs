@@ -179,6 +179,7 @@ impl App {
         APP.with(|a| *a.borrow_mut() = Rc::downgrade(&app));
         ui.set_grid(ModelRc::from(app.state.borrow().grid_model.clone()));
         ui.set_episodes(ModelRc::from(app.state.borrow().episodes_model.clone()));
+        app.load_player_settings();
         ui.set_spdif(
             app.core
                 .get_setting("player.spdif".into())
@@ -2115,6 +2116,14 @@ impl App {
         }
     }
 
+    /// Player switches in settings (defaults: auto intro skip off, auto next episode on).
+    fn load_player_settings(&self) {
+        let get = |k: &str| self.core.get_setting(k.to_owned()).ok().flatten();
+        let ui = self.ui();
+        ui.set_auto_skip_intro(get("player.auto_skip_intro").as_deref() == Some("1"));
+        ui.set_auto_next(get("player.auto_next").as_deref() != Some("0"));
+    }
+
     fn play(self: &Rc<Self>, id: String, from_start: bool) {
         let Some(account) = self.account() else {
             return;
@@ -2130,8 +2139,10 @@ impl App {
             item.as_ref().map(|i| i.user.position_ms).unwrap_or(0)
         };
         let title = item.as_ref().map(|i| i.title.clone()).unwrap_or_default();
-        let next = self.next_episode(&id);
         let spdif = self.ui().get_spdif();
+        let setting = |k: &str| self.core.get_setting(k.to_owned()).ok().flatten();
+        let auto_skip_intro = setting("player.auto_skip_intro").as_deref() == Some("1");
+        let auto_next = setting("player.auto_next").as_deref() != Some("0");
         let local = self.core.downloaded_file(account.clone(), id.clone());
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
@@ -2181,12 +2192,29 @@ impl App {
                 .filter(|s| s.kind == StreamKind::Subtitle)
                 .filter_map(|s| s.external.as_ref().map(|r| r.url.clone()))
                 .collect();
+            // Episodes around this one and skippable parts (both cached: they work offline).
+            let adjacent = core
+                .adjacent_episodes(account.clone(), id.clone())
+                .await
+                .ok();
+            let segments = core.segments(account.clone(), id.clone()).await;
+            let next = adjacent
+                .as_ref()
+                .and_then(|a| a.next.as_ref().map(|e| e.id.clone()));
+            let previous = adjacent
+                .as_ref()
+                .and_then(|a| a.previous.as_ref().map(|e| e.id.clone()));
             let req = PlayRequest {
                 media: src.direct.clone(),
                 start_ms,
                 title,
                 external_subs: subs,
                 spdif,
+                segments: segments.unwrap_or_default(),
+                has_next: next.is_some(),
+                has_previous: previous.is_some(),
+                auto_skip_intro,
+                auto_next,
             };
             let (src_id, session) = (src.id.clone(), info.play_session_id.clone());
             let rt = core.runtime();
@@ -2208,16 +2236,31 @@ impl App {
                 });
                 if p.event == PlaybackEvent::Stop {
                     // Back on the UI thread: refresh the page and autoplay the next episode.
-                    let next = next.clone();
-                    let finished = p.finished;
+                    let (next, previous, acct) = (next.clone(), previous.clone(), acct2.clone());
+                    let (finished, go) = (p.finished, p.go);
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(t) = APP.with(|a| a.borrow().upgrade()) {
                             let current = t.state.borrow().stack.last().cloned();
                             if let Some(r) = current {
                                 t.show(r);
                             }
-                            if finished && let Some(n) = next {
-                                t.play(n, true);
+                            match go {
+                                Some(player::Go::Next) => {
+                                    if let Some(n) = next {
+                                        t.play_for(acct, n, false);
+                                    }
+                                }
+                                Some(player::Go::Previous) => {
+                                    if let Some(p) = previous {
+                                        t.play_for(acct, p, false);
+                                    }
+                                }
+                                None if finished => {
+                                    if let Some(n) = next {
+                                        t.play_for(acct, n, true);
+                                    }
+                                }
+                                None => {}
                             }
                         }
                     });
@@ -2228,24 +2271,6 @@ impl App {
             }
         })
         .ok();
-    }
-
-    fn next_episode(&self, id: &str) -> Option<String> {
-        let st = self.state.borrow();
-        let item = st.items.get(id)?;
-        if item.kind != ItemKind::Episode {
-            return None;
-        }
-        let eps = self
-            .core
-            .cached_episodes(
-                self.account()?,
-                item.series_id.clone()?,
-                item.season_id.clone()?,
-            )
-            .ok()??;
-        let idx = eps.items.iter().position(|e| e.id == id)?;
-        eps.items.get(idx + 1).map(|e| e.id.clone())
     }
 
     fn toggle_played(self: &Rc<Self>, id: String) {
@@ -2692,6 +2717,12 @@ impl App {
     }
 
     /// Test hook used by headless screenshots: open settings and start connecting Seerr.
+    /// Test hook used by headless screenshots: open Settings.
+    pub fn test_settings(self: &Rc<Self>) {
+        self.navigate(Route::Settings);
+    }
+
+    /// Test hook used by headless screenshots.
     pub fn test_seerr(self: &Rc<Self>, url: String) {
         self.navigate(Route::Settings);
         self.seerr_url(url);
@@ -2861,6 +2892,17 @@ impl App {
             item.into(),
             false
         ));
+        on!(on_toggle_setting, |a, key| {
+            let key = key.to_string();
+            let on = a.core.get_setting(key.clone()).ok().flatten();
+            // Defaults: automatic next episode is on, automatic intro skip is off.
+            let was = match key.as_str() {
+                "player.auto_next" => on.as_deref() != Some("0"),
+                _ => on.as_deref() == Some("1"),
+            };
+            let _ = a.core.set_setting(key, if was { "0" } else { "1" }.into());
+            a.load_player_settings();
+        });
         on!(on_toggle_spdif, |a| {
             let ui = a.ui();
             let v = !ui.get_spdif();
