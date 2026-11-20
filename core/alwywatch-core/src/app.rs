@@ -267,7 +267,13 @@ impl Core {
             })?;
             // A failing library rail should not hide the rest of the home screen.
             if let Ok(items) = items {
-                latest.push((i, LibraryRail { library, items }));
+                latest.push((
+                    i,
+                    LibraryRail {
+                        library,
+                        items: shows_not_episodes(items),
+                    },
+                ));
             }
         }
         latest.sort_by_key(|(i, _)| *i);
@@ -2044,6 +2050,57 @@ impl AlwyWatch {
     }
 }
 
+/// "Recently added" of a shows library: the shows, once each, not their new episodes or seasons
+/// (Jellyfin groups them as a season, Plex lists every episode).
+fn shows_not_episodes(items: Vec<Item>) -> Vec<Item> {
+    let mut seen = std::collections::HashSet::new();
+    items
+        .into_iter()
+        .filter_map(|i| {
+            let item = match (i.kind, i.series_id.clone()) {
+                (ItemKind::Episode | ItemKind::Season, Some(series_id)) => {
+                    // The show's poster becomes the primary image (an episode's is a still).
+                    let poster = i
+                        .images
+                        .iter()
+                        .find(|im| im.kind == ImageKind::SeriesPrimary)
+                        .or_else(|| i.images.iter().find(|im| im.kind == ImageKind::Primary))
+                        .cloned()
+                        .map(|im| ImageRef {
+                            kind: ImageKind::Primary,
+                            ..im
+                        });
+                    let images = poster
+                        .into_iter()
+                        .chain(
+                            i.images
+                                .iter()
+                                .filter(|im| im.kind == ImageKind::Backdrop)
+                                .cloned(),
+                        )
+                        .collect();
+                    Item {
+                        id: series_id.clone(),
+                        kind: ItemKind::Series,
+                        title: i.series_title.clone().unwrap_or(i.title),
+                        series_id: None,
+                        series_title: None,
+                        season_id: None,
+                        season_number: None,
+                        episode_number: None,
+                        overview: None,
+                        runtime_ms: None,
+                        images,
+                        ..i
+                    }
+                }
+                _ => i,
+            };
+            seen.insert(item.id.clone()).then_some(item)
+        })
+        .collect()
+}
+
 /// Merges in-progress items and next episodes into one list by recency (see
 /// [`Home::continue_watching`]): in-progress items by their own date, next episodes by when
 /// their show was last watched (set by `fetch_home`); undated next episodes last, in the
@@ -2109,7 +2166,7 @@ impl AlwyWatch {
 mod continue_watching_tests {
     use super::*;
 
-    fn ep(id: &str, series: &str, at: Option<i64>, pos: u64) -> Item {
+    pub(super) fn ep(id: &str, series: &str, at: Option<i64>, pos: u64) -> Item {
         Item {
             id: id.into(),
             kind: ItemKind::Episode,
@@ -2162,5 +2219,40 @@ mod continue_watching_tests {
             .collect();
         // Newest first, one per show (b2 is more recent than b), undated d last.
         assert_eq!(ids, ["c", "a", "b2", "e", "d"]);
+    }
+}
+
+#[cfg(test)]
+mod latest_shows_tests {
+    use super::*;
+
+    #[test]
+    fn new_episodes_and_seasons_become_their_show_once() {
+        let img = |kind, path: &str| ImageRef {
+            kind,
+            path: path.into(),
+            blurhash: None,
+        };
+        let mut e1 = continue_watching_tests::ep("e1", "show", None, 0);
+        e1.images = vec![
+            img(ImageKind::Primary, "still"),
+            img(ImageKind::SeriesPrimary, "poster"),
+        ];
+        let e2 = continue_watching_tests::ep("e2", "show", None, 0);
+        let mut season = continue_watching_tests::ep("s3", "other", None, 0);
+        season.kind = ItemKind::Season;
+        season.images = vec![img(ImageKind::Primary, "season-art")];
+        let out = shows_not_episodes(vec![e1, e2, season]);
+        assert_eq!(out.len(), 2);
+        assert_eq!(
+            (out[0].id.as_str(), out[0].kind),
+            ("show", ItemKind::Series)
+        );
+        assert_eq!(out[0].images[0].path, "poster");
+        assert_eq!(out[0].images[0].kind, ImageKind::Primary);
+        assert_eq!(
+            (out[1].id.as_str(), out[1].images[0].path.as_str()),
+            ("other", "season-art")
+        );
     }
 }

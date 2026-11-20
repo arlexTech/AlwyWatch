@@ -106,6 +106,15 @@ fun DetailScreen(
             refresh = { core.refreshItem(account, itemId, it).item },
         )
     val item = res.value
+    // A season has no page of its own: its show, opened on that season.
+    val parent = item?.seriesId
+    if (item?.kind == ItemKind.SEASON && parent != null) {
+        LaunchedEffect(item.id) {
+            nav.pop()
+            nav.push(Route.Detail(parent, item.id, account))
+        }
+        return
+    }
     val playable = item != null && (item.kind == ItemKind.MOVIE || item.kind == ItemKind.EPISODE)
     // Warm up playback so pressing Play starts instantly.
     if (playable) {

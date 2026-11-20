@@ -589,21 +589,24 @@ fn continue_watching_hides_removed_next_episodes_until_watched_again() {
     let s = env.sign_in();
     let app = env.app();
     let acct = s.account.id.clone();
-    env.mount(Mock::given(path("/UserViews")).respond_with(
-        ResponseTemplate::new(200).set_body_json(json!({"Items": []})),
-    ));
-    env.mount(Mock::given(path("/UserItems/Resume")).respond_with(
-        ResponseTemplate::new(200).set_body_json(json!({"Items": []})),
-    ));
+    env.mount(
+        Mock::given(path("/UserViews"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": []}))),
+    );
+    env.mount(
+        Mock::given(path("/UserItems/Resume"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": []}))),
+    );
     env.mount(Mock::given(path("/Shows/NextUp")).respond_with(
         ResponseTemplate::new(200).set_body_json(json!({"Items": [
             {"Id": "n1", "Name": "Next", "Type": "Episode", "SeriesId": "show", "SeriesName": "Show"}
         ]})),
     ));
     // Show last watched: no finished episode yet.
-    env.mount(Mock::given(path("/Items")).respond_with(
-        ResponseTemplate::new(200).set_body_json(json!({"Items": []})),
-    ));
+    env.mount(
+        Mock::given(path("/Items"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": []}))),
+    );
     env.mount(
         Mock::given(method("DELETE"))
             .and(path("/UserPlayedItems/n1"))
@@ -615,5 +618,11 @@ fn continue_watching_hides_removed_next_episodes_until_watched_again() {
         .unwrap();
     let h = env.block(app.refresh_home(acct.clone(), true)).unwrap();
     assert!(h.continue_watching.is_empty(), "hidden on this device");
-    assert!(app.cached_home(acct).unwrap().unwrap().continue_watching.is_empty());
+    assert!(
+        app.cached_home(acct)
+            .unwrap()
+            .unwrap()
+            .continue_watching
+            .is_empty()
+    );
 }
