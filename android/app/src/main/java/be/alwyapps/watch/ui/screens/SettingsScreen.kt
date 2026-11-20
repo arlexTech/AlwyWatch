@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -127,6 +128,21 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
 
         AlwyWatchServerGroup(accounts, version) { version++ }
         RequestsGroup(version) { version++ }
+
+        if (!d.isTv) {
+            Group("Downloads", footer = "For new downloads; a show's \"next episodes\" keeps its own choice.") {
+                var rule by remember { mutableStateOf(core.defaultDeleteRule()) }
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Delete downloads", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+                    RuleChips(rule) {
+                        rule = it
+                        core.setDefaultDeleteRule(it)
+                    }
+                }
+                Divider()
+                ListRow("Manage downloads", icon = Icons.Download, onClick = { nav.push(Route.ManageDownloads) }, trailing = { Chevron() })
+            }
+        }
 
         Group("Playback") {
             var matchRate by remember { mutableStateOf(settings.matchFrameRate) }

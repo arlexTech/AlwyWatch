@@ -187,7 +187,6 @@ fun DownloadsHome(modifier: Modifier = Modifier) {
     val done = mine.filter { it.done }
     val shows = done.filter { it.showKey() != null }.groupBy { it.showKey()!! }
     val movies = done.filter { it.showKey() == null }
-    var rule by remember { mutableStateOf(core.defaultDeleteRule()) }
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         if (mine.isEmpty()) {
             item {
@@ -242,16 +241,12 @@ fun DownloadsHome(modifier: Modifier = Modifier) {
         }
         if (mine.isNotEmpty()) {
             item {
-                Column(Modifier.padding(horizontal = d.gutter, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Delete new downloads", style = MaterialTheme.typography.titleMedium)
-                    RuleChips(rule) {
-                        rule = it
-                        core.setDefaultDeleteRule(it)
-                    }
-                    ActionButton("Manage downloads (%.1f GB)".format(done.sumOf { (it.total ?: it.downloaded).toLong() } / 1e9), {
-                        nav.push(Route.ManageDownloads)
-                    }, icon = Icons.Settings)
-                }
+                ActionButton(
+                    "Manage downloads",
+                    { nav.push(Route.ManageDownloads) },
+                    Modifier.padding(horizontal = d.gutter, vertical = 24.dp),
+                    icon = Icons.Settings,
+                )
             }
         }
     }
@@ -375,7 +370,13 @@ fun DownloadedShowScreen(
     val (list, refresh) = rememberDownloads()
     val eps =
         list
-            .filter { it.accountId == account && it.showKey()?.first == seriesId }
+            .filter { it.accountId == account }
+            .filter { dl ->
+                // Older downloads have no show metadata: their cached episode or title tell.
+                dl.showKey()?.first == seriesId ||
+                    dl.showKey()?.second == title ||
+                    (dl.episode == null && cached(core, account, dl.itemId)?.seriesId == seriesId)
+            }
             .sortedWith(compareBy({ it.seasonEpisode().first }, { it.seasonEpisode().second }))
     var auto by remember { mutableStateOf(core.autoDownloadOf(account, seriesId)) }
     LazyColumn(
@@ -552,7 +553,18 @@ fun Item.showFor(): Item? =
         ItemKind.SERIES -> this
         ItemKind.EPISODE ->
             seriesId?.let { sid ->
-                copy(id = sid, kind = ItemKind.SERIES, title = seriesTitle ?: title)
+                // The show's poster becomes its primary image (the episode's is a still).
+                val posters =
+                    images
+                        .filter { it.kind == be.alwyapps.watch.core.media.ImageKind.SERIES_PRIMARY }
+                        .map { it.copy(kind = be.alwyapps.watch.core.media.ImageKind.PRIMARY) }
+                copy(
+                    id = sid,
+                    kind = ItemKind.SERIES,
+                    title = seriesTitle ?: title,
+                    images =
+                        posters + images.filter { it.kind == be.alwyapps.watch.core.media.ImageKind.BACKDROP },
+                )
             }
         else -> null
     }

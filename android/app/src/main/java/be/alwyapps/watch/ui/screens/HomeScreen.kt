@@ -46,6 +46,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.Home
+import be.alwyapps.watch.core.downloads.Download
+import be.alwyapps.watch.core.downloads.DownloadState
 import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.media.ItemKind
 import be.alwyapps.watch.core.media.LibraryKind
@@ -119,11 +121,15 @@ fun HomeScreen() {
 private fun Rails(
     h: Home,
     onFocus: ((Item) -> Unit)?,
+    offline: Boolean = false,
 ) {
     val core = LocalCore.current
     val nav = LocalNavigator.current
     val d = LocalDimens.current
-    val open: (Item) -> Unit = { nav.push(Route.Detail(it.id)) }
+    // Offline, a show opens its downloaded episodes (its page needs the server).
+    val open: (Item) -> Unit = {
+        if (offline && it.kind == ItemKind.SERIES) nav.push(Route.DownloadedShow(it.id, it.title)) else nav.push(Route.Detail(it.id))
+    }
     val first =
         when {
             h.resume.isNotEmpty() -> "resume"
@@ -139,7 +145,7 @@ private fun Rails(
     Rail("Continue watching", h.resume, open, onFocus, landscape = landscape, focusKey = "home", defaultFocus = first == "resume")
     Rail("Next up", h.nextUp, open, onFocus, landscape = landscape, focusKey = "home", defaultFocus = first == "next")
     // After what the user is watching, before the "new" rails.
-    if (core.keepActive()) LeavingSoonRail()
+    if (core.keepActive() && !offline) LeavingSoonRail()
     val account = LocalAccount.current
     val server = remember(account) { runCatching { core.accounts() }.getOrNull()?.firstOrNull { it.id == account }?.serverName }
     for (rail in h.latest) {
@@ -151,7 +157,7 @@ private fun Rails(
             focusKey = "home",
             defaultFocus = first == rail.library.id,
             subtitle = server.takeIf { !d.isTv },
-            onSeeAll = { nav.push(Route.Library(rail.library.id, rail.library.title)) },
+            onSeeAll = if (offline) null else ({ nav.push(Route.Library(rail.library.id, rail.library.title)) }),
         )
     }
 }
@@ -177,48 +183,109 @@ private fun PhoneHome(
     }
     Column(Modifier.fillMaxSize()) {
         HomeTopBar(offline) { setOffline(!offline) }
-        if (offline) {
-            DownloadsHome()
-            return@Column
-        }
+        val (downloads, _) = rememberDownloads()
+        val completed = downloads.filter { it.accountId == account && it.state == DownloadState.COMPLETED }
+        val active = downloads.count { it.accountId == account && it.state != DownloadState.COMPLETED }
+        val shown =
+            if (offline && h != null) {
+                remember(h, completed.map { it.itemId }) { offlineHome(h, completed) { id -> core.cachedItem(account, id)?.item } }
+            } else {
+                h
+            }
         LazyColumn(
             Modifier.fillMaxSize(),
             state = rememberPersistentListState("home.$account"),
         ) {
-            item(key = "status") {
-                ServerStatus(onDownloads = { setOffline(true) }, onReachable = {
-                    // Back online after a failure: refresh what the cache showed.
-                    if (reachable == false) reload()
-                    reachable = it
-                })
+            if (offline && active > 0) {
+                item(key = "active") {
+                    ActionButton(
+                        "Downloading $active · manage",
+                        { nav.push(Route.ManageDownloads) },
+                        Modifier.padding(horizontal = d.gutter, vertical = 8.dp),
+                        icon = Icons.Download,
+                    )
+                }
+            }
+            if (!offline) {
+                item(key = "status") {
+                    ServerStatus(onDownloads = { setOffline(true) }, onReachable = {
+                        // Back online after a failure: refresh what the cache showed.
+                        if (reachable == false) reload()
+                        reachable = it
+                    })
+                }
             }
             // The status card already says what is wrong with the server.
-            if (reachable != false) error?.let { msg -> item(key = "error") { ErrorBanner(msg, reload) } }
+            if (reachable != false && !offline) error?.let { msg -> item(key = "error") { ErrorBanner(msg, reload) } }
+            val h = shown
             if (h == null) {
-                if (reachable != false) items(3) { SkeletonRail() }
+                if (reachable != false && !offline) items(3) { SkeletonRail() }
             } else {
-                item(key = "libraries") {
-                    LazyRow(
-                        contentPadding = PaddingValues(start = d.gutter, end = d.gutter, top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        items(h.libraries.filter { it.kind != LibraryKind.OTHER }, key = { it.id }) { lib ->
-                            ActionButton(
-                                lib.title,
-                                { nav.push(Route.Library(lib.id, lib.title)) },
-                                icon = if (lib.kind == LibraryKind.SHOWS) Icons.Tv else Icons.Movie,
-                            )
+                if (!offline) {
+                    item(key = "libraries") {
+                        LazyRow(
+                            contentPadding = PaddingValues(start = d.gutter, end = d.gutter, top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(h.libraries.filter { it.kind != LibraryKind.OTHER }, key = { it.id }) { lib ->
+                                ActionButton(
+                                    lib.title,
+                                    { nav.push(Route.Library(lib.id, lib.title)) },
+                                    icon = if (lib.kind == LibraryKind.SHOWS) Icons.Tv else Icons.Movie,
+                                )
+                            }
                         }
                     }
                 }
-                item(key = "rails") { Column { Rails(h, null) } }
+                item(key = "rails") { Column { Rails(h, null, offline) } }
                 if (h.resume.isEmpty() && h.nextUp.isEmpty() && h.latest.all { it.items.isEmpty() }) {
-                    item { Text("Nothing here yet.", Modifier.padding(d.gutter), color = Muted) }
+                    item {
+                        Text(
+                            if (offline) "Nothing downloaded yet. Download from a movie or show page." else "Nothing here yet.",
+                            Modifier.padding(d.gutter),
+                            color = Muted,
+                        )
+                    }
                 }
             }
             item { Spacer(Modifier.height(32.dp)) }
         }
     }
+}
+
+/**
+ * The same home with only what is downloaded: in-progress and next episodes that are on the
+ * phone, downloaded movies and shows in their library's rail. Rails left empty disappear.
+ */
+private fun offlineHome(
+    h: Home,
+    done: List<Download>,
+    cached: (String) -> Item?,
+): Home {
+    val ids = done.map { it.itemId }.toSet()
+    val items = done.mapNotNull { cached(it.itemId) }
+    val movies = items.filter { it.kind == ItemKind.MOVIE }
+    // Shows: from the download's metadata, or (older downloads) its cached episode.
+    val seriesIds = (done.mapNotNull { it.episode?.seriesId } + items.mapNotNull { it.seriesId }).distinct()
+    val shows =
+        seriesIds.mapNotNull { sid ->
+            cached(sid) ?: items.firstOrNull { it.seriesId == sid }?.showFor()
+        }
+    // One library per kind gets them (downloads don't know their library).
+    val used = mutableSetOf<LibraryKind>()
+    val latest =
+        h.latest.map { rail ->
+            val kind = rail.library.kind
+            val items =
+                when {
+                    !used.add(kind) -> emptyList()
+                    kind == LibraryKind.MOVIES -> movies
+                    kind == LibraryKind.SHOWS -> shows
+                    else -> emptyList()
+                }
+            rail.copy(items = items)
+        }
+    return h.copy(resume = h.resume.filter { it.id in ids }, nextUp = h.nextUp.filter { it.id in ids }, latest = latest)
 }
 
 /** Plex-style bar: the name on the left; search, downloads and you (settings) on the right. */
@@ -257,11 +324,7 @@ private fun HomeTopBar(
                             .FontWeight(800),
                 ),
         )
-        if (offline) {
-            Text("Downloads", Modifier.padding(end = 6.dp), style = MaterialTheme.typography.labelLarge, color = be.alwyapps.watch.ui.Accent)
-        } else {
-            TopIcon(Icons.Search, "Search") { nav.push(Route.Search) }
-        }
+        TopIcon(Icons.Search, "Search") { nav.push(Route.Search) }
         TopIcon(Icons.Download, if (offline) "Leave downloads" else "Downloads", active = offline, onClick = onToggleDownloads)
         // You: settings, accounts and servers.
         Box(
@@ -515,7 +578,7 @@ private fun TvHome(
                     if (h == null) {
                         items(2) { SkeletonRail() }
                     } else {
-                        item(key = "rails") { Column { Rails(h) { hero = it } } }
+                        item(key = "rails") { Column { Rails(h, { hero = it }) } }
                     }
                     item { Spacer(Modifier.height(400.dp)) }
                 }
