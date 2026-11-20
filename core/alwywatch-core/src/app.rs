@@ -1459,6 +1459,10 @@ pub struct SeerrConnection {
     /// Through the AlwyWatch server's Seerr bridge (no cookie; uses the keep connection).
     #[serde(default)]
     pub via_keep: bool,
+    /// Bridged as this account rather than the keep connection's (Seerr knows one media
+    /// server type: a Plex user is already a Seerr user when Seerr runs in Plex mode).
+    #[serde(default)]
+    pub bridge_account: Option<String>,
 }
 
 /// Result of a Seerr sign-in: the platform stores `cookie` in secure storage.
@@ -1512,6 +1516,7 @@ impl Core {
             user_name: session.user.display_name.clone(),
             cache_images: info.cache_images,
             via_keep: false,
+            bridge_account: None,
         };
         self.store.set_setting(
             SEERR_KEY,
@@ -1641,6 +1646,7 @@ impl AlwyWatch {
                 user_name: info.user_name,
                 cache_images: false,
                 via_keep: true,
+                bridge_account: None,
             };
             c.store
                 .set_setting(SEERR_KEY, &serde_json::to_string(&conn).unwrap_or_default())?;
@@ -1650,6 +1656,60 @@ impl AlwyWatch {
             Ok(conn)
         })
         .await
+    }
+
+    /// Seerr through the AlwyWatch server, signed in as `account_id` (its Jellyfin token or
+    /// Plex account token). Fails when the server does not offer Seerr for that account.
+    pub async fn seerr_connect_bridge_as(
+        &self,
+        account_id: String,
+        token: String,
+    ) -> Result<SeerrConnection> {
+        let account = self
+            .accounts()?
+            .into_iter()
+            .find(|a| a.id == account_id)
+            .ok_or(CoreError::NotFound)?;
+        self.run(|c| async move {
+            let base = c.keep()?.base_url().to_owned();
+            let client = c.keep_client(&base, &account.server_id, &token);
+            let info = client.seerr_bridge().await?;
+            let conn = SeerrConnection {
+                base_url: format!("{base}{}", keep_service::SEERR_BRIDGE_PATH),
+                user_name: info.user_name,
+                cache_images: false,
+                via_keep: true,
+                bridge_account: Some(account_id),
+            };
+            c.store
+                .set_setting(SEERR_KEY, &serde_json::to_string(&conn).unwrap_or_default())?;
+            *c.seerr.write().unwrap_or_else(|e| e.into_inner()) = Some(c.seerr_bridged(&client));
+            c.store.cache_delete("seerr/requests")?;
+            c.store.cache_delete("seerr/requests-all")?;
+            Ok(conn)
+        })
+        .await
+    }
+
+    /// Re-attaches a Seerr bridge made with `seerr_connect_bridge_as`, with that account's token
+    /// from secure storage. No network.
+    pub fn seerr_activate_bridge(&self, token: String) -> Result<()> {
+        let conn = self.seerr_connection().ok_or(CoreError::NotFound)?;
+        let account_id = conn.bridge_account.ok_or(CoreError::NotFound)?;
+        let account = self
+            .accounts()?
+            .into_iter()
+            .find(|a| a.id == account_id)
+            .ok_or(CoreError::NotFound)?;
+        let base = conn
+            .base_url
+            .strip_suffix(keep_service::SEERR_BRIDGE_PATH)
+            .unwrap_or(&conn.base_url)
+            .to_owned();
+        let client = self.core.keep_client(&base, &account.server_id, &token);
+        *self.core.seerr.write().unwrap_or_else(|e| e.into_inner()) =
+            Some(self.core.seerr_bridged(&client));
+        Ok(())
     }
 
     /// Re-attaches Seerr with the cookie from secure storage. No network. Not needed for a

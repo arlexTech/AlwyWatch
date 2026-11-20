@@ -60,6 +60,34 @@ fun keepToken(
 
 private fun Account.label() = "$userName · $serverName (${if (kind == ServerKind.PLEX) "Plex" else "Jellyfin"})"
 
+/**
+ * Seerr through the AlwyWatch server, trying each of the user's accounts it serves (Plex
+ * first: Seerr usually runs in Plex mode, where a Plex user already has a Seerr account, while
+ * a Jellyfin one would need creating). The first that works is kept.
+ */
+suspend fun connectSeerrThroughKeep(
+    core: AlwyWatch,
+    ctx: Context,
+): be.alwyapps.watch.core.SeerrConnection {
+    val keep = core.keepConnection() ?: throw CoreException.NotFound("no AlwyWatch server")
+    val served = runCatching { core.keepServers(keep.baseUrl).map { it.id }.toSet() }.getOrNull()
+    val candidates =
+        core
+            .accounts()
+            .filter { served == null || it.serverId in served }
+            .sortedBy { if (it.kind == ServerKind.PLEX) 0 else 1 }
+    var last: CoreException? = null
+    for (a in candidates) {
+        val token = keepToken(ctx, a) ?: continue
+        try {
+            return core.seerrConnectBridgeAs(a.id, token)
+        } catch (e: CoreException) {
+            last = e
+        }
+    }
+    throw last ?: CoreException.NotFound("no account to use")
+}
+
 /** Connects (or switches) the AlwyWatch server as [account], then Seerr through it if unset. */
 private suspend fun connectKeep(
     core: AlwyWatch,
@@ -69,7 +97,7 @@ private suspend fun connectKeep(
 ): KeepConnection {
     val token = keepToken(ctx, account) ?: throw CoreException.Invalid("Sign in to ${account.serverName} again first.")
     val conn = core.keepConnect(url, account.id, token)
-    if (core.seerrConnection() == null) runCatching { core.seerrConnectBridge() }
+    if (core.seerrConnection() == null) runCatching { connectSeerrThroughKeep(core, ctx) }
     return conn
 }
 
@@ -264,7 +292,7 @@ fun RequestsGroup(
                     onClick = {
                         scope.launch {
                             try {
-                                core.seerrConnectBridge()
+                                connectSeerrThroughKeep(core, ctx)
                                 onChanged()
                             } catch (e: CoreException) {
                                 error = "Your AlwyWatch server doesn't offer requests (${e.message})."

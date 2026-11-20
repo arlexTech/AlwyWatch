@@ -76,7 +76,20 @@ class Services(
                 if (account?.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) tokens.get("${k.accountId}:plextv") else tokens.get(k.accountId)
             token?.let { runCatching { core.keepActivate(it) } }
         }
-        if (core.seerrConnection() != null) tokens.get("seerr")?.let { runCatching { core.seerrActivate(it) } }
+        val seerr = core.seerrConnection()
+        val bridgeAccount = seerr?.bridgeAccount?.let { id -> core.accounts().firstOrNull { it.id == id } }
+        if (bridgeAccount != null) {
+            // Seerr through the AlwyWatch server as one of the accounts.
+            val token =
+                if (bridgeAccount.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) {
+                    tokens.get("${bridgeAccount.id}:plextv")
+                } else {
+                    tokens.get(bridgeAccount.id)
+                }
+            token?.let { runCatching { core.seerrActivateBridge(it) } }
+        } else if (seerr != null) {
+            tokens.get("seerr")?.let { runCatching { core.seerrActivate(it) } }
+        }
     }
 
     private fun config(): CoreConfig {
