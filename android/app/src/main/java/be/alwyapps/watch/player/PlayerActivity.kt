@@ -113,6 +113,8 @@ class PlayerActivity : ComponentActivity() {
     private var trackKey: String = ""
     private var tracksApplied = false
 
+    private var subtitleLift: Job? = null
+
     /** Last remote/touch interaction (uptime), for "Are you still watching?". */
     private var lastInteraction = android.os.SystemClock.uptimeMillis()
 
@@ -369,7 +371,9 @@ class PlayerActivity : ComponentActivity() {
         object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 ui.playing = isPlaying
-                if (!isPlaying) ui.poke()
+                // Paused by the user: show the controls. Not while buffering after a seek
+                // (←/→ with hidden controls must keep them hidden).
+                if (!isPlaying && player?.playWhenReady == false) ui.poke()
                 val p = player ?: return
                 if (!isPlaying && p.playbackState == Player.STATE_READY) report(PlaybackEvent.PAUSE)
             }
@@ -758,8 +762,25 @@ class PlayerActivity : ComponentActivity() {
                 else -> 1f
             }
         sv.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * scale)
-        // Measured from the bottom of the picture: low by default (Media3's 8% sat too high).
-        sv.setBottomPaddingFraction(if (settings.subtitleRaised) 0.12f else 0.04f)
+        // Measured from the bottom of the picture: low by default (Media3's 8% sat too high),
+        // above the seek bar while the controls are shown.
+        val base = if (settings.subtitleRaised) 0.12f else 0.04f
+        sv.setBottomPaddingFraction(if (ui.visible) 0.24f else base)
+        subtitleLift?.cancel()
+        subtitleLift =
+            lifecycleScope.launch {
+                androidx.compose.runtime
+                    .snapshotFlow { ui.visible to (ui.seekTarget != null) }
+                    .collect { (shown, seeking) ->
+                        sv.setBottomPaddingFraction(
+                            when {
+                                shown -> 0.24f
+                                seeking -> 0.12f
+                                else -> base
+                            },
+                        )
+                    }
+            }
     }
 
     /** A track picked in the player becomes the movie's or show's choice (next episodes too). */

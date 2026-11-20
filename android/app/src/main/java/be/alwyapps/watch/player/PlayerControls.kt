@@ -663,6 +663,7 @@ private fun TracksPanel(
                                 .forLanguageTag(it)
                                 .displayLanguage
                                 .ifEmpty { it }
+                                .replaceFirstChar { c -> c.uppercase() }
                         },
                         if (type == C.TRACK_TYPE_AUDIO && f.channelCount > 0) {
                             when (f.channelCount) {

@@ -233,7 +233,7 @@ private fun Collections(id: String) {
             refresh = { core.refreshCollections(account, id, it) },
         )
     LazyVerticalGrid(
-        GridCells.Adaptive(d.posterWidth + 8.dp),
+        if (d.isTv) GridCells.FixedSize(d.posterWidth) else GridCells.Adaptive(d.posterWidth + 8.dp),
         Modifier.fillMaxSize(),
         contentPadding =
             androidx.compose.foundation.layout
@@ -337,7 +337,7 @@ fun LibraryGrid(
     }
 
     LazyVerticalGrid(
-        GridCells.Adaptive(d.posterWidth + 8.dp),
+        if (d.isTv) GridCells.FixedSize(d.posterWidth) else GridCells.Adaptive(d.posterWidth + 8.dp),
         Modifier.fillMaxSize(),
         state = grid,
         contentPadding =

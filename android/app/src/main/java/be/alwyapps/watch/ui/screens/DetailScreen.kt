@@ -449,17 +449,16 @@ private fun subtitleLabel(st: be.alwyapps.watch.core.media.MediaStream): String 
 
 private fun videoLabel(src: be.alwyapps.watch.core.media.MediaSource): String? {
     val v = src.streams.firstOrNull { it.kind == be.alwyapps.watch.core.media.StreamKind.VIDEO } ?: return null
+    // By width: a 1920×800 scope film is "1080p", not "800p".
+    val w = v.width?.toInt() ?: 0
+    val h = v.height?.toInt() ?: 0
     val res =
-        when (val h = v.height?.toInt() ?: 0) {
-            0 -> null
-            in 2000..9999 -> "4K"
-            else -> "${if (h in 1000..1099) {
-                1080
-            } else if (h in 700..729) {
-                720
-            } else {
-                h
-            }}p"
+        when {
+            w >= 3200 || h >= 2000 -> "4K"
+            w >= 1800 || h >= 1000 -> "1080p"
+            w >= 1200 || h >= 700 -> "720p"
+            h > 0 -> "${h}p"
+            else -> null
         }
     val hdr =
         when (v.hdr) {

@@ -77,7 +77,7 @@ fun WatchlistScreen() {
         loaded = true
     }
     LazyVerticalGrid(
-        GridCells.Adaptive(d.posterWidth + 8.dp),
+        if (d.isTv) GridCells.FixedSize(d.posterWidth) else GridCells.Adaptive(d.posterWidth + 8.dp),
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = d.gutter, vertical = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(d.railSpacing),

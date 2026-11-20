@@ -245,7 +245,7 @@ fun SeerrSagaScreen(
         }
     }
     LazyVerticalGrid(
-        GridCells.Adaptive(d.posterWidth + 8.dp),
+        if (d.isTv) GridCells.FixedSize(d.posterWidth) else GridCells.Adaptive(d.posterWidth + 8.dp),
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(d.gutter),
         horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
