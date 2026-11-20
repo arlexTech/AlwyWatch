@@ -124,6 +124,9 @@ fun HomeScreen() {
     val merged = remember(parts) { if (parts.isEmpty()) null else mergeHomes(parts) }
     val error = homes.firstNotNullOfOrNull { it.error }
     val reload = { homes.forEach { it.reload() } }
+    // Watched state changed from an item's menu: the rails follow.
+    val changed = be.alwyapps.watch.ui.ItemsChanged.version
+    LaunchedEffect(changed) { if (changed > 0) reload() }
     // "Fully drawn" = rails on screen (from cache or network), for startup benchmarks.
     androidx.activity.compose.ReportDrawnWhen { merged != null || error != null }
     androidx.compose.runtime.CompositionLocalProvider(LocalOwners provides (merged?.second ?: emptyMap())) {

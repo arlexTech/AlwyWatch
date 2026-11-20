@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,7 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.media.ImageKind
 import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.media.ItemKind
+import kotlinx.coroutines.launch
 
 // ----- Item helpers ---------------------------------------------------------------------------
 
@@ -122,6 +127,7 @@ fun FocusCard(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(LocalDimens.current.radius),
     onFocus: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val d = LocalDimens.current
@@ -137,9 +143,89 @@ fun FocusCard(
             }.then(if (focused && d.isTv) Modifier.shadow(24.dp, shape, ambientColor = Color.White, spotColor = Color.White) else Modifier)
             .clip(shape)
             .then(if (focused && d.isTv) Modifier.border(2.5.dp, Color.White, shape) else Modifier)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+            // Long press (touch, or holding OK on a remote): the item's menu.
+            .combinedClickable(interactionSource = interaction, indication = null, onLongClick = onLongClick, onClick = onClick),
         content = content,
     )
+}
+
+/** The long-press action for items that have a menu (movies, shows, episodes). */
+private fun Item.menuable(open: () -> Unit): (() -> Unit)? = if (kind == ItemKind.MOVIE || kind == ItemKind.SERIES || kind == ItemKind.EPISODE) open else null
+
+/**
+ * Bumped when an item's state changes from a menu (watched…): screens showing lists reload.
+ */
+object ItemsChanged {
+    var version by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+
+    fun bump() {
+        version++
+    }
+}
+
+/** Long-press menu of a movie, show or episode: watched state, show/season, download. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun ItemMenu(
+    item: Item,
+    onDismiss: () -> Unit,
+) {
+    val core = LocalCore.current
+    val account = LocalItemOwners.current[item.id] ?: LocalAccount.current
+    val nav = LocalNavigator.current
+    val d = LocalDimens.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val played = item.user.played
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Background) {
+        Column(Modifier.padding(bottom = 24.dp).navigationBarsPadding()) {
+            Text(
+                if (item.kind == ItemKind.EPISODE) "${item.seriesTitle ?: ""} · ${item.subtitle()}" else item.title,
+                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            fun act(block: suspend () -> Unit) {
+                onDismiss()
+                scope.launch {
+                    runCatching { block() }
+                    ItemsChanged.bump()
+                }
+            }
+            ListRow(if (played) "Mark unwatched" else "Mark watched", icon = Icons.Check, onClick = {
+                act { core.setPlayed(account, item.id, !played) }
+            })
+            val sid = item.seriesId
+            if (item.kind == ItemKind.EPISODE && sid != null) {
+                ListRow("Go to the show", icon = Icons.Tv, onClick = {
+                    onDismiss()
+                    nav.push(Route.Detail(sid, account = account))
+                })
+                item.seasonId?.let { season ->
+                    ListRow("Go to season ${item.seasonNumber ?: ""}".trim(), icon = Icons.Library, onClick = {
+                        onDismiss()
+                        nav.push(Route.Detail(sid, season, account))
+                    })
+                }
+            }
+            ListRow("Details", icon = Icons.Info, onClick = {
+                onDismiss()
+                nav.push(Route.Detail(item.id, account = account))
+            })
+            if (!d.isTv && (item.kind == ItemKind.MOVIE || item.kind == ItemKind.EPISODE)) {
+                ListRow("Download", icon = Icons.Download, onClick = {
+                    act {
+                        core.downloadItem(account, item.id, null)
+                        be.alwyapps.watch.downloads.DownloadWorker
+                            .start(ctx)
+                    }
+                })
+            }
+        }
+    }
 }
 
 // ----- Cards ----------------------------------------------------------------------------------
@@ -195,8 +281,10 @@ fun PosterCard(
     showTitle: Boolean = !LocalDimens.current.isTv,
     badge: (@Composable BoxScope.() -> Unit)? = null,
 ) {
+    var menu by remember { mutableStateOf(false) }
+    if (menu) ItemMenu(item) { menu = false }
     Column(modifier.width(width)) {
-        FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus) {
+        FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus, onLongClick = item.menuable { menu = true }) {
             RemoteImage(item.id, item.poster(), width, Modifier.fillMaxWidth().aspectRatio(2f / 3f), contentDescription = item.title)
             item.progress()?.let { ProgressBar(it, Modifier.align(Alignment.BottomCenter).padding(8.dp)) }
             if (item.user.played) {
@@ -244,8 +332,10 @@ fun LandscapeCard(
     onFocus: (() -> Unit)? = null,
     cardModifier: Modifier = Modifier,
 ) {
+    var menu by remember { mutableStateOf(false) }
+    if (menu) ItemMenu(item) { menu = false }
     Column(modifier.width(width)) {
-        FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus) {
+        FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus, onLongClick = item.menuable { menu = true }) {
             RemoteImage(item.id, item.thumb(), width, Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentDescription = item.title)
             Box(
                 Modifier
