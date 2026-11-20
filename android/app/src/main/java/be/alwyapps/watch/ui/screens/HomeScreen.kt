@@ -106,15 +106,125 @@ fun HomeScreen() {
     val core = LocalCore.current
     val account = LocalAccount.current
     val d = LocalDimens.current
-    val home =
-        rememberSwr(
-            account,
-            cached = { core.cachedHome(account) },
-            refresh = { force -> core.refreshHome(account, force) },
-        )
+    // Several servers shown together (default) or only the current account (Settings).
+    val accounts = remember { runCatching { core.accounts() }.getOrDefault(emptyList()).map { it.id } }
+    val combined = accounts.size > 1 && runCatching { core.getSetting(COMBINED_KEY) }.getOrNull() != "0"
+    val ids = if (combined) preferredFirst(core, accounts) else listOf(account)
+    val homes =
+        ids.map { a ->
+            androidx.compose.runtime.key(a) {
+                rememberSwr(
+                    a,
+                    cached = { core.cachedHome(a) },
+                    refresh = { force -> core.refreshHome(a, force) },
+                )
+            }
+        }
+    val parts = ids.zip(homes).mapNotNull { (a, h) -> h.value?.let { a to it } }
+    val merged = remember(parts) { if (parts.isEmpty()) null else mergeHomes(parts) }
+    val error = homes.firstNotNullOfOrNull { it.error }
+    val reload = { homes.forEach { it.reload() } }
     // "Fully drawn" = rails on screen (from cache or network), for startup benchmarks.
-    androidx.activity.compose.ReportDrawnWhen { home.value != null || home.error != null }
-    if (d.isTv) TvHome(home.value, home.error) { home.reload() } else PhoneHome(home.value, home.error) { home.reload() }
+    androidx.activity.compose.ReportDrawnWhen { merged != null || error != null }
+    androidx.compose.runtime.CompositionLocalProvider(LocalOwners provides (merged?.second ?: emptyMap())) {
+        if (d.isTv) TvHome(merged?.first, error, reload) else PhoneHome(merged?.first, error, reload)
+    }
+}
+
+/** Setting: "0" shows only the current account's server on the home; anything else, all. */
+const val COMBINED_KEY = "ui.combined"
+
+/** Setting: the account whose copy wins when a title is on several servers. */
+const val PREFERRED_KEY = "ui.preferred_account"
+
+private fun preferredFirst(
+    core: be.alwyapps.watch.core.AlwyWatch,
+    accounts: List<String>,
+): List<String> {
+    val pref = runCatching { core.getSetting(PREFERRED_KEY) }.getOrNull()
+    return accounts.sortedBy { if (it == pref) 0 else 1 }
+}
+
+/** Which account each item (and library) of a combined home comes from. */
+private val LocalOwners = androidx.compose.runtime.staticCompositionLocalOf<Map<String, String>> { emptyMap() }
+
+/**
+ * The same title on two servers: same TMDB/IMDB/TVDB id; episodes by show, season and number.
+ */
+private fun Item.sameAs(): String =
+    when (kind) {
+        ItemKind.EPISODE -> "ep:${seriesTitle?.lowercase()}:$seasonNumber:$episodeNumber"
+        else ->
+            providerIds.tmdb?.let { "tmdb:$kind:$it" }
+                ?: providerIds.imdb?.let { "imdb:$it" }
+                ?: providerIds.tvdb?.let { "tvdb:$kind:$it" }
+                ?: "title:$kind:${title.lowercase()}:$year"
+    }
+
+/**
+ * Several homes as one: rails of the same kind merged (alternating servers, preferred first),
+ * a title on several servers kept once (from the first, preferred, server). Returns the home
+ * and the owner account of every item and library.
+ */
+private fun mergeHomes(homes: List<Pair<String, Home>>): Pair<Home, Map<String, String>> {
+    val owners = mutableMapOf<String, String>()
+
+    fun merge(lists: List<Pair<String, List<Item>>>): List<Item> {
+        val seen = mutableSetOf<String>()
+        val out = mutableListOf<Item>()
+        val max = lists.maxOfOrNull { it.second.size } ?: 0
+        // Every server's copies first, so the preferred one wins duplicates.
+        val firstOwner = mutableMapOf<String, Pair<String, Item>>()
+        for ((a, items) in lists) for (i in items) firstOwner.putIfAbsent(i.sameAs(), a to i)
+        for (n in 0 until max) {
+            for ((_, items) in lists) {
+                val i = items.getOrNull(n) ?: continue
+                val k = i.sameAs()
+                if (!seen.add(k)) continue
+                val (owner, chosen) = firstOwner.getValue(k)
+                owners[chosen.id] = owner
+                out += chosen
+            }
+        }
+        return out
+    }
+    if (homes.size == 1) {
+        val (a, h) = homes.single()
+        (h.resume + h.nextUp + h.latest.flatMap { it.items }).forEach { owners[it.id] = a }
+        h.libraries.forEach { owners[it.id] = a }
+        return h to owners
+    }
+    val first = homes.first().second
+    // One rail per library kind (Movies, Shows), titled after the preferred server's.
+    val kinds = homes.flatMap { (_, h) -> h.latest.map { it.library.kind } }.distinct()
+    val latest =
+        kinds.flatMap { kind ->
+            if (kind == LibraryKind.OTHER) {
+                homes.flatMap { (a, h) -> h.latest.filter { it.library.kind == kind }.onEach { r -> r.items.forEach { owners[it.id] = a } } }
+            } else {
+                val rails = homes.flatMap { (a, h) -> h.latest.filter { it.library.kind == kind }.map { a to it } }
+                val (libOwner, lead) = rails.first()
+                owners[lead.library.id] = libOwner
+                listOf(lead.copy(items = merge(rails.map { (a, r) -> a to r.items })))
+            }
+        }
+    // Library buttons: the preferred server's, plus kinds only another server has.
+    val libraries = mutableListOf<be.alwyapps.watch.core.media.MediaLibrary>()
+    for ((a, h) in homes) {
+        for (lib in h.libraries) {
+            if (libraries.none { it.kind == lib.kind && lib.kind != LibraryKind.OTHER }) {
+                libraries += lib
+                owners[lib.id] = a
+            }
+        }
+    }
+    return first.copy(
+        resume = merge(homes.map { (a, h) -> a to h.resume }),
+        nextUp = merge(homes.map { (a, h) -> a to h.nextUp }),
+        libraries = libraries,
+        latest = latest,
+        fetchedAt = homes.minOf { it.second.fetchedAt },
+    ) to owners
 }
 
 @Composable
@@ -127,8 +237,13 @@ private fun Rails(
     val nav = LocalNavigator.current
     val d = LocalDimens.current
     // Offline, a show opens its downloaded episodes (its page needs the server).
+    val owners = LocalOwners.current
     val open: (Item) -> Unit = {
-        if (offline && it.kind == ItemKind.SERIES) nav.push(Route.DownloadedShow(it.id, it.title)) else nav.push(Route.Detail(it.id))
+        if (offline && it.kind == ItemKind.SERIES) {
+            nav.push(Route.DownloadedShow(it.id, it.title))
+        } else {
+            nav.push(Route.Detail(it.id, account = owners[it.id]))
+        }
     }
     val first =
         when {
@@ -147,7 +262,7 @@ private fun Rails(
     // After what the user is watching, before the "new" rails.
     if (core.keepActive() && !offline) LeavingSoonRail()
     val account = LocalAccount.current
-    val server = remember(account) { runCatching { core.accounts() }.getOrNull()?.firstOrNull { it.id == account }?.serverName }
+    val servers = remember(account) { runCatching { core.accounts() }.getOrDefault(emptyList()).associate { it.id to it.serverName } }
     for (rail in h.latest) {
         Rail(
             if (d.isTv) "New in ${rail.library.title}" else "Recently added in ${rail.library.title}",
@@ -156,8 +271,17 @@ private fun Rails(
             onFocus,
             focusKey = "home",
             defaultFocus = first == rail.library.id,
-            subtitle = server.takeIf { !d.isTv },
-            onSeeAll = if (offline) null else ({ nav.push(Route.Library(rail.library.id, rail.library.title)) }),
+            // The servers the rail comes from ("HomePlex · HomeJelly" when combined).
+            subtitle =
+                (
+                    rail.items
+                        .mapNotNull { owners[it.id] }
+                        .distinct()
+                        .ifEmpty { listOf(account) }
+                ).mapNotNull { servers[it] }
+                    .joinToString(" · ")
+                    .takeIf { !d.isTv && it.isNotEmpty() },
+            onSeeAll = if (offline) null else ({ nav.push(Route.Library(rail.library.id, rail.library.title, owners[rail.library.id])) }),
         )
     }
 }
@@ -170,6 +294,7 @@ private fun PhoneHome(
     error: String?,
     reload: () -> Unit,
 ) {
+    val owners = LocalOwners.current
     val account = LocalAccount.current
     val nav = LocalNavigator.current
     val d = LocalDimens.current
@@ -230,7 +355,7 @@ private fun PhoneHome(
                             items(h.libraries.filter { it.kind != LibraryKind.OTHER }, key = { it.id }) { lib ->
                                 ActionButton(
                                     lib.title,
-                                    { nav.push(Route.Library(lib.id, lib.title)) },
+                                    { nav.push(Route.Library(lib.id, lib.title, owners[lib.id])) },
                                     icon = if (lib.kind == LibraryKind.SHOWS) Icons.Tv else Icons.Movie,
                                 )
                             }

@@ -129,6 +129,42 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
             ListRow("Add a server", icon = Icons.Add, onClick = { nav.push(Route.AddServer) }, trailing = { Chevron() })
         }
 
+        if (accounts.size > 1) {
+            Group("Servers", footer = "Together, the home mixes every server; a title on several is shown once, from the preferred one.") {
+                var together by remember { mutableStateOf(core.getSetting(COMBINED_KEY) != "0") }
+                ToggleRow(
+                    "Show all servers together",
+                    together,
+                    {
+                        together = it
+                        core.setSetting(COMBINED_KEY, if (it) "1" else "0")
+                    },
+                    subtitle = if (together) "Movies and shows of every server in one home" else "One server at a time: tap an account above to switch",
+                )
+                if (together) {
+                    var preferred by remember { mutableStateOf(core.getSetting(PREFERRED_KEY) ?: current) }
+                    Divider()
+                    Text(
+                        "Prefer for titles on several servers",
+                        Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp),
+                        style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
+                    )
+                    accounts.forEach { a ->
+                        ListRow(
+                            "${a.serverName} (${if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) "Plex" else "Jellyfin"})",
+                            icon = if (a.id == preferred) Icons.Check else null,
+                            iconTint = Accent,
+                            onClick = {
+                                preferred = a.id
+                                core.setSetting(PREFERRED_KEY, a.id)
+                            },
+                            trailing = { if (a.id == preferred) Value("Preferred") },
+                        )
+                    }
+                }
+            }
+        }
+
         AlwyWatchServerGroup(accounts, version) { version++ }
         RequestsGroup(version) { version++ }
 

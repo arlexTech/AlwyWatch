@@ -119,9 +119,15 @@ private fun Root(core: AlwyWatch) {
                         Route.Triage -> TriageScreen()
                         Route.KeepAdmin -> KeepAdminScreen()
                         Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.reset(Route.Requests) })
-                        is Route.Library -> LibraryScreen(r.id, r.title)
-                        is Route.Filtered -> LibraryGrid(r.libraryId, r.title, r.genreId, r.collectionId)
-                        is Route.Detail -> DetailScreen(r.itemId, r.season)
+                        // Combined home: a page of another account's server runs as that account.
+                        is Route.Library ->
+                            CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { LibraryScreen(r.id, r.title) }
+                        is Route.Filtered ->
+                            CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) {
+                                LibraryGrid(r.libraryId, r.title, r.genreId, r.collectionId)
+                            }
+                        is Route.Detail ->
+                            CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { DetailScreen(r.itemId, r.season) }
                     }
                 }
             }

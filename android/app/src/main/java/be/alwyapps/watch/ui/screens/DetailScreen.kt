@@ -194,7 +194,7 @@ fun DetailScreen(
                                 val sid = item.seriesId
                                 Row(
                                     Modifier.then(
-                                        if (sid != null) Modifier.clickable { nav.push(Route.Detail(sid, item.seasonId)) } else Modifier,
+                                        if (sid != null) Modifier.clickable { nav.push(Route.Detail(sid, item.seasonId, account)) } else Modifier,
                                     ),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {

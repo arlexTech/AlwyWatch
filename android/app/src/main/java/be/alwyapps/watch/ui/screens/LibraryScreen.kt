@@ -189,7 +189,7 @@ private fun Recommended(
             else -> true
         }
     }
-    val open: (Item) -> Unit = { nav.push(Route.Detail(it.id)) }
+    val open: (Item) -> Unit = { nav.push(Route.Detail(it.id, account = account)) }
     androidx.compose.foundation.lazy.LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding =
@@ -251,7 +251,7 @@ private fun Collections(id: String) {
             item(span = { GridItemSpan(maxLineSpan) }) { Text("No collections in this library.", color = Muted) }
         }
         itemsIndexed(cols.orEmpty(), key = { _, it -> it.id }) { _, c ->
-            PosterCard(c, d.posterWidth, onClick = { nav.push(Route.Filtered(id, c.title, null, c.id)) }, showTitle = true)
+            PosterCard(c, d.posterWidth, onClick = { nav.push(Route.Filtered(id, c.title, null, c.id, account)) }, showTitle = true)
         }
     }
 }
@@ -290,7 +290,7 @@ private fun Categories(
                     }
                     be.alwyapps.watch.ui.ListRow(
                         g.name,
-                        onClick = { nav.push(Route.Filtered(id, "${g.name} · $title", g.id, null)) },
+                        onClick = { nav.push(Route.Filtered(id, "${g.name} · $title", g.id, null, account)) },
                         trailing = {
                             be.alwyapps.watch.ui
                                 .Chevron()
@@ -375,7 +375,7 @@ fun LibraryGrid(
             PosterCard(
                 item,
                 d.posterWidth,
-                onClick = { nav.push(Route.Detail(item.id)) },
+                onClick = { nav.push(Route.Detail(item.id, account = account)) },
                 onFocus = { FocusMemory["lib.$id"] = memo },
                 cardModifier = if (focusMe && d.isTv && header) Modifier.initialFocus() else Modifier,
                 showTitle = true,
