@@ -1076,9 +1076,14 @@ impl AlwyWatch {
         .await
     }
 
+    /// Movies and shows matching `query`; matching episodes or seasons count as their show.
     pub async fn search(&self, account_id: String, query: String, limit: u32) -> Result<Vec<Item>> {
-        self.run(|c| async move { Ok(c.server(&account_id)?.search(&query, limit).await?) })
-            .await
+        self.run(|c| async move {
+            Ok(shows_not_episodes(
+                c.server(&account_id)?.search(&query, limit).await?,
+            ))
+        })
+        .await
     }
 
     /// Takes an item out of "continue watching": on the server when it can (Plex; Jellyfin

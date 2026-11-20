@@ -89,7 +89,8 @@ fun SearchScreen() {
         val together = accounts.size > 1 && runCatching { core.getSetting(COMBINED_KEY) }.getOrNull() != "0"
         val found = mutableListOf<Pair<String, Item>>()
         var failed: String? = null
-        for (a in if (together) accounts else listOf(account)) {
+        // Preferred server first: its copy wins when a title is on several.
+        for (a in if (together) preferredFirst(core, accounts) else listOf(account)) {
             try {
                 core.search(a, query, 60u).forEach { found += a to it }
             } catch (e: CoreException) {
@@ -97,13 +98,15 @@ fun SearchScreen() {
             }
         }
         // One per title across servers.
-        results = found.distinctBy { (_, i) -> i.providerIds.tmdb?.let { "tmdb:${i.kind}:$it" } ?: "${i.kind}:${i.title.lowercase()}:${i.year}" }
+        results = found.distinctBy { (_, i) -> i.sameAs() }
         error = failed.takeIf { found.isEmpty() }
         if (seerrOn) {
             try {
                 // Everything that exists, minus what the library results already show.
                 val have = results.mapNotNull { (_, i) -> i.providerIds.tmdb }.toSet()
-                requestable = core.seerrSearch(query).filter { it.tmdbId.toString() !in have }.take(30)
+                val norm = { t: String -> t.lowercase().filter { it.isLetterOrDigit() } }
+                val names = results.map { (_, i) -> norm(i.title) }.toSet()
+                requestable = core.seerrSearch(query).filter { it.tmdbId.toString() !in have && norm(it.title) !in names }.take(30)
                 seerrError = null
             } catch (e: CoreException) {
                 requestable = emptyList()

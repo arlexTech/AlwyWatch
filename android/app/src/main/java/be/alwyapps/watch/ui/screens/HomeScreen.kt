@@ -143,7 +143,7 @@ const val COMBINED_KEY = "ui.combined"
 /** Setting: the account whose copy wins when a title is on several servers. */
 const val PREFERRED_KEY = "ui.preferred_account"
 
-private fun preferredFirst(
+internal fun preferredFirst(
     core: be.alwyapps.watch.core.AlwyWatch,
     accounts: List<String>,
 ): List<String> {
@@ -157,7 +157,7 @@ private val LocalOwners = be.alwyapps.watch.ui.LocalItemOwners
 /**
  * The same title on two servers: same TMDB/IMDB/TVDB id; episodes by show, season and number.
  */
-private fun Item.sameAs(): String =
+internal fun Item.sameAs(): String =
     when (kind) {
         ItemKind.EPISODE -> "ep:${seriesTitle?.lowercase()}:$seasonNumber:$episodeNumber"
         // Shows by name: rails build some from a new episode, without the show's ids.
