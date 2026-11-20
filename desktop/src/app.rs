@@ -315,6 +315,10 @@ impl App {
             Protection::UntilWatched => "Kept until watched".to_owned(),
             p => match i.effective_deletion_date {
                 None => "No date".into(),
+                // Date passed but the owner has not turned deletion on: nothing happens yet.
+                Some(d) if d < now && !i.collection_active && p == Protection::None => {
+                    "Deletion paused".to_owned()
+                }
                 Some(d) => {
                     let days = (d - now).div_euclid(86_400);
                     let mut s = match days {
@@ -325,9 +329,6 @@ impl App {
                     };
                     if p == Protection::Extended {
                         s.push_str(" (extended)");
-                    }
-                    if !i.collection_active {
-                        s.push_str(" · not active yet");
                     }
                     s
                 }

@@ -73,7 +73,11 @@ import kotlin.math.abs
 
 private const val DAY = 86_400L
 
-/** "Leaves in 4 days", "Overdue (collection not active yet)", "Kept forever"… */
+/** True when the date has passed but the owner has not turned deletion on: nothing happens yet. */
+fun LeavingItem.paused(now: Long = System.currentTimeMillis() / 1000): Boolean =
+    !collectionActive && protection == Protection.NONE && (effectiveDeletionDate ?: Long.MAX_VALUE) < now
+
+/** "Leaves in 4 days", "Deletion paused", "Kept forever"… */
 fun LeavingItem.leavesLabel(): String {
     val now = System.currentTimeMillis() / 1000
     return when (protection) {
@@ -81,6 +85,7 @@ fun LeavingItem.leavesLabel(): String {
         Protection.UNTIL_WATCHED -> "Kept until watched"
         else -> {
             val d = effectiveDeletionDate ?: return "No date"
+            if (paused(now)) return "Deletion paused"
             val days = (d - now) / DAY
             val base =
                 when {
@@ -90,15 +95,16 @@ fun LeavingItem.leavesLabel(): String {
                     else -> "Leaves in $days days"
                 }
             val extra = if (protection == Protection.EXTENDED) " (extended)" else ""
-            base + extra + if (!collectionActive) " · not active yet" else ""
+            base + extra
         }
     }
 }
 
-/** Short countdown for poster badges: "3 days", "Today", "Overdue", "Kept". */
+/** Short countdown for poster badges: "3 days", "Today", "Overdue", "Paused", "Kept". */
 fun LeavingItem.shortLabel(): Pair<String, Boolean> {
     val now = System.currentTimeMillis() / 1000
     if (protection == Protection.FOREVER || protection == Protection.UNTIL_WATCHED) return "Kept" to false
+    if (paused(now)) return "Paused" to false
     val d = effectiveDeletionDate ?: return "Soon" to false
     val days = (d - now) / DAY
     return when {
@@ -278,6 +284,22 @@ fun LeavingSoonScreen() {
                 }
             }
         }
+        val paused = all.count { it.paused(now) }
+        if (paused > 0) {
+            item("paused") {
+                Text(
+                    "Deletion is paused for ${"%,d".format(paused)} of these: their date has passed but the server's owner hasn't " +
+                        "turned deletion on yet. Your choices still count when it is.",
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(d.radius))
+                        .background(SurfaceColor)
+                        .padding(14.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Muted,
+                )
+            }
+        }
         list.error?.let {
             item {
                 be.alwyapps.watch.ui
@@ -307,13 +329,8 @@ fun LeavingSoonScreen() {
                                 overflow = TextOverflow.Ellipsis,
                             )
                             val (label, urgent) = item.shortLabel()
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                be.alwyapps.watch.ui
-                                    .Badge(label, color = if (urgent) Danger else be.alwyapps.watch.ui.SurfaceHigh)
-                                if (!item.collectionActive && item.protection == Protection.NONE) {
-                                    Text("not active yet", style = MaterialTheme.typography.bodySmall, color = be.alwyapps.watch.ui.Subtle)
-                                }
-                            }
+                            be.alwyapps.watch.ui
+                                .Badge(label, color = if (urgent) Danger else be.alwyapps.watch.ui.SurfaceHigh)
                             val c = item.counts
                             val others =
                                 (c.forever + c.untilWatched + c.days).toInt() - if (item.myVote != null && item.myVote!!.kind != VoteKind.DONT_CARE) 1 else 0
