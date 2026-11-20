@@ -18,7 +18,7 @@ use crate::platform::{self, Tokens};
 use crate::player::{self, PlayRequest};
 use crate::{
     AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, LeavingRow, NamedId, Page, Rail,
-    SeerrPanel,
+    SeerrPanel, ServerChoice,
 };
 
 const POSTER_PX: u32 = 300;
@@ -64,6 +64,8 @@ struct State {
     /// Servers listed by an AlwyWatch server on the add screen, and that server's address.
     preset_servers: Vec<ServerEntry>,
     preset_url: String,
+    /// AlwyWatch server address entered in Settings, while the user picks the account to sync.
+    keep_pending_url: String,
     /// Plex server picked from that list: selected automatically after the plex.tv sign-in.
     preset_plex: Option<String>,
     series: Option<String>,
@@ -158,6 +160,7 @@ impl App {
                 plex_servers: vec![],
                 preset_servers: vec![],
                 preset_url: String::new(),
+                keep_pending_url: String::new(),
                 preset_plex: None,
                 series: None,
                 season: None,
@@ -672,10 +675,11 @@ impl App {
     fn refresh_keep_settings(&self) {
         let ui = self.ui();
         ui.set_keep_active(self.core.keep_active());
+        ui.set_keep_can_switch(self.core.accounts().map(|a| a.len() > 1).unwrap_or(false));
         if let Some(k) = self.core.keep_connection() {
             ui.set_keep_admin(k.is_admin);
             ui.set_keep_label(sstr(format!(
-                "{} @ {}{}",
+                "Syncing as {} @ {}{}",
                 k.user_name,
                 k.base_url,
                 if k.is_admin { " (admin)" } else { "" }
@@ -683,30 +687,114 @@ impl App {
         }
     }
 
+    /// Connects an AlwyWatch server: lists the media servers it serves, then syncs the only
+    /// matching account directly or lets the user choose among several.
     fn keep_connect(self: &Rc<Self>, url: String) {
-        let Some(account) = self.account() else {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let listed = match normalize_server_url(url) {
+                Ok(u) => core.keep_servers(u.clone()).await.map(|l| (u, l)),
+                Err(e) => Err(e),
+            };
+            let Some(t) = this.upgrade() else { return };
+            match listed {
+                Ok((url, list)) => t.keep_offer(url, &list, None),
+                Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    /// Accounts on a server the AlwyWatch server serves; one is synced right away.
+    fn keep_offer(self: &Rc<Self>, url: String, list: &[ServerEntry], current: Option<String>) {
+        let usable: Vec<Account> = self
+            .core
+            .accounts()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|a| list.iter().any(|e| e.id == a.server_id))
+            .collect();
+        let ui = self.ui();
+        if usable.is_empty() {
+            let names: Vec<&str> = list.iter().map(|e| e.name.as_str()).collect();
+            ui.set_keep_message(sstr(format!(
+                "None of your accounts is on a server it serves ({}). Add one of those first.",
+                names.join(", ")
+            )));
             return;
-        };
-        let Some(token) = self.keep_token(&account) else {
-            self.ui()
-                .set_keep_message("Sign in to this account again first.".into());
+        }
+        if usable.len() == 1 && current.is_none() {
+            self.keep_sync_as(url, usable[0].id.clone());
+            return;
+        }
+        self.state.borrow_mut().keep_pending_url = url;
+        ui.set_keep_choices(ModelRc::new(VecModel::from(
+            usable
+                .iter()
+                .map(|a| NamedId {
+                    id: sstr(&a.id),
+                    title: sstr(format!(
+                        "{} · {} ({})",
+                        a.user_name,
+                        a.server_name,
+                        match a.kind {
+                            ServerKind::Plex => "Plex",
+                            ServerKind::Jellyfin => "Jellyfin",
+                        }
+                    )),
+                    selected: current.as_deref() == Some(a.id.as_str()),
+                })
+                .collect::<Vec<_>>(),
+        )));
+    }
+
+    /// "Sync another account": the choices for the connected AlwyWatch server.
+    fn keep_choose(self: &Rc<Self>) {
+        let Some(k) = self.core.keep_connection() else {
             return;
         };
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
-            let r = match normalize_server_url(url) {
-                Ok(u) => core.keep_connect(u, account, token).await,
-                Err(e) => Err(e),
-            };
+            let r = core.keep_servers(k.base_url.clone()).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(list) => t.keep_offer(k.base_url, &list, Some(k.account_id)),
+                Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    fn keep_sync_as(self: &Rc<Self>, url: String, account_id: String) {
+        let Some(account) = self
+            .core
+            .accounts()
+            .ok()
+            .and_then(|l| l.into_iter().find(|a| a.id == account_id))
+        else {
+            return;
+        };
+        let Some(token) = self.keep_token(&account.id) else {
+            self.ui().set_keep_message(sstr(format!(
+                "Sign in to {} again first.",
+                account.server_name
+            )));
+            return;
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.keep_connect(url, account_id, token).await;
             let Some(t) = this.upgrade() else { return };
             match r {
                 Ok(_) => {
                     t.ui().set_keep_message(SharedString::new());
+                    t.ui().set_keep_choices(ModelRc::default());
                     t.refresh_keep_settings();
                     // Seerr through the same server when not set up yet (optional there).
                     if t.core.seerr_connection().is_none() {
                         t.seerr_bridge(true);
                     }
+                    t.refresh_seerr_settings();
                 }
                 Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
             }
@@ -2306,11 +2394,30 @@ impl App {
         self.refresh_settings();
     }
 
+    /// Moves between the add-server steps. "alwywatch" and "direct" are the two paths from
+    /// the welcome step; "back" returns to the path the user came from.
     fn add_choose(self: &Rc<Self>, which: String) {
         let ui = self.ui();
         ui.set_status(SharedString::new());
         self.state.borrow_mut().poll_gen += 1;
+        let step = ui.get_add_step();
+        let which = match which.as_str() {
+            "back" if step == "alwywatch" || step == "direct" || step == "choose" => String::new(),
+            "back" if self.state.borrow().preset_url.is_empty() => "direct".into(),
+            "back" => "alwywatch".into(),
+            _ => which,
+        };
         match which.as_str() {
+            "alwywatch" => ui.set_add_step("alwywatch".into()),
+            "direct" => {
+                // No AlwyWatch server on this path: forget one picked earlier.
+                let _ = self.core.keep_clear_preset();
+                let mut st = self.state.borrow_mut();
+                st.preset_url.clear();
+                st.preset_plex = None;
+                drop(st);
+                ui.set_add_step("direct".into());
+            }
             "jellyfin" => ui.set_add_step("jellyfin-url".into()),
             "plex" => {
                 ui.set_add_step("plex".into());
@@ -2337,17 +2444,19 @@ impl App {
             t.ui().set_preset_servers(ModelRc::new(VecModel::from(
                 list.iter()
                     .enumerate()
-                    .map(|(i, e)| NamedId {
-                        id: sstr(i.to_string()),
-                        title: sstr(format!(
-                            "{} ({})",
-                            e.name,
-                            match e.kind {
-                                ServerType::Plex => "Plex",
-                                ServerType::Jellyfin => "Jellyfin",
+                    .map(|(i, e)| {
+                        let plex = e.kind == ServerType::Plex;
+                        ServerChoice {
+                            id: sstr(i.to_string()),
+                            title: sstr(&e.name),
+                            subtitle: if plex {
+                                "Plex · sign in on plex.tv"
+                            } else {
+                                "Jellyfin · Quick Connect or password"
                             }
-                        )),
-                        selected: false,
+                            .into(),
+                            plex,
+                        }
                     })
                     .collect::<Vec<_>>(),
             )));
@@ -2652,8 +2761,18 @@ impl App {
         on!(on_download, |a, id| a.download(id.into()));
         on!(on_seerr_url, |a, url| a.seerr_url(url.into()));
         on!(on_keep_connect, |a, url| a.keep_connect(url.into()));
+        on!(on_keep_choose, |a| a.keep_choose());
+        on!(on_keep_sync, |a, id| {
+            let url = a
+                .core
+                .keep_connection()
+                .map(|k| k.base_url)
+                .unwrap_or_else(|| a.state.borrow().keep_pending_url.clone());
+            a.keep_sync_as(url, id.into());
+        });
         on!(on_keep_disconnect, |a| {
             let _ = a.core.keep_disconnect();
+            a.ui().set_keep_choices(ModelRc::default());
             a.refresh_keep_settings();
             // A bridged Seerr goes with it.
             a.refresh_seerr_settings();

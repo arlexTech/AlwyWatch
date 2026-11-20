@@ -19,6 +19,13 @@ export struct Rail {
     landscape: bool,
 }
 
+export struct ServerChoice {
+    id: string,
+    title: string,
+    subtitle: string,
+    plex: bool,
+}
+
 export struct NamedId {
     id: string,
     title: string,
@@ -161,6 +168,37 @@ component Button inherits Focusable {
             font-weight: 700;
             vertical-alignment: center;
         }
+    }
+}
+
+/** Big clickable card for the sign-in choices. */
+component ChoiceCard inherits Focusable {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <image> icon;
+    min-height: 76px;
+    border-radius: 20px;
+    background: self.active ? Palette.surface-high : Palette.surface;
+    border-width: 1px;
+    border-color: Palette.outline;
+    HorizontalLayout {
+        padding: 16px;
+        spacing: 16px;
+        Rectangle {
+            width: 44px;
+            height: 44px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 12px;
+            background: Palette.surface-high;
+            Icon { source: root.icon; tint: Palette.accent; }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text { text: root.title; color: Palette.text; font-size: 17px; font-weight: 700; }
+            Text { text: root.subtitle; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+        }
+        Icon { source: @image-url("icons/chevron_right.svg"); tint: Palette.subtle; y: (parent.height - self.height) / 2; }
     }
 }
 
@@ -452,7 +490,7 @@ export component AppWindow inherits Window {
     callback plex-pick(string);
     callback add-keep-servers(string);
     callback add-keep-pick(string);
-    in property <[NamedId]> preset-servers;
+    in property <[ServerChoice]> preset-servers;
     callback use-account(string);
     callback remove-account(string);
     callback clear-cache();
@@ -471,6 +509,11 @@ export component AppWindow inherits Window {
     callback seerr-request(bool); // all seasons?
     callback seerr-close();
     callback keep-connect(string);
+    /// Accounts that can sync with the AlwyWatch server (selected = the one syncing).
+    in property <[NamedId]> keep-choices;
+    in property <bool> keep-can-switch;
+    callback keep-sync(string);
+    callback keep-choose();
     callback keep-disconnect();
     callback keep-vote(string, string); // key, choice
     callback triage-vote(string);       // choice
@@ -781,68 +824,55 @@ export component AppWindow inherits Window {
                                 if root.add-step != "choose" : HorizontalLayout {
                                     spacing: 12px;
                                     alignment: start;
-                                    IconButton { icon: @image-url("icons/arrow_back.svg"); clicked => { root.add-choose(""); } }
+                                    IconButton { icon: @image-url("icons/arrow_back.svg"); clicked => { root.add-choose("back"); } }
                                     Text {
-                                        text: root.add-step == "plex" || root.add-step == "plex-servers" ? "Plex" : "Jellyfin";
+                                        text: root.add-step == "alwywatch" ? "AlwyWatch server"
+                                            : root.add-step == "direct" ? "Sign in"
+                                            : root.add-step == "plex" || root.add-step == "plex-servers" ? "Plex" : "Jellyfin";
                                         color: Palette.text;
                                         font-size: 28px;
                                         font-weight: 800;
                                         vertical-alignment: center;
                                     }
                                 }
-                                if root.add-step == "choose" : Text { text: "Sign in with your existing account"; color: Palette.text; font-size: 17px; font-weight: 700; }
-                                if root.add-step == "choose" : Focusable {
-                                    height: 76px;
-                                    border-radius: 20px;
-                                    background: self.active ? Palette.surface-high : Palette.surface;
-                                    border-width: 1px;
-                                    border-color: Palette.outline;
+                                if root.add-step == "choose" : Text { text: "How do you watch?"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                if root.add-step == "choose" : ChoiceCard {
+                                    title: "I have an AlwyWatch server";
+                                    subtitle: "Its address comes from your server's owner. Includes what's leaving soon and requests.";
+                                    icon: @image-url("icons/hourglass_bottom.svg");
+                                    clicked => { root.add-choose("alwywatch"); }
+                                }
+                                if root.add-step == "choose" : ChoiceCard {
+                                    title: "I don't have one";
+                                    subtitle: "Sign in to Jellyfin or Plex directly. You can add an AlwyWatch server later in Settings.";
+                                    icon: @image-url("icons/person.svg");
+                                    clicked => { root.add-choose("direct"); }
+                                }
+                                if root.add-step == "direct" : ChoiceCard {
+                                    title: "Jellyfin";
+                                    subtitle: "Quick Connect or password";
+                                    icon: @image-url("icons/video_library.svg");
                                     clicked => { root.add-choose("jellyfin"); }
-                                    HorizontalLayout {
-                                        padding: 16px;
-                                        spacing: 16px;
-                                        Rectangle { width: 44px; border-radius: 12px; background: Palette.surface-high; Icon { source: @image-url("icons/video_library.svg"); tint: Palette.accent; } }
-                                        VerticalLayout {
-                                            alignment: center;
-                                            Text { text: "Jellyfin"; color: Palette.text; font-size: 17px; font-weight: 700; }
-                                            Text { text: "Quick Connect or password"; color: Palette.muted; font-size: 13px; }
-                                        }
-                                        Rectangle { horizontal-stretch: 1; }
-                                        Icon { source: @image-url("icons/chevron_right.svg"); tint: Palette.subtle; y: (parent.height - self.height) / 2; }
-                                    }
                                 }
-                                if root.add-step == "choose" : Focusable {
-                                    height: 76px;
-                                    border-radius: 20px;
-                                    background: self.active ? Palette.surface-high : Palette.surface;
-                                    border-width: 1px;
-                                    border-color: Palette.outline;
+                                if root.add-step == "direct" : ChoiceCard {
+                                    title: "Plex";
+                                    subtitle: "Sign in on plex.tv";
+                                    icon: @image-url("icons/play_arrow_fill1.svg");
                                     clicked => { root.add-choose("plex"); }
-                                    HorizontalLayout {
-                                        padding: 16px;
-                                        spacing: 16px;
-                                        Rectangle { width: 44px; border-radius: 12px; background: Palette.surface-high; Icon { source: @image-url("icons/play_arrow_fill1.svg"); tint: Palette.accent; } }
-                                        VerticalLayout {
-                                            alignment: center;
-                                            Text { text: "Plex"; color: Palette.text; font-size: 17px; font-weight: 700; }
-                                            Text { text: "Sign in on plex.tv"; color: Palette.muted; font-size: 13px; }
-                                        }
-                                        Rectangle { horizontal-stretch: 1; }
-                                        Icon { source: @image-url("icons/chevron_right.svg"); tint: Palette.subtle; y: (parent.height - self.height) / 2; }
-                                    }
                                 }
-                                if root.add-step == "choose" : VerticalLayout {
-                                    spacing: 10px;
-                                    padding-top: 10px;
-                                    Text { text: "Got an AlwyWatch server address from your server's owner?"; color: Palette.muted; wrap: word-wrap; }
+                                if root.add-step == "alwywatch" : VerticalLayout {
+                                    spacing: 12px;
+                                    Text { text: "Enter the address your server's owner gave you, then pick the server you watch on."; color: Palette.muted; wrap: word-wrap; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         kserver := Field { placeholder: "watch.example.org"; accepted(t) => { root.add-keep-servers(t); } }
-                                        Button { label: "Show servers"; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
+                                        Button { label: "Show servers"; primary: root.preset-servers.length == 0; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
                                     }
-                                    for s in root.preset-servers : HorizontalLayout {
-                                        alignment: start;
-                                        Button { label: s.title; primary: true; clicked => { root.add-keep-pick(s.id); } }
+                                    for s in root.preset-servers : ChoiceCard {
+                                        title: s.title;
+                                        subtitle: s.subtitle;
+                                        icon: s.plex ? @image-url("icons/play_arrow_fill1.svg") : @image-url("icons/video_library.svg");
+                                        clicked => { root.add-keep-pick(s.id); }
                                     }
                                 }
                                 if root.add-step == "jellyfin-url" : VerticalLayout {
@@ -1187,17 +1217,31 @@ export component AppWindow inherits Window {
                                 HorizontalLayout { alignment: start; Button { label: "Add a server"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.go(Page.add); } } }
                             }
                             Group {
-                                title: "LEAVING SOON";
+                                title: "ALWYWATCH SERVER";
                                 if root.keep-active : HorizontalLayout {
                                     spacing: 10px;
                                     Text { text: root.keep-label; color: Palette.text; vertical-alignment: center; }
                                     Rectangle { horizontal-stretch: 1; }
-                                    Button { label: "Disconnect"; clicked => { root.keep-disconnect(); } }
+                                    if root.keep-can-switch && root.keep-choices.length == 0 : Button { label: "Sync another account"; clicked => { root.keep-choose(); } }
+                                    Button { label: "Stop syncing"; clicked => { root.keep-disconnect(); } }
+                                }
+                                if !root.keep-active : Text {
+                                    text: "Shows what your server will delete and lets you keep it. Your Jellyfin or Plex account is your sign-in there.";
+                                    color: Palette.muted;
+                                    wrap: word-wrap;
                                 }
                                 if !root.keep-active : HorizontalLayout {
                                     spacing: 10px;
                                     kurl := Field { placeholder: "AlwyWatch server address"; accepted(t) => { root.keep-connect(t); } }
                                     Button { label: "Connect"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.keep-connect(kurl.text); } }
+                                }
+                                if root.keep-choices.length > 0 : Text { text: "Choose the account that syncs with it:"; color: Palette.muted; }
+                                for c in root.keep-choices : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: c.title; color: c.selected ? Palette.accent : Palette.text; vertical-alignment: center; }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    if c.selected : Text { text: "Syncing"; color: Palette.muted; vertical-alignment: center; }
+                                    if !c.selected : Button { label: "Sync this one"; primary: true; clicked => { root.keep-sync(c.id); } }
                                 }
                             }
                             Group {
