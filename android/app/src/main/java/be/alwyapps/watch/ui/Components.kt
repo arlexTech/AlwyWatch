@@ -213,6 +213,20 @@ fun ItemMenu(
                 }
             }
             val started = item.user.positionMs > 0u
+            if (started && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)) {
+                ListRow(
+                    "Play from start",
+                    subtitle = "Instead of resuming at ${be.alwyapps.watch.player.formatTime(item.user.positionMs.toLong())}",
+                    icon = Icons.Play,
+                    onClick = {
+                        onDismiss()
+                        ctx.startActivity(
+                            be.alwyapps.watch.player.PlayerActivity
+                                .intent(ctx, account, item.id, 0L),
+                        )
+                    },
+                )
+            }
             if (!played) {
                 ListRow("Mark watched", icon = Icons.Check, onClick = { act { core.setPlayed(account, item.id, true) } })
             }

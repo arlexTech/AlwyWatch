@@ -198,7 +198,7 @@ fun DetailScreen(
                         Column(
                             Modifier
                                 .align(Alignment.BottomStart)
-                                .fillMaxWidth(if (d.isTv) 0.55f else 1f)
+                                .fillMaxWidth(if (d.isTv) 0.75f else 1f)
                                 .padding(horizontal = d.gutter, vertical = if (d.isTv) 24.dp else 8.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
@@ -220,21 +220,23 @@ fun DetailScreen(
                                 TitleArt(item, if (d.isTv) 340.dp else 300.dp)
                             }
                             HeroMeta(item)
-                            val resumable = playable && item.user.positionMs > 0u
-                            val playLabel: String?
-                            val playAction: (() -> Unit)?
-                            if (playable) {
-                                playLabel = if (resumable) "Resume" else "Play"
-                                playAction = { play(ctx, account, item, fromStart = false) }
-                            } else if (nextEp != null) {
-                                val ep = nextEp!!
-                                val label = "S${ep.seasonNumber ?: 1} · E${ep.episodeNumber ?: 1}"
-                                playLabel = if (ep.user.positionMs > 0u) "Resume $label" else "Play $label"
-                                playAction = { play(ctx, account, ep, fromStart = false) }
-                            } else {
-                                playLabel = null
-                                playAction = null
-                            }
+                            // What Play starts: this movie/episode, or the show's episode to continue.
+                            val target: Item? = if (playable) item else nextEp
+                            val resumable = target != null && target.user.positionMs > 0u
+                            val at =
+                                target?.let {
+                                    be.alwyapps.watch.player
+                                        .formatTime(it.user.positionMs.toLong())
+                                }
+                            val epLabel = target?.takeIf { !playable }?.let { "S${it.seasonNumber ?: 1} · E${it.episodeNumber ?: 1}" }
+                            val playLabel: String? =
+                                when {
+                                    target == null -> null
+                                    resumable -> listOfNotNull("Resume", epLabel, "from $at").joinToString(" ")
+                                    else -> listOfNotNull("Play", epLabel).joinToString(" ")
+                                }
+                            val playAction: (() -> Unit)? = target?.let { t -> { play(ctx, account, t, fromStart = false) } }
+                            val fromStart: (() -> Unit)? = target?.takeIf { resumable }?.let { t -> { play(ctx, account, t, fromStart = true) } }
                             val toggleWatched = {
                                 scope.launch {
                                     runCatching { core.setPlayed(account, item.id, !item.user.played) }
@@ -247,7 +249,7 @@ fun DetailScreen(
                                     if (playLabel != null && playAction != null) {
                                         ActionButton(playLabel, playAction, Modifier.initialFocus(), primary = true, icon = Icons.Play)
                                     }
-                                    if (resumable) ActionButton("From start", { play(ctx, account, item, fromStart = true) })
+                                    fromStart?.let { ActionButton("From start", it) }
                                     IconAction(
                                         Icons.Check,
                                         if (item.user.played) "Mark unwatched" else "Mark watched",
@@ -261,8 +263,8 @@ fun DetailScreen(
                                     ActionButton(playLabel, playAction, Modifier.fillMaxWidth(), primary = true, icon = Icons.Play)
                                 }
                                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                    if (resumable) {
-                                        CaptionAction("From start", { play(ctx, account, item, fromStart = true) }) {
+                                    if (fromStart != null) {
+                                        CaptionAction("From start", fromStart) {
                                             Icon(Icons.Refresh, null, Modifier.size(22.dp))
                                         }
                                     }
@@ -278,7 +280,7 @@ fun DetailScreen(
                                     }
                                 }
                             }
-                            item.remaining()?.let { left ->
+                            target?.remaining()?.let { left ->
                                 Text(left, style = MaterialTheme.typography.bodySmall, color = Muted)
                             }
                         }
