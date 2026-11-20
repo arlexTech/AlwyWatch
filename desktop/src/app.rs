@@ -2407,7 +2407,7 @@ impl App {
             ui.set_add_step("jellyfin".into());
             ui.set_status(SharedString::new());
             drop(t);
-            let Some(q) = quick else { return };
+            let Some(mut q) = quick else { return };
             loop {
                 async_sleep(Duration::from_secs(3)).await;
                 if this
@@ -2427,7 +2427,16 @@ impl App {
                         return;
                     }
                     Err(CoreError::Pending) => continue,
-                    Err(e) => return report(&this, e),
+                    // Codes expire after a few minutes: show a fresh one instead of failing.
+                    Err(e) => match core.jellyfin_quick_connect_start(url.clone()).await {
+                        Ok(fresh) => {
+                            if let Some(t) = this.upgrade() {
+                                t.ui().set_quick_code(sstr(&fresh.code));
+                            }
+                            q = fresh;
+                        }
+                        Err(_) => return report(&this, e),
+                    },
                 }
             }
         })

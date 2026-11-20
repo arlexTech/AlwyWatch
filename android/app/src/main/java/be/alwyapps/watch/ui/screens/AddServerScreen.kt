@@ -247,7 +247,14 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                                 break
                             } catch (_: CoreException.Pending) {
                             } catch (e: CoreException) {
-                                error = e.message
+                                // Codes expire after a few minutes (finding a phone takes time on a
+                                // TV): get a fresh one instead of giving up.
+                                val fresh = runCatching { core.jellyfinQuickConnectStart(s.url) }.getOrNull()
+                                if (fresh != null) {
+                                    step = Step.Jellyfin(s.url, fresh)
+                                } else {
+                                    error = e.message
+                                }
                                 break
                             }
                         }
