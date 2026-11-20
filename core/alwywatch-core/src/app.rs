@@ -180,6 +180,8 @@ pub struct Core {
     image_permits: Semaphore,
     servers: RwLock<HashMap<String, Arc<AnyServer>>>,
     playback: Mutex<HashMap<String, (Instant, PlaybackInfo)>>,
+    /// Queued offline position snapshot per (account, item): row id in the pending queue.
+    snapshots: Mutex<HashMap<(String, String), i64>>,
 }
 
 impl Core {
@@ -365,9 +367,23 @@ impl Core {
         }
         match result {
             Ok(()) => Ok(()),
-            // Offline: keep start/stop/latest positions so the server catches up later.
+            // Offline: keep start/stop and the latest position so the server catches up later.
             Err(e) if e.is_transient() || matches!(e, CoreError::NotSignedIn { .. }) => {
-                if report.event != PlaybackEvent::Progress {
+                let slot = (account.to_owned(), report.item_id.clone());
+                let mut snaps = self.snapshots.lock().unwrap_or_else(|e| e.into_inner());
+                // One position snapshot per title: the newest replaces the previous one.
+                if let Some(old) = snaps.remove(&slot) {
+                    self.store.ack_progress(old)?;
+                }
+                if report.event == PlaybackEvent::Progress {
+                    // Sent as a stop at that position: if the app is closed before playback
+                    // ends, the server still gets where the user was.
+                    let snap = ProgressReport {
+                        event: PlaybackEvent::Stop,
+                        ..report
+                    };
+                    snaps.insert(slot, self.store.queue_progress(account, &snap)?);
+                } else {
                     self.store.queue_progress(account, &report)?;
                 }
                 Ok(())
@@ -476,6 +492,7 @@ impl AlwyWatch {
                 image_permits: Semaphore::new(6),
                 servers: RwLock::new(HashMap::new()),
                 playback: Mutex::new(HashMap::new()),
+                snapshots: Mutex::new(HashMap::new()),
             }),
             rt,
         }))
@@ -862,6 +879,27 @@ impl AlwyWatch {
     }
 
     /// Sends queued progress reports (call when the network comes back). Returns how many.
+    /// Checks that an account's server answers (a light authenticated call), giving up after
+    /// [`PING_TIMEOUT`]. On success, also sends progress queued while offline.
+    pub async fn ping(&self, account_id: String) -> Result<()> {
+        self.run(|c| async move {
+            let srv = c.server(&account_id)?;
+            match tokio::time::timeout(PING_TIMEOUT, srv.libraries()).await {
+                Ok(r) => {
+                    r?;
+                }
+                Err(_) => {
+                    return Err(CoreError::Network {
+                        detail: format!("no answer after {} seconds", PING_TIMEOUT.as_secs()),
+                    });
+                }
+            }
+            let _ = c.flush_pending().await;
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn flush_pending_progress(&self) -> Result<u32> {
         self.run(|c| async move { c.flush_pending().await }).await
     }
@@ -1324,6 +1362,7 @@ pub struct KeepConnection {
     pub is_admin: bool,
 }
 
+const PING_TIMEOUT: Duration = Duration::from_secs(10);
 const KEEP_KEY: &str = "keep.connection";
 /// AlwyWatch server address entered on the add-server screen, connected after sign-in.
 const KEEP_PRESET_KEY: &str = "keep.preset_url";

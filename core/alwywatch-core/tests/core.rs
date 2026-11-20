@@ -182,8 +182,10 @@ fn progress_is_queued_offline_and_flushed_later() {
                 .respond_with(ResponseTemplate::new(503))
                 .mount_as_scoped(&env.server),
         );
-        env.block(app.report_progress(s.account.id.clone(), report(PlaybackEvent::Progress)))
-            .unwrap();
+        for _ in 0..3 {
+            env.block(app.report_progress(s.account.id.clone(), report(PlaybackEvent::Progress)))
+                .unwrap();
+        }
         env.block(app.report_progress(s.account.id.clone(), report(PlaybackEvent::Stop)))
             .unwrap();
         assert_eq!(
@@ -201,9 +203,52 @@ fn progress_is_queued_offline_and_flushed_later() {
     assert_eq!(
         env.block(app.flush_pending_progress()).unwrap(),
         1,
-        "only the stop event was queued; periodic progress is not"
+        "position snapshots are replaced by the stop"
     );
     assert_eq!(env.block(app.flush_pending_progress()).unwrap(), 0);
+}
+
+#[test]
+fn offline_position_survives_without_a_stop() {
+    let env = Env::new();
+    let s = env.sign_in();
+    let app = env.app();
+    let report = |pos| ProgressReport {
+        item_id: "i1".into(),
+        media_source_id: None,
+        play_session_id: None,
+        position_ms: pos,
+        duration_ms: None,
+        event: PlaybackEvent::Progress,
+        audio_index: None,
+        subtitle_index: None,
+    };
+    {
+        let _down = env.block(
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(503))
+                .mount_as_scoped(&env.server),
+        );
+        // App closed mid-playback: no stop ever comes.
+        for pos in [10_000, 20_000, 30_000] {
+            env.block(app.report_progress(s.account.id.clone(), report(pos)))
+                .unwrap();
+        }
+    }
+    env.mount(
+        Mock::given(method("POST"))
+            .and(path("/Sessions/Playing/Stopped"))
+            .and(wiremock::matchers::body_partial_json(
+                serde_json::json!({"PositionTicks": 300_000_000u64}),
+            ))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1),
+    );
+    assert_eq!(
+        env.block(app.flush_pending_progress()).unwrap(),
+        1,
+        "the latest position only"
+    );
 }
 
 #[test]

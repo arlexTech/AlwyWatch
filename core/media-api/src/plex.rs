@@ -601,6 +601,9 @@ fn convert_item(m: MetadataDto) -> Item {
         _ => m.thumb.as_ref().or(m.grandparent_thumb.as_ref()),
     };
     push(ImageKind::Primary, poster);
+    if kind == ItemKind::Episode {
+        push(ImageKind::SeriesPrimary, m.grandparent_thumb.as_ref());
+    }
     push(
         ImageKind::Backdrop,
         m.art.as_ref().or(m.grandparent_art.as_ref()),
@@ -949,7 +952,7 @@ impl MediaServer for PlexClient {
 
     fn image_request(&self, _item_id: &str, image: &ImageRef, max_width: u32) -> HttpRequest {
         let height = match image.kind {
-            ImageKind::Primary => max_width * 3 / 2,
+            ImageKind::Primary | ImageKind::SeriesPrimary => max_width * 3 / 2,
             ImageKind::Backdrop | ImageKind::Thumb => max_width * 9 / 16,
             ImageKind::Logo => max_width / 2,
         };

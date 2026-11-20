@@ -89,7 +89,8 @@ record! {
 }
 
 simple_enum! {
-    pub enum ImageKind { Primary, Backdrop, Thumb, Logo }
+    /// `SeriesPrimary`: an episode's show poster (its `Primary` is the episode still).
+    pub enum ImageKind { Primary, Backdrop, Thumb, Logo, SeriesPrimary }
 }
 
 record! {

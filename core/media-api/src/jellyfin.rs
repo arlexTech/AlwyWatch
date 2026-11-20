@@ -512,6 +512,16 @@ fn convert_item(d: BaseItemDto) -> Item {
     } else if let (Some(sid), Some(tag)) = (&d.series_id, &d.series_primary_image_tag) {
         image(&mut images, ImageKind::Primary, "Primary", sid, tag, h);
     }
+    if let (Some(sid), Some(tag)) = (&d.series_id, &d.series_primary_image_tag) {
+        image(
+            &mut images,
+            ImageKind::SeriesPrimary,
+            "Primary",
+            sid,
+            tag,
+            h,
+        );
+    }
     if let Some(tag) = d.backdrop_image_tags.first() {
         image(&mut images, ImageKind::Backdrop, "Backdrop", &d.id, tag, h);
     } else if let (Some(pid), Some(tag)) = (

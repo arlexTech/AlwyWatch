@@ -259,13 +259,15 @@ impl Store {
 
     // ----- offline progress queue ----------------------------------------------------------
 
-    pub fn queue_progress<T: Serialize>(&self, account_id: &str, report: &T) -> Result<()> {
+    /// Queues a report; returns its row id (to replace a position snapshot later).
+    pub fn queue_progress<T: Serialize>(&self, account_id: &str, report: &T) -> Result<i64> {
         let bytes = serde_json::to_vec(report)?;
-        self.conn().execute(
+        let conn = self.conn();
+        conn.execute(
             "INSERT INTO pending_progress(account_id, value, created_at) VALUES (?1, ?2, ?3)",
             params![account_id, bytes, now()],
         )?;
-        Ok(())
+        Ok(conn.last_insert_rowid())
     }
 
     /// Oldest first: `(row id, account id, report)`.
