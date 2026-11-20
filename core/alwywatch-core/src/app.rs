@@ -2088,6 +2088,9 @@ fn shows_not_episodes(items: Vec<Item>) -> Vec<Item> {
                         season_id: None,
                         season_number: None,
                         episode_number: None,
+                        child_count: None,
+                        // The episode's ids are not the show's: matching falls back to the title.
+                        provider_ids: ProviderIds::default(),
                         overview: None,
                         runtime_ms: None,
                         images,

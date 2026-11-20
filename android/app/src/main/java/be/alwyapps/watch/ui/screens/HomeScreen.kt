@@ -160,6 +160,8 @@ private val LocalOwners = be.alwyapps.watch.ui.LocalItemOwners
 private fun Item.sameAs(): String =
     when (kind) {
         ItemKind.EPISODE -> "ep:${seriesTitle?.lowercase()}:$seasonNumber:$episodeNumber"
+        // Shows by name: rails build some from a new episode, without the show's ids.
+        ItemKind.SERIES -> "show:${title.lowercase().filter { it.isLetterOrDigit() }}"
         else ->
             providerIds.tmdb?.let { "tmdb:$kind:$it" }
                 ?: providerIds.imdb?.let { "imdb:$it" }
