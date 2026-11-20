@@ -314,7 +314,7 @@ fn download_item_runs_and_is_available_offline() {
         ),
     );
     let d = env
-        .block(app.download_item(s.account.id.clone(), "i1".into()))
+        .block(app.download_item(s.account.id.clone(), "i1".into(), None))
         .unwrap();
     assert_eq!(d.state, DownloadState::Queued);
     assert_eq!(d.total, Some(6));
@@ -481,4 +481,104 @@ fn seerr_through_the_keep_bridge() {
             .unwrap()
             .is_none()
     );
+}
+
+#[test]
+fn next_episodes_are_kept_downloaded_and_watched_ones_deleted() {
+    let env = Env::new();
+    let s = env.sign_in();
+    let app = env.app();
+    let acct = s.account.id.clone();
+    env.mount(Mock::given(path("/Shows/show/Seasons")).respond_with(
+        ResponseTemplate::new(200).set_body_json(json!({"Items": [
+            {"Id": "sp", "Type": "Season", "Name": "Specials", "IndexNumber": 0},
+            {"Id": "s1", "Type": "Season", "Name": "Season 1", "IndexNumber": 1}
+        ]})),
+    ));
+    let ep = |n: u32, played: bool| {
+        json!({"Id": format!("e{n}"), "Type": "Episode", "Name": format!("Ep {n}"),
+               "SeriesId": "show", "SeriesName": "Show", "ParentIndexNumber": 1, "IndexNumber": n,
+               "UserData": {"Played": played}})
+    };
+    env.mount(
+        Mock::given(path("/Shows/show/Episodes"))
+            .and(wiremock::matchers::query_param("seasonId", "s1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"Items": [ep(1, true), ep(2, false), ep(3, false), ep(4, false)]}),
+            )),
+    );
+    for n in 1..=4 {
+        env.mount(Mock::given(path(format!("/Items/e{n}"))).respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({
+                "Id": format!("e{n}"), "Type": "Episode", "Name": format!("Ep {n}"),
+                "MediaSources": [{"Id": "ms", "Size": 3, "Path": format!("/m/e{n}.mkv")}]
+            })),
+        ));
+        env.mount(
+            Mock::given(path(format!("/Items/e{n}/Download")))
+                .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ep!".to_vec())),
+        );
+    }
+    // Next 2 after the last watched one (e1): e2 and e3.
+    let queued = env
+        .block(app.set_auto_download(
+            acct.clone(),
+            "show".into(),
+            "Show".into(),
+            2,
+            DeleteRule::WhenWatched,
+        ))
+        .unwrap();
+    assert_eq!(queued, 2);
+    let mut ids: Vec<String> = app
+        .downloads()
+        .unwrap()
+        .into_iter()
+        .map(|d| d.item_id)
+        .collect();
+    ids.sort();
+    assert_eq!(ids, ["e2", "e3"]);
+    let d = &app.downloads().unwrap()[0];
+    assert_eq!(d.episode.as_ref().unwrap().series_id, "show");
+    assert_eq!(d.delete_rule, DeleteRule::WhenWatched);
+    assert_eq!(env.block(app.run_downloads()).unwrap(), 2);
+    env.mount(
+        Mock::given(method("POST"))
+            .and(path("/Sessions/Playing/Stopped"))
+            .respond_with(ResponseTemplate::new(204)),
+    );
+    // e2 watched to the end: deleted at the next sync, e4 takes its place.
+    env.block(app.report_progress(
+        acct.clone(),
+        ProgressReport {
+            item_id: "e2".into(),
+            media_source_id: None,
+            play_session_id: None,
+            position_ms: 950,
+            duration_ms: Some(1000),
+            event: PlaybackEvent::Stop,
+            audio_index: None,
+            subtitle_index: None,
+        },
+    ))
+    .unwrap();
+    assert_eq!(env.block(app.sync_downloads()).unwrap(), 1);
+    let mut ids: Vec<String> = app
+        .downloads()
+        .unwrap()
+        .into_iter()
+        .map(|d| d.item_id)
+        .collect();
+    ids.sort();
+    assert_eq!(ids, ["e3", "e4"]);
+    assert!(app.auto_download_of(acct.clone(), "show".into()).is_some());
+    env.block(app.set_auto_download(
+        acct.clone(),
+        "show".into(),
+        "Show".into(),
+        0,
+        DeleteRule::Never,
+    ))
+    .unwrap();
+    assert!(app.auto_downloads().is_empty());
 }

@@ -135,7 +135,10 @@ fn tls(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
 fn android_roots() -> rustls::RootCertStore {
     use rustls::pki_types::{CertificateDer, pem::PemObject};
     let mut roots = rustls::RootCertStore::empty();
-    for dir in ["/apex/com.android.conscrypt/cacerts", "/system/etc/security/cacerts"] {
+    for dir in [
+        "/apex/com.android.conscrypt/cacerts",
+        "/system/etc/security/cacerts",
+    ] {
         let Ok(entries) = std::fs::read_dir(dir) else {
             continue;
         };

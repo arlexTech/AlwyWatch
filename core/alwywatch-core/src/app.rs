@@ -360,6 +360,12 @@ impl Core {
             Err(e) => Err(e),
         };
         if matches!(report.event, PlaybackEvent::Stop) {
+            // Near the end: watched, as far as download deletion rules go (offline too).
+            if let Some(d) = report.duration_ms.filter(|d| *d > 0)
+                && report.position_ms as f64 >= d as f64 * WATCHED_AT
+            {
+                self.mark_watched(account, &report.item_id);
+            }
             // Resume rails changed: keep showing them, but refresh on next visit.
             self.store.cache_mark_stale(&key(account, &["home"]))?;
             self.store
@@ -390,6 +396,152 @@ impl Core {
             }
             Err(e) => Err(e),
         }
+    }
+
+    /// Watched on this device (offline included): for deletion rules and "next N episodes",
+    /// remembered even after the download is gone and before the server hears about it.
+    fn mark_watched(&self, account: &str, item_id: &str) {
+        let now = unix_now();
+        let _ = self.downloads.mark_watched(account, item_id, now);
+        let _ = self
+            .store
+            .set_setting(&watched_key(account, item_id), &now.to_string());
+    }
+
+    fn watched_here(&self, account: &str, item_id: &str) -> bool {
+        self.store
+            .setting(&watched_key(account, item_id))
+            .ok()
+            .flatten()
+            .is_some()
+    }
+
+    /// Queues one item with its episode metadata; returns the download id.
+    async fn enqueue_item(
+        &self,
+        account_id: &str,
+        item_id: &str,
+        known: Option<Item>,
+        rule: DeleteRule,
+    ) -> Result<i64> {
+        let srv = self.server(account_id)?;
+        let src = srv.download_source(item_id).await?;
+        // A readable title ("Show · S1 · E2 · Title"): given, cached, else ask the server
+        // (episodes started from a show page are only cached as part of a list).
+        let item = match known {
+            Some(i) => Some(i),
+            None => match self
+                .store
+                .cache_get::<Item>(&key(account_id, &["item", item_id]))?
+            {
+                Some(i) => Some(i.value),
+                None => srv.item(item_id).await.ok(),
+            },
+        };
+        let episode = item.as_ref().and_then(|i| {
+            (i.kind == ItemKind::Episode).then(|| downloads::EpisodeOf {
+                series_id: i.series_id.clone().unwrap_or_default(),
+                series_title: i.series_title.clone().unwrap_or_default(),
+                season_number: i.season_number,
+                episode_number: i.episode_number,
+            })
+        });
+        let title = match item {
+            Some(i) => match (i.kind, &i.series_title) {
+                (ItemKind::Episode, Some(series)) => match (i.season_number, i.episode_number) {
+                    (Some(s), Some(e)) => format!("{series} · S{s} · E{e} · {}", i.title),
+                    _ => format!("{series} · {}", i.title),
+                },
+                _ => i.title,
+            },
+            None => src.file_name.clone(),
+        };
+        self.downloads
+            .enqueue(downloads::DownloadRequest {
+                account_id: account_id.to_owned(),
+                item_id: item_id.to_owned(),
+                title,
+                url: src.request.url,
+                headers: src
+                    .request
+                    .headers
+                    .into_iter()
+                    .map(|h| (h.name, h.value))
+                    .collect(),
+                file_name: src.file_name,
+                expected_size: src.size,
+                episode,
+                delete_rule: rule,
+            })
+            .map_err(dl_err)
+    }
+
+    /// Queues items not downloaded yet; returns how many were added.
+    async fn enqueue_all(
+        &self,
+        account_id: &str,
+        items: Vec<Item>,
+        rule: DeleteRule,
+    ) -> Result<u32> {
+        let have: std::collections::HashSet<String> = self
+            .downloads
+            .list()
+            .map_err(dl_err)?
+            .into_iter()
+            .filter(|d| d.account_id == account_id)
+            .map(|d| d.item_id)
+            .collect();
+        let mut added = 0;
+        for item in items {
+            if have.contains(&item.id) {
+                continue;
+            }
+            let id = item.id.clone();
+            self.enqueue_item(account_id, &id, Some(item), rule).await?;
+            added += 1;
+        }
+        Ok(added)
+    }
+
+    /// Every episode of a show in order, specials (season 0) aside.
+    async fn all_episodes(&self, account_id: &str, series_id: &str) -> Result<Vec<Item>> {
+        let srv = self.server(account_id)?;
+        let mut out = Vec::new();
+        for season in srv.seasons(series_id).await? {
+            if season.season_number == Some(0) {
+                continue;
+            }
+            out.extend(srv.episodes(series_id, &season.id).await?);
+        }
+        Ok(out)
+    }
+
+    /// Tops up one "next N episodes" show: the N unwatched episodes after the last watched one.
+    async fn auto_download(&self, a: &AutoDownload) -> Result<u32> {
+        let eps = self.all_episodes(&a.account_id, &a.series_id).await?;
+        let downloads = self.downloads.list().map_err(dl_err)?;
+        let watched_here = |id: &str| {
+            self.watched_here(&a.account_id, id)
+                || downloads.iter().any(|d| {
+                    d.account_id == a.account_id && d.item_id == id && d.watched_at.is_some()
+                })
+        };
+        // Watched on another device: the downloaded copy is watched too (for its rule).
+        let now = unix_now();
+        for ep in eps.iter().filter(|e| e.user.played) {
+            self.downloads
+                .mark_watched(&a.account_id, &ep.id, now)
+                .map_err(dl_err)?;
+        }
+        let watched = |e: &Item| e.user.played || watched_here(&e.id);
+        let start = eps.iter().rposition(watched).map_or(0, |i| i + 1);
+        let next: Vec<Item> = eps[start..]
+            .iter()
+            .filter(|e| !watched(e))
+            .take(a.count as usize)
+            .cloned()
+            .collect();
+        self.enqueue_all(&a.account_id, next, a.rule).await
     }
 
     async fn flush_pending(&self) -> Result<u32> {
@@ -804,6 +956,9 @@ impl AlwyWatch {
     ) -> Result<()> {
         self.run(|c| async move {
             c.server(&account_id)?.set_played(&item_id, played).await?;
+            if played {
+                c.mark_watched(&account_id, &item_id);
+            }
             c.store.cache_mark_stale(&key(&account_id, &["home"]))?;
             c.store
                 .cache_mark_stale(&key(&account_id, &["item", &item_id]))?;
@@ -907,49 +1062,145 @@ impl AlwyWatch {
     // ----- downloads -------------------------------------------------------------------------
 
     /// Queues the original file of an item for download (does not start it: see `run_downloads`).
-    pub async fn download_item(&self, account_id: String, item_id: String) -> Result<Download> {
+    /// `rule`: when it deletes itself (the default rule when `None`).
+    pub async fn download_item(
+        &self,
+        account_id: String,
+        item_id: String,
+        rule: Option<DeleteRule>,
+    ) -> Result<Download> {
+        let rule = rule.unwrap_or_else(|| self.default_delete_rule());
         self.run(|c| async move {
-            let srv = c.server(&account_id)?;
-            let src = srv.download_source(&item_id).await?;
-            // A readable title ("Show · S1 · E2 · Title"): cached item, else ask the server
-            // (episodes started from a show page are only cached as part of a list).
-            let item = match c
-                .store
-                .cache_get::<Item>(&key(&account_id, &["item", &item_id]))?
-            {
-                Some(i) => Some(i.value),
-                None => srv.item(&item_id).await.ok(),
-            };
-            let title = match item {
-                Some(i) => match (i.kind, &i.series_title) {
-                    (ItemKind::Episode, Some(series)) => {
-                        match (i.season_number, i.episode_number) {
-                            (Some(s), Some(e)) => format!("{series} · S{s} · E{e} · {}", i.title),
-                            _ => format!("{series} · {}", i.title),
-                        }
-                    }
-                    _ => i.title,
-                },
-                None => src.file_name.clone(),
-            };
-            let id = c
-                .downloads
-                .enqueue(downloads::DownloadRequest {
-                    account_id: account_id.clone(),
-                    item_id: item_id.clone(),
-                    title,
-                    url: src.request.url,
-                    headers: src
-                        .request
-                        .headers
-                        .into_iter()
-                        .map(|h| (h.name, h.value))
-                        .collect(),
-                    file_name: src.file_name,
-                    expected_size: src.size,
-                })
-                .map_err(dl_err)?;
+            let id = c.enqueue_item(&account_id, &item_id, None, rule).await?;
             c.downloads.get(id).map_err(dl_err)
+        })
+        .await
+    }
+
+    /// Queues every episode of a season; returns how many were added.
+    pub async fn download_season(
+        &self,
+        account_id: String,
+        series_id: String,
+        season_id: String,
+        rule: Option<DeleteRule>,
+    ) -> Result<u32> {
+        let rule = rule.unwrap_or_else(|| self.default_delete_rule());
+        self.run(|c| async move {
+            let eps = c
+                .server(&account_id)?
+                .episodes(&series_id, &season_id)
+                .await?;
+            c.enqueue_all(&account_id, eps, rule).await
+        })
+        .await
+    }
+
+    /// Queues every episode of a show (specials aside); returns how many were added.
+    pub async fn download_series(
+        &self,
+        account_id: String,
+        series_id: String,
+        rule: Option<DeleteRule>,
+    ) -> Result<u32> {
+        let rule = rule.unwrap_or_else(|| self.default_delete_rule());
+        self.run(|c| async move {
+            let eps = c.all_episodes(&account_id, &series_id).await?;
+            c.enqueue_all(&account_id, eps, rule).await
+        })
+        .await
+    }
+
+    /// "Keep the next `count` episodes downloaded": downloads the next unwatched episodes now
+    /// and, at each `sync_downloads`, replaces the watched ones (deleted by `rule`). `count = 0`
+    /// stops it (downloads already there stay).
+    pub async fn set_auto_download(
+        &self,
+        account_id: String,
+        series_id: String,
+        series_title: String,
+        count: u32,
+        rule: DeleteRule,
+    ) -> Result<u32> {
+        let mut all = self.auto_downloads();
+        all.retain(|a| !(a.account_id == account_id && a.series_id == series_id));
+        let entry = AutoDownload {
+            account_id,
+            series_id,
+            series_title,
+            count,
+            rule,
+        };
+        if count > 0 {
+            all.push(entry.clone());
+        }
+        self.core.store.set_setting(
+            AUTO_DOWNLOADS_KEY,
+            &serde_json::to_string(&all).unwrap_or_default(),
+        )?;
+        if count == 0 {
+            return Ok(0);
+        }
+        self.run(|c| async move { c.auto_download(&entry).await })
+            .await
+    }
+
+    /// Shows set to "keep the next N episodes".
+    pub fn auto_downloads(&self) -> Vec<AutoDownload> {
+        self.core
+            .store
+            .setting(AUTO_DOWNLOADS_KEY)
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn auto_download_of(&self, account_id: String, series_id: String) -> Option<AutoDownload> {
+        self.auto_downloads()
+            .into_iter()
+            .find(|a| a.account_id == account_id && a.series_id == series_id)
+    }
+
+    /// The rule given to new downloads when none is chosen.
+    pub fn default_delete_rule(&self) -> DeleteRule {
+        self.core
+            .store
+            .setting(DELETE_RULE_KEY)
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn set_default_delete_rule(&self, rule: DeleteRule) -> Result<()> {
+        Ok(self.core.store.set_setting(
+            DELETE_RULE_KEY,
+            &serde_json::to_string(&rule).unwrap_or_default(),
+        )?)
+    }
+
+    pub fn set_download_rule(&self, id: i64, rule: DeleteRule) -> Result<()> {
+        self.core
+            .downloads
+            .set_delete_rule(id, rule)
+            .map_err(dl_err)
+    }
+
+    /// Housekeeping, offline-safe: deletes downloads whose rule is due, then (when the servers
+    /// answer) tops up "next N episodes" shows. Returns how many downloads were queued; the
+    /// platform then runs `run_downloads` if any are pending.
+    pub async fn sync_downloads(&self) -> Result<u32> {
+        let autos = self.auto_downloads();
+        self.run(|c| async move {
+            c.downloads.apply_rules(unix_now()).map_err(dl_err)?;
+            let mut queued = 0;
+            for a in &autos {
+                // One show failing (offline, removed) does not stop the others.
+                queued += c.auto_download(a).await.unwrap_or(0);
+            }
+            c.downloads.apply_rules(unix_now()).map_err(dl_err)?;
+            Ok(queued)
         })
         .await
     }
@@ -1362,6 +1613,21 @@ pub struct KeepConnection {
     pub is_admin: bool,
 }
 
+/// A show set to "keep the next `count` episodes downloaded".
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct AutoDownload {
+    pub account_id: String,
+    pub series_id: String,
+    pub series_title: String,
+    pub count: u32,
+    pub rule: DeleteRule,
+}
+
+const AUTO_DOWNLOADS_KEY: &str = "downloads.auto";
+const DELETE_RULE_KEY: &str = "downloads.delete_rule";
+/// Played this far, an episode counts as watched (credits).
+const WATCHED_AT: f64 = 0.9;
+
 const PING_TIMEOUT: Duration = Duration::from_secs(10);
 const KEEP_KEY: &str = "keep.connection";
 /// AlwyWatch server address entered on the add-server screen, connected after sign-in.
@@ -1618,6 +1884,17 @@ impl AlwyWatch {
         })
         .await
     }
+}
+
+fn watched_key(account: &str, item_id: &str) -> String {
+    format!("watched\u{1f}{account}\u{1f}{item_id}")
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 fn dl_err(e: downloads::Error) -> CoreError {

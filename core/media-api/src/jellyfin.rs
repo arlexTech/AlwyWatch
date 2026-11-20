@@ -564,8 +564,17 @@ fn convert_item(d: BaseItemDto) -> Item {
         series_id: d.series_id,
         series_title: d.series_name,
         season_id: d.season_id,
-        season_number: d.parent_index_number,
-        episode_number: d.index_number,
+        // A season's own number is its IndexNumber (ParentIndexNumber is for episodes).
+        season_number: if kind == ItemKind::Season {
+            d.index_number
+        } else {
+            d.parent_index_number
+        },
+        episode_number: if kind == ItemKind::Season {
+            None
+        } else {
+            d.index_number
+        },
         child_count: d.child_count,
         premiere_date: d.premiere_date.map(|p| p.chars().take(10).collect()),
         images,

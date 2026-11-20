@@ -293,7 +293,7 @@ impl App {
         };
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
-            let r = core.download_item(account, id).await;
+            let r = core.download_item(account, id, None).await;
             let Some(t) = this.upgrade() else { return };
             match r {
                 Ok(_) => {

@@ -215,8 +215,24 @@ async fn episode_falls_back_to_series_images() {
     let items = c.next_up(10).await.unwrap();
     let e = &items[0];
     assert_eq!((e.season_number, e.episode_number), (Some(1), Some(1)));
-    assert_eq!(e.images[0].path, "/Items/s1/Images/Primary?tag=stag");
-    assert_eq!(e.images[1].path, "/Items/s1/Images/Backdrop?tag=sb");
+    let img = |k: ImageKind| {
+        e.images
+            .iter()
+            .find(|i| i.kind == k)
+            .map(|i| i.path.as_str())
+    };
+    assert_eq!(
+        img(ImageKind::Primary),
+        Some("/Items/s1/Images/Primary?tag=stag")
+    );
+    assert_eq!(
+        img(ImageKind::SeriesPrimary),
+        Some("/Items/s1/Images/Primary?tag=stag")
+    );
+    assert_eq!(
+        img(ImageKind::Backdrop),
+        Some("/Items/s1/Images/Backdrop?tag=sb")
+    );
 }
 
 #[tokio::test]

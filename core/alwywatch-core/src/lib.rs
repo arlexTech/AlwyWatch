@@ -18,7 +18,7 @@ mod app;
 mod error;
 
 pub use app::*;
-pub use downloads::{Download, DownloadState};
+pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
 pub use error::{CoreError, Result};
 pub use keep_service::{
     AdminUser, CountdownResult, LeavingItem, Me, MyVote, Protection, Rights, ServerEntry,

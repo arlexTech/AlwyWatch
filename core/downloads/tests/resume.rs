@@ -58,6 +58,8 @@ fn request(url: String, size: Option<u64>) -> DownloadRequest {
         headers: vec![("Authorization".into(), "MediaBrowser Token=\"t\"".into())],
         file_name: "Arrival.mkv".into(),
         expected_size: size,
+        episode: None,
+        delete_rule: DeleteRule::Never,
     }
 }
 
@@ -146,6 +148,42 @@ async fn downloads_complete_file_and_reports_progress() {
         Some(d.file_path)
     );
     assert!(m.pending().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn delete_rules_remove_watched_downloads() {
+    let s = MockServer::start().await;
+    let data = body(1024);
+    Mock::given(method("GET"))
+        .respond_with(RangeServer {
+            data: data.clone(),
+            etag: "\"v1\"".into(),
+            hits: Arc::new(AtomicUsize::new(0)),
+        })
+        .mount(&s)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), file_sink());
+    let mut req = request(format!("{}/Items/item1/Download", s.uri()), None);
+    req.delete_rule = DeleteRule::WhenWatched;
+    req.episode = Some(EpisodeOf {
+        series_id: "show".into(),
+        series_title: "Show".into(),
+        season_number: Some(1),
+        episode_number: Some(2),
+    });
+    let id = m.enqueue(req).unwrap();
+    assert_eq!(m.run(id).await.unwrap(), DownloadState::Completed);
+    let d = m.get(id).unwrap();
+    assert!(d.completed_at.is_some());
+    assert_eq!(d.episode.unwrap().episode_number, Some(2));
+    let now = d.completed_at.unwrap() + 10;
+    assert_eq!(m.apply_rules(now).unwrap(), 0, "not watched yet");
+    m.mark_watched("jellyfin:s:u", "item1", now).unwrap();
+    let file = m.get(id).unwrap().file_path;
+    assert_eq!(m.apply_rules(now).unwrap(), 1);
+    assert!(m.list().unwrap().is_empty());
+    assert!(!Path::new(&file).exists());
 }
 
 /// A raw HTTP server: the first connection sends headers for the whole file but only part of the

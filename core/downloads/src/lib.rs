@@ -70,6 +70,48 @@ impl DownloadState {
     }
 }
 
+/// When a finished download deletes itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum DeleteRule {
+    /// Kept until the user deletes it.
+    #[default]
+    Never,
+    /// `days` after the download finished, watched or not.
+    AfterDays { days: u32 },
+    /// As soon as it has been watched.
+    WhenWatched,
+    /// `days` after it was watched.
+    DaysAfterWatched { days: u32 },
+}
+
+impl DeleteRule {
+    /// Whether a download finished at `completed_at` (and watched at `watched_at`) is due.
+    pub fn due(self, now: i64, completed_at: Option<i64>, watched_at: Option<i64>) -> bool {
+        const DAY: i64 = 86_400;
+        match self {
+            Self::Never => false,
+            Self::AfterDays { days } => {
+                completed_at.is_some_and(|t| now >= t + i64::from(days) * DAY)
+            }
+            Self::WhenWatched => watched_at.is_some(),
+            Self::DaysAfterWatched { days } => {
+                watched_at.is_some_and(|t| now >= t + i64::from(days) * DAY)
+            }
+        }
+    }
+}
+
+/// Where an episode belongs, to group downloads by show and season.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct EpisodeOf {
+    pub series_id: String,
+    pub series_title: String,
+    pub season_number: Option<u32>,
+    pub episode_number: Option<u32>,
+}
+
 /// What to fetch. Auth headers are stored with the download so it can resume after a restart;
 /// the database lives in the app's private storage, like the rest of the cache.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -81,6 +123,8 @@ pub struct DownloadRequest {
     pub headers: Vec<(String, String)>,
     pub file_name: String,
     pub expected_size: Option<u64>,
+    pub episode: Option<EpisodeOf>,
+    pub delete_rule: DeleteRule,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,6 +140,10 @@ pub struct Download {
     pub total: Option<u64>,
     pub error: Option<String>,
     pub created_at: i64,
+    pub episode: Option<EpisodeOf>,
+    pub delete_rule: DeleteRule,
+    pub completed_at: Option<i64>,
+    pub watched_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -297,6 +345,22 @@ impl Downloads {
                 UNIQUE(account_id, item_id)
              );",
         )?;
+        // Columns added after the first release: add them to older databases.
+        for column in [
+            "series_id TEXT",
+            "series_title TEXT",
+            "season_number INTEGER",
+            "episode_number INTEGER",
+            "delete_rule TEXT",
+            "completed_at INTEGER",
+            "watched_at INTEGER",
+        ] {
+            match db.execute(&format!("ALTER TABLE downloads ADD COLUMN {column}"), []) {
+                Ok(_) => {}
+                Err(e) if e.to_string().contains("duplicate column") => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
         // A crash while running leaves 'running' rows: they are simply resumable.
         db.execute(
             "UPDATE downloads SET state = 'queued' WHERE state = 'running'",
@@ -329,9 +393,11 @@ impl Downloads {
         // Unique final path: "<item id> - <file name>" avoids collisions between servers.
         let name = sanitize(&format!("{} - {}", sanitize(&req.item_id), req.file_name));
         let path = self.dir.join(&name);
+        let ep = req.episode.as_ref();
         db.execute(
-            "INSERT INTO downloads(account_id, item_id, title, url, headers, path, total, state, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'queued', ?8)",
+            "INSERT INTO downloads(account_id, item_id, title, url, headers, path, total, state, created_at,
+                                   series_id, series_title, season_number, episode_number, delete_rule)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'queued', ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 req.account_id,
                 req.item_id,
@@ -340,7 +406,12 @@ impl Downloads {
                 serde_json::to_string(&req.headers).unwrap_or_default(),
                 path.to_string_lossy(),
                 req.expected_size.map(|s| s as i64),
-                now()
+                now(),
+                ep.map(|e| e.series_id.as_str()),
+                ep.map(|e| e.series_title.as_str()),
+                ep.and_then(|e| e.season_number),
+                ep.and_then(|e| e.episode_number),
+                serde_json::to_string(&req.delete_rule).unwrap_or_default(),
             ],
         )?;
         Ok(db.last_insert_rowid())
@@ -349,7 +420,9 @@ impl Downloads {
     pub fn list(&self) -> Result<Vec<Download>> {
         let db = lock(&self.db);
         let mut stmt = db.prepare(
-            "SELECT id, account_id, item_id, title, path, state, offset, total, error, created_at
+            "SELECT id, account_id, item_id, title, path, state, offset, total, error, created_at,
+                    series_id, series_title, season_number, episode_number, delete_rule,
+                    completed_at, watched_at
              FROM downloads ORDER BY created_at DESC, id DESC",
         )?;
         let live = lock(&self.live).clone();
@@ -367,6 +440,22 @@ impl Downloads {
                 total: r.get::<_, Option<i64>>(7)?.map(|t| t as u64),
                 error: r.get(8)?,
                 created_at: r.get(9)?,
+                episode: r.get::<_, Option<String>>(10)?.map(|series_id| EpisodeOf {
+                    series_id,
+                    series_title: r
+                        .get::<_, Option<String>>(11)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default(),
+                    season_number: r.get(12).ok().flatten(),
+                    episode_number: r.get(13).ok().flatten(),
+                }),
+                delete_rule: r
+                    .get::<_, Option<String>>(14)?
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default(),
+                completed_at: r.get(15)?,
+                watched_at: r.get(16)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -419,6 +508,41 @@ impl Downloads {
             None,
             &["paused", "no_space", "failed"],
         )
+    }
+
+    /// Records that an item was watched (offline or not), for the deletion rules. Keeps the
+    /// first time: watching again does not push the deadline.
+    pub fn mark_watched(&self, account_id: &str, item_id: &str, at: i64) -> Result<()> {
+        lock(&self.db).execute(
+            "UPDATE downloads SET watched_at = COALESCE(watched_at, ?3)
+             WHERE account_id = ?1 AND item_id = ?2",
+            params![account_id, item_id, at],
+        )?;
+        Ok(())
+    }
+
+    /// Changes the deletion rule of one download.
+    pub fn set_delete_rule(&self, id: i64, rule: DeleteRule) -> Result<()> {
+        lock(&self.db).execute(
+            "UPDATE downloads SET delete_rule = ?2 WHERE id = ?1",
+            params![id, serde_json::to_string(&rule).unwrap_or_default()],
+        )?;
+        Ok(())
+    }
+
+    /// Deletes the finished downloads whose rule says so; returns how many.
+    pub fn apply_rules(&self, now: i64) -> Result<u32> {
+        let due: Vec<i64> = self
+            .list()?
+            .into_iter()
+            .filter(|d| d.state == DownloadState::Completed)
+            .filter(|d| d.delete_rule.due(now, d.completed_at, d.watched_at))
+            .map(|d| d.id)
+            .collect();
+        for id in &due {
+            self.remove(*id)?;
+        }
+        Ok(due.len() as u32)
     }
 
     /// Deletes the download and its files.
@@ -706,7 +830,8 @@ impl Downloads {
         std::fs::rename(part, path).map_err(io_err)?;
         let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         lock(&self.db).execute(
-            "UPDATE downloads SET state = 'completed', error = NULL, offset = ?2, total = ?2 WHERE id = ?1",
+            "UPDATE downloads SET state = 'completed', error = NULL, offset = ?2, total = ?2,
+                    completed_at = COALESCE(completed_at, strftime('%s', 'now')) WHERE id = ?1",
             params![id, size as i64],
         )?;
         Ok(())
@@ -775,5 +900,23 @@ mod tests {
         assert!(!is_disk_full(&io::Error::from(
             io::ErrorKind::PermissionDenied
         )));
+    }
+}
+
+#[cfg(test)]
+mod rule_tests {
+    use super::DeleteRule;
+    const DAY: i64 = 86_400;
+
+    #[test]
+    fn rules() {
+        let done = Some(0);
+        assert!(!DeleteRule::Never.due(100 * DAY, done, Some(0)));
+        assert!(!DeleteRule::AfterDays { days: 7 }.due(6 * DAY, done, None));
+        assert!(DeleteRule::AfterDays { days: 7 }.due(7 * DAY, done, None));
+        assert!(!DeleteRule::WhenWatched.due(DAY, done, None));
+        assert!(DeleteRule::WhenWatched.due(DAY, done, Some(DAY)));
+        assert!(!DeleteRule::DaysAfterWatched { days: 2 }.due(2 * DAY, done, Some(DAY)));
+        assert!(DeleteRule::DaysAfterWatched { days: 2 }.due(3 * DAY, done, Some(DAY)));
     }
 }
