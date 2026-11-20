@@ -2909,6 +2909,8 @@ impl App {
     fn signed_in(self: &Rc<Self>, s: SignedIn) {
         if let Some(t) = &s.plex_account_token {
             let _ = self.tokens.put(&format!("{}:plextv", s.account.id), t);
+            self.core
+                .set_plex_account_token(s.account.id.clone(), t.clone());
         }
         if let Err(e) = self.tokens.put(&s.account.id, &s.token) {
             self.ui()
@@ -3815,6 +3817,13 @@ pub fn activate_saved(core: &AlwyWatch, tokens: &Tokens) {
     for a in core.accounts().unwrap_or_default() {
         if let Some(t) = tokens.get(&a.id) {
             let _ = core.activate_account(a.id.clone(), t);
+        }
+        // Plex's watchlist is on plex.tv: the (home) user's account token.
+        if let Some(t) = tokens
+            .get(&format!("{}:plexhome", a.id))
+            .or_else(|| tokens.get(&format!("{}:plextv", a.id)))
+        {
+            core.set_plex_account_token(a.id.clone(), t);
         }
     }
     if core.seerr_connection().is_some()

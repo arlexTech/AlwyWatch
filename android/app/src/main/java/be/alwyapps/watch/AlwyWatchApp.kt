@@ -76,6 +76,10 @@ class Services(
     fun activate(core: AlwyWatch) {
         for (account in core.accounts()) {
             tokens.get(account.id)?.let { runCatching { core.activateAccount(account.id, it) } }
+            // Plex's watchlist is on plex.tv: the (home) user's account token.
+            (tokens.get("${account.id}:plexhome") ?: tokens.get("${account.id}:plextv"))?.let {
+                core.setPlexAccountToken(account.id, it)
+            }
         }
         core.keepConnection()?.let { k ->
             val account = core.accounts().firstOrNull { it.id == k.accountId }

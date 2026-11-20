@@ -109,6 +109,28 @@ fun DetailScreen(
     // Back from the player, or watched state changed from a menu: positions and marks moved.
     val changed = be.alwyapps.watch.ui.ItemsChanged.version
     LaunchedEffect(changed) { if (changed > 0) res.reload() }
+    // My list (movies and shows), from the cache; the button flips it on the server.
+    var watchlisted by remember(itemId) { mutableStateOf(core.isWatchlisted(account, itemId)) }
+    LaunchedEffect(itemId) {
+        runCatching { core.refreshWatchlist(account, false) }
+        watchlisted = core.isWatchlisted(account, itemId)
+    }
+    val toggleList = {
+        val on = !watchlisted
+        watchlisted = on
+        scope.launch {
+            runCatching { core.setWatchlisted(account, itemId, on) }.onFailure {
+                watchlisted = !on
+                android.widget.Toast
+                    .makeText(ctx, "My list: ${it.message}", android.widget.Toast.LENGTH_LONG)
+                    .show()
+            }
+        }
+        Unit
+    }
+    // Cast and crew: cached first, then the server's.
+    var people by remember(itemId) { mutableStateOf(core.cachedPeople(account, itemId).orEmpty()) }
+    LaunchedEffect(itemId) { runCatching { core.people(account, itemId) }.onSuccess { people = it } }
     // A season has no page of its own: its show, opened on that season.
     val parent = item?.seriesId
     if (item?.kind == ItemKind.SEASON && parent != null) {
@@ -255,6 +277,14 @@ fun DetailScreen(
                                         ActionButton(playLabel, playAction, Modifier.initialFocus(), primary = true, icon = Icons.Play)
                                     }
                                     fromStart?.let { ActionButton("From start", it) }
+                                    if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
+                                        IconAction(
+                                            if (watchlisted) Icons.BookmarkFilled else Icons.Bookmark,
+                                            if (watchlisted) "Remove from my list" else "Add to my list",
+                                            toggleList,
+                                            active = watchlisted,
+                                        )
+                                    }
                                     IconAction(
                                         Icons.Check,
                                         if (item.user.played) "Mark unwatched" else "Mark watched",
@@ -271,6 +301,16 @@ fun DetailScreen(
                                     if (fromStart != null) {
                                         CaptionAction("From start", fromStart) {
                                             Icon(Icons.Refresh, null, Modifier.size(22.dp))
+                                        }
+                                    }
+                                    if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
+                                        CaptionAction(if (watchlisted) "In my list" else "My list", toggleList, highlighted = watchlisted) {
+                                            Icon(
+                                                if (watchlisted) Icons.BookmarkFilled else Icons.Bookmark,
+                                                null,
+                                                Modifier.size(22.dp),
+                                                tint = if (watchlisted) Color.Black else OnSurface,
+                                            )
                                         }
                                     }
                                     CaptionAction(if (item.user.played) "Watched" else "Mark watched", toggleWatched, highlighted = item.user.played) {
@@ -323,11 +363,68 @@ fun DetailScreen(
                                 for (g in item.genres.take(5)) Chip(g)
                             }
                         }
+                        // "Directed by …", like Plex.
+                        people
+                            .filter { it.kind == be.alwyapps.watch.core.media.PersonKind.DIRECTOR }
+                            .take(2)
+                            .takeIf { it.isNotEmpty() }
+                            ?.let { dirs ->
+                                Text(
+                                    "Directed by " + dirs.joinToString(", ") { it.name },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Muted,
+                                )
+                            }
                     }
                 }
                 if (item.kind == ItemKind.SERIES) item(key = "seasons") { Seasons(item, season, dls) { selectedSeason = it } }
+                val cast = people.filter { it.kind == be.alwyapps.watch.core.media.PersonKind.ACTOR }.take(20)
+                if (cast.isNotEmpty()) item(key = "cast") { CastRow(cast) }
             }
             item { Spacer(Modifier.height(40.dp)) }
+        }
+    }
+}
+
+/** "Cast" row: round photos, name and character (like Plex's cast row). */
+@Composable
+private fun CastRow(cast: List<be.alwyapps.watch.core.media.Person>) {
+    val d = LocalDimens.current
+    val photo = if (d.isTv) 88.dp else 76.dp
+    Column(Modifier.padding(top = 16.dp)) {
+        Text("Cast", Modifier.padding(horizontal = d.gutter), style = MaterialTheme.typography.titleMedium)
+        androidx.compose.foundation.lazy.LazyRow(
+            contentPadding =
+                androidx.compose.foundation.layout
+                    .PaddingValues(horizontal = d.gutter, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (d.isTv) 20.dp else 14.dp),
+        ) {
+            items(cast.size) { n ->
+                val p = cast[n]
+                // Focusable on TV so the row scrolls with the D-pad.
+                be.alwyapps.watch.ui.FocusCard(onClick = {}, glow = false, modifier = Modifier.width(photo + 20.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        be.alwyapps.watch.ui
+                            .UrlImage(p.photoUrl, photo, Modifier.size(photo).clip(RoundedCornerShape(50)))
+                        Text(
+                            p.name,
+                            Modifier.padding(top = 6.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        p.role?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Muted,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

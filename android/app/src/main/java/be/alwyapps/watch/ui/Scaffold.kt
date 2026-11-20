@@ -66,7 +66,7 @@ data class Tab(
 fun Route.isTopLevel(rail: Boolean): Boolean =
     when (this) {
         Route.Home, Route.LeavingSoon, Route.Together -> true
-        Route.Search, Route.Downloads, Route.Settings -> rail
+        Route.Search, Route.Downloads, Route.Settings, Route.Watchlist -> rail
         is Route.Library -> true
         else -> false
     }
@@ -81,6 +81,7 @@ fun tabs(): List<Tab> {
     val d = LocalDimens.current
     val rail = usesRail()
     val out = mutableListOf(Tab(Route.Home, "Home", Icons.Home, Icons.HomeFilled))
+    if (rail) out += Tab(Route.Watchlist, "My list", Icons.Bookmark, Icons.BookmarkFilled)
     if (rail) out += Tab(Route.Search, "Search", Icons.Search)
     if (rail) {
         // Libraries as destinations (from the cached home: no network).

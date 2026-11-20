@@ -152,6 +152,9 @@ private fun Root(core: AlwyWatch) {
                             Route.Together ->
                                 be.alwyapps.watch.ui.screens
                                     .TogetherScreen()
+                            Route.Watchlist ->
+                                be.alwyapps.watch.ui.screens
+                                    .WatchlistScreen()
                             Route.Triage -> TriageScreen()
                             Route.KeepAdmin -> KeepAdminScreen()
                             Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })

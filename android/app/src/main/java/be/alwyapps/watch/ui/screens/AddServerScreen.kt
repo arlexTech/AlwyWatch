@@ -139,6 +139,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
         plexHomeToken?.let { ctx.services.tokens.put("${s.account.id}:plexhome", it) }
         // Plex: the plex.tv account token is what Seerr and the keep service accept.
         s.plexAccountToken?.let { ctx.services.tokens.put("${s.account.id}:plextv", it) }
+        (plexHomeToken ?: s.plexAccountToken)?.let { core.setPlexAccountToken(s.account.id, it) }
         core.setSetting("current_account", s.account.id)
         // Leaving soon + Seerr through the AlwyWatch server the user started from (if any).
         val keepToken = s.plexAccountToken ?: s.token

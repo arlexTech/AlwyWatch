@@ -412,6 +412,7 @@ private fun HomeTopBar(
                             .FontWeight(800),
                 ),
         )
+        TopIcon(Icons.Bookmark, "My list") { nav.push(Route.Watchlist) }
         TopIcon(Icons.Search, "Search") { nav.push(Route.Search) }
         TopIcon(Icons.Download, if (offline) "Leave downloads" else "Downloads", active = offline, onClick = onToggleDownloads)
         // You: settings, accounts and servers.
