@@ -706,10 +706,17 @@ class PlayerActivity : ComponentActivity() {
             // Hidden: ←/→ seek right away (like every TV player), other keys wake the controls.
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    // Seek without opening the controls, so presses add up (−10 s, +30 s each);
+                    // a slim bar shows where it lands.
                     if (down && p != null) {
-                        if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) p.seekBack() else p.seekForward()
+                        val step = if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -p.seekBackIncrement else p.seekForwardIncrement
+                        val base = ui.seekTarget ?: p.currentPosition
+                        val dur = p.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                        val target = (base + step).coerceIn(0, dur)
+                        ui.seekTarget = target
+                        p.seekTo(target)
+                        ui.seekFlash++
                     }
-                    ui.poke()
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
@@ -733,13 +740,14 @@ class PlayerActivity : ComponentActivity() {
                 fg,
                 bg,
                 android.graphics.Color.TRANSPARENT,
+                // No box: a dark outline keeps them readable on bright scenes (like Plex/Netflix).
                 if (settings.subtitleBackground) {
                     androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE
                 } else {
-                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE
                 },
-                android.graphics.Color.BLACK,
-                null,
+                android.graphics.Color.argb(220, 0, 0, 0),
+                android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL),
             ),
         )
         val scale =
@@ -750,7 +758,8 @@ class PlayerActivity : ComponentActivity() {
                 else -> 1f
             }
         sv.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * scale)
-        sv.setBottomPaddingFraction(if (settings.subtitleRaised) 0.16f else androidx.media3.ui.SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION)
+        // Measured from the bottom of the picture: low by default (Media3's 8% sat too high).
+        sv.setBottomPaddingFraction(if (settings.subtitleRaised) 0.12f else 0.04f)
     }
 
     /** A track picked in the player becomes the movie's or show's choice (next episodes too). */

@@ -118,6 +118,10 @@ class PlayerUi {
     /** A short line about the room ("Ana paused"), shown a few seconds even with hidden controls. */
     var togetherNote by mutableStateOf<String?>(null)
 
+    /** Seeking with ←/→ while the controls are hidden: where it goes, and a counter per press. */
+    var seekTarget by mutableStateOf<Long?>(null)
+    var seekFlash by mutableIntStateOf(0)
+
     /** Paused after hours without the remote: "Are you still watching?". */
     var stillWatching by mutableStateOf(false)
 
@@ -369,6 +373,46 @@ fun PlayerOverlay(
                 }
             }
         }
+        // Hidden controls, ←/→: a slim bar with the time, gone 2 s after the last press.
+        val flash = ui.seekFlash
+        LaunchedEffect(flash) {
+            if (flash > 0) {
+                delay(2000)
+                ui.seekTarget = null
+            }
+        }
+        val seekTo = ui.seekTarget
+        if (seekTo != null && !ui.visible) {
+            val dur = player()?.duration?.takeIf { it > 0 } ?: 0L
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f)))
+                    .padding(horizontal = if (tv) 56.dp else 20.dp, vertical = if (tv) 28.dp else 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "${formatTime(seekTo)}  /  ${formatTime(dur)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White,
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.25f)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(if (dur > 0) (seekTo.toFloat() / dur).coerceIn(0f, 1f) else 0f)
+                            .height(4.dp)
+                            .background(be.alwyapps.watch.ui.Accent),
+                    )
+                }
+            }
+        }
         // What the room just did, for a few seconds, controls shown or not.
         val note = ui.togetherNote
         LaunchedEffect(note) {
@@ -568,6 +612,18 @@ private fun TracksPanel(
 ) {
     val p = player() ?: return
     var version by remember { mutableIntStateOf(0) }
+    // The player applies a selection asynchronously: redraw when its tracks actually change
+    // (reading them right after a pick showed the previous one).
+    androidx.compose.runtime.DisposableEffect(p) {
+        val l =
+            object : Player.Listener {
+                override fun onTracksChanged(t: androidx.media3.common.Tracks) {
+                    version++
+                }
+            }
+        p.addListener(l)
+        onDispose { p.removeListener(l) }
+    }
     val tracks = remember(version) { p.currentTracks }
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
