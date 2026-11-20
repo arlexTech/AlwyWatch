@@ -435,18 +435,29 @@ fun TriageScreen() {
                                 }
                                 true
                             }.pointerInput(item.key) {
+                                // Distance or a quick flick decides (people swipe fast).
+                                val tracker =
+                                    androidx.compose.ui.input.pointer.util
+                                        .VelocityTracker()
+
+                                fun decide() {
+                                    val v = tracker.calculateVelocity()
+                                    val flick = 1200f
+                                    when {
+                                        (dy < -250 || v.y < -flick) && abs(dy) > abs(dx) -> vote(req(VoteKind.KEEP_FOREVER, reason = "love it"))
+                                        dx > 250 || v.x > flick -> vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u))
+                                        dx < -250 || v.x < -flick -> vote(req(VoteKind.DONT_CARE))
+                                    }
+                                    dx = 0f
+                                    dy = 0f
+                                    tracker.resetTracking()
+                                }
                                 detectDragGestures(
-                                    onDragEnd = {
-                                        when {
-                                            dy < -250 && abs(dy) > abs(dx) -> vote(req(VoteKind.KEEP_FOREVER, reason = "love it"))
-                                            dx > 250 -> vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u))
-                                            dx < -250 -> vote(req(VoteKind.DONT_CARE))
-                                        }
-                                        dx = 0f
-                                        dy = 0f
-                                    },
+                                    onDragEnd = { decide() },
+                                    onDragCancel = { decide() },
                                     onDrag = { change, amount ->
                                         change.consume()
+                                        tracker.addPosition(change.uptimeMillis, change.position)
                                         dx += amount.x
                                         dy += amount.y
                                     },
@@ -485,7 +496,10 @@ fun TriageScreen() {
                     }
                 } else {
                     card()
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { buttons() }
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) { buttons() }
                 }
             }
         }
