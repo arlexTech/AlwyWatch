@@ -817,7 +817,31 @@ export component AppWindow inherits Window {
                                 padding-top: 72px;
                                 spacing: 16px;
                                 alignment: start;
-                                if root.add-step == "choose" : VerticalLayout {
+                                if root.add-step == "choose" && root.add-from-keep : Text { text: "Add a server"; color: Palette.text; font-size: 36px; font-weight: 800; }
+                                if root.add-step == "choose" && root.add-from-keep && root.preset-servers.length > 0 : Text { text: "From your AlwyWatch server"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                if root.add-step == "choose" && root.add-from-keep : VerticalLayout {
+                                    spacing: 16px;
+                                    for s in root.preset-servers : ChoiceCard {
+                                        title: s.title;
+                                        subtitle: s.subtitle;
+                                        icon: s.plex ? @image-url("icons/play_arrow_fill1.svg") : @image-url("icons/video_library.svg");
+                                        clicked => { root.add-keep-pick(s.id); }
+                                    }
+                                }
+                                if root.add-step == "choose" && root.add-from-keep && root.preset-servers.length > 0 : Text { text: "Another server"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                if root.add-step == "choose" && root.add-from-keep : ChoiceCard {
+                                    title: "Jellyfin";
+                                    subtitle: "Quick Connect or password";
+                                    icon: @image-url("icons/video_library.svg");
+                                    clicked => { root.add-choose("jellyfin"); }
+                                }
+                                if root.add-step == "choose" && root.add-from-keep : ChoiceCard {
+                                    title: "Plex";
+                                    subtitle: "Sign in on plex.tv";
+                                    icon: @image-url("icons/play_arrow_fill1.svg");
+                                    clicked => { root.add-choose("plex"); }
+                                }
+                                if root.add-step == "choose" && !root.add-from-keep : VerticalLayout {
                                     spacing: 4px;
                                     Text { text: "AlwyWatch"; color: Palette.text; font-size: 56px; font-weight: 800; letter-spacing: -1.5px; }
                                     Text { text: "Your Jellyfin and Plex, fast and beautiful."; color: Palette.muted; font-size: 17px; }
@@ -837,14 +861,14 @@ export component AppWindow inherits Window {
                                         vertical-alignment: center;
                                     }
                                 }
-                                if root.add-step == "choose" : Text { text: "How do you watch?"; color: Palette.text; font-size: 17px; font-weight: 700; }
-                                if root.add-step == "choose" : ChoiceCard {
+                                if root.add-step == "choose" && !root.add-from-keep : Text { text: "How do you watch?"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
                                     title: "I have an AlwyWatch server";
                                     subtitle: "Its address comes from your server's owner. Includes what's leaving soon and requests.";
                                     icon: @image-url("icons/hourglass_bottom.svg");
                                     clicked => { root.add-choose("alwywatch"); }
                                 }
-                                if root.add-step == "choose" : ChoiceCard {
+                                if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
                                     title: "I don't have one";
                                     subtitle: "Sign in to Jellyfin or Plex directly. You can add an AlwyWatch server later in Settings.";
                                     icon: @image-url("icons/person.svg");
@@ -864,9 +888,8 @@ export component AppWindow inherits Window {
                                 }
                                 if root.add-step == "alwywatch" : VerticalLayout {
                                     spacing: 12px;
-                                    if root.add-from-keep : Text { text: "On your AlwyWatch server"; color: Palette.text; font-size: 17px; font-weight: 700; }
-                                    if !root.add-from-keep : Text { text: "Enter the address your server's owner gave you, then pick the server you watch on."; color: Palette.muted; wrap: word-wrap; }
-                                    if !root.add-from-keep : HorizontalLayout {
+                                    Text { text: "Enter the address your server's owner gave you, then pick the server you watch on."; color: Palette.muted; wrap: word-wrap; }
+                                    HorizontalLayout {
                                         spacing: 10px;
                                         kserver := Field { placeholder: "watch.example.org"; accepted(t) => { root.add-keep-servers(t); } }
                                         Button { label: "Show servers"; primary: root.preset-servers.length == 0; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
@@ -876,13 +899,6 @@ export component AppWindow inherits Window {
                                         subtitle: s.subtitle;
                                         icon: s.plex ? @image-url("icons/play_arrow_fill1.svg") : @image-url("icons/video_library.svg");
                                         clicked => { root.add-keep-pick(s.id); }
-                                    }
-                                    if root.add-from-keep : Text { text: "Somewhere else"; color: Palette.text; font-size: 17px; font-weight: 700; }
-                                    if root.add-from-keep : ChoiceCard {
-                                        title: "Another server";
-                                        subtitle: "Jellyfin or Plex directly, not on your AlwyWatch server";
-                                        icon: @image-url("icons/add.svg");
-                                        clicked => { root.add-choose("direct"); }
                                     }
                                 }
                                 if root.add-step == "jellyfin-url" : VerticalLayout {

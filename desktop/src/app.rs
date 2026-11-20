@@ -1383,14 +1383,15 @@ impl App {
             Route::Add => {
                 ui.set_page(Page::Add);
                 ui.set_status(SharedString::new());
-                // Already connected to an AlwyWatch server: start from its list.
+                // Connected to an AlwyWatch server: offer its servers not added yet, then
+                // Jellyfin or Plex directly.
+                ui.set_add_step("choose".into());
                 if let Some(k) = self.core.keep_connection() {
-                    ui.set_add_step("alwywatch".into());
                     ui.set_add_from_keep(true);
+                    ui.set_preset_servers(ModelRc::default());
                     self.add_keep_servers(k.base_url);
                 } else {
                     ui.set_add_from_keep(false);
-                    ui.set_add_step("choose".into());
                 }
             }
         }
@@ -2420,6 +2421,7 @@ impl App {
         let step = ui.get_add_step();
         let which = match which.as_str() {
             "back" if step == "alwywatch" || step == "direct" || step == "choose" => String::new(),
+            "back" if ui.get_add_from_keep() => String::new(),
             "back" if self.state.borrow().preset_url.is_empty() => "direct".into(),
             "back" => "alwywatch".into(),
             _ => which,
@@ -2465,9 +2467,12 @@ impl App {
                 .into_iter()
                 .map(|a| a.server_id)
                 .collect();
+            // Adding while connected: only the servers not added yet.
+            let hide_added = t.ui().get_add_from_keep();
             t.ui().set_preset_servers(ModelRc::new(VecModel::from(
                 list.iter()
                     .enumerate()
+                    .filter(|(_, e)| !(hide_added && signed_in.contains(&e.id)))
                     .map(|(i, e)| {
                         let plex = e.kind == ServerType::Plex;
                         ServerChoice {
