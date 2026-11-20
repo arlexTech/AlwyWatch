@@ -60,6 +60,7 @@ import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.OnSurface
 import be.alwyapps.watch.ui.Outline
 import be.alwyapps.watch.ui.RemoteImage
+import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.Subtle
 import be.alwyapps.watch.ui.ambient
 import be.alwyapps.watch.ui.ambientGlow
@@ -84,7 +85,10 @@ fun play(
 }
 
 @Composable
-fun DetailScreen(itemId: String) {
+fun DetailScreen(
+    itemId: String,
+    season: String? = null,
+) {
     val core = LocalCore.current
     val account = LocalAccount.current
     val ctx = LocalContext.current
@@ -127,6 +131,21 @@ fun DetailScreen(itemId: String) {
                 }.getOrNull()
         }
     }
+    // Season shown in the episode list (a show page opened from an episode's "Season N").
+    var selectedSeason by remember(itemId) { mutableStateOf<Item?>(null) }
+    var sheet by remember { mutableStateOf(false) }
+    if (sheet && item != null) {
+        val show = item.showFor()
+        if (show != null) {
+            val seasonItem =
+                if (item.kind == ItemKind.EPISODE) {
+                    item.seasonId?.let { sid -> item.copy(id = sid, kind = ItemKind.SEASON, title = "Season ${item.seasonNumber ?: ""}".trim()) }
+                } else {
+                    selectedSeason
+                }
+            DownloadSheet(show, seasonItem, item.takeIf { it.kind == ItemKind.EPISODE }) { sheet = false }
+        }
+    }
     val config = LocalConfiguration.current
     val heroH = if (d.isTv) (config.screenHeightDp * 0.8f).dp else (config.screenWidthDp * 1.2f).coerceAtMost(560f).dp
 
@@ -160,7 +179,15 @@ fun DetailScreen(itemId: String) {
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             if (item.kind == ItemKind.EPISODE) {
-                                Text(item.seriesTitle ?: "", style = MaterialTheme.typography.titleMedium, color = Muted)
+                                // The show and the season, one tap away.
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    item.seriesId?.let { sid ->
+                                        ActionButton(item.seriesTitle ?: "Show", { nav.push(Route.Detail(sid)) }, icon = Icons.Tv)
+                                        if (item.seasonId != null && item.seasonNumber != null) {
+                                            ActionButton("Season ${item.seasonNumber}", { nav.push(Route.Detail(sid, item.seasonId)) })
+                                        }
+                                    }
+                                }
                                 Text(item.title, style = MaterialTheme.typography.displaySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             } else {
                                 TitleArt(item, if (d.isTv) 460.dp else 300.dp, big = d.isTv)
@@ -199,7 +226,15 @@ fun DetailScreen(itemId: String) {
                                     },
                                     active = item.user.played,
                                 )
-                                if (playable && !d.isTv) DownloadButton(item)
+                                if (!d.isTv) {
+                                    when (item.kind) {
+                                        ItemKind.MOVIE -> DownloadButton(item)
+                                        // Episode or show: this one, its season, the whole show, next N.
+                                        ItemKind.EPISODE, ItemKind.SERIES ->
+                                            IconAction(Icons.Download, "Download…", { sheet = true }, active = false)
+                                        else -> {}
+                                    }
+                                }
                             }
                             item.remaining()?.let { left ->
                                 Text(left, style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -236,7 +271,7 @@ fun DetailScreen(itemId: String) {
                         }
                     }
                 }
-                if (item.kind == ItemKind.SERIES) item(key = "seasons") { Seasons(item) }
+                if (item.kind == ItemKind.SERIES) item(key = "seasons") { Seasons(item, season) { selectedSeason = it } }
             }
             item { Spacer(Modifier.height(40.dp)) }
         }
@@ -257,44 +292,66 @@ private fun Chip(text: String) {
     )
 }
 
-/** Queues the original file for download (asks for the notification permission on Android 13+). */
+/**
+ * Download toggle for a movie or an episode: downloads it (default deletion rule), or removes
+ * the download when it is already there.
+ */
 @Composable
 private fun DownloadButton(item: Item) {
     val core = LocalCore.current
     val account = LocalAccount.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var label by remember(item.id) {
-        mutableStateOf(
-            core.downloads().firstOrNull { it.accountId == account && it.itemId == item.id }?.let {
-                if (it.state == be.alwyapps.watch.core.downloads.DownloadState.COMPLETED) "Downloaded" else "Downloading…"
-            } ?: "Download",
-        )
+
+    fun current() = runCatching { core.downloads() }.getOrNull()?.firstOrNull { it.accountId == account && it.itemId == item.id }
+    var dl by remember(item.id) { mutableStateOf(current()) }
+    var failed by remember { mutableStateOf(false) }
+    // Follows the download while it runs.
+    LaunchedEffect(item.id, dl?.state) {
+        while (dl != null && dl?.state != be.alwyapps.watch.core.downloads.DownloadState.COMPLETED) {
+            kotlinx.coroutines.delay(2000)
+            dl = current()
+        }
     }
     val permission =
         androidx.activity.compose.rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts
                 .RequestPermission(),
         ) { }
-    IconAction(Icons.Download, label, {
-        if (label != "Download") return@IconAction
+    val done = dl?.state == be.alwyapps.watch.core.downloads.DownloadState.COMPLETED
+    val label =
+        when {
+            failed -> "Download failed"
+            dl == null -> "Download"
+            done -> "Downloaded: tap to remove"
+            else -> "Downloading: tap to cancel"
+        }
+    IconAction(if (done) Icons.Check else Icons.Download, label, {
+        val existing = dl
+        if (existing != null) {
+            core.removeDownload(existing.id)
+            dl = null
+            return@IconAction
+        }
         if (android.os.Build.VERSION.SDK_INT >= 33) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         scope.launch {
-            label =
-                try {
-                    core.downloadItem(account, item.id)
-                    be.alwyapps.watch.downloads.DownloadWorker
-                        .start(ctx)
-                    "Downloading…"
-                } catch (e: be.alwyapps.watch.core.CoreException) {
-                    "Download failed"
-                }
+            try {
+                dl = core.downloadItem(account, item.id, null)
+                failed = false
+                startDownloads(ctx)
+            } catch (e: be.alwyapps.watch.core.CoreException) {
+                failed = true
+            }
         }
-    }, active = label != "Download")
+    }, active = dl != null)
 }
 
 @Composable
-private fun Seasons(series: Item) {
+private fun Seasons(
+    series: Item,
+    initial: String?,
+    onSelected: (Item) -> Unit,
+) {
     val core = LocalCore.current
     val account = LocalAccount.current
     val d = LocalDimens.current
@@ -305,7 +362,10 @@ private fun Seasons(series: Item) {
     val list = seasons.value ?: return
     if (list.isEmpty()) return
     // Open the first season with unwatched episodes.
-    var selected by remember(list) { mutableStateOf(list.firstOrNull { !it.user.played } ?: list.first()) }
+    var selected by remember(list) {
+        mutableStateOf(list.firstOrNull { it.id == initial } ?: list.firstOrNull { !it.user.played } ?: list.first())
+    }
+    LaunchedEffect(selected) { onSelected(selected) }
     Text("Episodes", Modifier.padding(horizontal = d.gutter, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
     LazyRow(contentPadding = PaddingValues(horizontal = d.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(list, key = { it.id }) { s -> ActionButton(s.title, { selected = s }, primary = s.id == selected.id) }

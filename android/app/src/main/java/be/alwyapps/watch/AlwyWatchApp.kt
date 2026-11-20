@@ -62,11 +62,9 @@ class Services(
                 .schedule(app)
             if (core.seerrConnection() != null) tokens.get("seerr")?.let { runCatching { core.seerrActivate(it) } }
             watchNetwork(core)
-            // Downloads interrupted by a reboot or a killed process continue on their own.
-            if (!isTv && core.hasPendingDownloads()) {
-                be.alwyapps.watch.downloads.DownloadWorker
-                    .start(app)
-            }
+            // Deletion rules, "next N episodes", and downloads interrupted by a reboot or a
+            // killed process (they continue on their own).
+            if (!isTv) syncDownloads(core)
             // Enumerating codecs takes tens of ms: do it now, off the main thread.
             be.alwyapps.watch.player.DeviceProfiles
                 .get(app)
@@ -96,6 +94,20 @@ class Services(
         )
     }
 
+    /**
+     * Download housekeeping: deletes what its rule says (offline too), tops up shows set to
+     * "keep the next N episodes", then runs the queue if anything is waiting.
+     */
+    fun syncDownloads(core: AlwyWatch) {
+        scope.launch {
+            runCatching { core.syncDownloads() }
+            if (core.hasPendingDownloads()) {
+                be.alwyapps.watch.downloads.DownloadWorker
+                    .start(app)
+            }
+        }
+    }
+
     /** Sends progress reports queued while offline as soon as a network is back. */
     private fun watchNetwork(core: AlwyWatch) {
         val cm = app.getSystemService(ConnectivityManager::class.java) ?: return
@@ -103,10 +115,7 @@ class Services(
             object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     scope.launch { runCatching { core.flushPendingProgress() } }
-                    if (!isTv && core.hasPendingDownloads()) {
-                        be.alwyapps.watch.downloads.DownloadWorker
-                            .start(app)
-                    }
+                    if (!isTv) syncDownloads(core)
                 }
             },
         )

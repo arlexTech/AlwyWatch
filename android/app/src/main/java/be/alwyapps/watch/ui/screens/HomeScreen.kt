@@ -167,15 +167,26 @@ private fun PhoneHome(
     val account = LocalAccount.current
     val nav = LocalNavigator.current
     val d = LocalDimens.current
+    val core = LocalCore.current
     var reachable by remember(account) { mutableStateOf<Boolean?>(null) }
+    // Downloads mode: the same home, made of what is on this phone (the top bar toggles it).
+    var offline by remember { mutableStateOf(runCatching { core.getSetting("ui.downloads_mode") }.getOrNull() == "1") }
+    val setOffline = { on: Boolean ->
+        offline = on
+        runCatching { core.setSetting("ui.downloads_mode", if (on) "1" else "0") }
+    }
     Column(Modifier.fillMaxSize()) {
-        HomeTopBar()
+        HomeTopBar(offline) { setOffline(!offline) }
+        if (offline) {
+            DownloadsHome()
+            return@Column
+        }
         LazyColumn(
             Modifier.fillMaxSize(),
             state = rememberPersistentListState("home.$account"),
         ) {
             item(key = "status") {
-                ServerStatus(onReachable = {
+                ServerStatus(onDownloads = { setOffline(true) }, onReachable = {
                     // Back online after a failure: refresh what the cache showed.
                     if (reachable == false) reload()
                     reachable = it
@@ -212,7 +223,10 @@ private fun PhoneHome(
 
 /** Plex-style bar: the name on the left; search, downloads and you (settings) on the right. */
 @Composable
-private fun HomeTopBar() {
+private fun HomeTopBar(
+    offline: Boolean,
+    onToggleDownloads: () -> Unit,
+) {
     val core = LocalCore.current
     val account = LocalAccount.current
     val nav = LocalNavigator.current
@@ -243,8 +257,12 @@ private fun HomeTopBar() {
                             .FontWeight(800),
                 ),
         )
-        TopIcon(Icons.Search, "Search") { nav.push(Route.Search) }
-        TopIcon(Icons.Download, "Downloads") { nav.push(Route.Downloads) }
+        if (offline) {
+            Text("Downloads", Modifier.padding(end = 6.dp), style = MaterialTheme.typography.labelLarge, color = be.alwyapps.watch.ui.Accent)
+        } else {
+            TopIcon(Icons.Search, "Search") { nav.push(Route.Search) }
+        }
+        TopIcon(Icons.Download, if (offline) "Leave downloads" else "Downloads", active = offline, onClick = onToggleDownloads)
         // You: settings, accounts and servers.
         Box(
             Modifier
@@ -268,15 +286,17 @@ private fun HomeTopBar() {
 private fun TopIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
+    active: Boolean = false,
     onClick: () -> Unit,
 ) {
     Box(
         Modifier
             .size(44.dp)
             .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(if (active) be.alwyapps.watch.ui.Accent else Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { androidx.compose.material3.Icon(icon, label, Modifier.size(26.dp), tint = be.alwyapps.watch.ui.OnSurface) }
+    ) { androidx.compose.material3.Icon(icon, label, Modifier.size(24.dp), tint = if (active) Color.Black else be.alwyapps.watch.ui.OnSurface) }
 }
 
 private sealed interface Reach {
@@ -295,7 +315,10 @@ private sealed interface Reach {
  * something offline). Checks again when a network comes back.
  */
 @Composable
-private fun ServerStatus(onReachable: (Boolean) -> Unit) {
+private fun ServerStatus(
+    onDownloads: () -> Unit,
+    onReachable: (Boolean) -> Unit,
+) {
     val core = LocalCore.current
     val account = LocalAccount.current
     val nav = LocalNavigator.current
@@ -379,7 +402,7 @@ private fun ServerStatus(onReachable: (Boolean) -> Unit) {
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionButton("Go to downloads", { nav.push(Route.Downloads) }, primary = true, icon = Icons.Download)
+            ActionButton("Go to downloads", onDownloads, primary = true, icon = Icons.Download)
             if (s is Reach.Failed) ActionButton("Retry", { attempt++ })
         }
     }

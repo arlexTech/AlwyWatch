@@ -97,14 +97,24 @@ private fun Root(core: AlwyWatch) {
                                 account = it
                                 nav.reset(Route.Home)
                             })
-                        Route.Downloads -> DownloadsScreen()
+                        Route.Downloads ->
+                            androidx.compose.foundation.layout.Column {
+                                be.alwyapps.watch.ui
+                                    .PageTitle("Downloads")
+                                be.alwyapps.watch.ui.screens
+                                    .DownloadsHome()
+                            }
+                        Route.ManageDownloads -> DownloadsScreen()
+                        is Route.DownloadedShow ->
+                            be.alwyapps.watch.ui.screens
+                                .DownloadedShowScreen(r.seriesId, r.title)
                         Route.Requests -> RequestsScreen()
                         Route.LeavingSoon -> LeavingSoonScreen()
                         Route.Triage -> TriageScreen()
                         Route.KeepAdmin -> KeepAdminScreen()
                         Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.reset(Route.Requests) })
                         is Route.Library -> LibraryScreen(r.id, r.title)
-                        is Route.Detail -> DetailScreen(r.itemId)
+                        is Route.Detail -> DetailScreen(r.itemId, r.season)
                     }
                 }
             }

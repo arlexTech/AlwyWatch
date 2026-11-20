@@ -32,9 +32,19 @@ sealed interface Route {
         val title: String,
     ) : Route
 
+    /** [season]: for a show, the season to open (from an episode's "Season N" link). */
     data class Detail(
         val itemId: String,
+        val season: String? = null,
     ) : Route
+
+    /** A show's downloaded episodes (works offline). */
+    data class DownloadedShow(
+        val seriesId: String,
+        val title: String,
+    ) : Route
+
+    data object ManageDownloads : Route
 
     fun encode(): String =
         when (this) {
@@ -49,7 +59,9 @@ sealed interface Route {
             Triage -> "triage"
             KeepAdmin -> "keep-admin"
             is Library -> "lib\u001f$id\u001f$title"
-            is Detail -> "item\u001f$itemId"
+            is Detail -> if (season != null) "item\u001f$itemId\u001f$season" else "item\u001f$itemId"
+            is DownloadedShow -> "dlshow\u001f$seriesId\u001f$title"
+            ManageDownloads -> "dlmanage"
         }
 
     companion object {
@@ -67,7 +79,9 @@ sealed interface Route {
                 "triage" -> Triage
                 "keep-admin" -> KeepAdmin
                 "lib" -> if (p.size == 3) Library(p[1], p[2]) else null
-                "item" -> if (p.size == 2) Detail(p[1]) else null
+                "item" -> if (p.size >= 2) Detail(p[1], p.getOrNull(2)) else null
+                "dlshow" -> if (p.size == 3) DownloadedShow(p[1], p[2]) else null
+                "dlmanage" -> ManageDownloads
                 else -> null
             }
         }

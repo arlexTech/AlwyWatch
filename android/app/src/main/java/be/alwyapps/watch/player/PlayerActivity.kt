@@ -543,6 +543,13 @@ class PlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         report(PlaybackEvent.STOP)
+        // Watched episode: its download may be due for deletion, the next one for download.
+        if (!services.isTv) {
+            services.scope.launch {
+                kotlinx.coroutines.delay(1500)
+                services.syncDownloads(core)
+            }
+        }
         progressJob?.cancel()
         player?.release()
         player = null
