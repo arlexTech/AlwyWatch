@@ -86,8 +86,8 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                 if (i > 0) Divider()
                 val sync =
                     when {
-                        keep?.accountId == a.id -> "Synced with your AlwyWatch server"
-                        keep != null && served?.contains(a.serverId) == true -> "On your AlwyWatch server · not synced"
+                        keep?.accountId == a.id -> "Synced with AlwyWatch"
+                        keep != null && served?.contains(a.serverId) == true -> "On AlwyWatch · not synced"
                         keep != null && served == null -> null
                         else -> "Only on this device"
                     }
@@ -152,8 +152,8 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                     accounts.forEach { a ->
                         ListRow(
                             "${a.serverName} (${if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) "Plex" else "Jellyfin"})",
-                            icon = if (a.id == preferred) Icons.Check else null,
-                            iconTint = Accent,
+                            icon = if (a.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) Icons.Play else Icons.Library,
+                            iconTint = if (a.id == preferred) Accent else OnSurface,
                             onClick = {
                                 preferred = a.id
                                 core.setSetting(PREFERRED_KEY, a.id)
