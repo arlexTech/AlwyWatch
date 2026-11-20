@@ -33,6 +33,7 @@ import be.alwyapps.watch.ui.screens.DownloadsScreen
 import be.alwyapps.watch.ui.screens.HomeScreen
 import be.alwyapps.watch.ui.screens.KeepAdminScreen
 import be.alwyapps.watch.ui.screens.LeavingSoonScreen
+import be.alwyapps.watch.ui.screens.LibraryGrid
 import be.alwyapps.watch.ui.screens.LibraryScreen
 import be.alwyapps.watch.ui.screens.RequestsScreen
 import be.alwyapps.watch.ui.screens.SearchScreen
@@ -114,6 +115,7 @@ private fun Root(core: AlwyWatch) {
                         Route.KeepAdmin -> KeepAdminScreen()
                         Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.reset(Route.Requests) })
                         is Route.Library -> LibraryScreen(r.id, r.title)
+                        is Route.Filtered -> LibraryGrid(r.libraryId, r.title, r.genreId, r.collectionId)
                         is Route.Detail -> DetailScreen(r.itemId, r.season)
                     }
                 }
