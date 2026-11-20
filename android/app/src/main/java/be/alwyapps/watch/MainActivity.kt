@@ -149,6 +149,9 @@ private fun Root(core: AlwyWatch) {
                                     .DownloadedShowScreen(r.seriesId, r.title)
                             Route.Requests -> RequestsScreen()
                             Route.LeavingSoon -> LeavingSoonScreen()
+                            Route.Together ->
+                                be.alwyapps.watch.ui.screens
+                                    .TogetherScreen()
                             Route.Triage -> TriageScreen()
                             Route.KeepAdmin -> KeepAdminScreen()
                             Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })

@@ -942,3 +942,82 @@ async fn admin_links_a_user_to_an_existing_seerr_user_without_creating_one() {
         (StatusCode::OK, json!(13))
     );
 }
+
+#[tokio::test]
+async fn watch_together_between_a_jellyfin_and_a_plex_user() {
+    let e = env().await;
+    let movie = json!({"kind": "movie", "title": "Arrival", "year": 2016, "tmdb": "329865",
+        "imdb": null, "tvdb": null, "series_title": null, "series_tmdb": null,
+        "series_tvdb": null, "season": null, "episode": null});
+    let (s, a) = e
+        .call(
+            "POST",
+            "/v1/together",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"media": movie, "position_ms": 60000, "playing": false})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let code = a["state"]["code"].as_str().unwrap().to_owned();
+    assert_eq!(code.len(), 6);
+    // Only users of a served server get in.
+    let join = format!("/v1/together/{code}/join");
+    assert_eq!(
+        e.call("POST", &join, "plexsrv", "px-stranger", None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (s, b) = e.call("POST", &join, "plexsrv", "px-friend", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(b["state"]["members"].as_array().unwrap().len(), 2);
+    assert_eq!(b["state"]["media"]["tmdb"], "329865");
+    // Bob plays: the friend's wait returns it at once.
+    let (s, _) = e
+        .call(
+            "PUT",
+            &format!("/v1/together/{code}"),
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"member_id": a["member_id"], "playing": true, "position_ms": 61000, "media": null})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let wait = format!(
+        "/v1/together/{code}/wait?after={}&member={}",
+        b["state"]["seq"],
+        b["member_id"].as_str().unwrap()
+    );
+    let (s, st) = e.call("GET", &wait, "plexsrv", "px-friend", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(st["playing"], true);
+    assert_eq!(st["by"], a["member_id"]);
+    // Nobody moves someone else's seat.
+    assert_eq!(
+        e.call(
+            "PUT",
+            &format!("/v1/together/{code}"),
+            "plexsrv",
+            "px-friend",
+            Some(json!({"member_id": a["member_id"], "playing": false, "position_ms": 0, "media": null})),
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let leave = format!(
+        "/v1/together/{code}/members/{}",
+        b["member_id"].as_str().unwrap()
+    );
+    assert_eq!(
+        e.call("DELETE", &leave, "plexsrv", "px-friend", None)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        e.call("GET", &wait, "plexsrv", "px-friend", None).await.0,
+        StatusCode::NOT_FOUND
+    );
+}

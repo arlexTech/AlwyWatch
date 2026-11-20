@@ -27,6 +27,9 @@ sealed interface Route {
 
     data object KeepAdmin : Route
 
+    /** Watch together: join a room with its code. */
+    data object Together : Route
+
     /** [account]: whose library (combined home: another account than the current one). */
     data class Library(
         val id: String,
@@ -87,6 +90,7 @@ sealed interface Route {
             LeavingSoon -> "leaving"
             Triage -> "triage"
             KeepAdmin -> "keep-admin"
+            Together -> "together"
             is Library -> "lib\u001f$id\u001f$title\u001f${account.orEmpty()}"
             is Detail -> "item\u001f$itemId\u001f${season.orEmpty()}\u001f${account.orEmpty()}"
             is DownloadedShow -> "dlshow\u001f$seriesId\u001f$title"
@@ -111,6 +115,7 @@ sealed interface Route {
                 "leaving" -> LeavingSoon
                 "triage" -> Triage
                 "keep-admin" -> KeepAdmin
+                "together" -> Together
                 "lib" -> if (p.size >= 3) Library(p[1], p[2], p.getOrNull(3)?.ifEmpty { null }) else null
                 "item" -> if (p.size >= 2) Detail(p[1], p.getOrNull(2)?.ifEmpty { null }, p.getOrNull(3)?.ifEmpty { null }) else null
                 "dlshow" -> if (p.size == 3) DownloadedShow(p[1], p[2]) else null

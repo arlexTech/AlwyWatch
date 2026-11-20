@@ -90,10 +90,30 @@ class PlayerActivity : ComponentActivity() {
     private var transcoding = false
     private val ui = PlayerUi()
 
+    // ----- watch together: the room this player follows (null: alone) -----
+    private var room: String? = null
+    private var member: String? = null
+    private var roomSeq = 0uL
+    private var roomMedia: be.alwyapps.watch.core.keep.TogetherMedia? = null
+    private var roomState: be.alwyapps.watch.core.keep.TogetherState? = null
+    private var roomReceivedAt = 0L
+    private var roomJob: Job? = null
+
+    /** Applying the room's state (or starting a title): the player's events are not ours to send. */
+    private var applyingRoom = false
+
+    /** Our own updates on their way: the room answers in between are older than them. */
+    private var roomSending = 0
+
+    /** This title was chosen here (next episode…): tell the room once it starts. */
+    private var announceTitle = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         account = intent.getStringExtra(EXTRA_ACCOUNT) ?: return finish()
         itemId = intent.getStringExtra(EXTRA_ITEM) ?: return finish()
+        room = intent.getStringExtra(EXTRA_ROOM)
+        member = intent.getStringExtra(EXTRA_MEMBER)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -120,6 +140,8 @@ class PlayerActivity : ComponentActivity() {
                             onPrevious = { playPrevious() },
                             onSkip = { skipSegment() },
                             onPip = if (pipSupported) ({ enterPip() }) else null,
+                            onTogether = { startTogether() },
+                            onLeaveTogether = { leaveTogether("You left watch together") },
                         )
                     }
                 }
@@ -134,7 +156,9 @@ class PlayerActivity : ComponentActivity() {
         val start = intent.getLongExtra(EXTRA_START, 0L)
         lifecycleScope.launch {
             core = services.core.await()
+            ui.togetherAvailable = runCatching { core.keepActive() }.getOrDefault(false)
             load(itemId, start)
+            if (room != null) followRoom()
         }
     }
 
@@ -278,11 +302,22 @@ class PlayerActivity : ComponentActivity() {
                         },
                 ).build()
         p.addListener(listener)
+        applyingRoom = true
         p.setMediaItem(item, startMs)
         p.prepare()
         p.playWhenReady = true
+        applyingRoom = false
         view.player = p
         player = p
+        // In a room: a title chosen here is announced, one chosen by the room follows its state.
+        if (room != null) {
+            if (announceTitle) {
+                announceTitle = false
+                sendRoom(newTitle = true)
+            } else {
+                roomState?.let { syncToRoom(it) }
+            }
+        }
         report(PlaybackEvent.START)
         progressJob?.cancel()
         progressJob =
@@ -313,13 +348,33 @@ class PlayerActivity : ComponentActivity() {
                 if (!isPlaying && p.playbackState == Player.STATE_READY) report(PlaybackEvent.PAUSE)
             }
 
+            override fun onPlayWhenReadyChanged(
+                playWhenReady: Boolean,
+                reason: Int,
+            ) {
+                if (!applyingRoom && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) sendRoom()
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                if (!applyingRoom && reason == Player.DISCONTINUITY_REASON_SEEK) sendRoom()
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 ui.buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
                 if (state == Player.STATE_ENDED) {
                     report(PlaybackEvent.STOP)
                     val next = nextEpisodeId
                     android.util.Log.i(TAG, "ended; next episode: ${next != null}")
-                    if (next != null) lifecycleScope.launch { load(next, freshStart(next, nextStartMs)) } else finish()
+                    if (next != null) {
+                        announceTitle = room != null
+                        lifecycleScope.launch { load(next, freshStart(next, nextStartMs)) }
+                    } else if (room == null) {
+                        finish()
+                    }
                 }
             }
 
@@ -516,6 +571,7 @@ class PlayerActivity : ComponentActivity() {
         val next = nextEpisodeId ?: return
         report(PlaybackEvent.STOP)
         ui.hasNext = false
+        announceTitle = room != null
         val start = nextStartMs
         lifecycleScope.launch { load(next, freshStart(next, start)) }
     }
@@ -524,6 +580,7 @@ class PlayerActivity : ComponentActivity() {
         val prev = previousEpisodeId ?: return
         report(PlaybackEvent.STOP)
         ui.hasPrevious = false
+        announceTitle = room != null
         val start = previousStartMs
         lifecycleScope.launch { load(prev, freshStart(prev, start)) }
     }
@@ -628,6 +685,183 @@ class PlayerActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    // ----- watch together ------------------------------------------------------------------
+
+    /** Opens a room with what plays now; its code shows in the controls for friends to join. */
+    private fun startTogether() {
+        if (room != null) return
+        val p = player ?: return
+        ui.togetherNote = "Opening a room\u2026"
+        lifecycleScope.launch {
+            try {
+                val joined = core.togetherCreate(account, itemId, p.currentPosition.coerceAtLeast(0).toULong(), p.playWhenReady)
+                room = joined.state.code
+                member = joined.memberId
+                acceptRoom(joined.state)
+                roomMedia = joined.state.media
+                ui.togetherNote = "Room ${spaced(joined.state.code)}: share this code"
+                followRoom()
+            } catch (e: CoreException) {
+                ui.togetherNote = "Watch together unavailable: ${e.message}"
+            }
+        }
+    }
+
+    private fun spaced(code: String) = if (code.length == 6) code.substring(0, 3) + " " + code.substring(3) else code
+
+    private fun acceptRoom(s: be.alwyapps.watch.core.keep.TogetherState) {
+        roomState = s
+        roomReceivedAt = android.os.SystemClock.elapsedRealtime()
+        if (s.seq > roomSeq) roomSeq = s.seq
+        ui.togetherCode = spaced(s.code)
+        ui.togetherPeople = s.members.map { it.name }
+    }
+
+    /** Long-polls the room and applies what the others do. */
+    private fun followRoom() {
+        roomJob?.cancel()
+        roomJob =
+            lifecycleScope.launch {
+                var failures = 0
+                while (isActive) {
+                    val code = room ?: break
+                    val me = member ?: break
+                    val s =
+                        try {
+                            core.togetherWait(code, me, roomSeq)
+                        } catch (e: CoreException) {
+                            if (e is CoreException.NotFound) {
+                                leaveTogether("The watch together room closed", tellServer = false)
+                                break
+                            }
+                            failures++
+                            delay((failures * 2000L).coerceAtMost(10_000))
+                            continue
+                        }
+                    failures = 0
+                    if (room != code) break
+                    onRoomState(s)
+                }
+            }
+    }
+
+    private fun onRoomState(s: be.alwyapps.watch.core.keep.TogetherState) {
+        val before = roomState
+        acceptRoom(s)
+        if (s.by == member || roomSending > 0) {
+            roomMedia = s.media
+            return
+        }
+        val known = roomMedia
+        roomMedia = s.media
+        if (known != null && known != s.media) {
+            followTitle(s)
+            return
+        }
+        // Someone else played, paused or moved: say who, then follow.
+        if (before != null && s.seq != before.seq) {
+            val who = s.members.firstOrNull { it.id == s.by }?.name
+            if (who != null) {
+                ui.togetherNote =
+                    when {
+                        before.playing && !s.playing -> "$who paused"
+                        !before.playing && s.playing -> "$who resumed"
+                        else -> "$who moved to ${formatTime(s.positionMs.toLong())}"
+                    }
+            } else if (s.members.size != before.members.size) {
+                ui.togetherNote = "${s.members.size} watching"
+            }
+        }
+        syncToRoom(s)
+    }
+
+    /** Plays or pauses like the room and seeks when more than 1.5 s apart. */
+    private fun syncToRoom(s: be.alwyapps.watch.core.keep.TogetherState) {
+        val p = player ?: return
+        val expected =
+            be.alwyapps.watch.core
+                .togetherPosition(s, roomReceivedAt, android.os.SystemClock.elapsedRealtime())
+                .toLong()
+        applyingRoom = true
+        try {
+            if (p.playWhenReady != s.playing) p.playWhenReady = s.playing
+            if (abs(p.currentPosition - expected) > 1500) p.seekTo(expected)
+        } finally {
+            applyingRoom = false
+        }
+    }
+
+    /** The room moved to another title: find it on our servers and play it. */
+    private fun followTitle(s: be.alwyapps.watch.core.keep.TogetherState) {
+        val m = s.media
+        lifecycleScope.launch {
+            val accounts = runCatching { core.accounts() }.getOrDefault(emptyList()).map { it.id }
+            val found =
+                runCatching {
+                    core.togetherFind(
+                        be.alwyapps.watch.ui.screens
+                            .preferredFirst(core, accounts),
+                        m,
+                    )
+                }.getOrNull()
+            if (found == null) {
+                val what = m.seriesTitle?.let { "$it S${m.season} · E${m.episode}" } ?: m.title
+                ui.togetherNote = "$what isn't on your servers"
+                applyingRoom = true
+                player?.pause()
+                applyingRoom = false
+                return@launch
+            }
+            report(PlaybackEvent.STOP)
+            account = found.accountId
+            announceTitle = false
+            val start =
+                be.alwyapps.watch.core
+                    .togetherPosition(s, roomReceivedAt, android.os.SystemClock.elapsedRealtime())
+                    .toLong()
+            load(found.itemId, start)
+        }
+    }
+
+    /** Tells the room what we just did (play, pause, seek; with [newTitle], the title too). */
+    private fun sendRoom(newTitle: Boolean = false) {
+        val code = room ?: return
+        val me = member ?: return
+        val p = player ?: return
+        val playing = p.playWhenReady
+        val position = p.currentPosition.coerceAtLeast(0).toULong()
+        val (acct, item) = if (newTitle) account to itemId else null to null
+        roomSending++
+        lifecycleScope.launch {
+            try {
+                val s = core.togetherUpdate(code, me, playing, position, acct, item)
+                acceptRoom(s)
+                roomMedia = s.media
+            } catch (e: CoreException) {
+                android.util.Log.w(TAG, "together update: ${e.javaClass.simpleName}")
+            } finally {
+                roomSending--
+            }
+        }
+    }
+
+    private fun leaveTogether(
+        note: String,
+        tellServer: Boolean = true,
+    ) {
+        val code = room ?: return
+        val me = member
+        room = null
+        member = null
+        roomJob?.cancel()
+        roomState = null
+        roomMedia = null
+        ui.togetherCode = null
+        ui.togetherPeople = emptyList()
+        ui.togetherNote = note
+        if (tellServer && me != null) services.scope.launch { runCatching { core.togetherLeave(code, me) } }
+    }
+
     // Another title started while this one plays (e.g. from the app behind a PiP window).
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -637,6 +871,7 @@ class PlayerActivity : ComponentActivity() {
         if (acct == account && id == itemId) return
         report(PlaybackEvent.STOP)
         account = acct
+        announceTitle = room != null
         lifecycleScope.launch { load(id, intent.getLongExtra(EXTRA_START, 0L)) }
     }
 
@@ -734,6 +969,7 @@ class PlayerActivity : ComponentActivity() {
                 services.syncDownloads(core)
             }
         }
+        leaveTogether("")
         progressJob?.cancel()
         segmentJob?.cancel()
         player?.release()
@@ -746,6 +982,8 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_ACCOUNT = "account"
         private const val EXTRA_ITEM = "item"
         private const val EXTRA_START = "start"
+        private const val EXTRA_ROOM = "together_room"
+        private const val EXTRA_MEMBER = "together_member"
         private const val TAG = "AlwyPlayer"
         private const val BACK_GRACE_MS = 2000L
         private const val BACK_ECHO_MS = 300L
@@ -757,9 +995,13 @@ class PlayerActivity : ComponentActivity() {
             account: String,
             itemId: String,
             startMs: Long,
+            room: String? = null,
+            member: String? = null,
         ) = Intent(ctx, PlayerActivity::class.java)
             .putExtra(EXTRA_ACCOUNT, account)
             .putExtra(EXTRA_ITEM, itemId)
             .putExtra(EXTRA_START, startMs)
+            .putExtra(EXTRA_ROOM, room)
+            .putExtra(EXTRA_MEMBER, member)
     }
 }

@@ -65,7 +65,7 @@ data class Tab(
  */
 fun Route.isTopLevel(rail: Boolean): Boolean =
     when (this) {
-        Route.Home, Route.LeavingSoon -> true
+        Route.Home, Route.LeavingSoon, Route.Together -> true
         Route.Search, Route.Downloads, Route.Settings -> rail
         is Route.Library -> true
         else -> false
@@ -92,6 +92,8 @@ fun tabs(): List<Tab> {
         }
     }
     if (core.keepActive()) out += Tab(Route.LeavingSoon, "Leaving", Icons.Hourglass)
+    // Watch together goes through the AlwyWatch server.
+    if (core.keepActive()) out += Tab(Route.Together, "Together", Icons.Group)
     if (rail && !d.isTv) out += Tab(Route.Downloads, "Downloads", Icons.Download)
     if (rail) out += Tab(Route.Settings, "Settings", Icons.Settings)
     return out

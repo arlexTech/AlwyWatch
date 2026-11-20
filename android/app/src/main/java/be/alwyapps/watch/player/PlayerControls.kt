@@ -110,6 +110,14 @@ class PlayerUi {
     /** Last seconds of an episode with a next one: show the "Next episode" prompt. */
     var nearEnd by mutableStateOf(false)
 
+    /** Watch together: offered (an AlwyWatch server is connected), the room's code and who is in it. */
+    var togetherAvailable by mutableStateOf(false)
+    var togetherCode by mutableStateOf<String?>(null)
+    var togetherPeople by mutableStateOf<List<String>>(emptyList())
+
+    /** A short line about the room ("Ana paused"), shown a few seconds even with hidden controls. */
+    var togetherNote by mutableStateOf<String?>(null)
+
     /** Bumped on every interaction: restarts the auto-hide timer. */
     var touch by mutableIntStateOf(0)
 
@@ -136,8 +144,40 @@ fun PlayerOverlay(
     onPrevious: () -> Unit,
     onSkip: () -> Unit,
     onPip: (() -> Unit)? = null,
+    onTogether: () -> Unit = {},
+    onLeaveTogether: () -> Unit = {},
 ) {
     if (ui.pip) return
+    var roomDialog by remember { mutableStateOf(false) }
+    if (roomDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { roomDialog = false },
+            containerColor = be.alwyapps.watch.ui.Background,
+            title = { Text("Watch together") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Room code", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text(ui.togetherCode ?: "", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        "Friends join from Together in the menu. Play, pause and seeking follow everyone.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(ui.togetherPeople.joinToString(", "), style = MaterialTheme.typography.bodyMedium)
+                }
+            },
+            confirmButton = {
+                be.alwyapps.watch.ui
+                    .ActionButton("Close", { roomDialog = false }, primary = true)
+            },
+            dismissButton = {
+                be.alwyapps.watch.ui.ActionButton("Leave", {
+                    roomDialog = false
+                    onLeaveTogether()
+                })
+            },
+        )
+    }
     val tv = LocalDimens.current.isTv
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
@@ -264,6 +304,18 @@ fun PlayerOverlay(
                             PillButton(Icons.SkipNext, "Next episode", onNext)
                             Spacer(Modifier.width(10.dp))
                         }
+                        if (ui.togetherAvailable || ui.togetherCode != null) {
+                            val code = ui.togetherCode
+                            PillButton(
+                                be.alwyapps.watch.ui.Icons.Group,
+                                if (code == null) "Watch together" else "$code \u00b7 ${ui.togetherPeople.size} watching",
+                                {
+                                    if (code == null) onTogether() else roomDialog = true
+                                    ui.poke()
+                                },
+                            )
+                            Spacer(Modifier.width(10.dp))
+                        }
                         PillButton(Icons.Subtitles, "Audio & subtitles", {
                             ui.tracksOpen = true
                             ui.poke()
@@ -294,6 +346,32 @@ fun PlayerOverlay(
                 } else {
                     PillButton(Icons.SkipNext, label, onSkip)
                 }
+            }
+        }
+        // What the room just did, for a few seconds, controls shown or not.
+        val note = ui.togetherNote
+        LaunchedEffect(note) {
+            if (note != null) {
+                delay(4000)
+                if (ui.togetherNote == note) ui.togetherNote = null
+            }
+        }
+        AnimatedVisibility(
+            !note.isNullOrEmpty(),
+            Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = if (tv) 28.dp else 16.dp),
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                androidx.compose.material3.Icon(be.alwyapps.watch.ui.Icons.Group, null, Modifier.size(16.dp), tint = Color.White)
+                Text(note ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White)
             }
         }
         if (ui.buffering) {
