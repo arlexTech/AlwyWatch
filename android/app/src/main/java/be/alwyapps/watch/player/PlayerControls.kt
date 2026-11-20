@@ -83,6 +83,13 @@ class PlayerUi {
     /** Uptime (ms) the controls last hid. */
     var hiddenAt = 0L
         private set
+
+    /** Hidden on purpose (Back, tap): no grace period, the next Back leaves. */
+    fun dismiss() {
+        shown = false
+        hiddenAt = 0L
+    }
+
     var tracksOpen by mutableStateOf(false)
     var title by mutableStateOf("")
     var subtitle by mutableStateOf("")
@@ -158,7 +165,7 @@ fun PlayerOverlay(
         Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { if (ui.visible) ui.visible = false else ui.poke() })
+                detectTapGestures(onTap = { if (ui.visible) ui.dismiss() else ui.poke() })
             },
     ) {
         AnimatedVisibility(ui.visible, enter = fadeIn(), exit = fadeOut()) {

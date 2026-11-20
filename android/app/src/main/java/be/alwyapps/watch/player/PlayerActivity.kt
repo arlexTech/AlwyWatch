@@ -577,7 +577,7 @@ class PlayerActivity : ComponentActivity() {
                                     true
                                 }
                                 ui.visible -> {
-                                    ui.visible = false
+                                    ui.dismiss()
                                     true
                                 }
                                 else -> android.os.SystemClock.uptimeMillis() - ui.hiddenAt < BACK_GRACE_MS
