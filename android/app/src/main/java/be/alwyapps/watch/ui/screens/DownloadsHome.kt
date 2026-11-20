@@ -463,6 +463,9 @@ fun DownloadRow(
             } else {
                 Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
+            if (!(core.profile() in dl.owners)) {
+                Text("Another profile's download", style = MaterialTheme.typography.bodySmall, color = Subtle)
+            }
             Text(
                 dl.status(),
                 color = if (dl.state == DownloadState.FAILED || dl.state == DownloadState.PAUSED_NO_SPACE) Danger else Muted,
@@ -498,6 +501,8 @@ fun DownloadRow(
                     refresh()
                 })
         }
+        // Another profile's download: watchable, not deletable from here.
+        val mine = remember(dl.owners) { core.profile() in dl.owners }
         var confirm by remember { mutableStateOf(false) }
         if (confirm) {
             be.alwyapps.watch.ui.ConfirmDialog(
@@ -512,7 +517,7 @@ fun DownloadRow(
                 onDismiss = { confirm = false },
             )
         }
-        IconAction(Icons.Delete, "Delete", { confirm = true })
+        if (mine) IconAction(Icons.Delete, "Delete", { confirm = true })
     }
 }
 

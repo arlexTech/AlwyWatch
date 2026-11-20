@@ -161,6 +161,8 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
         AlwyWatchServerGroup(accounts, version) { version++ }
         RequestsGroup(version) { version++ }
 
+        ProfilesGroup()
+
         if (!d.isTv) {
             Group("Downloads", footer = "For new downloads; a show's \"next episodes\" keeps its own choice.") {
                 var rule by remember { mutableStateOf(core.defaultDeleteRule()) }

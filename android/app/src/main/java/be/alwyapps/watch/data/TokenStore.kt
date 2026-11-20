@@ -17,8 +17,11 @@ import javax.crypto.spec.GCMParameterSpec
  */
 class TokenStore(
     context: Context,
+    profile: String = ProfileStore.DEFAULT,
 ) {
-    private val prefs = context.getSharedPreferences("tokens", Context.MODE_PRIVATE)
+    // One file per profile (the original profile keeps the original file).
+    private val prefs =
+        context.getSharedPreferences(if (profile == ProfileStore.DEFAULT) "tokens" else "tokens-$profile", Context.MODE_PRIVATE)
 
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance(KEYSTORE).apply { load(null) }

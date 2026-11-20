@@ -52,7 +52,12 @@ class MainActivity : ComponentActivity() {
                 // native core to load shows no flash; then the first composition renders from cache.
                 val core by produceState<AlwyWatch?>(null) { value = services.core.await() }
                 Box(Modifier.fillMaxSize().background(Background)) {
-                    core?.let { Root(it) }
+                    core?.let { c ->
+                        androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalCore provides c) {
+                            be.alwyapps.watch.ui.screens
+                                .ProfileGate { Root(c) }
+                        }
+                    }
                 }
             }
         }

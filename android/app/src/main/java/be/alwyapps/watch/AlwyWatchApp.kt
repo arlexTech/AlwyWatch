@@ -42,7 +42,14 @@ class Services(
             // Debug builds: `adb push x /sdcard/Android/data/be.alwyapps.watch/files/force-touch-ui`
             // renders the phone/tablet UI on a TV device (layout testing).
             !(BuildConfig.DEBUG && java.io.File(app.getExternalFilesDir(null), "force-touch-ui").exists())
-    val tokens by lazy { TokenStore(app) }
+    val profiles by lazy {
+        be.alwyapps.watch.data
+            .ProfileStore(app)
+    }
+
+    /** The profile this process runs for (switching restarts the app). */
+    val profile: String by lazy { profiles.current() }
+    val tokens by lazy { TokenStore(app, profile) }
 
     val core: Deferred<AlwyWatch> =
         scope.async(Dispatchers.IO, start = CoroutineStart.LAZY) {
@@ -98,15 +105,29 @@ class Services(
             prefs.getString("id", null) ?: UUID.randomUUID().toString().also {
                 prefs.edit().putString("id", it).apply()
             }
+        val default = profile == be.alwyapps.watch.data.ProfileStore.DEFAULT
         return CoreConfig(
-            dataDir = app.filesDir.path,
+            // Each profile its own database; the original one stays where it was.
+            dataDir =
+                if (default) {
+                    app.filesDir.path
+                } else {
+                    java.io
+                        .File(app.filesDir, "profiles/$profile")
+                        .apply { mkdirs() }
+                        .path
+                },
+            // Downloads are shared by the device's profiles (the original database).
+            downloadsDb = java.io.File(app.filesDir, "downloads.sqlite").path,
+            profile = profile,
             cacheDir = app.cacheDir.path,
             client =
                 ClientInfo(
                     product = "AlwyWatch",
                     version = BuildConfig.VERSION_NAME,
                     deviceName = Build.MODEL ?: "Android",
-                    deviceId = id,
+                    // Per profile: Jellyfin signs a device's previous user out at sign-in.
+                    deviceId = if (default) id else "$id-$profile",
                     platform = if (isTv) "Android TV" else "Android",
                 ),
             imageCacheMb = 300u,
@@ -127,6 +148,22 @@ class Services(
                     .start(app)
             }
         }
+    }
+
+    /** Switches to another profile: the app restarts into it (one core per process). */
+    fun switchProfile(
+        activity: android.app.Activity,
+        id: String,
+        alreadyUnlocked: Boolean,
+    ) {
+        profiles.setCurrent(id)
+        profiles.unlockedOnce = if (alreadyUnlocked) id else null
+        activity.startActivity(
+            android.content
+                .Intent(activity, be.alwyapps.watch.MainActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK),
+        )
+        Runtime.getRuntime().exit(0)
     }
 
     /** Sends progress reports queued while offline as soon as a network is back. */

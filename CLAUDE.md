@@ -64,7 +64,7 @@ The backend stores requests per user, resolves conflicts (forever > until-watche
 
 ## v1 scope
 Jellyfin + Plex connection and auth, libraries, item details, direct-play playback with resume position sync, Seerr search/requests, Maintainerr "leaving soon" view + keep requests, resumable downloads on phone. Platforms: Android phone/tablet, Android TV, Linux, Windows.
-Out of scope for v1: iOS, live TV, music, Chromecast, multi-profile management.
+Out of scope for v1: iOS, live TV, music, Chromecast. (Device profiles with an optional PIN were added on the owner's request, 2026-11-20.)
 
 ## Engineering rules
 - Small, reviewable commits. Keep the workspace building and tests passing at each step.

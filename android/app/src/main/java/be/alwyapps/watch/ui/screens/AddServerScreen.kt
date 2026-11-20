@@ -210,6 +210,15 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 Text("AlwyWatch", style = MaterialTheme.typography.displayLarge)
                 Text("Your Jellyfin and Plex, fast and beautiful.", style = MaterialTheme.typography.bodyLarge, color = Muted)
             }
+            // A new profile starts here: a way back to the others.
+            val profiles = remember { ctx.services.profiles.list() }
+            if (profiles.size > 1) {
+                val me = profiles.firstOrNull { it.id == ctx.services.profile }
+                ActionButton("${me?.name ?: "Profile"} · switch profile", {
+                    ProfileSession.open = false
+                    (ctx as android.app.Activity).recreate()
+                }, icon = Icons.Person)
+            }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 IconAction(Icons.Back, "Back", {
