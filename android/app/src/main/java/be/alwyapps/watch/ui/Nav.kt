@@ -49,6 +49,18 @@ sealed interface Route {
 
     data object ManageDownloads : Route
 
+    /** A title from Seerr (not, or not fully, on the servers). */
+    data class SeerrTitle(
+        val mediaType: String,
+        val tmdbId: Long,
+    ) : Route
+
+    /** A saga (TMDB collection) from Seerr. */
+    data class SeerrSaga(
+        val id: Long,
+        val name: String,
+    ) : Route
+
     /** Switch to another member of a Plex Home for this account. */
     data class PlexSwitch(
         val accountId: String,
@@ -79,6 +91,8 @@ sealed interface Route {
             is Detail -> "item\u001f$itemId\u001f${season.orEmpty()}\u001f${account.orEmpty()}"
             is DownloadedShow -> "dlshow\u001f$seriesId\u001f$title"
             ManageDownloads -> "dlmanage"
+            is SeerrTitle -> "seerr\u001f$mediaType\u001f$tmdbId"
+            is SeerrSaga -> "saga\u001f$id\u001f$name"
             is PlexSwitch -> "plexswitch\u001f$accountId"
             is Filtered -> "filtered\u001f$libraryId\u001f$title\u001f${genreId.orEmpty()}\u001f${collectionId.orEmpty()}\u001f${account.orEmpty()}"
         }
@@ -101,6 +115,8 @@ sealed interface Route {
                 "item" -> if (p.size >= 2) Detail(p[1], p.getOrNull(2)?.ifEmpty { null }, p.getOrNull(3)?.ifEmpty { null }) else null
                 "dlshow" -> if (p.size == 3) DownloadedShow(p[1], p[2]) else null
                 "dlmanage" -> ManageDownloads
+                "seerr" -> p.getOrNull(2)?.toLongOrNull()?.let { SeerrTitle(p[1], it) }
+                "saga" -> if (p.size == 3) p[1].toLongOrNull()?.let { SeerrSaga(it, p[2]) } else null
                 "plexswitch" -> if (p.size == 2) PlexSwitch(p[1]) else null
                 "filtered" ->
                     if (p.size >= 5) Filtered(p[1], p[2], p[3].ifEmpty { null }, p[4].ifEmpty { null }, p.getOrNull(5)?.ifEmpty { null }) else null

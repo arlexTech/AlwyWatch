@@ -6,11 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -25,19 +23,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.CoreException
 import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.seerr.SeerrResult
-import be.alwyapps.watch.ui.Badge
 import be.alwyapps.watch.ui.Field
-import be.alwyapps.watch.ui.FocusCard
 import be.alwyapps.watch.ui.Icons
 import be.alwyapps.watch.ui.LocalAccount
 import be.alwyapps.watch.ui.LocalCore
@@ -47,7 +41,6 @@ import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.PageTitle
 import be.alwyapps.watch.ui.PosterCard
 import be.alwyapps.watch.ui.Route
-import be.alwyapps.watch.ui.UrlImage
 import be.alwyapps.watch.ui.dpadEscape
 import kotlinx.coroutines.delay
 
@@ -63,9 +56,6 @@ fun SearchScreen() {
     val d = LocalDimens.current
     // Survives opening a result and coming back (screens are disposed by the navigator).
     var query by rememberSaveable { mutableStateOf(SearchMemory.query) }
-    // A "not in your library" result being requested (panel above the results).
-    var requesting by remember { mutableStateOf<be.alwyapps.watch.core.seerr.SeerrResult?>(null) }
-    var requestMessage by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(query) { SearchMemory.query = query }
     // Library results with the account they come from (all servers when shown together).
     var results by remember { mutableStateOf<List<Pair<String, Item>>>(emptyList()) }
@@ -179,32 +169,14 @@ fun SearchScreen() {
             item(span = { GridItemSpan(maxLineSpan) }) { Text("Requests unavailable: $msg", color = Muted, style = MaterialTheme.typography.bodySmall) }
         }
         if (showOther && requestable.isNotEmpty()) {
-            requesting?.let { r ->
-                item(span = { GridItemSpan(maxLineSpan) }, key = "request-${r.tmdbId}") {
-                    RequestPanel(r, onDone = { msg ->
-                        requesting = null
-                        requestMessage = msg.ifEmpty { null }
-                    })
-                }
-            }
-            requestMessage?.let { msg ->
-                item(span = { GridItemSpan(maxLineSpan) }, key = "request-msg") { Text(msg, color = be.alwyapps.watch.ui.Accent) }
-            }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(Modifier.padding(top = 12.dp)) {
                     Text("Not on your servers", style = MaterialTheme.typography.titleMedium)
-                    Text("Tap one to request it", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text("Open one to see it and request it", style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
             }
             items(requestable, key = { "seerr-${it.mediaType}-${it.tmdbId}" }) { r ->
-                Column(Modifier.width(d.posterWidth)) {
-                    FocusCard(onClick = { requesting = r }) {
-                        UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-                        r.stateLabel()?.let { Badge(it, Modifier.align(Alignment.TopStart).padding(8.dp)) }
-                    }
-                    Text(r.title, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(r.year ?: "", style = MaterialTheme.typography.bodySmall, color = Muted)
-                }
+                SeerrPoster(r) { nav.push(Route.SeerrTitle(if (r.mediaType == be.alwyapps.watch.core.seerr.SeerrMediaType.TV) "tv" else "movie", r.tmdbId)) }
             }
         }
         if (query.length >= 2 && (!showMine || results.isEmpty()) && (!showOther || requestable.isEmpty()) && error == null) {
