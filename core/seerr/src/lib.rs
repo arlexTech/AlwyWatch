@@ -93,6 +93,59 @@ record! {
 }
 
 record! {
+    /// Someone in the cast of a title.
+    pub struct SeerrCast {
+        pub name: String,
+        pub character: Option<String>,
+        pub photo_url: Option<String>,
+    }
+}
+
+record! {
+    /// A movie's saga (TMDB collection), to show its other parts.
+    pub struct SeerrCollectionRef {
+        pub id: i64,
+        pub name: String,
+    }
+}
+
+record! {
+    /// Everything a title page shows (like Seerr's own movie/show page).
+    pub struct SeerrDetails {
+        pub tmdb_id: i64,
+        pub media_type: SeerrMediaType,
+        pub title: String,
+        pub year: Option<String>,
+        pub tagline: Option<String>,
+        pub overview: Option<String>,
+        /// Minutes (movies) or per episode (shows).
+        pub runtime_min: Option<u32>,
+        pub genres: Vec<String>,
+        /// TMDB rating out of 10.
+        pub rating: Option<f32>,
+        pub poster_url: Option<String>,
+        pub backdrop_url: Option<String>,
+        pub availability: Availability,
+        pub download_progress: Option<f32>,
+        pub collection: Option<SeerrCollectionRef>,
+        pub cast: Vec<SeerrCast>,
+        /// Shows: how many seasons.
+        pub seasons: Option<u32>,
+    }
+}
+
+record! {
+    pub struct SeerrCollection {
+        pub id: i64,
+        pub name: String,
+        pub overview: Option<String>,
+        pub backdrop_url: Option<String>,
+        /// The films of the saga, in release order.
+        pub parts: Vec<SeerrResult>,
+    }
+}
+
+record! {
     pub struct SeerrSeason {
         pub number: u32,
         pub name: String,
@@ -415,6 +468,7 @@ struct SeasonStatusDto {
 #[serde(rename_all = "camelCase")]
 struct ResultDto {
     id: i64,
+    #[serde(default)]
     media_type: String,
     #[serde(default)]
     title: Option<String>,
@@ -474,6 +528,15 @@ impl SeerrClient {
             format!("{}/imageproxy/tmdb/t/p/w300_and_h450_face{path}", self.base)
         } else {
             format!("https://image.tmdb.org/t/p/w300_and_h450_face{path}")
+        }
+    }
+
+    /// TMDB backdrop (wide), through Seerr's image cache when it has one.
+    pub fn backdrop_url(&self, path: &str) -> String {
+        if self.cache_images {
+            format!("{}/imageproxy/tmdb/t/p/w1280{path}", self.base)
+        } else {
+            format!("https://image.tmdb.org/t/p/w1280{path}")
         }
     }
 
@@ -671,6 +734,139 @@ impl SeerrClient {
             .and_then(|p| p.as_str())
             .map(|p| self.poster_url(p));
         Some((title, poster))
+    }
+
+    /// The page of a movie or a show: details, state, cast and saga.
+    pub async fn title(&self, media_type: SeerrMediaType, tmdb_id: i64) -> Result<SeerrDetails> {
+        #[derive(Deserialize, Default)]
+        #[serde(default, rename_all = "camelCase")]
+        struct Named {
+            name: String,
+        }
+        #[derive(Deserialize, Default)]
+        #[serde(default, rename_all = "camelCase")]
+        struct CastDto {
+            name: String,
+            character: Option<String>,
+            profile_path: Option<String>,
+        }
+        #[derive(Deserialize, Default)]
+        #[serde(default, rename_all = "camelCase")]
+        struct Credits {
+            cast: Vec<CastDto>,
+        }
+        #[derive(Deserialize, Default)]
+        #[serde(default, rename_all = "camelCase")]
+        struct CollectionDto {
+            id: i64,
+            name: String,
+        }
+        #[derive(Deserialize, Default)]
+        #[serde(default, rename_all = "camelCase")]
+        struct D {
+            title: Option<String>,
+            name: Option<String>,
+            tagline: Option<String>,
+            overview: Option<String>,
+            release_date: Option<String>,
+            first_air_date: Option<String>,
+            runtime: Option<u32>,
+            episode_run_time: Vec<u32>,
+            genres: Vec<Named>,
+            vote_average: Option<f32>,
+            poster_path: Option<String>,
+            backdrop_path: Option<String>,
+            media_info: Option<MediaInfoDto>,
+            collection: Option<CollectionDto>,
+            belongs_to_collection: Option<CollectionDto>,
+            credits: Credits,
+            number_of_seasons: Option<u32>,
+        }
+        let path = match media_type {
+            SeerrMediaType::Movie => format!("/movie/{tmdb_id}"),
+            SeerrMediaType::Tv => format!("/tv/{tmdb_id}"),
+        };
+        let d: D = net::send_json(self.req(Method::GET, &path)).await?;
+        let date = d.release_date.or(d.first_air_date);
+        Ok(SeerrDetails {
+            tmdb_id,
+            media_type,
+            title: d.title.or(d.name).unwrap_or_default(),
+            year: date
+                .and_then(|x| x.get(..4).map(str::to_owned))
+                .filter(|y| !y.is_empty()),
+            tagline: d.tagline.filter(|t| !t.is_empty()),
+            overview: d.overview.filter(|o| !o.is_empty()),
+            runtime_min: d
+                .runtime
+                .filter(|r| *r > 0)
+                .or(d.episode_run_time.first().copied()),
+            genres: d.genres.into_iter().map(|g| g.name).collect(),
+            rating: d.vote_average.filter(|v| *v > 0.0),
+            poster_url: d.poster_path.as_deref().map(|p| self.poster_url(p)),
+            backdrop_url: d.backdrop_path.as_deref().map(|p| self.backdrop_url(p)),
+            download_progress: d
+                .media_info
+                .as_ref()
+                .and_then(MediaInfoDto::download_progress),
+            availability: availability(d.media_info.and_then(|m| m.status)),
+            collection: d
+                .collection
+                .or(d.belongs_to_collection)
+                .filter(|c| c.id > 0)
+                .map(|c| SeerrCollectionRef {
+                    id: c.id,
+                    name: c.name,
+                }),
+            cast: d
+                .credits
+                .cast
+                .into_iter()
+                .take(12)
+                .map(|c| SeerrCast {
+                    name: c.name,
+                    character: c.character.filter(|x| !x.is_empty()),
+                    photo_url: c.profile_path.as_deref().map(|p| self.poster_url(p)),
+                })
+                .collect(),
+            seasons: d.number_of_seasons,
+        })
+    }
+
+    /// A saga with its films (and whether each is on the server or requested).
+    pub async fn collection(&self, id: i64) -> Result<SeerrCollection> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct D {
+            #[serde(default)]
+            name: String,
+            #[serde(default)]
+            overview: Option<String>,
+            #[serde(default)]
+            backdrop_path: Option<String>,
+            #[serde(default)]
+            parts: Vec<ResultDto>,
+        }
+        let d: D = net::send_json(self.req(Method::GET, &format!("/collection/{id}"))).await?;
+        // A saga's parts are films (Seerr may leave their media type out).
+        let mut parts: Vec<SeerrResult> = d
+            .parts
+            .into_iter()
+            .filter_map(|mut p| {
+                if p.media_type.is_empty() {
+                    p.media_type = "movie".into();
+                }
+                self.convert(p)
+            })
+            .collect();
+        parts.sort_by(|a, b| a.year.cmp(&b.year));
+        Ok(SeerrCollection {
+            id,
+            name: d.name,
+            overview: d.overview.filter(|o| !o.is_empty()),
+            backdrop_url: d.backdrop_path.as_deref().map(|p| self.backdrop_url(p)),
+            parts,
+        })
     }
 
     /// Cancels one of the user's pending requests.

@@ -1782,6 +1782,22 @@ impl AlwyWatch {
             .await
     }
 
+    /// A title's page (details, state, cast, saga), for titles not on the servers.
+    pub async fn seerr_title(
+        &self,
+        media_type: SeerrMediaType,
+        tmdb_id: i64,
+    ) -> Result<SeerrDetails> {
+        self.run(|c| async move { Ok(c.seerr()?.title(media_type, tmdb_id).await?) })
+            .await
+    }
+
+    /// A saga (TMDB collection) with its films.
+    pub async fn seerr_collection(&self, id: i64) -> Result<SeerrCollection> {
+        self.run(|c| async move { Ok(c.seerr()?.collection(id).await?) })
+            .await
+    }
+
     pub async fn seerr_seasons(&self, tmdb_id: i64) -> Result<Vec<SeerrSeason>> {
         self.run(|c| async move { Ok(c.seerr()?.seasons(tmdb_id).await?) })
             .await

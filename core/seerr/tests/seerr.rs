@@ -227,3 +227,44 @@ async fn expired_session_is_unauthorized() {
     let c = SeerrClient::new(http(), &s.uri(), "connect.sid=old", false);
     assert_eq!(c.me().await.unwrap_err(), net::Error::Unauthorized);
 }
+
+#[tokio::test]
+async fn title_page_and_saga() {
+    let s = MockServer::start().await;
+    Mock::given(path("/api/v1/movie/940721"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 940721, "title": "Godzilla Minus One", "releaseDate": "2023-11-03", "runtime": 125,
+            "tagline": "Postwar Japan.", "overview": "...", "genres": [{"name": "Action"}], "voteAverage": 7.7,
+            "posterPath": "/p.jpg", "backdropPath": "/b.jpg", "mediaInfo": {"status": 3},
+            "collection": {"id": 1268, "name": "Godzilla (Reiwa)"},
+            "credits": {"cast": [{"name": "Ryunosuke Kamiki", "character": "Shikishima", "profilePath": "/c.jpg"}]}
+        })))
+        .mount(&s)
+        .await;
+    Mock::given(path("/api/v1/collection/1268"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": 1268, "name": "Godzilla (Reiwa)", "parts": [
+                {"id": 2, "title": "Later", "releaseDate": "2026-01-01"},
+                {"id": 1, "title": "Shin Godzilla", "releaseDate": "2016-07-29", "mediaInfo": {"status": 5}}
+            ]
+        })))
+        .mount(&s)
+        .await;
+    let c = SeerrClient::new(http(), &s.uri(), "connect.sid=x", false);
+    let d = c.title(SeerrMediaType::Movie, 940721).await.unwrap();
+    assert_eq!(
+        (d.year.as_deref(), d.runtime_min),
+        (Some("2023"), Some(125))
+    );
+    assert_eq!(d.availability, Availability::Processing);
+    assert_eq!(d.collection.as_ref().unwrap().id, 1268);
+    assert_eq!(d.cast[0].character.as_deref(), Some("Shikishima"));
+    assert_eq!(
+        d.backdrop_url.as_deref(),
+        Some("https://image.tmdb.org/t/p/w1280/b.jpg")
+    );
+    let col = c.collection(1268).await.unwrap();
+    assert_eq!(col.parts.len(), 2, "parts without a media type are films");
+    assert_eq!(col.parts[0].title, "Shin Godzilla", "release order");
+    assert_eq!(col.parts[0].availability, Availability::Available);
+}

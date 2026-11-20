@@ -84,7 +84,7 @@ pub fn allowed(method: &Method, path: &str) -> bool {
     let segs: Vec<&str> = path.split('/').collect();
     match (method.as_str(), segs.as_slice()) {
         ("GET", ["auth", "me"] | ["search"] | ["request"] | ["settings", "public"]) => true,
-        ("GET", ["movie" | "tv", id]) => num(id),
+        ("GET", ["movie" | "tv" | "collection", id]) => num(id),
         ("GET", ["tv", id, "season", n]) => num(id) && num(n),
         ("GET", ["request", id]) => num(id),
         ("GET", ["discover", "movies" | "tv" | "trending"]) => true,
