@@ -211,6 +211,73 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                 },
                 subtitle = "After a 10 second countdown, which Back cancels.",
             )
+            Divider()
+            var countdown by remember { mutableStateOf(settings.countdownS.toString()) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Next episode countdown",
+                listOf("5" to "5 seconds", "10" to "10 seconds", "15" to "15 seconds", "30" to "30 seconds"),
+                countdown,
+                {
+                    countdown = it
+                    settings.countdownS = it.toInt()
+                },
+            )
+            Divider()
+            var rewind by remember { mutableStateOf(settings.resumeRewindS.toString()) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Rewind when resuming",
+                listOf("0" to "Off", "5" to "5 seconds", "10" to "10 seconds", "30" to "30 seconds"),
+                rewind,
+                {
+                    rewind = it
+                    settings.resumeRewindS = it.toInt()
+                },
+            )
+            Divider()
+            var back by remember { mutableStateOf(settings.seekBackS.toString()) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Skip back",
+                listOf("5" to "5 seconds", "10" to "10 seconds", "15" to "15 seconds", "30" to "30 seconds"),
+                back,
+                {
+                    back = it
+                    settings.seekBackS = it.toInt()
+                },
+            )
+            Divider()
+            var forward by remember { mutableStateOf(settings.seekForwardS.toString()) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Skip forward",
+                listOf("10" to "10 seconds", "15" to "15 seconds", "30" to "30 seconds", "60" to "1 minute"),
+                forward,
+                {
+                    forward = it
+                    settings.seekForwardS = it.toInt()
+                },
+            )
+            Divider()
+            var still by remember { mutableStateOf(settings.stillWatchingH.toString()) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Are you still watching?",
+                listOf("0" to "Never", "2" to "After 2 hours", "3" to "After 3 hours", "4" to "After 4 hours"),
+                still,
+                {
+                    still = it
+                    settings.stillWatchingH = it.toInt()
+                },
+                subtitle = "Pauses when the remote has not been touched for that long.",
+            )
+            Divider()
+            var theme by remember { mutableStateOf(settings.themeMusic) }
+            ToggleRow(
+                "Theme music on show pages",
+                theme,
+                {
+                    theme = it
+                    settings.themeMusic = it
+                },
+                subtitle = "Quietly, when the server has the show's theme.",
+            )
             var tunneling by remember { mutableStateOf(settings.tunneling) }
             // Tunneling only exists on TV devices.
             if (d.isTv) Divider()
@@ -225,6 +292,112 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                     subtitle = "Lower power on some TV devices, but breaks playback on others.",
                 )
             }
+        }
+
+        Group("Audio & subtitles", footer = "A movie or show remembers the tracks picked for it (on its page or while watching).") {
+            val languages =
+                listOf(
+                    "eng",
+                    "fra",
+                    "nld",
+                    "deu",
+                    "spa",
+                    "ita",
+                    "por",
+                    "jpn",
+                    "kor",
+                    "zho",
+                    "ara",
+                    "rus",
+                    "pol",
+                    "swe",
+                    "tur",
+                    "hin",
+                ).map {
+                    it to (
+                        be.alwyapps.watch.player
+                            .languageName(it) ?: it
+                    )
+                }
+            var audio by remember { mutableStateOf(settings.audioLanguage) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Audio language",
+                listOf("" to "Original (the file's default)") + languages,
+                audio,
+                {
+                    audio = it
+                    settings.audioLanguage = it
+                },
+            )
+            Divider()
+            var mode by remember { mutableStateOf(settings.subtitleMode) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Subtitles",
+                listOf(
+                    "auto" to "Automatic",
+                    "forced" to "Forced only",
+                    "always" to "Always",
+                    "off" to "Off",
+                ),
+                mode,
+                {
+                    mode = it
+                    settings.subtitleMode = it
+                },
+                subtitle = "Automatic: when the audio is not in your subtitle language.",
+            )
+            Divider()
+            var subLang by remember { mutableStateOf(settings.subtitleLanguage) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Subtitle language",
+                listOf(
+                    "" to "Device language (${be.alwyapps.watch.player
+                        .languageName(
+                            java.util.Locale
+                                .getDefault()
+                                .language,
+                        ) ?: "?"})",
+                ) + languages,
+                subLang,
+                {
+                    subLang = it
+                    settings.subtitleLanguage = it
+                },
+            )
+            Divider()
+            var size by remember { mutableStateOf(settings.subtitleSize) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Subtitle size",
+                listOf("small" to "Small", "normal" to "Normal", "large" to "Large", "huge" to "Huge"),
+                size,
+                {
+                    size = it
+                    settings.subtitleSize = it
+                },
+            )
+            Divider()
+            var color by remember { mutableStateOf(settings.subtitleColor) }
+            be.alwyapps.watch.ui.ChoiceRow(
+                "Subtitle colour",
+                listOf("white" to "White", "yellow" to "Yellow"),
+                color,
+                {
+                    color = it
+                    settings.subtitleColor = it
+                },
+            )
+            Divider()
+            var box by remember { mutableStateOf(settings.subtitleBackground) }
+            ToggleRow("Subtitle background", box, {
+                box = it
+                settings.subtitleBackground = it
+            })
+            Divider()
+            var raised by remember { mutableStateOf(settings.subtitleRaised) }
+            ToggleRow("Raise subtitles", raised, {
+                raised = it
+                settings.subtitleRaised = it
+            }, subtitle = "Higher on the screen (TVs that crop the edges).")
         }
 
         Group("Storage") {

@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.media.ItemKind
 import be.alwyapps.watch.player.DeviceProfiles
 import be.alwyapps.watch.player.PlayerActivity
+import be.alwyapps.watch.player.PlayerSettings
 import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
@@ -325,6 +327,8 @@ fun DetailScreen(
                                     }
                                 }
                             }
+                            // Version, audio and subtitles of what Play starts (like Plex), and file info.
+                            target?.let { t -> TrackPills(account, t) }
                             target?.remaining()?.let { left ->
                                 Text(left, style = MaterialTheme.typography.bodySmall, color = Muted)
                             }
@@ -384,6 +388,330 @@ fun DetailScreen(
             item { Spacer(Modifier.height(40.dp)) }
         }
     }
+}
+
+private fun streamLanguage(st: be.alwyapps.watch.core.media.MediaStream) =
+    be.alwyapps.watch.player
+        .languageName(st.language) ?: st.title ?: "Unknown"
+
+private fun audioLabel(st: be.alwyapps.watch.core.media.MediaStream): String =
+    listOfNotNull(
+        streamLanguage(st),
+        listOfNotNull(
+            st.codec.uppercase().takeIf { it.isNotEmpty() },
+            when (st.channels?.toInt()) {
+                null, 0 -> null
+                1 -> "Mono"
+                2 -> "Stereo"
+                6 -> "5.1"
+                8 -> "7.1"
+                else -> "${st.channels} ch"
+            },
+        ).joinToString(" ").ifEmpty { null }?.let { "($it)" },
+        st.title?.takeIf {
+            it.isNotBlank() &&
+                be.alwyapps.watch.player
+                    .languageName(st.language) != null
+        },
+    ).joinToString(" ")
+
+private fun subtitleLabel(st: be.alwyapps.watch.core.media.MediaStream): String =
+    listOfNotNull(
+        streamLanguage(st),
+        "forced".takeIf { st.isForced },
+        st.title?.takeIf {
+            it.isNotBlank() &&
+                be.alwyapps.watch.player
+                    .languageName(st.language) != null &&
+                !st.isForced
+        },
+    ).joinToString(" · ")
+
+private fun videoLabel(src: be.alwyapps.watch.core.media.MediaSource): String? {
+    val v = src.streams.firstOrNull { it.kind == be.alwyapps.watch.core.media.StreamKind.VIDEO } ?: return null
+    val res =
+        when (val h = v.height?.toInt() ?: 0) {
+            0 -> null
+            in 2000..9999 -> "4K"
+            else -> "${if (h in 1000..1099) {
+                1080
+            } else if (h in 700..729) {
+                720
+            } else {
+                h
+            }}p"
+        }
+    val hdr =
+        when (v.hdr) {
+            be.alwyapps.watch.core.media.HdrKind.DOLBY_VISION -> "Dolby Vision"
+            be.alwyapps.watch.core.media.HdrKind.HDR10 -> "HDR10"
+            be.alwyapps.watch.core.media.HdrKind.HLG -> "HLG"
+            else -> null
+        }
+    return listOfNotNull(res, "(${listOfNotNull(v.codec.uppercase(), v.profile).joinToString(" ")})", hdr).joinToString(" ")
+}
+
+/**
+ * Plex's track pills on title pages: version (when there are several), audio and subtitles for
+ * what Play starts, each opening a list; the choice is kept for the movie or show. And file info.
+ */
+@Composable
+private fun TrackPills(
+    account: String,
+    target: Item,
+) {
+    val core = LocalCore.current
+    val ctx = LocalContext.current
+    var info by remember(target.id) { mutableStateOf<be.alwyapps.watch.core.media.PlaybackInfo?>(null) }
+    LaunchedEffect(target.id) {
+        info = runCatching { core.playbackInfo(account, target.id, DeviceProfiles.get(ctx)) }.getOrNull()
+    }
+    val pi = info ?: return
+    val key =
+        be.alwyapps.watch.player.TrackPrefs
+            .titleKey(target)
+    var version by remember(target.id) {
+        mutableStateOf(
+            be.alwyapps.watch.player.TrackPrefs
+                .version(core, account, target.id),
+        )
+    }
+    var pref by remember(key) {
+        mutableStateOf(
+            be.alwyapps.watch.player.TrackPrefs
+                .get(core, account, key),
+        )
+    }
+    val src = pi.sources.firstOrNull { it.id == version } ?: pi.sources.firstOrNull() ?: return
+    val audio = src.streams.filter { it.kind == be.alwyapps.watch.core.media.StreamKind.AUDIO }
+    val subs = src.streams.filter { it.kind == be.alwyapps.watch.core.media.StreamKind.SUBTITLE }
+    val settings = remember { PlayerSettings(core, true) }
+    val p = pref
+    val currentAudio =
+        p?.audio?.let { a ->
+            audio.firstOrNull {
+                be.alwyapps.watch.player
+                    .lang3(it.language) == a &&
+                    (p.audioTitle == null || it.title == p.audioTitle)
+            }
+                ?: audio.firstOrNull {
+                    be.alwyapps.watch.player
+                        .lang3(it.language) == a
+                }
+        } ?: settings.audioLanguage.takeIf { it.isNotEmpty() }?.let { a ->
+            audio.firstOrNull {
+                be.alwyapps.watch.player
+                    .lang3(it.language) == a
+            }
+        }
+            ?: audio.firstOrNull { it.index == src.defaultAudioIndex } ?: audio.firstOrNull { it.isDefault } ?: audio.firstOrNull()
+    val subsText =
+        when {
+            p?.subs == "off" -> "Off"
+            p?.subs != null ->
+                (
+                    be.alwyapps.watch.player
+                        .languageName(p.subs) ?: p.subs
+                ) + if (p.forced) " · forced" else ""
+            subs.isEmpty() -> "None"
+            else ->
+                when (settings.subtitleMode) {
+                    "off" -> "Off"
+                    "forced" -> "Forced only"
+                    "always" ->
+                        be.alwyapps.watch.player
+                            .languageName(
+                                settings.subtitleLanguage.ifEmpty {
+                                    java.util.Locale
+                                        .getDefault()
+                                        .language
+                                },
+                            ) ?: "On"
+                    else -> "Automatic"
+                }
+        }
+    var open by remember { mutableStateOf<String?>(null) }
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val vLabel = videoLabel(src)
+        if (pi.sources.size > 1) {
+            SmallPill(Icons.Movie, vLabel ?: "Version") { open = "version" }
+        } else if (vLabel != null) {
+            SmallPill(Icons.Movie, vLabel) { open = "info" }
+        }
+        if (audio.isNotEmpty()) SmallPill(Icons.Volume, currentAudio?.let(::audioLabel) ?: "Audio") { open = "audio" }
+        SmallPill(Icons.Subtitles, subsText) { open = "subs" }
+        SmallPill(Icons.Info, "File info") { open = "info" }
+    }
+    when (open) {
+        "version" ->
+            be.alwyapps.watch.ui.ChoiceDialog(
+                "Version",
+                pi.sources.map { s ->
+                    s.id to listOfNotNull(videoLabel(s), s.size?.let { "%.1f GB".format(it.toDouble() / 1e9) }).joinToString(" · ")
+                },
+                src.id,
+                onPick = {
+                    be.alwyapps.watch.player.TrackPrefs
+                        .setVersion(core, account, target.id, it)
+                    version = it
+                    open = null
+                },
+                onDismiss = { open = null },
+            )
+        "audio" ->
+            be.alwyapps.watch.ui.ChoiceDialog(
+                "Audio",
+                audio.map { it.index.toString() to audioLabel(it) },
+                currentAudio?.index?.toString(),
+                onPick = { k ->
+                    val st = audio.first { it.index.toString() == k }
+                    val np =
+                        (
+                            pref ?: be.alwyapps.watch.player
+                                .TrackPref()
+                        ).copy(
+                            audio =
+                                be.alwyapps.watch.player
+                                    .lang3(st.language),
+                            audioTitle = st.title,
+                        )
+                    be.alwyapps.watch.player.TrackPrefs
+                        .set(core, account, key, np)
+                    pref = np
+                    open = null
+                },
+                onDismiss = { open = null },
+            )
+        "subs" ->
+            be.alwyapps.watch.ui.ChoiceDialog(
+                "Subtitles",
+                listOf("auto" to "Automatic (settings)", "off" to "Off") + subs.map { it.index.toString() to subtitleLabel(it) },
+                when {
+                    p?.subs == null -> "auto"
+                    p.subs == "off" -> "off"
+                    else ->
+                        subs
+                            .firstOrNull {
+                                be.alwyapps.watch.player
+                                    .lang3(it.language) == p.subs &&
+                                    it.isForced == p.forced
+                            }?.index
+                            ?.toString()
+                },
+                onPick = { k ->
+                    val base =
+                        pref ?: be.alwyapps.watch.player
+                            .TrackPref()
+                    val np =
+                        when (k) {
+                            "auto" -> base.copy(subs = null, forced = false)
+                            "off" -> base.copy(subs = "off", forced = false)
+                            else -> {
+                                val st = subs.first { it.index.toString() == k }
+                                base.copy(
+                                    subs =
+                                        be.alwyapps.watch.player
+                                            .lang3(st.language) ?: "off",
+                                    forced = st.isForced,
+                                )
+                            }
+                        }
+                    be.alwyapps.watch.player.TrackPrefs
+                        .set(core, account, key, np)
+                    pref = np
+                    open = null
+                },
+                onDismiss = { open = null },
+            )
+        "info" -> FileInfoDialog(src) { open = null }
+    }
+}
+
+@Composable
+private fun SmallPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    val interaction =
+        remember {
+            androidx.compose.foundation.interaction
+                .MutableInteractionSource()
+        }
+    val focused by interaction.collectIsFocusedAsState()
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (focused) Color.White else Color.Black.copy(alpha = 0.45f))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, null, Modifier.size(16.dp), tint = if (focused) Color.Black else OnSurface)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = if (focused) Color.Black else OnSurface, maxLines = 1)
+    }
+}
+
+/** The file behind a title: name, container, size, bitrate and every stream. */
+@Composable
+private fun FileInfoDialog(
+    src: be.alwyapps.watch.core.media.MediaSource,
+    onDismiss: () -> Unit,
+) {
+    val lines =
+        buildList {
+            src.fileName?.let { add("File" to it) }
+            src.container?.let { add("Container" to it.uppercase()) }
+            src.size?.let { add("Size" to "%.2f GB".format(it.toDouble() / 1e9)) }
+            src.bitrate?.let { add("Bitrate" to "%.1f Mb/s".format(it.toDouble() / 1e6)) }
+            src.durationMs?.let {
+                add(
+                    "Duration" to
+                        be.alwyapps.watch.player
+                            .formatTime(it.toLong()),
+                )
+            }
+            for (st in src.streams) {
+                when (st.kind) {
+                    be.alwyapps.watch.core.media.StreamKind.VIDEO ->
+                        add(
+                            "Video" to
+                                listOfNotNull(
+                                    st.width?.let { w -> "$w×${st.height}" },
+                                    st.codec.uppercase(),
+                                    st.profile,
+                                    st.bitDepth?.let { "$it-bit" },
+                                    st.hdr?.name?.takeIf { it != "SDR" },
+                                ).joinToString(" "),
+                        )
+                    be.alwyapps.watch.core.media.StreamKind.AUDIO -> add("Audio" to audioLabel(st))
+                    be.alwyapps.watch.core.media.StreamKind.SUBTITLE ->
+                        add("Subtitles" to subtitleLabel(st) + " (" + st.codec.uppercase() + if (st.isExternal) ", external)" else ")")
+                    else -> {}
+                }
+            }
+        }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = be.alwyapps.watch.ui.Background,
+        title = { Text("File info") },
+        text = {
+            androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(lines.size) { n ->
+                    val (k, v) = lines[n]
+                    Row {
+                        Text(k, Modifier.width(96.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
+                        Text(v, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = { ActionButton("Close", onDismiss, primary = true) },
+    )
 }
 
 /** "Cast" row: round photos, name and character (like Plex's cast row). */

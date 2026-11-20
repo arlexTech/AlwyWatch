@@ -118,6 +118,9 @@ class PlayerUi {
     /** A short line about the room ("Ana paused"), shown a few seconds even with hidden controls. */
     var togetherNote by mutableStateOf<String?>(null)
 
+    /** Paused after hours without the remote: "Are you still watching?". */
+    var stillWatching by mutableStateOf(false)
+
     /** Bumped on every interaction: restarts the auto-hide timer. */
     var touch by mutableIntStateOf(0)
 
@@ -146,7 +149,25 @@ fun PlayerOverlay(
     onPip: (() -> Unit)? = null,
     onTogether: () -> Unit = {},
     onLeaveTogether: () -> Unit = {},
+    onTrackPicked: (Int, androidx.media3.common.Format?) -> Unit = { _, _ -> },
+    onStillWatching: () -> Unit = {},
 ) {
+    if (ui.stillWatching && !ui.pip) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = onStillWatching,
+            containerColor = be.alwyapps.watch.ui.Background,
+            title = { Text("Are you still watching?") },
+            text = { Text(ui.title, color = Muted) },
+            confirmButton = {
+                be.alwyapps.watch.ui
+                    .ActionButton("Continue", onStillWatching, primary = true)
+            },
+            dismissButton = {
+                be.alwyapps.watch.ui
+                    .ActionButton("Stop", onBack)
+            },
+        )
+    }
     if (ui.pip) return
     var roomDialog by remember { mutableStateOf(false) }
     if (roomDialog) {
@@ -392,7 +413,7 @@ fun PlayerOverlay(
             enter = slideInHorizontally { it } + fadeIn(),
             exit = slideOutHorizontally { it } + fadeOut(),
         ) {
-            TracksPanel(player, onClose = {
+            TracksPanel(player, onPicked = onTrackPicked, onClose = {
                 ui.tracksOpen = false
                 ui.poke()
             })
@@ -542,6 +563,7 @@ private fun SeekBar(
 @Composable
 private fun TracksPanel(
     player: () -> Player?,
+    onPicked: (Int, androidx.media3.common.Format?) -> Unit,
     onClose: () -> Unit,
 ) {
     val p = player() ?: return
@@ -563,6 +585,7 @@ private fun TracksPanel(
         }
         p.trackSelectionParameters = b.build()
         version++
+        onPicked(type, group?.getTrackFormat(index))
     }
 
     data class Option(

@@ -27,9 +27,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
@@ -195,6 +197,67 @@ fun ConfirmDialog(
             }, primary = true)
         },
         dismissButton = { ActionButton("Cancel", onDismiss) },
+        containerColor = Background,
+    )
+}
+
+/** A setting with a few values: the row shows the current one, a list opens to pick another. */
+@Composable
+fun ChoiceRow(
+    title: String,
+    options: List<Pair<String, String>>,
+    value: String,
+    onPick: (String) -> Unit,
+    subtitle: String? = null,
+    icon: ImageVector? = null,
+) {
+    var open by androidx.compose.runtime.saveable
+        .rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    val label = options.firstOrNull { it.first == value }?.second ?: options.firstOrNull()?.second.orEmpty()
+    ListRow(title, subtitle = subtitle, icon = icon, onClick = { open = true }, trailing = { Value(label) })
+    if (open) {
+        ChoiceDialog(title, options, value, onPick = {
+            onPick(it)
+            open = false
+        }, onDismiss = { open = false })
+    }
+}
+
+/** A list of values to pick one from (settings, audio/subtitle tracks, versions). */
+@Composable
+fun ChoiceDialog(
+    title: String,
+    options: List<Pair<String, String>>,
+    value: String?,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            androidx.compose.foundation.lazy.LazyColumn {
+                items(options.size) { n ->
+                    val (key, text) = options[n]
+                    val selected = key == value
+                    val focus =
+                        remember {
+                            androidx.compose.ui.focus
+                                .FocusRequester()
+                        }
+                    if (selected) {
+                        androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+                    }
+                    ListRow(
+                        text,
+                        Modifier.focusRequester(focus),
+                        onClick = { onPick(key) },
+                        trailing = if (selected) ({ Icon(Icons.Check, null, Modifier.size(20.dp), tint = Accent) }) else null,
+                    )
+                }
+            }
+        },
+        confirmButton = { ActionButton("Close", onDismiss) },
         containerColor = Background,
     )
 }

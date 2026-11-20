@@ -171,4 +171,72 @@ class PlayerSettings(
     var autoPlayNext: Boolean
         get() = core.getSetting("player.auto_next") != "0"
         set(v) = core.setSetting("player.auto_next", if (v) "1" else "0")
+
+    private fun str(
+        key: String,
+        default: String,
+    ) = core.getSetting(key)?.takeIf { it.isNotEmpty() } ?: default
+
+    /** Preferred audio language (ISO 639-2, "fre"), or "" for each file's original/default track. */
+    var audioLanguage: String
+        get() = core.getSetting("player.audio_lang").orEmpty()
+        set(v) = core.setSetting("player.audio_lang", v)
+
+    /**
+     * Subtitles: "auto" (when the audio is not in the subtitle language, like Plex), "forced"
+     * (signs and foreign parts only), "always", "off".
+     */
+    var subtitleMode: String
+        get() = str("player.sub_mode", "auto")
+        set(v) = core.setSetting("player.sub_mode", v)
+
+    /** Subtitle language (ISO 639-2), or "" for the device language. */
+    var subtitleLanguage: String
+        get() = core.getSetting("player.sub_lang").orEmpty()
+        set(v) = core.setSetting("player.sub_lang", v)
+
+    /** Subtitle look: size (small, normal, large, huge), colour, background box, raised position. */
+    var subtitleSize: String
+        get() = str("player.sub_size", "normal")
+        set(v) = core.setSetting("player.sub_size", v)
+
+    var subtitleColor: String
+        get() = str("player.sub_color", "white")
+        set(v) = core.setSetting("player.sub_color", v)
+
+    var subtitleBackground: Boolean
+        get() = core.getSetting("player.sub_bg") == "1"
+        set(v) = core.setSetting("player.sub_bg", if (v) "1" else "0")
+
+    var subtitleRaised: Boolean
+        get() = core.getSetting("player.sub_raised") == "1"
+        set(v) = core.setSetting("player.sub_raised", if (v) "1" else "0")
+
+    /** Seconds played again when resuming (to remember where you were). */
+    var resumeRewindS: Int
+        get() = core.getSetting("player.resume_rewind")?.toIntOrNull() ?: 0
+        set(v) = core.setSetting("player.resume_rewind", v.toString())
+
+    var seekBackS: Int
+        get() = core.getSetting("player.seek_back")?.toIntOrNull() ?: 10
+        set(v) = core.setSetting("player.seek_back", v.toString())
+
+    var seekForwardS: Int
+        get() = core.getSetting("player.seek_forward")?.toIntOrNull() ?: 30
+        set(v) = core.setSetting("player.seek_forward", v.toString())
+
+    /** Seconds of the credits countdown before the next episode. */
+    var countdownS: Int
+        get() = core.getSetting("player.countdown")?.toIntOrNull() ?: 10
+        set(v) = core.setSetting("player.countdown", v.toString())
+
+    /** "Are you still watching?" after this many hours without touching the remote (0: never). */
+    var stillWatchingH: Int
+        get() = core.getSetting("player.still_watching")?.toIntOrNull() ?: 2
+        set(v) = core.setSetting("player.still_watching", v.toString())
+
+    /** Show pages play the show's theme song quietly (like Plex). */
+    var themeMusic: Boolean
+        get() = core.getSetting("ui.theme_music") != "0"
+        set(v) = core.setSetting("ui.theme_music", if (v) "1" else "0")
 }

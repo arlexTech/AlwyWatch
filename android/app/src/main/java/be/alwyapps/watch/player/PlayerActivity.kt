@@ -72,6 +72,7 @@ class PlayerActivity : ComponentActivity() {
     private var segmentJob: Job? = null
     private var autoSkipIntro = false
     private var autoPlayNext = true
+    private var countdownS = 10
 
     /** Segments already skipped automatically (by start): seeking back into one plays it. */
     private val autoSkipped = mutableSetOf<ULong>()
@@ -108,6 +109,13 @@ class PlayerActivity : ComponentActivity() {
     /** This title was chosen here (next episode…): tell the room once it starts. */
     private var announceTitle = false
 
+    /** The movie or show whose audio/subtitle choice applies, and whether it was applied yet. */
+    private var trackKey: String = ""
+    private var tracksApplied = false
+
+    /** Last remote/touch interaction (uptime), for "Are you still watching?". */
+    private var lastInteraction = android.os.SystemClock.uptimeMillis()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         account = intent.getStringExtra(EXTRA_ACCOUNT) ?: return finish()
@@ -142,6 +150,12 @@ class PlayerActivity : ComponentActivity() {
                             onPip = if (pipSupported) ({ enterPip() }) else null,
                             onTogether = { startTogether() },
                             onLeaveTogether = { leaveTogether("You left watch together") },
+                            onTrackPicked = { type, format -> rememberTrack(type, format) },
+                            onStillWatching = {
+                                ui.stillWatching = false
+                                lastInteraction = android.os.SystemClock.uptimeMillis()
+                                player?.play()
+                            },
                         )
                     }
                 }
@@ -167,6 +181,11 @@ class PlayerActivity : ComponentActivity() {
         startMs: Long,
     ) {
         itemId = id
+        // Audio/subtitles follow the movie's or the show's choice.
+        val item =
+            core.cachedItem(account, id)?.item
+                ?: kotlinx.coroutines.withTimeoutOrNull(1500) { runCatching { core.refreshItem(account, id, false).item }.getOrNull() }
+        trackKey = item?.let { TrackPrefs.titleKey(it) } ?: id
         showTitle(id)
         findAdjacent(id)
         loadSegments(id)
@@ -208,7 +227,9 @@ class PlayerActivity : ComponentActivity() {
                 finish()
                 return
             }
-        val src = pi.sources.firstOrNull()
+        // The version chosen on the title page (4K, 1080p…), else the server's first.
+        val chosen = TrackPrefs.version(core, account, id)
+        val src = pi.sources.firstOrNull { it.id == chosen } ?: pi.sources.firstOrNull()
         if (src == null) {
             Toast.makeText(this, "Nothing to play", Toast.LENGTH_LONG).show()
             finish()
@@ -229,7 +250,9 @@ class PlayerActivity : ComponentActivity() {
     ) {
         player?.release()
         this.transcoding = transcoding
+        tracksApplied = false
         val settings = PlayerSettings(core, services.isTv)
+        styleSubtitles(settings)
         val http =
             DefaultHttpDataSource
                 .Factory()
@@ -261,8 +284,8 @@ class PlayerActivity : ComponentActivity() {
                         .build(),
                     true,
                 ).setHandleAudioBecomingNoisy(true)
-                .setSeekBackIncrementMs(10_000)
-                .setSeekForwardIncrementMs(30_000)
+                .setSeekBackIncrementMs(settings.seekBackS * 1000L)
+                .setSeekForwardIncrementMs(settings.seekForwardS * 1000L)
                 .buildWithAssSupport(
                     this,
                     AssRenderType.OVERLAY_OPEN_GL,
@@ -303,7 +326,9 @@ class PlayerActivity : ComponentActivity() {
                 ).build()
         p.addListener(listener)
         applyingRoom = true
-        p.setMediaItem(item, startMs)
+        // Resuming: a few seconds again, to pick up the thread (not in a room: it sets the time).
+        val from = if (room == null && startMs > 0) (startMs - settings.resumeRewindS * 1000L).coerceAtLeast(0) else startMs
+        p.setMediaItem(item, from)
         p.prepare()
         p.playWhenReady = true
         applyingRoom = false
@@ -326,6 +351,7 @@ class PlayerActivity : ComponentActivity() {
                     delay(10_000)
                     val pl = player ?: break
                     if (pl.isPlaying) report(PlaybackEvent.PROGRESS)
+                    checkStillWatching(pl)
                     maybePrefetchNext(pl)
                 }
             }
@@ -401,6 +427,11 @@ class PlayerActivity : ComponentActivity() {
             }
 
             override fun onTracksChanged(tracks: Tracks) {
+                val p = player
+                if (!tracksApplied && p != null && !tracks.groups.isEmpty()) {
+                    tracksApplied = true
+                    runCatching { applyTrackPrefs(p, TrackPrefs.get(core, account, trackKey), PlayerSettings(core, services.isTv)) }
+                }
                 if (!PlayerSettings(core, services.isTv).matchFrameRate) return
                 val fmt =
                     tracks.groups
@@ -480,6 +511,7 @@ class PlayerActivity : ComponentActivity() {
         PlayerSettings(core, services.isTv).let {
             autoSkipIntro = it.autoSkipIntro
             autoPlayNext = it.autoPlayNext
+            countdownS = it.countdownS
         }
         lifecycleScope.launch {
             val list = runCatching { core.segments(account, id) }.getOrNull() ?: return@launch
@@ -521,7 +553,7 @@ class PlayerActivity : ComponentActivity() {
                 countdownFrom ?: android.os.SystemClock
                     .uptimeMillis()
                     .also { countdownFrom = it }
-            val left = COUNTDOWN_S - ((android.os.SystemClock.uptimeMillis() - from) / 1000).toInt()
+            val left = countdownS - ((android.os.SystemClock.uptimeMillis() - from) / 1000).toInt()
             if (left <= 0) {
                 ui.upNextIn = null
                 playNext()
@@ -585,8 +617,14 @@ class PlayerActivity : ComponentActivity() {
         lifecycleScope.launch { load(prev, freshStart(prev, start)) }
     }
 
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        lastInteraction = android.os.SystemClock.uptimeMillis()
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val down = event.action == KeyEvent.ACTION_DOWN
+        lastInteraction = android.os.SystemClock.uptimeMillis()
         if (event.keyCode == KeyEvent.KEYCODE_BACK && down && event.repeatCount == 0) {
             // Some remotes (Chromecast with Google TV) send Back twice per press, ~20 ms apart:
             // the echo must not count as a second press (it would leave right after hiding).
@@ -683,6 +721,62 @@ class PlayerActivity : ComponentActivity() {
             ui.touch++
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    /** Subtitle size, colour, background and position from the settings (not ASS styling). */
+    private fun styleSubtitles(settings: PlayerSettings) {
+        val sv = view.subtitleView ?: return
+        val fg = if (settings.subtitleColor == "yellow") android.graphics.Color.rgb(255, 230, 80) else android.graphics.Color.WHITE
+        val bg = if (settings.subtitleBackground) android.graphics.Color.argb(170, 0, 0, 0) else android.graphics.Color.TRANSPARENT
+        sv.setStyle(
+            androidx.media3.ui.CaptionStyleCompat(
+                fg,
+                bg,
+                android.graphics.Color.TRANSPARENT,
+                if (settings.subtitleBackground) {
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE
+                } else {
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+                },
+                android.graphics.Color.BLACK,
+                null,
+            ),
+        )
+        val scale =
+            when (settings.subtitleSize) {
+                "small" -> 0.8f
+                "large" -> 1.25f
+                "huge" -> 1.5f
+                else -> 1f
+            }
+        sv.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * scale)
+        sv.setBottomPaddingFraction(if (settings.subtitleRaised) 0.16f else androidx.media3.ui.SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION)
+    }
+
+    /** A track picked in the player becomes the movie's or show's choice (next episodes too). */
+    private fun rememberTrack(
+        type: Int,
+        format: androidx.media3.common.Format?,
+    ) {
+        val old = TrackPrefs.get(core, account, trackKey) ?: TrackPref()
+        val pref =
+            if (type == C.TRACK_TYPE_AUDIO) {
+                format?.let { old.copy(audio = lang3(it.language), audioTitle = it.label) } ?: old
+            } else if (format == null) {
+                old.copy(subs = "off", forced = false)
+            } else {
+                old.copy(subs = lang3(format.language) ?: "off", forced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0)
+            }
+        TrackPrefs.set(core, account, trackKey, pref)
+    }
+
+    /** Pauses after hours without touching the remote, like Plex (not in a room: others watch). */
+    private fun checkStillWatching(p: Player) {
+        val hours = PlayerSettings(core, services.isTv).stillWatchingH
+        if (hours <= 0 || room != null || !p.isPlaying || ui.stillWatching) return
+        if (android.os.SystemClock.uptimeMillis() - lastInteraction < hours * 3_600_000L) return
+        p.pause()
+        ui.stillWatching = true
     }
 
     // ----- watch together ------------------------------------------------------------------
@@ -987,7 +1081,6 @@ class PlayerActivity : ComponentActivity() {
         private const val TAG = "AlwyPlayer"
         private const val BACK_GRACE_MS = 2000L
         private const val BACK_ECHO_MS = 300L
-        private const val COUNTDOWN_S = 10
         private val AUTO_SKIP = setOf(SegmentKind.INTRO, SegmentKind.RECAP)
 
         fun intent(
