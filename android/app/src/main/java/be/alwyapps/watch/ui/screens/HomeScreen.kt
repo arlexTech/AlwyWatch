@@ -203,10 +203,9 @@ private fun Rails(
                     ?.library
                     ?.id
         }
-    // TV: 16:9 cards under the hero. Phones: posters with progress, like Plex.
-    val landscape = d.isTv
-    // Like Plex: in progress and next episodes together, most recently watched first.
-    Rail("Continue watching", h.continueWatching, open, onFocus, landscape = landscape, focusKey = "home", defaultFocus = first == "resume")
+    // Like Plex: in progress and next episodes together, most recently watched first, as
+    // posters with progress (an episode shows its show's poster), on TV too.
+    Rail("Continue watching", h.continueWatching, open, onFocus, focusKey = "home", defaultFocus = first == "resume")
     // After what the user is watching, before the "new" rails.
     if (core.keepActive() && !offline) LeavingSoonRail()
     val account = LocalAccount.current

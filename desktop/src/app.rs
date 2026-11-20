@@ -167,7 +167,12 @@ fn item_subtitle(i: &Item) -> String {
 }
 
 fn image_ref(i: &Item, kind: ImageKind) -> Option<ImageRef> {
-    i.images.iter().find(|r| r.kind == kind).cloned()
+    let found = i.images.iter().find(|r| r.kind == kind).cloned();
+    // A poster for anything: an episode's show poster, else the item's own.
+    if kind == ImageKind::SeriesPrimary {
+        return found.or_else(|| image_ref(i, ImageKind::Primary));
+    }
+    found
 }
 
 impl App {
@@ -1793,11 +1798,10 @@ impl App {
         rails.retain(|(_, items)| !items.is_empty());
         let models: Vec<Rc<VecModel<Card>>> =
             rails.iter().map(|_| Rc::new(VecModel::default())).collect();
-        // What the user is watching: landscape stills; the rest: posters.
-        let landscape = |t: &str| t == "Continue watching";
+        // Posters everywhere, like Plex: an episode shows its show's poster.
         for ((t, items), m) in rails.iter().zip(&models) {
-            if landscape(t) {
-                self.fill(m, items, ImageKind::Backdrop, 640, 0, badges);
+            if t == "Continue watching" {
+                self.fill(m, items, ImageKind::SeriesPrimary, POSTER_PX, 0, badges);
             } else {
                 self.fill(m, items, ImageKind::Primary, POSTER_PX, 0, badges);
             }
@@ -1808,7 +1812,7 @@ impl App {
             .map(|((t, _), m)| Rail {
                 title: sstr(t),
                 items: ModelRc::from(m.clone()),
-                landscape: landscape(t),
+                landscape: false,
             })
             .collect();
         // Leaving soon (from the keep service cache), after what the user is watching.
@@ -1849,7 +1853,11 @@ impl App {
                         }
                     });
                 }
-                let at = rail_vec.iter().take_while(|r| r.landscape).count();
+                // After what the user is watching.
+                let at = rail_vec
+                    .iter()
+                    .take_while(|r| r.title == "Continue watching")
+                    .count();
                 rail_vec.insert(
                     at,
                     Rail {
@@ -2032,18 +2040,15 @@ impl App {
             this.own(&added, account);
             let mut rails = vec![];
             for (title, items, landscape) in [
-                ("Continue watching", cw, true),
+                ("Continue watching", cw, false),
                 ("Recently added", added, false),
             ] {
                 if items.is_empty() {
                     continue;
                 }
                 let m = Rc::new(VecModel::default());
-                if landscape {
-                    this.fill(&m, &items, ImageKind::Backdrop, 640, 0, false);
-                } else {
-                    this.fill(&m, &items, ImageKind::Primary, POSTER_PX, 0, false);
-                }
+                // Posters, an episode showing its show's.
+                this.fill(&m, &items, ImageKind::SeriesPrimary, POSTER_PX, 0, false);
                 rails.push(Rail {
                     title: sstr(title),
                     items: ModelRc::from(m),
