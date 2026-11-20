@@ -130,10 +130,24 @@ private fun ProfileTile(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    Column(Modifier.width(112.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        FocusCard(onClick = onClick, modifier = modifier, shape = CircleShape) { Avatar(p.name, 96) }
-        Text(p.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, textAlign = TextAlign.Center)
-        if (p.hasPin) Text("PIN", style = MaterialTheme.typography.labelSmall, color = Muted)
+    // The whole tile (avatar and name) is the target.
+    FocusCard(
+        onClick = onClick,
+        modifier = modifier,
+        shape =
+            androidx.compose.foundation.shape
+                .RoundedCornerShape(20.dp),
+        glow = false,
+    ) {
+        Column(
+            Modifier.width(120.dp).padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Avatar(p.name, 96)
+            Text(p.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, textAlign = TextAlign.Center)
+            if (p.hasPin) Text("PIN", style = MaterialTheme.typography.labelSmall, color = Muted)
+        }
     }
 }
 
@@ -169,6 +183,8 @@ private fun PinEntry(
     onOk: () -> Unit,
 ) {
     val store = LocalContext.current.services.profiles
+    be.alwyapps.watch.ui
+        .NoAutofill()
     var pin by remember { mutableStateOf("") }
     var wrong by remember { mutableIntStateOf(0) }
 
@@ -288,6 +304,8 @@ fun ProfilesGroup() {
             title = { Text(if (p.hasPin) "PIN for ${p.name}" else "Protect ${p.name} with a PIN") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    be.alwyapps.watch.ui
+                        .NoAutofill()
                     Text("Asked when opening this profile.", color = Muted)
                     Field(
                         pin,

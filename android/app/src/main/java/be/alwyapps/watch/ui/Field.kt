@@ -88,3 +88,18 @@ fun Field(
         textStyle = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
     )
 }
+
+/**
+ * Keeps password managers away while on screen (PIN pads, pairing codes): they would offer to
+ * fill and save them as passwords. Sign-in screens are untouched.
+ */
+@Composable
+fun NoAutofill() {
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(view) {
+        val root = view.rootView
+        val before = root.importantForAutofill
+        root.importantForAutofill = android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        onDispose { root.importantForAutofill = before }
+    }
+}

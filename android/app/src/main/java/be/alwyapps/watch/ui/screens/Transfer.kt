@@ -162,6 +162,8 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
         title = { Text(if (sent) "Sent" else "Add a device") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                be.alwyapps.watch.ui
+                    .NoAutofill()
                 val r = request
                 when {
                     sent -> Text("Your accounts and settings are on their way. The other device signs in by itself.", color = Muted)
