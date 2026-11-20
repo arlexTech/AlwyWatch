@@ -12,6 +12,7 @@ mod config;
 mod db;
 mod keep;
 mod seerr;
+mod transfer;
 
 use std::sync::Arc;
 

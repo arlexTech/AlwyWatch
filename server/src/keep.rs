@@ -33,6 +33,8 @@ pub struct State {
     jf_index: Mutex<HashMap<String, (Instant, ProviderIndex)>>,
     /// Serialises Maintainerr writes (it has its own lock and answers 409 when busy).
     write_lock: tokio::sync::Mutex<()>,
+    /// Pending device-to-device transfers (in memory only).
+    pub transfers: crate::transfer::Transfers,
 }
 
 pub type Shared = Arc<State>;
@@ -70,6 +72,7 @@ impl State {
             reconcile: Notify::new(),
             watch: Notify::new(),
             jf_index: Mutex::new(HashMap::new()),
+            transfers: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),
         }
     }

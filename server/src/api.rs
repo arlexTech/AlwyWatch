@@ -34,6 +34,9 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/seerr", get(seerr_info))
         .route("/v1/seerr/api/v1/{*path}", any(seerr_forward))
         .route("/v1/hooks/{source}/{secret}", post(hook))
+        .route("/v1/transfer", post(transfer_start))
+        .route("/v1/transfer/poll/{handle}", get(transfer_poll))
+        .route("/v1/transfer/{code}", get(transfer_peer).put(transfer_send))
         .with_state(state)
 }
 
@@ -115,6 +118,58 @@ impl FromRequestParts<Shared> for Admin {
         }
         Ok(Admin(id))
     }
+}
+
+// ----- device-to-device transfer ----------------------------------------------------------------
+
+fn transfer_error(e: crate::transfer::TransferError) -> Error {
+    use crate::transfer::TransferError as E;
+    match e {
+        E::Invalid(m) => Error(StatusCode::BAD_REQUEST, m.into()),
+        E::Busy => Error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "too many transfers in progress, try again later".into(),
+        ),
+        E::NotFound => Error(StatusCode::NOT_FOUND, "unknown or expired code".into()),
+        E::AlreadySent => Error(StatusCode::CONFLICT, "this code was already used".into()),
+    }
+}
+
+async fn transfer_start(
+    State(s): State<Shared>,
+    Json(start): Json<keep_service::transfer::TransferStart>,
+) -> Result<Json<keep_service::transfer::TransferStarted>, Error> {
+    s.transfers.start(start).map(Json).map_err(transfer_error)
+}
+
+async fn transfer_poll(State(s): State<Shared>, Path(handle): Path<String>) -> Response {
+    match s.transfers.poll(&handle) {
+        crate::transfer::Poll::Waiting => StatusCode::ACCEPTED.into_response(),
+        crate::transfer::Poll::Ready(b) => Json(b).into_response(),
+        crate::transfer::Poll::Gone => {
+            transfer_error(crate::transfer::TransferError::NotFound).into_response()
+        }
+    }
+}
+
+/// Signed in: only users of a served media server can approve transfers.
+async fn transfer_peer(
+    State(s): State<Shared>,
+    Caller(_): Caller,
+    Path(code): Path<String>,
+) -> Result<Json<keep_service::transfer::TransferPeer>, Error> {
+    s.transfers.peer(&code).map(Json).map_err(transfer_error)
+}
+
+async fn transfer_send(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(code): Path<String>,
+    Json(sealed): Json<keep_service::transfer::TransferSealed>,
+) -> Result<StatusCode, Error> {
+    s.transfers.send(&code, sealed).map_err(transfer_error)?;
+    eprintln!("[transfer] {} sent a device transfer", id.user_key);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn servers(State(s): State<Shared>) -> Json<Vec<ServerEntry>> {

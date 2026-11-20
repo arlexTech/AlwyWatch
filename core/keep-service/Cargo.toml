@@ -13,7 +13,11 @@ uniffi = ["dep:uniffi"]
 
 [dependencies]
 net = { workspace = true }
+# Device-to-device transfer (X25519 + HKDF + ChaCha20-Poly1305). Already in the tree through
+# rustls, so no size cost; avoids pulling separate crypto crates.
+ring = "0.17"
 serde = { workspace = true }
+serde_json = { workspace = true }
 uniffi = { workspace = true, optional = true }
 
 [lints]

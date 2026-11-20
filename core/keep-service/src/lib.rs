@@ -9,6 +9,8 @@
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!();
 
+pub mod transfer;
+
 use net::Result;
 use net::reqwest::{Client, Method, RequestBuilder};
 use serde::{Deserialize, Serialize};
@@ -245,6 +247,62 @@ impl KeepClient {
     /// Public: the allow-listed servers.
     pub async fn servers(http: &Client, base_url: &str) -> Result<Vec<ServerEntry>> {
         net::send_json(http.get(format!("{}/v1/servers", base_url.trim_end_matches('/')))).await
+    }
+
+    /// New device: registers its transfer key (no sign-in needed).
+    pub async fn transfer_start(
+        http: &Client,
+        base_url: &str,
+        start: &transfer::TransferStart,
+    ) -> Result<transfer::TransferStarted> {
+        net::send_json(
+            http.post(format!("{}/v1/transfer", base_url.trim_end_matches('/')))
+                .json(start),
+        )
+        .await
+    }
+
+    /// New device: the sealed bundle once a signed-in device sent it (None while waiting).
+    pub async fn transfer_poll(
+        http: &Client,
+        base_url: &str,
+        handle: &str,
+    ) -> Result<Option<transfer::TransferSealed>> {
+        let res = net::send(http.get(format!(
+            "{}/v1/transfer/poll/{}",
+            base_url.trim_end_matches('/'),
+            net::percent_encode(handle)
+        )))
+        .await?;
+        if res.status() == net::reqwest::StatusCode::ACCEPTED {
+            return Ok(None);
+        }
+        let bytes = res.bytes().await?;
+        serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|e| net::Error::decode(e.to_string()))
+    }
+
+    /// Signed-in device: who is asking for a transfer with this code.
+    pub async fn transfer_peer(&self, code: &str) -> Result<transfer::TransferPeer> {
+        net::send_json(self.req(
+            Method::GET,
+            &format!("/transfer/{}", net::percent_encode(code)),
+        ))
+        .await
+    }
+
+    /// Signed-in device: hands over the bundle sealed to the new device's key.
+    pub async fn transfer_send(&self, code: &str, sealed: &transfer::TransferSealed) -> Result<()> {
+        net::send(
+            self.req(
+                Method::PUT,
+                &format!("/transfer/{}", net::percent_encode(code)),
+            )
+            .json(sealed),
+        )
+        .await?;
+        Ok(())
     }
 
     pub fn base_url(&self) -> &str {
