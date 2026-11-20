@@ -124,10 +124,43 @@ pub async fn send(req: RequestBuilder) -> Result<Response> {
 }
 
 /// Sends a request and decodes a JSON body.
+///
+/// When the body is not JSON, the error says why when that can be told: a reverse proxy that
+/// only lets the LAN in typically redirects everyone else to another site, and a wrong address
+/// returns a web page.
 pub async fn send_json<T: DeserializeOwned>(req: RequestBuilder) -> Result<T> {
-    let res = send(req).await?;
+    let (client, req) = req.build_split();
+    let req = req?;
+    let asked = req.url().host_str().map(str::to_owned);
+    let res = client.execute(req).await?;
+    if !res.status().is_success() {
+        return Err(status_error(res.status()));
+    }
+    let landed = res.url().host_str().map(str::to_owned);
+    let html = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("text/html"));
     let bytes = res.bytes().await?;
-    serde_json::from_slice(&bytes).map_err(|e| Error::decode(e.to_string()))
+    serde_json::from_slice(&bytes).map_err(|e| not_json(asked, landed, html, e))
+}
+
+fn not_json(
+    asked: Option<String>,
+    landed: Option<String>,
+    html: bool,
+    e: serde_json::Error,
+) -> Error {
+    match (asked, landed) {
+        (Some(a), Some(l)) if a != l => Error::invalid(format!(
+            "{a} redirected to {l}: the server is probably only reachable from its own network (LAN or VPN)"
+        )),
+        _ if html => {
+            Error::invalid("got a web page instead of the server's API: check the address")
+        }
+        _ => Error::decode(e.to_string()),
+    }
 }
 
 /// Percent-encodes everything outside the RFC 3986 unreserved set.
@@ -205,6 +238,18 @@ mod tests {
         );
         assert!(normalize_base_url("ftp://x").is_err());
         assert!(normalize_base_url("").is_err());
+    }
+
+    #[test]
+    fn not_json_explains_redirects_and_web_pages() {
+        let e = || serde_json::from_slice::<u8>(b"<html>").unwrap_err();
+        let host = |h: &str| Some(h.to_owned());
+        let redirected = not_json(host("jf.example.org"), host("example.org"), true, e());
+        assert!(redirected.to_string().contains("redirected to example.org"));
+        let page = not_json(host("jf.example.org"), host("jf.example.org"), true, e());
+        assert!(page.to_string().contains("web page"));
+        let other = not_json(host("a"), host("a"), false, e());
+        assert!(matches!(other, Error::Decode { .. }));
     }
 
     #[test]
