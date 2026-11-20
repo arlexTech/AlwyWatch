@@ -414,26 +414,55 @@ private fun streamLanguage(st: be.alwyapps.watch.core.media.MediaStream) =
     be.alwyapps.watch.player
         .languageName(st.language) ?: st.title ?: "Unknown"
 
-private fun audioLabel(st: be.alwyapps.watch.core.media.MediaStream): String =
-    listOfNotNull(
-        streamLanguage(st),
-        listOfNotNull(
-            st.codec.uppercase().takeIf { it.isNotEmpty() },
-            when (st.channels?.toInt()) {
-                null, 0 -> null
-                1 -> "Mono"
-                2 -> "Stereo"
-                6 -> "5.1"
-                8 -> "7.1"
-                else -> "${st.channels} ch"
+private fun audioLabel(st: be.alwyapps.watch.core.media.MediaStream): String {
+    val codec = st.codec.uppercase()
+    val channels =
+        when (st.channels?.toInt()) {
+            null, 0 -> null
+            1 -> "Mono"
+            2 -> "Stereo"
+            6 -> "5.1"
+            8 -> "7.1"
+            else -> "${st.channels} ch"
+        }
+    // The track's own title often repeats language and codec ("French VFQ AC3 5.1"): keep only
+    // what it adds ("VFQ").
+    val known =
+        setOfNotNull(
+            codec.lowercase(),
+            channels?.lowercase(),
+            st.language?.lowercase(),
+            be.alwyapps.watch.player
+                .languageName(st.language)
+                ?.lowercase(),
+            st.language?.let {
+                @Suppress("DEPRECATION")
+                java.util
+                    .Locale(
+                        be.alwyapps.watch.player
+                            .lang3(it) ?: it,
+                    ).getDisplayLanguage(java.util.Locale.ENGLISH)
+                    .lowercase()
             },
-        ).joinToString(" ").ifEmpty { null }?.let { "($it)" },
-        st.title?.takeIf {
-            it.isNotBlank() &&
-                be.alwyapps.watch.player
-                    .languageName(st.language) != null
-        },
+            "stereo",
+            "mono",
+            "audio",
+            "dolby",
+            "digital",
+            "-",
+        )
+    val extra =
+        st.title
+            ?.split(' ', '-', '_', '/', '(', ')', '[', ']')
+            ?.filter { w -> w.isNotBlank() && w.lowercase() !in known && !w.matches(Regex("\\d\\.\\d|\\d+ch", RegexOption.IGNORE_CASE)) }
+            ?.joinToString(" ")
+            ?.takeIf { it.isNotBlank() }
+    return listOfNotNull(
+        streamLanguage(st),
+        listOfNotNull(codec.takeIf { it.isNotEmpty() }, channels).joinToString(" ").ifEmpty { null }?.let { "($it)" },
+        extra?.let { "· $it" },
     ).joinToString(" ")
+}
 
 private fun subtitleLabel(st: be.alwyapps.watch.core.media.MediaStream): String =
     listOfNotNull(
