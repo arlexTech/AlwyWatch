@@ -36,6 +36,8 @@ import be.alwyapps.watch.core.media.MediaSource
 import be.alwyapps.watch.core.media.PlaybackEvent
 import be.alwyapps.watch.core.media.PlaybackInfo
 import be.alwyapps.watch.core.media.ProgressReport
+import be.alwyapps.watch.core.media.Segment
+import be.alwyapps.watch.core.media.SegmentKind
 import be.alwyapps.watch.core.media.StreamKind
 import be.alwyapps.watch.services
 import io.github.peerless2012.ass.media.kt.buildWithAssSupport
@@ -63,6 +65,23 @@ class PlayerActivity : ComponentActivity() {
     private var source: MediaSource? = null
     private var progressJob: Job? = null
     private var nextEpisodeId: String? = null
+    private var previousEpisodeId: String? = null
+    private var nextStartMs = 0L
+    private var previousStartMs = 0L
+    private var segments: List<Segment> = emptyList()
+    private var segmentJob: Job? = null
+    private var autoSkipIntro = false
+    private var autoPlayNext = true
+
+    /** Segments already skipped automatically (by start): seeking back into one plays it. */
+    private val autoSkipped = mutableSetOf<ULong>()
+
+    /** Uptime the credits countdown started, or null; cancelled for this episode by Back. */
+    private var countdownFrom: Long? = null
+    private var countdownCancelled = false
+
+    /** The Back press that went down was used (closing a panel, hiding the controls): eat its release too. */
+    private var backUsed = false
     private var prefetchedNext = false
     private var originalModeId = 0
     private var transcoding = false
@@ -95,6 +114,8 @@ class PlayerActivity : ComponentActivity() {
                             { player },
                             onBack = { finish() },
                             onNext = { playNext() },
+                            onPrevious = { playPrevious() },
+                            onSkip = { skipSegment() },
                             onPip = if (pipSupported) ({ enterPip() }) else null,
                         )
                     }
@@ -120,6 +141,8 @@ class PlayerActivity : ComponentActivity() {
     ) {
         itemId = id
         showTitle(id)
+        findAdjacent(id)
+        loadSegments(id)
         // Downloaded: play the local original file (works offline; progress is queued).
         core.downloadedFile(account, id)?.let { path ->
             val local =
@@ -147,7 +170,6 @@ class PlayerActivity : ComponentActivity() {
                     defaultSubtitleIndex = null,
                 )
             startPlayer(local, source!!, transcoding = false, startMs)
-            findNextEpisode()
             return
         }
         val profile = DeviceProfiles.get(this)
@@ -170,7 +192,6 @@ class PlayerActivity : ComponentActivity() {
         val direct = DeviceProfiles.canDirectPlay(src, profile)
         val request = if (direct || src.transcode == null) src.direct else src.transcode!!
         startPlayer(request, src, transcoding = !direct && src.transcode != null, startMs)
-        findNextEpisode()
     }
 
     private fun startPlayer(
@@ -270,6 +291,14 @@ class PlayerActivity : ComponentActivity() {
                     maybePrefetchNext(pl)
                 }
             }
+        segmentJob?.cancel()
+        segmentJob =
+            lifecycleScope.launch {
+                while (isActive) {
+                    player?.let { watchSegments(it) }
+                    delay(500)
+                }
+            }
     }
 
     private val listener =
@@ -286,7 +315,8 @@ class PlayerActivity : ComponentActivity() {
                 if (state == Player.STATE_ENDED) {
                     report(PlaybackEvent.STOP)
                     val next = nextEpisodeId
-                    if (next != null) lifecycleScope.launch { load(next, 0L) } else finish()
+                    android.util.Log.i(TAG, "ended; next episode: ${next != null}")
+                    if (next != null) lifecycleScope.launch { load(next, freshStart(next, nextStartMs)) } else finish()
                 }
             }
 
@@ -348,17 +378,109 @@ class PlayerActivity : ComponentActivity() {
         window.attributes = window.attributes.apply { preferredDisplayModeId = best.modeId }
     }
 
-    private fun findNextEpisode() {
+    /** Previous and next episodes (across seasons), for the buttons and auto-play. */
+    private fun findAdjacent(id: String) {
         nextEpisodeId = null
+        previousEpisodeId = null
         prefetchedNext = false
-        val item = core.cachedItem(account, itemId)?.item ?: return
-        if (item.kind != ItemKind.EPISODE) return
-        val series = item.seriesId ?: return
-        val season = item.seasonId ?: return
-        val eps = core.cachedEpisodes(account, series, season)?.items ?: return
-        val idx = eps.indexOfFirst { it.id == itemId }
-        nextEpisodeId = eps.getOrNull(idx + 1)?.id
-        ui.hasNext = nextEpisodeId != null
+        ui.hasNext = false
+        ui.hasPrevious = false
+        lifecycleScope.launch {
+            val adj =
+                runCatching { core.adjacentEpisodes(account, id) }
+                    .onFailure { android.util.Log.w(TAG, "adjacent episodes: ${it.javaClass.simpleName}") }
+                    .getOrNull() ?: return@launch
+            if (itemId != id) return@launch
+            nextEpisodeId = adj.next?.id
+            previousEpisodeId = adj.previous?.id
+            nextStartMs = adj.next?.let(::resumeAt) ?: 0L
+            previousStartMs = adj.previous?.let(::resumeAt) ?: 0L
+            ui.hasNext = nextEpisodeId != null
+            ui.hasPrevious = previousEpisodeId != null
+        }
+    }
+
+    /** Where an episode was left (servers clear the position when it is finished), like the Resume button. */
+    private fun resumeAt(item: be.alwyapps.watch.core.media.Item): Long = item.user.positionMs.toLong()
+
+    /** The episode's current resume position from the server (1.5 s at most), else the cached one. */
+    private suspend fun freshStart(
+        id: String,
+        cached: Long,
+    ): Long =
+        kotlinx.coroutines.withTimeoutOrNull(1500) {
+            runCatching { core.refreshItem(account, id, true).item }.getOrNull()?.let(::resumeAt)
+        } ?: cached
+
+    private fun loadSegments(id: String) {
+        segments = emptyList()
+        ui.skipLabel = null
+        ui.upNextIn = null
+        autoSkipped.clear()
+        countdownFrom = null
+        countdownCancelled = false
+        PlayerSettings(core, services.isTv).let {
+            autoSkipIntro = it.autoSkipIntro
+            autoPlayNext = it.autoPlayNext
+        }
+        lifecycleScope.launch {
+            val list = runCatching { core.segments(account, id) }.getOrNull() ?: return@launch
+            android.util.Log.i(TAG, "segments: " + list.joinToString { "${it.kind} ${it.startMs / 1000u}-${it.endMs / 1000u}s" })
+            if (itemId == id) segments = list
+        }
+    }
+
+    private fun prompt(p: Player) =
+        be.alwyapps.watch.core.playbackPrompt(
+            segments,
+            p.currentPosition.coerceAtLeast(0).toULong(),
+            p.duration.takeIf { it > 0 }?.toULong(),
+            nextEpisodeId != null,
+        )
+
+    /** Skip intro/credits prompt, and "Next episode" during the credits (or the last 40 s). */
+    private fun watchSegments(p: Player) {
+        val prompt = prompt(p)
+        val seg = prompt.skip
+        ui.nearEnd = prompt.nextEpisode
+        if (seg != null && autoSkipIntro && seg.kind in AUTO_SKIP && autoSkipped.add(seg.startMs)) {
+            p.seekTo(seg.endMs.toLong())
+            ui.skipLabel = null
+            return
+        }
+        ui.skipLabel =
+            when (seg?.kind) {
+                null -> null
+                SegmentKind.CREDITS -> "Skip credits"
+                SegmentKind.INTRO -> "Skip intro"
+                SegmentKind.RECAP -> "Skip recap"
+                SegmentKind.PREVIEW -> "Skip preview"
+                SegmentKind.COMMERCIAL -> "Skip"
+            }
+        // Credits with a next episode: count down, then play it (unless Back cancelled it).
+        if (prompt.credits && autoPlayNext && !countdownCancelled && p.isPlaying) {
+            val from =
+                countdownFrom ?: android.os.SystemClock
+                    .uptimeMillis()
+                    .also { countdownFrom = it }
+            val left = COUNTDOWN_S - ((android.os.SystemClock.uptimeMillis() - from) / 1000).toInt()
+            if (left <= 0) {
+                ui.upNextIn = null
+                playNext()
+                return
+            }
+            ui.upNextIn = left
+        } else {
+            countdownFrom = null
+            ui.upNextIn = null
+        }
+    }
+
+    private fun skipSegment() {
+        val p = player ?: return
+        val seg = prompt(p).skip ?: return
+        p.seekTo(seg.endMs.toLong())
+        ui.skipLabel = null
     }
 
     private fun maybePrefetchNext(p: Player) {
@@ -391,7 +513,16 @@ class PlayerActivity : ComponentActivity() {
         val next = nextEpisodeId ?: return
         report(PlaybackEvent.STOP)
         ui.hasNext = false
-        lifecycleScope.launch { load(next, 0L) }
+        val start = nextStartMs
+        lifecycleScope.launch { load(next, freshStart(next, start)) }
+    }
+
+    private fun playPrevious() {
+        val prev = previousEpisodeId ?: return
+        report(PlaybackEvent.STOP)
+        ui.hasPrevious = false
+        val start = previousStartMs
+        lifecycleScope.launch { load(prev, freshStart(prev, start)) }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -421,20 +552,46 @@ class PlayerActivity : ComponentActivity() {
                 ui.poke()
                 return true
             }
+            KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                if (down) playNext()
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
+                if (down) playPrevious()
+                return true
+            }
             KeyEvent.KEYCODE_BACK -> {
-                // Close the panel, then hide the controls, then leave.
-                if (ui.tracksOpen) {
-                    if (down) ui.tracksOpen = false
-                    return true
-                }
-                if (ui.visible && ui.playing) {
-                    if (down) ui.visible = false
+                // Close the panel, then hide the controls, then leave. Controls that hid on their
+                // own just before the press count as shown: that Back was meant to hide them.
+                if (down) {
+                    if (event.repeatCount == 0) {
+                        backUsed =
+                            when {
+                                ui.upNextIn != null && !ui.visible -> {
+                                    countdownCancelled = true
+                                    ui.upNextIn = null
+                                    true
+                                }
+                                ui.tracksOpen -> {
+                                    ui.tracksOpen = false
+                                    true
+                                }
+                                ui.visible -> {
+                                    ui.visible = false
+                                    true
+                                }
+                                else -> android.os.SystemClock.uptimeMillis() - ui.hiddenAt < BACK_GRACE_MS
+                            }
+                    }
+                    if (backUsed) return true
+                } else if (backUsed) {
+                    backUsed = false
                     return true
                 }
             }
         }
-        if (!ui.visible && ui.nearEnd && (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)) {
-            // The "Next episode" prompt has the focus: OK goes to it.
+        if (!ui.visible && (ui.nearEnd || ui.skipLabel != null) && (event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER)) {
+            // The "Next episode" / "Skip intro" prompt has the focus: OK goes to it.
             return super.dispatchKeyEvent(event)
         }
         if (!ui.visible) {
@@ -467,33 +624,39 @@ class PlayerActivity : ComponentActivity() {
         if (acct == account && id == itemId) return
         report(PlaybackEvent.STOP)
         account = acct
-        nextEpisodeId = null
-        prefetchedNext = false
-        ui.hasNext = false
         lifecycleScope.launch { load(id, intent.getLongExtra(EXTRA_START, 0L)) }
     }
 
     /** Show (or movie) name, then "S1 · E2 · Episode" or the year. Works offline. */
     private fun showTitle(id: String) {
-        val item = core.cachedItem(account, id)?.item
-        if (item != null) {
-            if (item.kind == ItemKind.EPISODE) {
-                ui.title = item.seriesTitle ?: item.title
-                ui.subtitle =
-                    listOfNotNull(
-                        if (item.seasonNumber != null && item.episodeNumber != null) "S${item.seasonNumber} · E${item.episodeNumber}" else null,
-                        item.title.takeIf { item.seriesTitle != null },
-                    ).joinToString(" · ")
-            } else {
-                ui.title = item.title
-                ui.subtitle = item.year?.toString() ?: ""
-            }
+        val cached = core.cachedItem(account, id)?.item
+        if (cached != null) {
+            showItem(cached)
             return
         }
-        // Not cached: the download's title ("Show · S1 · E2 · Episode").
-        val saved = runCatching { core.downloads() }.getOrNull()?.firstOrNull { it.accountId == account && it.itemId == id }?.title ?: return
-        ui.title = saved.substringBefore(" · ")
-        ui.subtitle = saved.substringAfter(" · ", "")
+        // Not cached one by one (started from an episode list): the download's title, then the server's.
+        runCatching { core.downloads() }.getOrNull()?.firstOrNull { it.accountId == account && it.itemId == id }?.title?.let {
+            ui.title = it.substringBefore(" · ")
+            ui.subtitle = it.substringAfter(" · ", "")
+        }
+        lifecycleScope.launch {
+            val fresh = runCatching { core.refreshItem(account, id, false).item }.getOrNull()
+            if (fresh != null && itemId == id) showItem(fresh)
+        }
+    }
+
+    private fun showItem(item: be.alwyapps.watch.core.media.Item) {
+        if (item.kind == ItemKind.EPISODE) {
+            ui.title = item.seriesTitle ?: item.title
+            ui.subtitle =
+                listOfNotNull(
+                    if (item.seasonNumber != null && item.episodeNumber != null) "S${item.seasonNumber} · E${item.episodeNumber}" else null,
+                    item.title.takeIf { item.seriesTitle != null },
+                ).joinToString(" · ")
+        } else {
+            ui.title = item.title
+            ui.subtitle = item.year?.toString() ?: ""
+        }
     }
 
     private val pipSupported by lazy {
@@ -551,6 +714,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         progressJob?.cancel()
+        segmentJob?.cancel()
         player?.release()
         player = null
         window.attributes = window.attributes.apply { preferredDisplayModeId = originalModeId }
@@ -561,6 +725,10 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_ACCOUNT = "account"
         private const val EXTRA_ITEM = "item"
         private const val EXTRA_START = "start"
+        private const val TAG = "AlwyPlayer"
+        private const val BACK_GRACE_MS = 2000L
+        private const val COUNTDOWN_S = 10
+        private val AUTO_SKIP = setOf(SegmentKind.INTRO, SegmentKind.RECAP)
 
         fun intent(
             ctx: Context,

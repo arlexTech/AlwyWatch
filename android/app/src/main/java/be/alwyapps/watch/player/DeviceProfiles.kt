@@ -161,4 +161,14 @@ class PlayerSettings(
     var matchFrameRate: Boolean
         get() = core.getSetting("player.match_rate")?.let { it == "1" } ?: isTv
         set(v) = core.setSetting("player.match_rate", if (v) "1" else "0")
+
+    /** Jump over intros and recaps without asking (when the server marked them). */
+    var autoSkipIntro: Boolean
+        get() = core.getSetting("player.auto_skip_intro") == "1"
+        set(v) = core.setSetting("player.auto_skip_intro", if (v) "1" else "0")
+
+    /** When the credits start, play the next episode after a short countdown. */
+    var autoPlayNext: Boolean
+        get() = core.getSetting("player.auto_next") != "0"
+        set(v) = core.setSetting("player.auto_next", if (v) "1" else "0")
 }

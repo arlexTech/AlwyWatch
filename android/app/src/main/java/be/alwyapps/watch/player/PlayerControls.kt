@@ -70,11 +70,30 @@ import kotlinx.coroutines.delay
 
 /** Overlay state shared between the activity (keys, player events) and the Compose controls. */
 class PlayerUi {
-    var visible by mutableStateOf(true)
+    private var shown by mutableStateOf(true)
+
+    /** Controls shown. Hiding records when, so a Back pressed right after isn't taken as "leave". */
+    var visible: Boolean
+        get() = shown
+        set(v) {
+            if (shown && !v) hiddenAt = android.os.SystemClock.uptimeMillis()
+            shown = v
+        }
+
+    /** Uptime (ms) the controls last hid. */
+    var hiddenAt = 0L
+        private set
     var tracksOpen by mutableStateOf(false)
     var title by mutableStateOf("")
     var subtitle by mutableStateOf("")
     var hasNext by mutableStateOf(false)
+    var hasPrevious by mutableStateOf(false)
+
+    /** "Skip intro", "Skip credits"… while inside a skippable segment, else null. */
+    var skipLabel by mutableStateOf<String?>(null)
+
+    /** Seconds before the next episode starts by itself (during the credits), else null. */
+    var upNextIn by mutableStateOf<Int?>(null)
     var playing by mutableStateOf(false)
     var buffering by mutableStateOf(true)
 
@@ -107,6 +126,8 @@ fun PlayerOverlay(
     player: () -> Player?,
     onBack: () -> Unit,
     onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onSkip: () -> Unit,
     onPip: (() -> Unit)? = null,
 ) {
     if (ui.pip) return
@@ -124,14 +145,6 @@ fun PlayerOverlay(
             }
             delay(250)
         }
-    }
-    // "Up next" prompt: checked once a second while there is a next episode.
-    LaunchedEffect(ui.hasNext) {
-        while (ui.hasNext) {
-            player()?.let { ui.nearEnd = it.duration > 0 && it.duration - it.currentPosition in 1..40_000 }
-            delay(1000)
-        }
-        ui.nearEnd = false
     }
     // Auto-hide after 4 s without interaction while playing.
     LaunchedEffect(ui.touch, ui.playing, ui.tracksOpen) {
@@ -167,9 +180,14 @@ fun PlayerOverlay(
                     // Top: what is playing on the left; picture-in-picture and close on the right.
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column(Modifier.weight(1f)) {
-                            Text(ui.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                ui.title,
+                                style = if (tv) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                             if (ui.subtitle.isNotEmpty()) {
-                                Text(ui.subtitle, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(ui.subtitle, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                         if (!tv) {
@@ -184,10 +202,12 @@ fun PlayerOverlay(
                         horizontalArrangement = Arrangement.spacedBy(if (tv) 28.dp else 36.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val small = if (tv) 44 else 52
+                        if (ui.hasPrevious) RoundButton(Icons.SkipPrevious, "Previous episode", onPrevious, size = small)
                         RoundButton(Icons.Replay10, "Back 10 seconds", {
                             player()?.seekBack()
                             ui.poke()
-                        }, size = 56)
+                        }, size = small)
                         RoundButton(
                             if (ui.playing) Icons.PauseFilled else Icons.Play,
                             if (ui.playing) "Pause" else "Play",
@@ -195,14 +215,15 @@ fun PlayerOverlay(
                                 player()?.let { if (it.isPlaying) it.pause() else it.play() }
                                 ui.poke()
                             },
-                            size = 76,
+                            size = if (tv) 60 else 72,
                             modifier = Modifier.focusRequester(playFocus),
                             emphasized = true,
                         )
                         RoundButton(Icons.Forward30, "Forward 30 seconds", {
                             player()?.seekForward()
                             ui.poke()
-                        }, size = 56)
+                        }, size = small)
+                        if (ui.hasNext) RoundButton(Icons.SkipNext, "Next episode", onNext, size = small)
                     }
                     Spacer(Modifier.weight(1f))
                     // Bottom: seek bar, times, extra actions.
@@ -214,7 +235,7 @@ fun PlayerOverlay(
                     Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "${formatTime(position)}  /  ${formatTime(duration)}",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall,
                             color = Muted,
                         )
                         if (duration > 0) {
@@ -223,32 +244,50 @@ fun PlayerOverlay(
                                     java.text.DateFormat
                                         .getTimeInstance(java.text.DateFormat.SHORT)
                                         .format(java.util.Date(System.currentTimeMillis() + duration - position)),
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Subtle,
                             )
                         }
                         Spacer(Modifier.weight(1f))
+                        ui.skipLabel?.let {
+                            PillButton(Icons.SkipNext, it, onSkip)
+                            Spacer(Modifier.width(10.dp))
+                        }
+                        if (ui.nearEnd) {
+                            PillButton(Icons.SkipNext, "Next episode", onNext)
+                            Spacer(Modifier.width(10.dp))
+                        }
                         PillButton(Icons.Subtitles, "Audio & subtitles", {
                             ui.tracksOpen = true
                             ui.poke()
                         })
-                        if (ui.hasNext) {
-                            Spacer(Modifier.width(10.dp))
-                            PillButton(Icons.SkipNext, "Next episode", onNext)
-                        }
                     }
                 }
             }
         }
+        // Controls hidden: "Skip intro" / "Next episode" float bottom right and take the focus (OK).
+        val prompt =
+            when {
+                ui.visible || ui.tracksOpen -> null
+                ui.nearEnd -> "Next episode"
+                else -> ui.skipLabel
+            }
         AnimatedVisibility(
-            ui.nearEnd && !ui.visible && !ui.tracksOpen,
+            prompt != null,
             Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(if (tv) 48.dp else 24.dp),
             enter = fadeIn() + slideInHorizontally { it / 2 },
             exit = fadeOut(),
         ) {
-            val upNext = remember { FocusRequester() }
-            LaunchedEffect(Unit) { runCatching { upNext.requestFocus() } }
-            Box(Modifier.focusRequester(upNext)) { PillButton(Icons.SkipNext, "Next episode", onNext) }
+            val focus = remember { FocusRequester() }
+            val label = prompt ?: return@AnimatedVisibility
+            LaunchedEffect(label) { runCatching { focus.requestFocus() } }
+            Box(Modifier.focusRequester(focus)) {
+                if (label == "Next episode") {
+                    PillButton(Icons.SkipNext, ui.upNextIn?.let { "Next episode in $it s" } ?: label, onNext)
+                } else {
+                    PillButton(Icons.SkipNext, label, onSkip)
+                }
+            }
         }
         if (ui.buffering) {
             Box(
@@ -323,8 +362,8 @@ private fun PillButton(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         val fg = if (focused) Color.Black else Color.White
-        Icon(icon, null, Modifier.size(20.dp), tint = fg)
-        Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
+        Icon(icon, null, Modifier.size(18.dp), tint = fg)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = fg)
     }
 }
 
@@ -486,15 +525,15 @@ private fun TracksPanel(
     Column(
         Modifier
             .fillMaxHeight()
-            .width(360.dp)
+            .width(if (LocalDimens.current.isTv) 340.dp else 320.dp)
             .background(Color(0xF2111116))
             .safeDrawingPadding()
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Audio & subtitles", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            RoundButton(Icons.Close, "Close", onClose, size = 40)
+            Text("Audio & subtitles", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            RoundButton(Icons.Close, "Close", onClose, size = 36)
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             item { Section("Audio") }
@@ -526,12 +565,12 @@ private fun TrackRow(
             .clip(RoundedCornerShape(12.dp))
             .background(if (focused) Color.White else Color.Transparent)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 11.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val fg = if (focused) Color.Black else Color.White
-        Text(label, Modifier.weight(1f), color = fg, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (selected) Icon(Icons.Check, "Selected", Modifier.size(20.dp), tint = if (focused) Color.Black else Accent)
+        Text(label, Modifier.weight(1f), color = fg, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (selected) Icon(Icons.Check, "Selected", Modifier.size(18.dp), tint = if (focused) Color.Black else Accent)
     }
 }
 

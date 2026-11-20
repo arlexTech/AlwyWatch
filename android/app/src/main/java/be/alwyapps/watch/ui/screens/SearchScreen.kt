@@ -68,7 +68,9 @@ fun SearchScreen() {
     val focus = remember { FocusRequester() }
     // Keyboard straight away only for a new search, not when coming back to results.
     LaunchedEffect(Unit) { if (query.isEmpty()) runCatching { focus.requestFocus() } }
-    LaunchedEffect(query) {
+    // Watched state changed from a result's menu: search again so the marks follow.
+    val changed = be.alwyapps.watch.ui.ItemsChanged.version
+    LaunchedEffect(query, changed) {
         if (query.length < 2) {
             results = emptyList()
             requestable = emptyList()

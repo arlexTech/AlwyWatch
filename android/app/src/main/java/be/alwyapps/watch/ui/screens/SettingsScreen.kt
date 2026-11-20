@@ -189,6 +189,28 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
                 },
                 subtitle = "Switches the TV to the video's frame rate (no judder).",
             )
+            Divider()
+            var autoSkip by remember { mutableStateOf(settings.autoSkipIntro) }
+            ToggleRow(
+                "Skip intros automatically",
+                autoSkip,
+                {
+                    autoSkip = it
+                    settings.autoSkipIntro = it
+                },
+                subtitle = "Otherwise a Skip intro button appears.",
+            )
+            Divider()
+            var autoNext by remember { mutableStateOf(settings.autoPlayNext) }
+            ToggleRow(
+                "Play next episode during credits",
+                autoNext,
+                {
+                    autoNext = it
+                    settings.autoPlayNext = it
+                },
+                subtitle = "After a 10 second countdown, which Back cancels.",
+            )
             var tunneling by remember { mutableStateOf(settings.tunneling) }
             // Tunneling only exists on TV devices.
             if (d.isTv) Divider()

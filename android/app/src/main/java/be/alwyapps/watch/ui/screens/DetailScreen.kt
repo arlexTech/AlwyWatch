@@ -527,10 +527,20 @@ private fun Episodes(
         rememberSwr(account, "eps", seasonId, cached = { core.cachedEpisodes(account, seriesId, seasonId)?.items }, refresh = {
             core.refreshEpisodes(account, seriesId, seasonId, it).items
         })
+    // Marked watched/unwatched from an episode's menu: refresh the list.
+    val changed = be.alwyapps.watch.ui.ItemsChanged.version
+    LaunchedEffect(changed) { if (changed > 0) eps.reload() }
+    var menuFor by remember { mutableStateOf<be.alwyapps.watch.core.media.Item?>(null) }
+    menuFor?.let {
+        be.alwyapps.watch.ui
+            .ItemMenu(it) { menuFor = null }
+    }
     Column(Modifier.padding(horizontal = d.gutter, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         for (ep in eps.value.orEmpty()) {
             FocusCard(
                 onClick = { play(ctx, account, ep, fromStart = false) },
+                // Long press (hold OK on a remote): watched / unwatched, download…
+                onLongClick = { menuFor = ep },
                 glow = false,
                 modifier =
                     Modifier.fillMaxWidth().onFocusChanged {

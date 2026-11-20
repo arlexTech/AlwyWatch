@@ -180,7 +180,22 @@ fun ItemMenu(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val played = item.user.played
-    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Background) {
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Background,
+        // On TV the handle would take the focus first (it is only for touch).
+        dragHandle =
+            if (d.isTv) {
+                null
+            } else {
+                (
+                    {
+                        androidx.compose.material3.BottomSheetDefaults
+                            .DragHandle()
+                    }
+                )
+            },
+    ) {
         Column(Modifier.padding(bottom = 24.dp).navigationBarsPadding()) {
             Text(
                 if (item.kind == ItemKind.EPISODE) "${item.seriesTitle ?: ""} · ${item.subtitle()}" else item.title,
