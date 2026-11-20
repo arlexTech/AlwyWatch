@@ -20,7 +20,10 @@ Runs on Android phones and tablets, Android TV, Linux and Windows.
   AlwyWatch server).
 * "Leaving soon" from Maintainerr, sorted by urgency: keep N days, until I watched it (with
   reminders), forever, or "I don't care"; swipe mode; admin rights and countdown.
-* Android TV: D-pad first, leanback launcher. Phone and tablet: adaptive layouts.
+* A modern, artwork-led design: heroes that follow what you point at, ambient colors from the
+  artwork, logo art, landscape "continue watching" cards, custom player controls.
+* Android TV: D-pad first (focus stays put, rows pin under the hero), leanback launcher.
+  Phones: bottom bar; tablets and foldables: side rail. Desktop: sidebar.
 
 Every connection is optional: the app works as a plain Jellyfin/Plex client.
 

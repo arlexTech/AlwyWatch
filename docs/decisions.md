@@ -21,6 +21,8 @@ then **small APK** (see CLAUDE.md). This file states why each one is here and wh
 | tv-material dropped | `androidx.tv:tv-material` duplicated Material 3 (+~1 MB dex) for a few components; focus handling is done with plain Compose (`FocusCard`, `dpadEscape`) | Using it for cards/rails |
 | Native libs stored compressed in the APK | APKs are downloaded directly (Forgejo), not via Play: arm64 APK 16.2 → 8.5 MB. Cost: libs extracted once at install | Uncompressed page-aligned libs (AGP default, best for Play) |
 | Rust core at opt-level 3, not "s" | "s" saves 0.6 MB of APK but speed ranks above size | `release-size` profile kept for comparison |
+| Own design system on Compose (no Material look) | A streaming app is judged on looks: artwork-led pages, ambient color from the artwork (BlurHash average, free), Manrope type, white pill for the main action, white focus on TV. Same language on desktop (Slint) | Stock Material 3 components (generic look), tv-material |
+| Custom player controls (Compose over PlayerView) | Consistent look, TV-friendly keys (←/→ seek while hidden), readable track names; PlayerView kept for the video surface and libass subtitles | Media3's default controller (dated look, little control) |
 | Release key: new dedicated key | Not reused from other apps; stored outside the repo (`~/.config/alwywatch`) | Debug key / Play App Signing only |
 | License AGPL-3.0-or-later | Same as the other licensed Alwy* project | — |
 
@@ -60,6 +62,8 @@ then **small APK** (see CLAUDE.md). This file states why each one is here and wh
 | `io.github.peerless2012:ass-media` | libass rendering of ASS/SSA subtitles (styles, positions) | Overlay mode (OpenGL); `libass.so` 3.0 MB (arm64), the largest native lib after the core |
 | `org.rustls:rustls-platform-verifier` | Kotlin half of the Rust TLS verifier | Version read from Cargo.lock at build time |
 | `androidx.profileinstaller` | Installs the Baseline Profile on sideloaded installs | Tiny |
+| Manrope (font file, OFL) | Modern geometric typeface; variable font so one file covers all weights | 165 KB, bundled in `res/font` (no Downloadable Fonts: no Play Services dependency, no first-frame font swap) |
+| Material Symbols Rounded (paths only, Apache-2.0) | The ~30 icons used, as `ImageVector`s built from path strings | A few KB; `material-icons-extended` rejected (MBs) |
 | Benchmark (macro), UIAutomator, androidx.test | `:baselineprofile` module only (profile generation, startup benchmark) | Never shipped |
 
 Rejected on Android: **Coil/Glide** (own disk-backed loader in the Rust core + a ~100-line
