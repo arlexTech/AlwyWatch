@@ -4,6 +4,7 @@ package be.alwyapps.watch.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,7 +33,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.CoreException
 import be.alwyapps.watch.core.media.Item
-import be.alwyapps.watch.core.seerr.Availability
 import be.alwyapps.watch.core.seerr.SeerrResult
 import be.alwyapps.watch.ui.Badge
 import be.alwyapps.watch.ui.Field
@@ -66,9 +66,14 @@ fun SearchScreen() {
     var requesting by remember { mutableStateOf<be.alwyapps.watch.core.seerr.SeerrResult?>(null) }
     var requestMessage by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(query) { SearchMemory.query = query }
-    var results by remember { mutableStateOf<List<Item>>(emptyList()) }
+    // Library results with the account they come from (all servers when shown together).
+    var results by remember { mutableStateOf<List<Pair<String, Item>>>(emptyList()) }
     var requestable by remember { mutableStateOf<List<SeerrResult>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var seerrError by remember { mutableStateOf<String?>(null) }
+    // All (default), on my servers only, or only what is not on them.
+    var filter by rememberSaveable { mutableStateOf("all") }
+    val seerrOn = remember { core.seerrActive() }
     val focus = remember { FocusRequester() }
     // Keyboard straight away only for a new search, not when coming back to results.
     LaunchedEffect(Unit) { if (query.isEmpty()) runCatching { focus.requestFocus() } }
@@ -79,18 +84,30 @@ fun SearchScreen() {
             return@LaunchedEffect
         }
         delay(300)
-        try {
-            results = core.search(account, query, 60u)
-            error = null
-        } catch (e: CoreException) {
-            error = e.message
+        val accounts = runCatching { core.accounts() }.getOrDefault(emptyList()).map { it.id }
+        val together = accounts.size > 1 && runCatching { core.getSetting(COMBINED_KEY) }.getOrNull() != "0"
+        val found = mutableListOf<Pair<String, Item>>()
+        var failed: String? = null
+        for (a in if (together) accounts else listOf(account)) {
+            try {
+                core.search(a, query, 60u).forEach { found += a to it }
+            } catch (e: CoreException) {
+                failed = e.message
+            }
         }
-        if (core.seerrActive()) {
-            requestable =
-                runCatching { core.seerrSearch(query) }
-                    .getOrDefault(emptyList())
-                    .filter { it.availability != Availability.AVAILABLE }
-                    .take(20)
+        // One per title across servers.
+        results = found.distinctBy { (_, i) -> i.providerIds.tmdb?.let { "tmdb:${i.kind}:$it" } ?: "${i.kind}:${i.title.lowercase()}:${i.year}" }
+        error = failed.takeIf { found.isEmpty() }
+        if (seerrOn) {
+            try {
+                // Everything that exists, minus what the library results already show.
+                val have = results.mapNotNull { (_, i) -> i.providerIds.tmdb }.toSet()
+                requestable = core.seerrSearch(query).filter { it.tmdbId.toString() !in have }.take(30)
+                seerrError = null
+            } catch (e: CoreException) {
+                requestable = emptyList()
+                seerrError = e.message
+            }
         }
     }
     LazyVerticalGrid(
@@ -115,12 +132,43 @@ fun SearchScreen() {
                 )
             }
         }
-        error?.let { item(span = { GridItemSpan(maxLineSpan) }) { Text(it, color = Muted) } }
-        if (results.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Text("In your library", style = MaterialTheme.typography.titleMedium) }
+        if (query.length >= 2) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for ((key, label) in listOf("all" to "All", "mine" to "On my servers", "other" to "Not on my servers")) {
+                        be.alwyapps.watch.ui
+                            .ActionButton(label, { filter = key }, primary = filter == key)
+                    }
+                }
+            }
         }
-        items(results, key = { it.id }) { PosterCard(it, d.posterWidth, onClick = { nav.push(Route.Detail(it.id)) }, showTitle = true) }
-        if (requestable.isNotEmpty()) {
+        error?.let { item(span = { GridItemSpan(maxLineSpan) }) { Text(it, color = Muted) } }
+        val showMine = filter != "other"
+        val showOther = filter != "mine"
+        if (showMine && results.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) { Text("On your servers", style = MaterialTheme.typography.titleMedium) }
+        }
+        if (showMine) {
+            items(results, key = { (_, i) -> i.id }) { (a, i) ->
+                androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalItemOwners provides mapOf(i.id to a)) {
+                    PosterCard(i, d.posterWidth, onClick = { nav.push(Route.Detail(i.id, account = a)) }, showTitle = true)
+                }
+            }
+        }
+        if (showOther && query.length >= 2 && !seerrOn) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    "To also find what is not on your servers (and request it), connect requests in Settings.",
+                    Modifier.padding(top = 8.dp),
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        seerrError?.takeIf { showOther }?.let { msg ->
+            item(span = { GridItemSpan(maxLineSpan) }) { Text("Requests unavailable: $msg", color = Muted, style = MaterialTheme.typography.bodySmall) }
+        }
+        if (showOther && requestable.isNotEmpty()) {
             requesting?.let { r ->
                 item(span = { GridItemSpan(maxLineSpan) }, key = "request-${r.tmdbId}") {
                     RequestPanel(r, onDone = { msg ->
@@ -134,8 +182,8 @@ fun SearchScreen() {
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(Modifier.padding(top = 12.dp)) {
-                    Text("Not in your library", style = MaterialTheme.typography.titleMedium)
-                    Text("Request it and it will be added", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text("Not on your servers", style = MaterialTheme.typography.titleMedium)
+                    Text("Tap one to request it", style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
             }
             items(requestable, key = { "seerr-${it.mediaType}-${it.tmdbId}" }) { r ->
@@ -149,7 +197,7 @@ fun SearchScreen() {
                 }
             }
         }
-        if (query.length >= 2 && results.isEmpty() && requestable.isEmpty() && error == null) {
+        if (query.length >= 2 && (!showMine || results.isEmpty()) && (!showOther || requestable.isEmpty()) && error == null) {
             item(span = { GridItemSpan(maxLineSpan) }) { Text("No results for \u201c$query\u201d.", color = Muted) }
         }
     }
