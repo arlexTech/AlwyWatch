@@ -44,32 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         profile: None,
         downloads_db: None,
     })?;
-    for a in core.accounts()? {
-        if let Some(t) = tokens.get(&a.id) {
-            core.activate_account(a.id.clone(), t)?;
-        }
-    }
-    if core.seerr_connection().is_some()
-        && let Some(cookie) = tokens.get("seerr")
-    {
-        let _ = core.seerr_activate(cookie);
-    }
-    if let Some(k) = core.keep_connection() {
-        let kind = core
-            .accounts()?
-            .into_iter()
-            .find(|a| a.id == k.account_id)
-            .map(|a| a.kind);
-        let token = match kind {
-            Some(alwywatch_core::ServerKind::Plex) => {
-                tokens.get(&format!("{}:plextv", k.account_id))
-            }
-            _ => tokens.get(&k.account_id),
-        };
-        if let Some(t) = token {
-            let _ = core.keep_activate(t);
-        }
-    }
+    app::activate_saved(&core, &tokens);
     let ui = AppWindow::new()?;
     let app = app::App::new(core.clone(), &ui, tokens);
     // Test hook (headless screenshots): start the Jellyfin sign-in with this address.
@@ -77,6 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok("settings") => app.test_settings(),
         Ok("home") => app.test_home(),
         Ok("seerrtitle") => app.test_seerr_title(),
+        Ok(step @ ("receive" | "send")) => app.test_transfer(step),
         Ok(tab @ ("recommended" | "browse" | "collections" | "categories")) => {
             app.test_home();
             app.test_library(tab);
@@ -140,7 +116,7 @@ fn store_hash(s: &str) -> u64 {
     h
 }
 
-fn hostname() -> String {
+pub(crate) fn hostname() -> String {
     std::env::var("HOSTNAME")
         .or_else(|_| std::env::var("COMPUTERNAME"))
         .ok()

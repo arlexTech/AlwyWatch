@@ -516,7 +516,18 @@ export component AppWindow inherits Window {
     in property <[NamedId]> seasons;
     in property <[Card]> episodes;
     // Add server
-    in property <string> add-step: "choose"; // choose | jellyfin-url | jellyfin | plex | plex-servers
+    in property <string> add-step: "choose"; // choose | jellyfin-url | jellyfin | plex | plex-servers | receive
+    // Device transfer. New device: the code to type elsewhere and the check number.
+    in-out property <string> keep-address; // typed at the AlwyWatch server step
+    in property <string> transfer-code;
+    in property <string> transfer-check;
+    in property <string> transfer-status;
+    // Signed-in device, "Add a device": "" | code | confirm | sent.
+    in property <string> send-step;
+    in property <string> send-code;
+    in property <string> send-device;
+    in property <string> send-check;
+    in property <string> send-error;
     in property <string> quick-code;
     in property <string> plex-code;
     in property <[NamedId]> plex-servers;
@@ -598,6 +609,11 @@ export component AppWindow inherits Window {
     callback seerr-toggle-season(string);
     callback seerr-request(bool); // all seasons?
     callback seerr-open-saga();
+    callback transfer-receive(string); // AlwyWatch server address
+    callback send-start();
+    callback send-lookup(string);
+    callback send-confirm();
+    callback send-cancel();
     callback keep-connect(string);
     /// Accounts that can sync with the AlwyWatch server (selected = the one syncing).
     in property <[NamedId]> keep-choices;
@@ -983,6 +999,7 @@ export component AppWindow inherits Window {
                                     IconButton { icon: @image-url("icons/arrow_back.svg"); clicked => { root.add-choose("back"); } }
                                     Text {
                                         text: root.add-step == "alwywatch" ? "AlwyWatch server"
+                                            : root.add-step == "receive" ? "Copy from another device"
                                             : root.add-step == "direct" ? "Sign in"
                                             : root.add-step == "plex" || root.add-step == "plex-servers" ? "Plex" : "Jellyfin";
                                         color: Palette.text;
@@ -1021,7 +1038,7 @@ export component AppWindow inherits Window {
                                     Text { text: "Enter the address your server's owner gave you, then pick the server you watch on."; color: Palette.muted; wrap: word-wrap; }
                                     HorizontalLayout {
                                         spacing: 10px;
-                                        kserver := Field { placeholder: "watch.example.org"; accepted(t) => { root.add-keep-servers(t); } }
+                                        kserver := Field { placeholder: "watch.example.org"; text <=> root.keep-address; accepted(t) => { root.add-keep-servers(t); } }
                                         Button { label: "Show servers"; primary: root.preset-servers.length == 0; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
                                     }
                                     for s in root.preset-servers : ChoiceCard {
@@ -1030,6 +1047,28 @@ export component AppWindow inherits Window {
                                         icon: s.plex ? @image-url("icons/play_arrow_fill1.svg") : @image-url("icons/video_library.svg");
                                         clicked => { root.add-keep-pick(s.id); }
                                     }
+                                    if root.keep-address != "" : ChoiceCard {
+                                        title: "Copy from another device";
+                                        subtitle: "Signed in on your phone or TV? Bring its accounts and settings here.";
+                                        icon: @image-url("icons/download.svg");
+                                        clicked => { root.transfer-receive(root.keep-address); }
+                                    }
+                                }
+                                if root.add-step == "receive" : VerticalLayout {
+                                    spacing: 12px;
+                                    Text { text: root.transfer-code; color: Palette.text; font-size: 56px; font-weight: 800; letter-spacing: 4px; }
+                                    Text {
+                                        text: "On a device where you're signed in: Settings → AlwyWatch server → Add a device, and type this code.";
+                                        color: Palette.muted;
+                                        wrap: word-wrap;
+                                    }
+                                    if root.transfer-check != "" : Text {
+                                        text: "Check number: " + root.transfer-check + ". It must match the one shown on the other device.";
+                                        color: Palette.muted;
+                                        wrap: word-wrap;
+                                    }
+                                    Text { text: "Waiting for the other device…"; color: Palette.muted; font-size: 13px; }
+                                    if root.transfer-status != "" : Text { text: root.transfer-status; color: Palette.danger; wrap: word-wrap; }
                                 }
                                 if root.add-step == "jellyfin-url" : VerticalLayout {
                                     spacing: 12px;
@@ -1237,7 +1276,7 @@ export component AppWindow inherits Window {
                                 if root.seerr-cast.length > 0 : Text { text: "Cast"; color: Palette.text; font-size: 20px; font-weight: 700; }
                                 if root.seerr-cast.length > 0 : ScrollView {
                                     height: 150px;
-                                    viewport-width: root.seerr-cast.length * 104px;
+                                    content-width: root.seerr-cast.length * 104px;
                                     for c[i] in root.seerr-cast : VerticalLayout {
                                         x: i * 104px;
                                         width: 92px;
@@ -1466,8 +1505,38 @@ export component AppWindow inherits Window {
                                     Text { text: root.keep-label; color: Palette.text; vertical-alignment: center; }
                                     Rectangle { horizontal-stretch: 1; }
                                     if root.keep-can-switch && root.keep-choices.length == 0 : Button { label: "Sync another account"; clicked => { root.keep-choose(); } }
+                                    if root.send-step == "" : Button { label: "Add a device"; clicked => { root.send-start(); } }
                                     Button { label: "Stop syncing"; clicked => { root.keep-disconnect(); } }
                                 }
+                                if root.keep-active && root.send-step == "code" : VerticalLayout {
+                                    spacing: 10px;
+                                    Text { text: "On the new device, choose \"Copy from another device\" and type its code here."; color: Palette.muted; wrap: word-wrap; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        scode := Field { placeholder: "123456"; accepted(t) => { root.send-lookup(t); } }
+                                        Button { label: "Continue"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.send-lookup(scode.text); } }
+                                        Button { label: "Cancel"; y: (parent.height - self.height) / 2; clicked => { root.send-cancel(); } }
+                                    }
+                                }
+                                if root.keep-active && root.send-step == "confirm" : VerticalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Send your accounts and settings to “" + root.send-device + "”?"; color: Palette.text; font-weight: 700; wrap: word-wrap; }
+                                    Text { text: "Check number"; color: Palette.muted; font-size: 13px; }
+                                    Text { text: root.send-check; color: Palette.accent; font-size: 40px; font-weight: 800; letter-spacing: 4px; }
+                                    Text { text: "Only send if the new device shows the same number."; color: Palette.muted; font-size: 13px; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        alignment: start;
+                                        Button { label: "Send"; primary: true; clicked => { root.send-confirm(); } }
+                                        Button { label: "Cancel"; clicked => { root.send-cancel(); } }
+                                    }
+                                }
+                                if root.keep-active && root.send-step == "sent" : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: "Sent. The other device signs in by itself."; color: Palette.accent; vertical-alignment: center; }
+                                    Button { label: "Done"; clicked => { root.send-cancel(); } }
+                                }
+                                if root.keep-active && root.send-error != "" && root.send-step != "" : Text { text: root.send-error; color: Palette.danger; wrap: word-wrap; }
                                 if !root.keep-active : Text {
                                     text: "Shows what your server will delete and lets you keep it. Your Jellyfin or Plex account is your sign-in there.";
                                     color: Palette.muted;

@@ -106,6 +106,8 @@ struct State {
     admin_users: Vec<AdminUser>,
     armed: Option<(String, i32)>,
     poll_gen: u64,
+    /// Bumped to stop waiting for a device transfer.
+    transfer_gen: u64,
 }
 
 thread_local! {
@@ -214,6 +216,7 @@ impl App {
                 admin_users: vec![],
                 armed: None,
                 poll_gen: 0,
+                transfer_gen: 0,
             }),
             images: RefCell::new(HashMap::new()),
         });
@@ -2962,6 +2965,7 @@ impl App {
         self.state.borrow_mut().poll_gen += 1;
         let step = ui.get_add_step();
         let which = match which.as_str() {
+            "back" if step == "receive" => "alwywatch".into(),
             "back" if step == "alwywatch" || step == "direct" || step == "choose" => String::new(),
             "back" if ui.get_add_from_keep() => String::new(),
             "back" if self.state.borrow().preset_url.is_empty() => "direct".into(),
@@ -3229,6 +3233,207 @@ impl App {
             }
         })
         .ok();
+    }
+
+    // ----- device transfer (same bundle as Android) -----------------------------------------
+
+    /// What a signed-in device sends: the core's accounts and settings, plus their tokens.
+    fn transfer_bundle(&self) -> Result<String, CoreError> {
+        let mut tokens = serde_json::Map::new();
+        for a in self.core.accounts()? {
+            for k in [
+                a.id.clone(),
+                format!("{}:plextv", a.id),
+                format!("{}:plexhome", a.id),
+            ] {
+                if let Some(t) = self.tokens.get(&k) {
+                    tokens.insert(k, t.into());
+                }
+            }
+        }
+        if let Some(t) = self.tokens.get("seerr") {
+            tokens.insert("seerr".into(), t.into());
+        }
+        let core = self
+            .core
+            .export_config(SYNCED_SETTINGS.iter().map(|k| (*k).to_owned()).collect())?;
+        Ok(serde_json::json!({ "core": core, "tokens": tokens }).to_string())
+    }
+
+    /// New device: stores what arrived and signs in with it. Returns the account to open.
+    fn restore_bundle(&self, json: &str) -> Result<Option<String>, CoreError> {
+        let invalid = |detail: String| CoreError::Invalid { detail };
+        let v: serde_json::Value =
+            serde_json::from_str(json).map_err(|e| invalid(format!("unreadable transfer: {e}")))?;
+        let core = v["core"]
+            .as_str()
+            .ok_or_else(|| invalid("unreadable transfer".into()))?;
+        let ids = self.core.import_config(core.to_owned())?;
+        if let Some(t) = v["tokens"].as_object() {
+            for (k, t) in t {
+                if let Some(t) = t.as_str() {
+                    self.tokens
+                        .put(k, t)
+                        .map_err(|e| invalid(format!("could not store the token: {e}")))?;
+                }
+            }
+        }
+        activate_saved(&self.core, &self.tokens);
+        let current = self
+            .core
+            .get_setting("current_account".into())
+            .ok()
+            .flatten()
+            .filter(|c| ids.contains(c));
+        Ok(current.or_else(|| ids.into_iter().next()))
+    }
+
+    /// New device, from the AlwyWatch server step: shows a code to type on a signed-in device
+    /// and waits for the accounts (end-to-end encrypted: the server only relays them).
+    fn transfer_receive(self: &Rc<Self>, url: String) {
+        let generation = {
+            let mut st = self.state.borrow_mut();
+            st.transfer_gen += 1;
+            st.transfer_gen
+        };
+        let ui = self.ui();
+        ui.set_add_step("receive".into());
+        ui.set_transfer_code("…".into());
+        ui.set_transfer_check(SharedString::new());
+        ui.set_transfer_status(SharedString::new());
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        let waiting = move |this: &std::rc::Weak<App>| {
+            this.upgrade().is_some_and(|t| {
+                t.state.borrow().transfer_gen == generation && t.ui().get_add_step() == "receive"
+            })
+        };
+        slint::spawn_local(async move {
+            let url = match normalize_server_url(url) {
+                Ok(u) => u,
+                Err(e) => return report(&this, e),
+            };
+            while waiting(&this) {
+                let c = match core.transfer_start(url.clone(), crate::hostname()).await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        if let Some(t) = this.upgrade() {
+                            t.ui().set_transfer_status(sstr(e.to_string()));
+                        }
+                        async_sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                };
+                if let Some(t) = this.upgrade() {
+                    let ui = t.ui();
+                    ui.set_transfer_code(sstr(format!(
+                        "{} {}",
+                        &c.code[..3.min(c.code.len())],
+                        &c.code[3.min(c.code.len())..]
+                    )));
+                    ui.set_transfer_check(sstr(&c.check));
+                    ui.set_transfer_status(SharedString::new());
+                }
+                let until = std::time::Instant::now() + Duration::from_secs(c.expires_in);
+                // Until it expires (then a new code).
+                while std::time::Instant::now() < until {
+                    async_sleep(Duration::from_secs(2)).await;
+                    if !waiting(&this) {
+                        return;
+                    }
+                    let Ok(Some(bundle)) =
+                        core.transfer_receive(url.clone(), c.handle.clone()).await
+                    else {
+                        continue;
+                    };
+                    let Some(t) = this.upgrade() else { return };
+                    match t.restore_bundle(&bundle) {
+                        Ok(Some(account)) => {
+                            let _ = t
+                                .core
+                                .set_setting("current_account".into(), account.clone());
+                            t.state.borrow_mut().account = Some(account);
+                            t.refresh_keep_settings();
+                            t.refresh_seerr_settings();
+                            t.reset(Route::Home);
+                        }
+                        Ok(None) => t.ui().set_transfer_status(
+                            "Nothing to copy: that device has no accounts.".into(),
+                        ),
+                        Err(e) => t.ui().set_transfer_status(sstr(e.to_string())),
+                    }
+                    return;
+                }
+            }
+        })
+        .ok();
+    }
+
+    /// Signed-in device, "Add a device": the new device's code → its name and check number.
+    fn send_lookup(self: &Rc<Self>, code: String) {
+        let code: String = code.chars().filter(char::is_ascii_digit).collect();
+        let ui = self.ui();
+        if code.len() != 6 {
+            ui.set_send_error("Type the 6 digits the new device shows.".into());
+            return;
+        }
+        ui.set_send_error(SharedString::new());
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.transfer_peer(code.clone()).await;
+            let Some(t) = this.upgrade() else { return };
+            let ui = t.ui();
+            match r {
+                Ok(req) => {
+                    ui.set_send_code(sstr(&code));
+                    ui.set_send_device(sstr(&req.device));
+                    ui.set_send_check(sstr(&req.check));
+                    ui.set_send_step("confirm".into());
+                }
+                Err(CoreError::NotFound) => {
+                    ui.set_send_error("Unknown or expired code.".into());
+                }
+                Err(e) => ui.set_send_error(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    /// Sends the accounts and settings, sealed to the device whose code was checked.
+    fn send_confirm(self: &Rc<Self>) {
+        let ui = self.ui();
+        let code = ui.get_send_code().to_string();
+        let bundle = match self.transfer_bundle() {
+            Ok(b) => b,
+            Err(e) => return ui.set_send_error(sstr(e.to_string())),
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.transfer_send(code, bundle).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(()) => t.ui().set_send_step("sent".into()),
+                Err(e) => t.ui().set_send_error(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    /// Test hook used by headless screenshots: the transfer screens with made-up values.
+    pub fn test_transfer(self: &Rc<Self>, step: &str) {
+        let ui = self.ui();
+        if step == "receive" {
+            self.navigate(Route::Add);
+            ui.set_add_step("receive".into());
+            ui.set_transfer_code("482 913".into());
+            ui.set_transfer_check("7261".into());
+        } else {
+            self.navigate(Route::Settings);
+            ui.set_keep_active(true);
+            ui.set_keep_label("Synced with watch.example.org".into());
+            ui.set_send_step("confirm".into());
+            ui.set_send_device("Pixel 9".into());
+            ui.set_send_check("7261".into());
+        }
     }
 
     /// Test hook used by headless screenshots: open Settings.
@@ -3546,6 +3751,17 @@ impl App {
             }
         });
         on!(on_seerr_request, |a, all| a.seerr_request(all));
+        on!(on_transfer_receive, |a, url| a.transfer_receive(url.into()));
+        on!(on_send_lookup, |a, code| a.send_lookup(code.into()));
+        on!(on_send_confirm, |a| a.send_confirm());
+        on!(on_send_start, |a| {
+            let ui = a.ui();
+            ui.set_send_step("code".into());
+            ui.set_send_error(SharedString::new());
+        });
+        on!(on_send_cancel, |a| a
+            .ui()
+            .set_send_step(SharedString::new()));
         on!(on_seerr_open_saga, |a| {
             let t = a.ui().get_seerr_title();
             if let Ok(id) = t.saga_id.parse() {
@@ -3587,6 +3803,44 @@ impl App {
         });
     }
 }
+
+/// Signs the saved accounts and connections in with their stored tokens (start-up, and after
+/// accounts arrived from another device).
+pub fn activate_saved(core: &AlwyWatch, tokens: &Tokens) {
+    for a in core.accounts().unwrap_or_default() {
+        if let Some(t) = tokens.get(&a.id) {
+            let _ = core.activate_account(a.id.clone(), t);
+        }
+    }
+    if core.seerr_connection().is_some()
+        && let Some(cookie) = tokens.get("seerr")
+    {
+        let _ = core.seerr_activate(cookie);
+    }
+    if let Some(k) = core.keep_connection() {
+        let kind = core
+            .accounts()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|a| a.id == k.account_id)
+            .map(|a| a.kind);
+        let token = match kind {
+            Some(ServerKind::Plex) => tokens.get(&format!("{}:plextv", k.account_id)),
+            _ => tokens.get(&k.account_id),
+        };
+        if let Some(t) = token {
+            let _ = core.keep_activate(t);
+        }
+    }
+}
+
+/// Settings that follow the user to a new device (preferences, not caches); same as Android.
+const SYNCED_SETTINGS: [&str; 4] = [
+    "ui.combined",
+    "ui.preferred_account",
+    "current_account",
+    "downloads.delete_rule",
+];
 
 fn report(this: &std::rc::Weak<App>, e: CoreError) {
     if let Some(t) = this.upgrade() {

@@ -19,6 +19,8 @@ slint = { workspace = true, features = ["std", "compat-1-2", "backend-winit", "r
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # Loads libmpv at runtime, so the app runs (and browses) without it.
 libloading = "0.8"
+# The device-transfer envelope (same JSON as Android); already compiled in through the core.
+serde_json = { workspace = true }
 # oneshot channel for the timer-based sleep (already compiled in through the core).
 tokio = { workspace = true, features = ["sync"] }
 
