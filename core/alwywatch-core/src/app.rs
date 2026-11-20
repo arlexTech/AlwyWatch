@@ -38,6 +38,13 @@ pub struct CoreConfig {
     pub image_cache_mb: u32,
     /// Where downloaded media files go (user-visible storage on desktop, app storage on Android).
     pub downloads_dir: String,
+    /// The device profile this core runs for (several people on one device). None: the
+    /// original profile.
+    #[uniffi(default = None)]
+    pub profile: Option<String>,
+    /// Downloads database shared by the profiles of a device (None: in `data_dir`).
+    #[uniffi(default = None)]
+    pub downloads_db: Option<String>,
 }
 
 /// A signed-in user on one server. Stored without the token.
@@ -180,6 +187,8 @@ pub struct Core {
     seerr: RwLock<Option<seerr::SeerrClient>>,
     downloads: downloads::Downloads,
     downloads_running: std::sync::atomic::AtomicBool,
+    /// Owner of the downloads this profile asks for (see `downloads::Download::owners`).
+    profile: String,
     client: ClientInfo,
     http: net::reqwest::Client,
     store: Arc<Store>,
@@ -519,6 +528,7 @@ impl Core {
                 expected_size: src.size,
                 episode,
                 delete_rule: rule,
+                owner: self.profile.clone(),
             })
             .map_err(dl_err)
     }
@@ -671,7 +681,11 @@ impl AlwyWatch {
         );
         let http = net::api_client(&ua)?;
         let downloads = downloads::Downloads::open(
-            &data.join("downloads.sqlite"),
+            &config
+                .downloads_db
+                .as_ref()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| data.join("downloads.sqlite")),
             &PathBuf::from(&config.downloads_dir),
             net::transfer_client(&ua)?,
         )
@@ -684,6 +698,9 @@ impl AlwyWatch {
                 seerr: RwLock::new(None),
                 downloads,
                 downloads_running: std::sync::atomic::AtomicBool::new(false),
+                profile: config
+                    .profile
+                    .unwrap_or_else(|| downloads::DEFAULT_OWNER.to_owned()),
                 client: config.client,
                 http,
                 store,
@@ -1359,13 +1376,17 @@ impl AlwyWatch {
     pub async fn sync_downloads(&self) -> Result<u32> {
         let autos = self.auto_downloads();
         self.run(|c| async move {
-            c.downloads.apply_rules(unix_now()).map_err(dl_err)?;
+            c.downloads
+                .apply_rules(unix_now(), &c.profile)
+                .map_err(dl_err)?;
             let mut queued = 0;
             for a in &autos {
                 // One show failing (offline, removed) does not stop the others.
                 queued += c.auto_download(a).await.unwrap_or(0);
             }
-            c.downloads.apply_rules(unix_now()).map_err(dl_err)?;
+            c.downloads
+                .apply_rules(unix_now(), &c.profile)
+                .map_err(dl_err)?;
             Ok(queued)
         })
         .await
@@ -1383,8 +1404,23 @@ impl AlwyWatch {
         self.core.downloads.resume(id).map_err(dl_err)
     }
 
+    /// This profile no longer wants the download; the file goes when no other profile does.
     pub fn remove_download(&self, id: i64) -> Result<()> {
-        self.core.downloads.remove(id).map_err(dl_err)
+        self.core
+            .downloads
+            .release(id, &self.core.profile)
+            .map(|_| ())
+            .map_err(dl_err)
+    }
+
+    /// The profile this core runs for (to tell its downloads from others').
+    pub fn profile(&self) -> String {
+        self.core.profile.clone()
+    }
+
+    /// A profile was removed from the device: releases its downloads.
+    pub fn release_profile_downloads(&self, profile: String) -> Result<()> {
+        self.core.downloads.release_all(&profile).map_err(dl_err)
     }
 
     /// The local file of a completed download, for offline playback.

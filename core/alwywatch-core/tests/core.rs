@@ -36,6 +36,8 @@ impl Env {
             },
             image_cache_mb: 16,
             downloads_dir: dir.path().join("dl").to_string_lossy().into(),
+            profile: None,
+            downloads_db: None,
         })
         .unwrap();
         Self {

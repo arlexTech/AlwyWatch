@@ -60,6 +60,7 @@ fn request(url: String, size: Option<u64>) -> DownloadRequest {
         expected_size: size,
         episode: None,
         delete_rule: DeleteRule::Never,
+        owner: "me".into(),
     }
 }
 
@@ -178,10 +179,10 @@ async fn delete_rules_remove_watched_downloads() {
     assert!(d.completed_at.is_some());
     assert_eq!(d.episode.unwrap().episode_number, Some(2));
     let now = d.completed_at.unwrap() + 10;
-    assert_eq!(m.apply_rules(now).unwrap(), 0, "not watched yet");
+    assert_eq!(m.apply_rules(now, "me").unwrap(), 0, "not watched yet");
     m.mark_watched("jellyfin:s:u", "item1", now).unwrap();
     let file = m.get(id).unwrap().file_path;
-    assert_eq!(m.apply_rules(now).unwrap(), 1);
+    assert_eq!(m.apply_rules(now, "me").unwrap(), 1);
     assert!(m.list().unwrap().is_empty());
     assert!(!Path::new(&file).exists());
 }
@@ -562,4 +563,35 @@ async fn interrupted_runs_are_requeued_on_restart() {
     let m = manager(dir.path(), file_sink());
     assert_eq!(m.get(id).unwrap().state, DownloadState::Queued);
     assert_eq!(m.pending().unwrap(), vec![id]);
+}
+
+#[tokio::test]
+async fn shared_downloads_stay_until_no_profile_wants_them() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(RangeServer {
+            data: body(64),
+            etag: "\"v1\"".into(),
+            hits: Arc::new(AtomicUsize::new(0)),
+        })
+        .mount(&s)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), file_sink());
+    let url = format!("{}/Items/item1/Download", s.uri());
+    let id = m.enqueue(request(url.clone(), None)).unwrap();
+    let mut b = request(url, None);
+    b.owner = "kid".into();
+    assert_eq!(m.enqueue(b).unwrap(), id, "one file for both profiles");
+    assert_eq!(
+        m.get(id).unwrap().owners,
+        vec!["me".to_owned(), "kid".to_owned()]
+    );
+    assert_eq!(m.run(id).await.unwrap(), DownloadState::Completed);
+    let file = m.get(id).unwrap().file_path;
+    assert!(!m.release(id, "me").unwrap(), "kid still wants it");
+    assert!(Path::new(&file).exists());
+    assert!(m.release(id, "kid").unwrap());
+    assert!(!Path::new(&file).exists());
+    assert!(m.list().unwrap().is_empty());
 }

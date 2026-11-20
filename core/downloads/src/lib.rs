@@ -125,6 +125,8 @@ pub struct DownloadRequest {
     pub expected_size: Option<u64>,
     pub episode: Option<EpisodeOf>,
     pub delete_rule: DeleteRule,
+    /// The profile asking for it (several profiles of a device can share one download).
+    pub owner: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -144,6 +146,8 @@ pub struct Download {
     pub delete_rule: DeleteRule,
     pub completed_at: Option<i64>,
     pub watched_at: Option<i64>,
+    /// Profiles that want it: everyone can watch it, the file goes when none is left.
+    pub owners: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -354,6 +358,7 @@ impl Downloads {
             "delete_rule TEXT",
             "completed_at INTEGER",
             "watched_at INTEGER",
+            "owners TEXT",
         ] {
             match db.execute(&format!("ALTER TABLE downloads ADD COLUMN {column}"), []) {
                 Ok(_) => {}
@@ -380,14 +385,23 @@ impl Downloads {
     /// Adds a download (or returns the existing one for the same item). Does not start it.
     pub fn enqueue(&self, req: DownloadRequest) -> Result<i64> {
         let db = lock(&self.db);
-        if let Some(id) = db
+        if let Some((id, owners)) = db
             .query_row(
-                "SELECT id FROM downloads WHERE account_id = ?1 AND item_id = ?2",
+                "SELECT id, owners FROM downloads WHERE account_id = ?1 AND item_id = ?2",
                 params![req.account_id, req.item_id],
-                |r| r.get::<_, i64>(0),
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?)),
             )
             .optional()?
         {
+            // Already there (maybe for another profile): this profile wants it too.
+            let mut owners = parse_owners(owners);
+            if !owners.contains(&req.owner) {
+                owners.push(req.owner.clone());
+                db.execute(
+                    "UPDATE downloads SET owners = ?2 WHERE id = ?1",
+                    params![id, serde_json::to_string(&owners).unwrap_or_default()],
+                )?;
+            }
             return Ok(id);
         }
         // Unique final path: "<item id> - <file name>" avoids collisions between servers.
@@ -396,8 +410,8 @@ impl Downloads {
         let ep = req.episode.as_ref();
         db.execute(
             "INSERT INTO downloads(account_id, item_id, title, url, headers, path, total, state, created_at,
-                                   series_id, series_title, season_number, episode_number, delete_rule)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'queued', ?8, ?9, ?10, ?11, ?12, ?13)",
+                                   series_id, series_title, season_number, episode_number, delete_rule, owners)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'queued', ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 req.account_id,
                 req.item_id,
@@ -412,6 +426,7 @@ impl Downloads {
                 ep.and_then(|e| e.season_number),
                 ep.and_then(|e| e.episode_number),
                 serde_json::to_string(&req.delete_rule).unwrap_or_default(),
+                serde_json::to_string(&[&req.owner]).unwrap_or_default(),
             ],
         )?;
         Ok(db.last_insert_rowid())
@@ -422,7 +437,7 @@ impl Downloads {
         let mut stmt = db.prepare(
             "SELECT id, account_id, item_id, title, path, state, offset, total, error, created_at,
                     series_id, series_title, season_number, episode_number, delete_rule,
-                    completed_at, watched_at
+                    completed_at, watched_at, owners
              FROM downloads ORDER BY created_at DESC, id DESC",
         )?;
         let live = lock(&self.live).clone();
@@ -456,6 +471,7 @@ impl Downloads {
                     .unwrap_or_default(),
                 completed_at: r.get(15)?,
                 watched_at: r.get(16)?,
+                owners: parse_owners(r.get(17)?),
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
@@ -531,18 +547,58 @@ impl Downloads {
     }
 
     /// Deletes the finished downloads whose rule says so; returns how many.
-    pub fn apply_rules(&self, now: i64) -> Result<u32> {
+    /// Releases `owner`'s finished downloads whose rule says so (the file stays while another
+    /// profile wants it); returns how many were released.
+    pub fn apply_rules(&self, now: i64, owner: &str) -> Result<u32> {
         let due: Vec<i64> = self
             .list()?
             .into_iter()
-            .filter(|d| d.state == DownloadState::Completed)
+            .filter(|d| d.state == DownloadState::Completed && d.owners.iter().any(|o| o == owner))
             .filter(|d| d.delete_rule.due(now, d.completed_at, d.watched_at))
             .map(|d| d.id)
             .collect();
         for id in &due {
-            self.remove(*id)?;
+            self.release(*id, owner)?;
         }
         Ok(due.len() as u32)
+    }
+
+    /// `owner` no longer wants this download; the file is deleted when nobody else does.
+    /// Returns true when it was deleted.
+    pub fn release(&self, id: i64, owner: &str) -> Result<bool> {
+        let owners = {
+            let db = lock(&self.db);
+            let owners: Option<String> = db
+                .query_row("SELECT owners FROM downloads WHERE id = ?1", [id], |r| {
+                    r.get(0)
+                })
+                .optional()?
+                .ok_or(Error::NotFound)?;
+            let mut owners = parse_owners(owners);
+            owners.retain(|o| o != owner);
+            if !owners.is_empty() {
+                db.execute(
+                    "UPDATE downloads SET owners = ?2 WHERE id = ?1",
+                    params![id, serde_json::to_string(&owners).unwrap_or_default()],
+                )?;
+            }
+            owners
+        };
+        if owners.is_empty() {
+            self.remove(id)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// A profile goes away: releases all its downloads.
+    pub fn release_all(&self, owner: &str) -> Result<()> {
+        for d in self.list()? {
+            if d.owners.iter().any(|o| o == owner) {
+                self.release(d.id, owner)?;
+            }
+        }
+        Ok(())
     }
 
     /// Deletes the download and its files.
@@ -836,6 +892,14 @@ impl Downloads {
         )?;
         Ok(())
     }
+}
+
+/// The profile that existed before profiles: owns downloads made before they were tracked.
+pub const DEFAULT_OWNER: &str = "default";
+
+fn parse_owners(v: Option<String>) -> Vec<String> {
+    v.and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| vec![DEFAULT_OWNER.to_owned()])
 }
 
 pub fn part_path(path: &Path) -> PathBuf {

@@ -41,6 +41,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         image_cache_mb: 300,
         downloads_dir: paths.downloads.to_string_lossy().into_owned(),
+        profile: None,
+        downloads_db: None,
     })?;
     for a in core.accounts()? {
         if let Some(t) = tokens.get(&a.id) {

@@ -519,7 +519,10 @@ impl SeerrClient {
                 .filter(|y| !y.is_empty()),
             overview: r.overview.filter(|o| !o.is_empty()),
             poster_url: r.poster_path.as_deref().map(|p| self.poster_url(p)),
-            download_progress: r.media_info.as_ref().and_then(MediaInfoDto::download_progress),
+            download_progress: r
+                .media_info
+                .as_ref()
+                .and_then(MediaInfoDto::download_progress),
             availability: availability(r.media_info.and_then(|m| m.status)),
         })
     }
