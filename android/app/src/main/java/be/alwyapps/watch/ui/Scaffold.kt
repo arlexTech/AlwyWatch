@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
+import be.alwyapps.watch.services
 import kotlinx.coroutines.launch
 
 /** A top-level destination shown in the bottom bar (phone) or the side rail (TV). */
@@ -87,7 +88,8 @@ fun tabs(): List<Tab> {
         // Libraries as destinations (from the cached home: no network).
         val account = LocalAccount.current
         val libs = androidx.compose.runtime.remember(account) { runCatching { core.cachedHome(account)?.libraries }.getOrNull().orEmpty() }
-        for (lib in libs.filter { it.kind != be.alwyapps.watch.core.media.LibraryKind.OTHER }) {
+        val prefs = UiPrefs(core, d.isTv)
+        for (lib in prefs.arrange(libs.filter { it.kind != be.alwyapps.watch.core.media.LibraryKind.OTHER }, { it.id })) {
             val icon = if (lib.kind == be.alwyapps.watch.core.media.LibraryKind.SHOWS) Icons.Tv else Icons.Movie
             out += Tab(Route.Library(lib.id, lib.title), lib.title, icon)
         }
@@ -138,6 +140,7 @@ fun AppScaffold(content: @Composable () -> Unit) {
                     .then(if (edgeToEdge) Modifier else Modifier.padding(top = 24.dp)),
             ) { content() }
             TvMenu(tabs, selected, page) { nav.reset(it) }
+            if (UiPrefs(LocalCore.current, true).clock) TvClock(Modifier.align(Alignment.TopEnd))
         }
     } else if (rail) {
         Row(Modifier.fillMaxSize()) {
@@ -261,6 +264,31 @@ private fun SideRail(
     }
 }
 
+/** The time, top right on TV (like Plex), in the device's 12/24-hour format. */
+@Composable
+private fun TvClock(modifier: Modifier) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(60_000 - now % 60_000)
+        }
+    }
+    Text(
+        android.text.format.DateFormat
+            .getTimeFormat(ctx)
+            .format(java.util.Date(now)),
+        modifier
+            .padding(top = 20.dp, end = 32.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.45f))
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        style = MaterialTheme.typography.labelLarge,
+        color = Color.White.copy(alpha = 0.9f),
+    )
+}
+
 /**
  * TV menu, between Plex's (a tiny pill) and a full drawer: a small pill of icons at the left
  * edge; focused, it opens as a card over the dimmed content, the current page focused first.
@@ -323,6 +351,28 @@ private fun TvMenu(
                 .padding(4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            // Several profiles on this device: who is watching, at the top (like Plex).
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val services = ctx.services
+            val me =
+                remember {
+                    services.profiles
+                        .list()
+                        .takeIf { it.size > 1 }
+                        ?.firstOrNull { it.id == services.profile }
+                }
+            if (me != null) {
+                TvMenuItem(
+                    Tab(Route.Settings, "${me.name} \u00b7 Switch", Icons.Person),
+                    selected = false,
+                    open = open,
+                    modifier = Modifier,
+                ) {
+                    be.alwyapps.watch.ui.screens.ProfileSession.open = false
+                    be.alwyapps.watch.ui.screens.ProfileSession.picker = true
+                    (ctx as? android.app.Activity)?.recreate()
+                }
+            }
             for (t in tabs) {
                 val on = t.route == selected
                 TvMenuItem(t, on, open, if (on) Modifier.focusRequester(current) else Modifier) { select(t.route) }

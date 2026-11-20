@@ -93,6 +93,31 @@ private fun Root(core: AlwyWatch) {
     }
     val nav = remember(core) { Navigator(core, Navigator.restore(core)) }
     BackHandler(enabled = nav.stack.size > 1) { nav.pop() }
+    // Top of the stack: another tab goes back home first; home asks before quitting (setting).
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    val isTv = be.alwyapps.watch.ui.LocalDimens.current.isTv
+    var askQuit by remember { mutableStateOf(false) }
+    BackHandler(
+        enabled =
+            nav.stack.size <= 1 &&
+                (
+                    nav.current != Route.Home ||
+                        be.alwyapps.watch.ui
+                            .UiPrefs(core, isTv)
+                            .confirmQuit
+                ),
+    ) {
+        if (nav.current != Route.Home) nav.reset(Route.Home) else askQuit = true
+    }
+    if (askQuit) {
+        be.alwyapps.watch.ui.ConfirmDialog(
+            "Quit AlwyWatch?",
+            "You can turn this question off in Settings.",
+            confirm = "Quit",
+            onConfirm = { activity?.finish() },
+            onDismiss = { askQuit = false },
+        )
+    }
 
     CompositionLocalProvider(LocalCore provides core, LocalNavigator provides nav) {
         val acct = account

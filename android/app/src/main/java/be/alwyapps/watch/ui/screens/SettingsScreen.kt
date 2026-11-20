@@ -294,6 +294,79 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
             }
         }
 
+        if (be.alwyapps.watch.ui
+                .usesRail()
+        ) {
+            val prefs =
+                remember {
+                    be.alwyapps.watch.ui
+                        .UiPrefs(core, d.isTv)
+                }
+            Group("Menu", footer = "Libraries shown in the menu, in this order.") {
+                val account = be.alwyapps.watch.ui.LocalAccount.current
+                val libs =
+                    remember(account) {
+                        runCatching { core.cachedHome(account)?.libraries }
+                            .getOrNull()
+                            .orEmpty()
+                            .filter { it.kind != be.alwyapps.watch.core.media.LibraryKind.OTHER }
+                    }
+                var order by remember { mutableStateOf(prefs.arrange(libs, { it.id }, all = true).map { it.id }) }
+                var hidden by remember { mutableStateOf(prefs.hiddenLibraries) }
+
+                fun move(
+                    id: String,
+                    by: Int,
+                ) {
+                    val i = order.indexOf(id)
+                    val j = i + by
+                    if (i < 0 || j !in order.indices) return
+                    order = order.toMutableList().apply { add(j, removeAt(i)) }
+                    prefs.libraryOrder = order
+                }
+                order.forEachIndexed { n, id ->
+                    val lib = libs.firstOrNull { it.id == id } ?: return@forEachIndexed
+                    if (n > 0) Divider()
+                    val shown = id !in hidden
+                    ListRow(
+                        lib.title,
+                        subtitle = if (shown) "Shown" else "Hidden",
+                        icon = if (lib.kind == be.alwyapps.watch.core.media.LibraryKind.SHOWS) Icons.Tv else Icons.Movie,
+                        onClick = {
+                            hidden = if (shown) hidden + id else hidden - id
+                            prefs.hiddenLibraries = hidden
+                        },
+                        trailing = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (n > 0) {
+                                    be.alwyapps.watch.ui
+                                        .IconAction(Icons.ChevronUp, "Move up", { move(id, -1) })
+                                }
+                                if (n < order.lastIndex) {
+                                    be.alwyapps.watch.ui
+                                        .IconAction(Icons.ChevronDown, "Move down", { move(id, 1) })
+                                }
+                            }
+                        },
+                    )
+                }
+                if (d.isTv) {
+                    Divider()
+                    var clock by remember { mutableStateOf(prefs.clock) }
+                    ToggleRow("Clock", clock, {
+                        clock = it
+                        prefs.clock = it
+                    })
+                }
+                Divider()
+                var confirm by remember { mutableStateOf(prefs.confirmQuit) }
+                ToggleRow("Confirm before quitting", confirm, {
+                    confirm = it
+                    prefs.confirmQuit = it
+                })
+            }
+        }
+
         Group("Audio & subtitles", footer = "A movie or show remembers the tracks picked for it (on its page or while watching).") {
             val languages =
                 listOf(

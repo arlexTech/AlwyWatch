@@ -59,6 +59,9 @@ import be.alwyapps.watch.ui.initialFocus
 /** Open for this process once the profile was picked (and its PIN checked). */
 object ProfileSession {
     var open = false
+
+    /** "Switch" from the menu: show "Who's watching?" even with automatic sign-in. */
+    var picker = false
 }
 
 /**
@@ -77,7 +80,9 @@ fun ProfileGate(content: @Composable () -> Unit) {
         if (unlocked) services.profiles.unlockedOnce = null
         // Automatic sign-in: straight into the last profile (its PIN is still asked).
         val auto = services.profiles.autoSignIn && current?.hasPin != true
-        mutableStateOf(ProfileSession.open || unlocked || auto || (profiles.size < 2 && current?.hasPin != true))
+        val picker = ProfileSession.picker
+        ProfileSession.picker = false
+        mutableStateOf(!picker && (ProfileSession.open || unlocked || auto || (profiles.size < 2 && current?.hasPin != true)))
     }
     if (open) {
         ProfileSession.open = true
