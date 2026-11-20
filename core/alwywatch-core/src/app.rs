@@ -2713,3 +2713,267 @@ mod latest_shows_tests {
         );
     }
 }
+
+// ----- watch together ---------------------------------------------------------------------------
+
+/// The title of a room, found on one of the user's servers.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TogetherMatch {
+    pub account_id: String,
+    pub item_id: String,
+}
+
+fn same_title(a: &str, b: &str) -> bool {
+    let n = |s: &str| -> String {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    !a.is_empty() && n(a) == n(b)
+}
+
+fn ids_match(
+    p: &ProviderIds,
+    tmdb: &Option<String>,
+    imdb: &Option<String>,
+    tvdb: &Option<String>,
+) -> bool {
+    let eq = |a: &Option<String>, b: &Option<String>| a.is_some() && a == b;
+    eq(&p.tmdb, tmdb) || eq(&p.imdb, imdb) || eq(&p.tvdb, tvdb)
+}
+
+/// Where playback should be now, from a room state received at `received_at_ms` (local
+/// clock): the server's position moved on by the time since, while playing.
+#[uniffi::export]
+pub fn together_position(state: TogetherState, received_at_ms: i64, now_ms: i64) -> u64 {
+    state.position_at(state.now_ms + (now_ms - received_at_ms).max(0))
+}
+
+impl Core {
+    /// A title as every server can find it (an episode carries its show's ids).
+    async fn together_media(&self, account_id: &str, item_id: &str) -> Result<TogetherMedia> {
+        let srv = self.server(account_id)?;
+        let item = srv.item(item_id).await?;
+        let episode = item.kind == ItemKind::Episode;
+        let series = match (&item.series_id, episode) {
+            (Some(id), true) => srv.item(id).await.ok(),
+            _ => None,
+        };
+        let p = &item.provider_ids;
+        Ok(TogetherMedia {
+            kind: if episode { "episode" } else { "movie" }.into(),
+            title: item.title.clone(),
+            year: item.year,
+            tmdb: p.tmdb.clone(),
+            imdb: p.imdb.clone(),
+            tvdb: p.tvdb.clone(),
+            series_title: item.series_title.clone(),
+            series_tmdb: series.as_ref().and_then(|s| s.provider_ids.tmdb.clone()),
+            series_tvdb: series.as_ref().and_then(|s| s.provider_ids.tvdb.clone()),
+            season: item.season_number,
+            episode: item.episode_number,
+        })
+    }
+
+    /// The room's title on `account_id`: by provider ids, else by title (and year).
+    async fn together_find_on(
+        &self,
+        account_id: &str,
+        m: &TogetherMedia,
+    ) -> Result<Option<String>> {
+        let srv = self.server(account_id)?;
+        if m.kind == "episode" {
+            let show_name = m.series_title.clone().unwrap_or_default();
+            let shows = srv.search(&show_name, 20).await?;
+            let show = shows
+                .iter()
+                .filter(|i| i.kind == ItemKind::Series)
+                .find(|i| ids_match(&i.provider_ids, &m.series_tmdb, &None, &m.series_tvdb))
+                .or_else(|| {
+                    shows
+                        .iter()
+                        .filter(|i| i.kind == ItemKind::Series)
+                        .find(|i| same_title(&i.title, &show_name))
+                });
+            // Search can answer with episodes standing for their show.
+            let show_id = show.map(|s| s.id.clone()).or_else(|| {
+                shows
+                    .iter()
+                    .find(|i| {
+                        i.kind == ItemKind::Episode
+                            && same_title(i.series_title.as_deref().unwrap_or(""), &show_name)
+                    })
+                    .and_then(|i| i.series_id.clone())
+            });
+            let Some(show_id) = show_id else {
+                return Ok(None);
+            };
+            let seasons = srv.seasons(&show_id).await?;
+            let Some(season) = seasons.iter().find(|s| s.season_number == m.season) else {
+                return Ok(None);
+            };
+            let episodes = srv.episodes(&show_id, &season.id).await?;
+            return Ok(episodes
+                .iter()
+                .find(|e| e.episode_number == m.episode)
+                .map(|e| e.id.clone()));
+        }
+        let found = srv.search(&m.title, 20).await?;
+        let movies = found.iter().filter(|i| i.kind == ItemKind::Movie);
+        let by_id = movies
+            .clone()
+            .find(|i| ids_match(&i.provider_ids, &m.tmdb, &m.imdb, &m.tvdb));
+        let by_name = || {
+            movies.clone().find(|i| {
+                same_title(&i.title, &m.title)
+                    && (m.year.is_none() || i.year.is_none() || i.year == m.year)
+            })
+        };
+        Ok(by_id.or_else(by_name).map(|i| i.id.clone()))
+    }
+}
+
+#[uniffi::export]
+impl AlwyWatch {
+    /// Opens a watch together room on the AlwyWatch server with this item.
+    pub async fn together_create(
+        &self,
+        account_id: String,
+        item_id: String,
+        position_ms: u64,
+        playing: bool,
+    ) -> Result<TogetherJoined> {
+        self.run(|c| async move {
+            let media = c.together_media(&account_id, &item_id).await?;
+            Ok(c.keep()?
+                .together_create(&TogetherCreate {
+                    media,
+                    position_ms,
+                    playing,
+                })
+                .await?)
+        })
+        .await
+    }
+
+    pub async fn together_join(&self, code: String) -> Result<TogetherJoined> {
+        self.run(|c| async move {
+            let code: String = code.chars().filter(char::is_ascii_digit).collect();
+            Ok(c.keep()?.together_join(&code).await?)
+        })
+        .await
+    }
+
+    /// Sends play/pause/seek; with `item` (account, item), a new title for everyone.
+    pub async fn together_update(
+        &self,
+        code: String,
+        member_id: String,
+        playing: bool,
+        position_ms: u64,
+        account_id: Option<String>,
+        item_id: Option<String>,
+    ) -> Result<TogetherState> {
+        self.run(|c| async move {
+            let media = match (account_id, item_id) {
+                (Some(a), Some(i)) => Some(c.together_media(&a, &i).await?),
+                _ => None,
+            };
+            Ok(c.keep()?
+                .together_update(
+                    &code,
+                    &TogetherUpdate {
+                        member_id,
+                        playing,
+                        position_ms,
+                        media,
+                    },
+                )
+                .await?)
+        })
+        .await
+    }
+
+    /// The room after `after` changed, or after about 25 s (call it in a loop).
+    pub async fn together_wait(
+        &self,
+        code: String,
+        member_id: String,
+        after: u64,
+    ) -> Result<TogetherState> {
+        self.run(|c| async move { Ok(c.keep()?.together_wait(&code, &member_id, after).await?) })
+            .await
+    }
+
+    pub async fn together_leave(&self, code: String, member_id: String) -> Result<()> {
+        self.run(|c| async move { Ok(c.keep()?.together_leave(&code, &member_id).await?) })
+            .await
+    }
+
+    /// The room's title on one of `account_ids` (in that order), or none when no server has it.
+    pub async fn together_find(
+        &self,
+        account_ids: Vec<String>,
+        media: TogetherMedia,
+    ) -> Result<Option<TogetherMatch>> {
+        self.run(|c| async move {
+            for a in account_ids {
+                if let Ok(Some(item_id)) = c.together_find_on(&a, &media).await {
+                    return Ok(Some(TogetherMatch {
+                        account_id: a,
+                        item_id,
+                    }));
+                }
+            }
+            Ok(None)
+        })
+        .await
+    }
+}
+
+#[cfg(test)]
+mod together_tests {
+    use super::*;
+
+    #[test]
+    fn titles_and_ids_match_loosely() {
+        assert!(same_title("Monsters, Inc.", "monsters inc"));
+        assert!(!same_title("", ""));
+        let p = ProviderIds {
+            tmdb: Some("585".into()),
+            ..Default::default()
+        };
+        assert!(ids_match(&p, &Some("585".into()), &None, &None));
+        assert!(!ids_match(&p, &None, &None, &None));
+    }
+
+    #[test]
+    fn position_follows_the_local_clock_since_received() {
+        let s = TogetherState {
+            code: "1".into(),
+            seq: 1,
+            media: TogetherMedia {
+                kind: "movie".into(),
+                title: "X".into(),
+                year: None,
+                tmdb: None,
+                imdb: None,
+                tvdb: None,
+                series_title: None,
+                series_tmdb: None,
+                series_tvdb: None,
+                season: None,
+                episode: None,
+            },
+            playing: true,
+            position_ms: 60_000,
+            at_ms: 1_000_000,
+            now_ms: 1_000_500,
+            by: String::new(),
+            members: vec![],
+        };
+        // Received 500 ms after the stamp; 2 s later locally.
+        assert_eq!(together_position(s, 50, 2_050), 62_500);
+    }
+}

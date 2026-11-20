@@ -22,6 +22,9 @@ mod playback;
 pub use app::*;
 pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
 pub use error::{CoreError, Result};
+pub use keep_service::together::{
+    TogetherCreate, TogetherJoined, TogetherMedia, TogetherMember, TogetherState, TogetherUpdate,
+};
 pub use keep_service::{
     AdminUser, CountdownResult, LeavingItem, Me, MyVote, Protection, Rights, ServerEntry,
     ServerType, VoteCounts, VoteKind, VoteRequest,

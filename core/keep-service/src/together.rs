@@ -37,7 +37,7 @@ record! {
         /// "movie" or "episode".
         pub kind: String,
         pub title: String,
-        pub year: Option<u32>,
+        pub year: Option<i32>,
         pub tmdb: Option<String>,
         pub imdb: Option<String>,
         pub tvdb: Option<String>,
