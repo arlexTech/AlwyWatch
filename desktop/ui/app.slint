@@ -11,6 +11,7 @@ export struct Card {
     image: image,
     progress: float,
     played: bool,
+    server: string, // "plex" | "jellyfin" where a screen mixes servers, else empty
 }
 
 export struct Rail {
@@ -301,6 +302,28 @@ component Progress inherits Rectangle {
     Rectangle { x: 0; width: parent.width * root.value; border-radius: 2px; background: Palette.accent; }
 }
 
+// Which server a card is from: a chevron in Plex's yellow, a triangle in Jellyfin's purple to
+// blue (simple shapes, not the brands' logo files; same marks as Android).
+component ServerMark inherits Rectangle {
+    in property <string> server;
+    width: 22px;
+    height: 22px;
+    border-radius: 11px;
+    background: #000000b8;
+    if root.server == "plex" : Path {
+        x: 5px; y: 5px; width: 12px; height: 12px;
+        viewbox-width: 100; viewbox-height: 100;
+        commands: "M 22 0 L 52 0 L 86 50 L 52 100 L 22 100 L 56 50 Z";
+        fill: #e5a00d;
+    }
+    if root.server == "jellyfin" : Path {
+        x: 5px; y: 5px; width: 12px; height: 12px;
+        viewbox-width: 100; viewbox-height: 100;
+        commands: "M 50 0 L 100 100 L 0 100 Z M 50 42 L 28 86 L 72 86 Z";
+        fill: @linear-gradient(135deg, #aa5cc3 0%, #00a4dc 100%);
+    }
+}
+
 component PosterCard inherits Focusable {
     in property <Card> card;
     width: 160px;
@@ -326,6 +349,7 @@ component PosterCard inherits Focusable {
                 background: #000000a0;
                 Icon { source: @image-url("icons/check.svg"); tint: Palette.accent; width: 15px; height: 15px; }
             }
+            if root.card.server != "" : ServerMark { x: 8px; y: 8px; server: root.card.server; }
         }
         Text { text: root.card.title; color: Palette.text; overflow: elide; font-size: 14px; font-weight: 700; }
         Text { text: root.card.subtitle; color: Palette.muted; overflow: elide; font-size: 12px; }
@@ -343,6 +367,7 @@ component LandscapeCard inherits Focusable {
     border-color: #ffffff;
     Image { source: root.card.image; width: parent.width; height: parent.height; image-fit: cover; }
     Rectangle { background: @linear-gradient(180deg, #00000000 45%, #000000c0 100%); }
+    if root.card.server != "" : ServerMark { x: 8px; y: 8px; server: root.card.server; }
     VerticalLayout {
         padding: 12px;
         spacing: 2px;

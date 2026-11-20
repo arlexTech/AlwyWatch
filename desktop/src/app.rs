@@ -3,7 +3,7 @@
 //! same frame it is opened, then refreshes in the background (same model as Android).
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -101,6 +101,17 @@ pub struct App {
 
 fn sstr(s: impl AsRef<str>) -> SharedString {
     SharedString::from(s.as_ref())
+}
+
+/// "plex" or "jellyfin": the server behind an account id, for the card marks.
+fn server_kind(account: &str) -> &'static str {
+    if account.starts_with("plex:") {
+        "plex"
+    } else if account.is_empty() {
+        ""
+    } else {
+        "jellyfin"
+    }
 }
 
 fn item_subtitle(i: &Item) -> String {
@@ -880,6 +891,7 @@ impl App {
                     image: Image::default(),
                     progress: 0.0,
                     played: false,
+                    server: SharedString::default(),
                 })
                 .collect::<Vec<_>>(),
         ));
@@ -1494,6 +1506,7 @@ impl App {
             image: Image::default(),
             progress,
             played: i.user.played,
+            server: SharedString::default(),
         }
     }
 
@@ -1505,6 +1518,7 @@ impl App {
         kind: ImageKind,
         px: u32,
         offset: usize,
+        badges: bool,
     ) {
         {
             let mut st = self.state.borrow_mut();
@@ -1515,8 +1529,17 @@ impl App {
         for (n, i) in items.iter().enumerate() {
             let row = offset + n;
             let mut card = self.card(i);
-            let key = image_ref(i, kind)
-                .map(|r| format!("{}|{}|{px}", self.account_of(&i.id).unwrap_or_default(), r.path));
+            // Screens mixing servers mark each card with its server.
+            if badges {
+                card.server = sstr(server_kind(&self.account_of(&i.id).unwrap_or_default()));
+            }
+            let key = image_ref(i, kind).map(|r| {
+                format!(
+                    "{}|{}|{px}",
+                    self.account_of(&i.id).unwrap_or_default(),
+                    r.path
+                )
+            });
             if let Some(img) = key.and_then(|k| self.images.borrow().get(&k).cloned()) {
                 card.image = img;
             }
@@ -1541,7 +1564,7 @@ impl App {
 
     // ----- home -----------------------------------------------------------------------------
 
-    fn render_home(self: &Rc<Self>, home: &Home) {
+    fn render_home(self: &Rc<Self>, home: &Home, badges: bool) {
         let ui = self.ui();
         // One row like Plex: in progress and next episodes, most recent first (older caches
         // without the merged list fall back to building it here).
@@ -1563,9 +1586,9 @@ impl App {
         let landscape = |t: &str| t == "Continue watching";
         for ((t, items), m) in rails.iter().zip(&models) {
             if landscape(t) {
-                self.fill(m, items, ImageKind::Backdrop, 640, 0);
+                self.fill(m, items, ImageKind::Backdrop, 640, 0, badges);
             } else {
-                self.fill(m, items, ImageKind::Primary, POSTER_PX, 0);
+                self.fill(m, items, ImageKind::Primary, POSTER_PX, 0, badges);
             }
         }
         let mut rail_vec: Vec<Rail> = rails
@@ -1597,6 +1620,7 @@ impl App {
                             image: Image::default(),
                             progress: 0.0,
                             played: false,
+                            server: SharedString::default(),
                         })
                         .collect::<Vec<_>>(),
                 ));
@@ -1678,9 +1702,10 @@ impl App {
     }
 
     fn render_merged(self: &Rc<Self>, homes: Vec<AccountHome>) {
+        let badges = homes.len() > 1;
         let merged = merge_homes(homes);
         self.state.borrow_mut().owners.extend(merged.owners);
-        self.render_home(&merged.home);
+        self.render_home(&merged.home, badges);
     }
 
     fn load_home(self: &Rc<Self>) {
@@ -1790,6 +1815,7 @@ impl App {
                 ImageKind::Primary,
                 POSTER_PX,
                 loaded as usize,
+                false,
             );
             total = p.page.total;
             loaded += p.page.items.len() as u32;
@@ -1846,6 +1872,7 @@ impl App {
                             ImageKind::Primary,
                             POSTER_PX,
                             start as usize,
+                            false,
                         );
                         if let Some(g) = this.state.borrow_mut().grid.as_mut() {
                             g.loaded = g.loaded.max(start + p.page.items.len() as u32);
@@ -2072,7 +2099,9 @@ impl App {
         }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
-            let r = core.refresh_seasons(account.clone(), series.clone(), false).await;
+            let r = core
+                .refresh_seasons(account.clone(), series.clone(), false)
+                .await;
             let Some(this) = this.upgrade() else { return };
             if this.state.borrow().series.as_deref() != Some(&series) {
                 return;
@@ -2107,7 +2136,7 @@ impl App {
         let show = move |this: &Rc<Self>, eps: &[Item]| {
             this.own(eps, &acct);
             let model = this.state.borrow().episodes_model.clone();
-            this.fill(&model, eps, ImageKind::Primary, EPISODE_PX, 0);
+            this.fill(&model, eps, ImageKind::Primary, EPISODE_PX, 0, false);
             for (n, e) in eps.iter().enumerate() {
                 if let Some(mut c) = model.row_data(n) {
                     c.title = sstr(format!("{}. {}", e.episode_number.unwrap_or(0), e.title));
@@ -2392,9 +2421,11 @@ impl App {
     // ----- search ---------------------------------------------------------------------------
 
     fn search(self: &Rc<Self>, text: String) {
-        let Some(account) = self.account() else {
+        // Every server of the home (preferred first: its copy wins a title on several).
+        let accounts = self.home_accounts();
+        if accounts.is_empty() {
             return;
-        };
+        }
         let generation = {
             let mut st = self.state.borrow_mut();
             st.search_gen += 1;
@@ -2414,19 +2445,34 @@ impl App {
             {
                 return;
             }
-            let r = core.search(account, text, 60).await;
+            let mut found: Vec<(String, Item)> = Vec::new();
+            let mut failed = None;
+            for a in accounts {
+                match core.search(a.clone(), text.clone(), 60).await {
+                    Ok(items) => found.extend(items.into_iter().map(|i| (a.clone(), i))),
+                    Err(e) => failed = Some(e),
+                }
+            }
             let Some(this) = this.upgrade() else { return };
             if this.state.borrow().search_gen != generation {
                 return;
             }
-            match r {
-                Ok(items) => {
-                    let model = this.state.borrow().grid_model.clone();
-                    model.set_vec(vec![]);
-                    this.fill(&model, &items, ImageKind::Primary, POSTER_PX, 0);
-                }
-                Err(e) => this.set_error(Some(e)),
+            if found.is_empty()
+                && let Some(e) = failed
+            {
+                this.set_error(Some(e));
             }
+            // One per title across servers.
+            let mut seen = HashSet::new();
+            found.retain(|(_, i)| seen.insert(same_as(i)));
+            let badges = found.iter().map(|(a, _)| a).collect::<HashSet<_>>().len() > 1;
+            for (a, i) in &found {
+                this.own(std::slice::from_ref(i), a);
+            }
+            let items: Vec<Item> = found.into_iter().map(|(_, i)| i).collect();
+            let model = this.state.borrow().grid_model.clone();
+            model.set_vec(vec![]);
+            this.fill(&model, &items, ImageKind::Primary, POSTER_PX, 0, badges);
         })
         .ok();
     }
@@ -2806,10 +2852,77 @@ impl App {
         .ok();
     }
 
-    /// Test hook used by headless screenshots: open settings and start connecting Seerr.
     /// Test hook used by headless screenshots: open Settings.
     pub fn test_settings(self: &Rc<Self>) {
         self.navigate(Route::Settings);
+    }
+
+    /// Test hook used by headless screenshots: a home from two made-up servers (server marks).
+    pub fn test_home(self: &Rc<Self>) {
+        let item = |id: &str, kind: ItemKind, title: &str, at: i64| Item {
+            id: id.into(),
+            kind,
+            title: title.into(),
+            sort_title: None,
+            overview: None,
+            year: Some(2024),
+            runtime_ms: Some(3_000_000),
+            community_rating: None,
+            official_rating: None,
+            genres: vec![],
+            provider_ids: ProviderIds::default(),
+            series_id: None,
+            series_title: None,
+            season_id: None,
+            season_number: None,
+            episode_number: None,
+            child_count: None,
+            premiere_date: None,
+            images: vec![],
+            user: UserData {
+                position_ms: 1_000_000,
+                last_played_at: Some(at),
+                ..Default::default()
+            },
+        };
+        let home = |cw: Vec<Item>, lib: &str, movies: Vec<Item>| {
+            let library = MediaLibrary {
+                id: lib.into(),
+                title: "Movies".into(),
+                kind: LibraryKind::Movies,
+            };
+            Home {
+                resume: vec![],
+                next_up: vec![],
+                continue_watching: cw,
+                libraries: vec![library.clone()],
+                latest: vec![LibraryRail {
+                    library,
+                    items: movies,
+                }],
+                fetched_at: 0,
+            }
+        };
+        let m = ItemKind::Movie;
+        self.ui().set_page(Page::Home);
+        self.render_merged(vec![
+            AccountHome {
+                account_id: "plex:test".into(),
+                home: home(
+                    vec![item("p1", m, "First", 30)],
+                    "pl",
+                    vec![item("p2", m, "Plex film", 0), item("p3", m, "Another", 0)],
+                ),
+            },
+            AccountHome {
+                account_id: "jellyfin:test".into(),
+                home: home(
+                    vec![item("j1", m, "Second", 20)],
+                    "jl",
+                    vec![item("j2", m, "Jellyfin film", 0)],
+                ),
+            },
+        ]);
     }
 
     /// Test hook used by headless screenshots.
