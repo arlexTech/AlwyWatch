@@ -18,7 +18,7 @@ use crate::platform::{self, Tokens};
 use crate::player::{self, PlayRequest};
 use crate::{
     AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, LeavingRow, NamedId, Page, Rail,
-    SeerrPanel, ServerChoice,
+    SeerrPage, SeerrPanel, ServerChoice,
 };
 
 const POSTER_PX: u32 = 300;
@@ -38,6 +38,10 @@ enum Route {
     /// A library narrowed to a genre or a collection: library, title, genre, collection.
     Filtered(String, String, Option<String>, Option<String>),
     Detail(String),
+    /// A Seerr title by key ("Movie:603", "Tv:1399").
+    SeerrTitle(String),
+    /// A saga (TMDB collection): id, name.
+    SeerrSaga(i64, String),
     Search,
     Settings,
     Add,
@@ -96,7 +100,6 @@ struct State {
     season: Option<String>,
     search_gen: u64,
     seerr_url: String,
-    seerr_results: Vec<SeerrResult>,
     seerr_selected: Option<SeerrResult>,
     seerr_seasons: Vec<(SeerrSeason, bool)>,
     triage: Vec<LeavingItem>,
@@ -205,7 +208,6 @@ impl App {
                 season: None,
                 search_gen: 0,
                 seerr_url: String::new(),
-                seerr_results: vec![],
                 seerr_selected: None,
                 seerr_seasons: vec![],
                 triage: vec![],
@@ -959,7 +961,7 @@ impl App {
                         RequestStatus::Completed => "Available",
                     };
                     (
-                        format!("req:{}", r.id),
+                        format!("{:?}:{}", r.media_type, r.tmdb_id),
                         r.title.unwrap_or_else(|| format!("TMDB {}", r.tmdb_id)),
                         status.to_owned(),
                         r.poster_url,
@@ -990,7 +992,6 @@ impl App {
             st.search_gen
         };
         if text.chars().count() < 2 {
-            self.state.borrow_mut().seerr_results.clear();
             self.ui().set_seerr_results(ModelRc::default());
             return;
         }
@@ -1007,26 +1008,7 @@ impl App {
             let Some(t) = this.upgrade() else { return };
             match r {
                 Ok(results) => {
-                    let cards = results
-                        .iter()
-                        .map(|r| {
-                            let sub = [
-                                r.year.clone().unwrap_or_default(),
-                                Self::availability_label(r.availability).to_owned(),
-                            ]
-                            .into_iter()
-                            .filter(|s| !s.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" · ");
-                            (
-                                format!("{:?}:{}", r.media_type, r.tmdb_id),
-                                r.title.clone(),
-                                sub,
-                                r.poster_url.clone(),
-                            )
-                        })
-                        .collect();
-                    t.state.borrow_mut().seerr_results = results;
+                    let cards = Self::result_cards(&results);
                     t.seerr_cards(cards, AppWindow::set_seerr_results);
                 }
                 Err(e) => t.ui().set_seerr_message(sstr(e.to_string())),
@@ -1036,46 +1018,218 @@ impl App {
     }
 
     fn seerr_open(self: &Rc<Self>, key: String) {
-        let r = self
-            .state
-            .borrow()
-            .seerr_results
-            .iter()
-            .find(|r| format!("{:?}:{}", r.media_type, r.tmdb_id) == key)
-            .cloned();
-        let Some(r) = r else { return };
-        let is_tv = r.media_type == SeerrMediaType::Tv;
-        self.ui().set_seerr_panel(SeerrPanel {
-            open: true,
-            key: sstr(&key),
-            title: sstr(
-                [r.title.clone(), r.year.clone().unwrap_or_default()]
-                    .join(" ")
-                    .trim(),
-            ),
-            overview: sstr(r.overview.clone().unwrap_or_default()),
-            status: sstr(Self::availability_label(r.availability)),
-            is_tv,
-            can_request: r.availability != Availability::Available,
-        });
-        {
-            let mut st = self.state.borrow_mut();
-            st.seerr_selected = Some(r.clone());
-            st.seerr_seasons.clear();
+        self.navigate(Route::SeerrTitle(key));
+    }
+
+    /// "Movie:603" → (Movie, 603).
+    fn seerr_key(key: &str) -> Option<(SeerrMediaType, i64)> {
+        let (kind, id) = key.split_once(':')?;
+        let kind = match kind {
+            "Movie" => SeerrMediaType::Movie,
+            "Tv" => SeerrMediaType::Tv,
+            _ => return None,
+        };
+        Some((kind, id.parse().ok()?))
+    }
+
+    /// A Seerr title page (like Seerr's own): artwork, facts, request, saga, cast.
+    fn load_seerr_title(self: &Rc<Self>, key: String) {
+        let Some((kind, tmdb)) = Self::seerr_key(&key) else {
+            return;
+        };
+        let ui = self.ui();
+        // Keep what is shown when reloading the same title (after a request).
+        if ui.get_seerr_title().key != key.as_str() {
+            ui.set_seerr_title(SeerrPage {
+                key: sstr(&key),
+                ..Default::default()
+            });
+            ui.set_seerr_cast(ModelRc::default());
+            ui.set_seerr_seasons(ModelRc::default());
+            ui.set_seerr_panel(SeerrPanel::default());
+            self.state.borrow_mut().seerr_seasons.clear();
         }
-        self.ui().set_seerr_seasons(ModelRc::default());
-        if is_tv {
-            let (core, this) = (self.core.clone(), Rc::downgrade(self));
-            slint::spawn_local(async move {
-                let seasons = core.seerr_seasons(r.tmdb_id).await.unwrap_or_default();
-                if let Some(t) = this.upgrade() {
-                    t.state.borrow_mut().seerr_seasons =
-                        seasons.into_iter().map(|s| (s, false)).collect();
-                    t.render_seerr_seasons();
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.seerr_title(kind, tmdb).await;
+            let Some(this) = this.upgrade() else { return };
+            let ui = this.ui();
+            if ui.get_seerr_title().key != key.as_str() {
+                return;
+            }
+            let t = match r {
+                Ok(t) => t,
+                Err(e) => return this.set_error(Some(e)),
+            };
+            let is_tv = t.media_type == SeerrMediaType::Tv;
+            let mut meta: Vec<String> = t.year.iter().cloned().collect();
+            if is_tv {
+                meta.push(match t.seasons {
+                    Some(1) => "1 season".into(),
+                    Some(n) => format!("{n} seasons"),
+                    None => "Show".into(),
+                });
+            }
+            meta.extend(t.runtime_min.map(|m| {
+                if m >= 60 {
+                    format!("{} h {} min", m / 60, m % 60)
+                } else {
+                    format!("{m} min")
                 }
+            }));
+            meta.extend(t.rating.map(|r| format!("★ {r:.1}")));
+            let prev = ui.get_seerr_title();
+            ui.set_seerr_title(SeerrPage {
+                key: sstr(&key),
+                title: sstr(&t.title),
+                meta: sstr(meta.join("  ·  ")),
+                tagline: sstr(t.tagline.clone().unwrap_or_default()),
+                overview: sstr(t.overview.clone().unwrap_or_default()),
+                genres: sstr(
+                    t.genres
+                        .iter()
+                        .take(5)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("  ·  "),
+                ),
+                status: sstr(Self::availability_label(t.availability)),
+                available: t.availability == Availability::Available,
+                saga_id: sstr(
+                    t.collection
+                        .as_ref()
+                        .map(|c| c.id.to_string())
+                        .unwrap_or_default(),
+                ),
+                saga_name: sstr(
+                    t.collection
+                        .as_ref()
+                        .map(|c| c.name.clone())
+                        .unwrap_or_default(),
+                ),
+                backdrop: prev.backdrop,
+                poster: prev.poster,
+            });
+            let can_request = matches!(
+                t.availability,
+                Availability::Unknown | Availability::Deleted
+            ) || (is_tv && t.availability == Availability::PartiallyAvailable);
+            ui.set_seerr_panel(SeerrPanel {
+                open: false,
+                key: sstr(&key),
+                title: sstr(&t.title),
+                overview: SharedString::new(),
+                status: SharedString::new(),
+                is_tv,
+                can_request,
+            });
+            this.state.borrow_mut().seerr_selected = Some(SeerrResult {
+                tmdb_id: t.tmdb_id,
+                media_type: t.media_type,
+                title: t.title.clone(),
+                year: t.year.clone(),
+                overview: t.overview.clone(),
+                poster_url: t.poster_url.clone(),
+                availability: t.availability,
+                download_progress: t.download_progress,
+            });
+            for (url, poster) in [
+                (t.backdrop_url.clone(), false),
+                (t.poster_url.clone(), true),
+            ] {
+                let Some(url) = url else { continue };
+                let key = key.clone();
+                this.load_url_image(url, move |this, img| {
+                    let ui = this.ui();
+                    let mut cur = ui.get_seerr_title();
+                    if cur.key == key.as_str() {
+                        if poster {
+                            cur.poster = img;
+                        } else {
+                            cur.backdrop = img;
+                        }
+                        ui.set_seerr_title(cur);
+                    }
+                });
+            }
+            let cast = t
+                .cast
+                .iter()
+                .enumerate()
+                .map(|(n, c)| {
+                    (
+                        format!("cast:{n}"),
+                        c.name.clone(),
+                        c.character.clone().unwrap_or_default(),
+                        c.photo_url.clone(),
+                    )
+                })
+                .collect();
+            this.seerr_cards(cast, AppWindow::set_seerr_cast);
+            if is_tv && can_request {
+                let seasons = core.seerr_seasons(tmdb).await.unwrap_or_default();
+                this.state.borrow_mut().seerr_seasons =
+                    seasons.into_iter().map(|s| (s, false)).collect();
+                this.render_seerr_seasons();
+            }
+        })
+        .ok();
+    }
+
+    /// A saga: its films with their state; each opens its page.
+    fn load_seerr_saga(self: &Rc<Self>, id: i64, name: String) {
+        let ui = self.ui();
+        ui.set_seerr_saga(SeerrPage {
+            key: sstr(id.to_string()),
+            title: sstr(&name),
+            ..Default::default()
+        });
+        ui.set_seerr_parts(ModelRc::default());
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.seerr_collection(id).await;
+            let Some(this) = this.upgrade() else { return };
+            let ui = this.ui();
+            if ui.get_seerr_saga().key != id.to_string().as_str() {
+                return;
+            }
+            let c = match r {
+                Ok(c) => c,
+                Err(e) => return this.set_error(Some(e)),
+            };
+            ui.set_seerr_saga(SeerrPage {
+                key: sstr(id.to_string()),
+                title: sstr(&c.name),
+                meta: sstr(format!("{} films", c.parts.len())),
+                overview: sstr(c.overview.clone().unwrap_or_default()),
+                ..Default::default()
+            });
+            this.seerr_cards(Self::result_cards(&c.parts), AppWindow::set_seerr_parts);
+        })
+        .ok();
+    }
+
+    /// Seerr results as cards: key, title, "year · state", poster.
+    fn result_cards(results: &[SeerrResult]) -> Vec<(String, String, String, Option<String>)> {
+        results
+            .iter()
+            .map(|r| {
+                let sub = [
+                    r.year.clone().unwrap_or_default(),
+                    Self::availability_label(r.availability).to_owned(),
+                ]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" · ");
+                (
+                    format!("{:?}:{}", r.media_type, r.tmdb_id),
+                    r.title.clone(),
+                    sub,
+                    r.poster_url.clone(),
+                )
             })
-            .ok();
-        }
+            .collect()
     }
 
     fn render_seerr_seasons(&self) {
@@ -1128,9 +1282,13 @@ impl App {
                 Ok(_) => format!("Requested: {}", r.title),
                 Err(e) => format!("Could not request {}: {e}", r.title),
             }));
-            t.ui().set_seerr_panel(SeerrPanel::default());
             let _ = core.refresh_seerr_requests(true, false).await;
-            t.load_seerr_requests();
+            let key = t.ui().get_seerr_title().key.to_string();
+            if t.ui().get_page() == Page::Seerrtitle {
+                t.load_seerr_title(key);
+            } else {
+                t.load_seerr_requests();
+            }
         })
         .ok();
     }
@@ -1438,6 +1596,15 @@ impl App {
             Route::KeepAdmin => {
                 ui.set_page(Page::Keepadmin);
                 self.load_admin();
+            }
+            Route::SeerrTitle(key) => {
+                ui.set_page(Page::Seerrtitle);
+                ui.set_seerr_message(SharedString::new());
+                self.load_seerr_title(key);
+            }
+            Route::SeerrSaga(id, name) => {
+                ui.set_page(Page::Seerrsaga);
+                self.load_seerr_saga(id, name);
             }
             Route::Requests => {
                 ui.set_page(Page::Requests);
@@ -3156,6 +3323,52 @@ impl App {
         }
     }
 
+    /// Test hook used by headless screenshots: a made-up Seerr title page (layout only).
+    pub fn test_seerr_title(self: &Rc<Self>) {
+        let ui = self.ui();
+        ui.set_page(Page::Seerrtitle);
+        ui.set_seerr_title(SeerrPage {
+            key: "Tv:1".into(),
+            title: "A Made-Up Show".into(),
+            meta: "2024  ·  3 seasons  ·  48 min  ·  ★ 7.9".into(),
+            tagline: "Nothing is what it seems.".into(),
+            overview: "Test text for the layout of a Seerr title page.".into(),
+            genres: "Drama  ·  Mystery".into(),
+            status: "Partly available".into(),
+            saga_id: "1".into(),
+            saga_name: "The Made-Up Collection".into(),
+            ..Default::default()
+        });
+        ui.set_seerr_panel(SeerrPanel {
+            is_tv: true,
+            can_request: true,
+            ..Default::default()
+        });
+        let named = |n: &str, sel| NamedId {
+            id: n.into(),
+            title: n.into(),
+            selected: sel,
+        };
+        ui.set_seerr_seasons(ModelRc::new(VecModel::from(vec![
+            named("Season 1 · Available", false),
+            named("Season 2", true),
+            named("Season 3", false),
+        ])));
+        self.seerr_cards(
+            (0..8)
+                .map(|n| {
+                    (
+                        format!("cast:{n}"),
+                        format!("Actor {n}"),
+                        "Role".into(),
+                        None,
+                    )
+                })
+                .collect(),
+            AppWindow::set_seerr_cast,
+        );
+    }
+
     /// Test hook used by headless screenshots.
     pub fn test_seerr(self: &Rc<Self>, url: String) {
         self.navigate(Route::Settings);
@@ -3333,9 +3546,12 @@ impl App {
             }
         });
         on!(on_seerr_request, |a, all| a.seerr_request(all));
-        on!(on_seerr_close, |a| a
-            .ui()
-            .set_seerr_panel(SeerrPanel::default()));
+        on!(on_seerr_open_saga, |a| {
+            let t = a.ui().get_seerr_title();
+            if let Ok(id) = t.saga_id.parse() {
+                a.navigate(Route::SeerrSaga(id, t.saga_name.into()));
+            }
+        });
         on!(on_download_action, |a, id, action| {
             let id = i64::from(id);
             let _ = match action.as_str() {

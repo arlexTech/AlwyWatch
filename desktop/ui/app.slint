@@ -78,6 +78,22 @@ export struct SeerrPanel {
     can-request: bool,
 }
 
+// A Seerr title page (or a saga's header).
+export struct SeerrPage {
+    key: string,
+    title: string,
+    meta: string,
+    tagline: string,
+    overview: string,
+    genres: string,
+    status: string,
+    available: bool,
+    saga-id: string,
+    saga-name: string,
+    backdrop: image,
+    poster: image,
+}
+
 export struct LeavingRow {
     key: string,
     title: string,
@@ -98,7 +114,7 @@ export struct AdminRow {
     max-days: string,
 }
 
-export enum Page { add, home, library, detail, search, settings, downloads, requests, leaving, triage, keepadmin }
+export enum Page { add, home, library, detail, search, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin }
 
 export global Palette {
     out property <color> bg: #09090c;
@@ -524,6 +540,10 @@ export component AppWindow inherits Window {
     in property <[Card]> seerr-mine;
     in property <SeerrPanel> seerr-panel;
     in property <[NamedId]> seerr-seasons;
+    in property <SeerrPage> seerr-title;
+    in property <[Card]> seerr-cast;
+    in property <SeerrPage> seerr-saga;
+    in property <[Card]> seerr-parts;
     // Keep service
     in property <bool> keep-active;
     in property <bool> keep-admin;
@@ -577,7 +597,7 @@ export component AppWindow inherits Window {
     callback seerr-open(string);
     callback seerr-toggle-season(string);
     callback seerr-request(bool); // all seasons?
-    callback seerr-close();
+    callback seerr-open-saga();
     callback keep-connect(string);
     /// Accounts that can sync with the AlwyWatch server (selected = the one syncing).
     in property <[NamedId]> keep-choices;
@@ -634,7 +654,7 @@ export component AppWindow inherits Window {
                         selected: root.page == Page.leaving || root.page == Page.triage || root.page == Page.keepadmin;
                         clicked => { root.go(Page.leaving); }
                     }
-                    if root.seerr-active : NavItem { label: "Requests"; icon: @image-url("icons/add.svg"); selected: root.page == Page.requests; clicked => { root.go(Page.requests); } }
+                    if root.seerr-active : NavItem { label: "Requests"; icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
                     NavItem { label: "Downloads"; icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
                     NavItem { label: "Settings"; icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings; clicked => { root.go(Page.settings); } }
                 }
@@ -1114,42 +1134,6 @@ export component AppWindow inherits Window {
                                 edited(t) => { root.seerr-search(t); }
                             }
                             if root.seerr-message != "" : Text { text: root.seerr-message; color: Palette.accent; }
-                            if root.seerr-panel.open : Rectangle {
-                                background: Palette.surface-high;
-                                border-radius: 20px;
-                                VerticalLayout {
-                                    padding: 20px;
-                                    spacing: 10px;
-                                    HorizontalLayout {
-                                        Text { text: root.seerr-panel.title; color: Palette.text; font-size: 24px; font-weight: 800; }
-                                        Rectangle { horizontal-stretch: 1; }
-                                        IconButton { icon: @image-url("icons/close.svg"); clicked => { root.seerr-close(); } }
-                                    }
-                                    Text { text: root.seerr-panel.overview; color: Palette.muted; wrap: word-wrap; }
-                                    if root.seerr-panel.status != "" : Text { text: root.seerr-panel.status; color: Palette.accent; }
-                                    HorizontalLayout {
-                                        spacing: 8px;
-                                        alignment: start;
-                                        if root.seerr-panel.can-request : Button {
-                                            label: root.seerr-panel.is-tv ? "Request all seasons" : "Request";
-                                            primary: true;
-                                            has-icon: true;
-                                            icon: @image-url("icons/add.svg");
-                                            clicked => { root.seerr-request(true); }
-                                        }
-                                        if root.seerr-panel.is-tv : Button { label: "Request selected"; clicked => { root.seerr-request(false); } }
-                                    }
-                                    if root.seerr-panel.is-tv : HorizontalLayout {
-                                        spacing: 6px;
-                                        alignment: start;
-                                        for s in root.seerr-seasons : Button {
-                                            label: s.title;
-                                            primary: s.selected;
-                                            clicked => { root.seerr-toggle-season(s.id); }
-                                        }
-                                    }
-                                }
-                            }
                             results := Rectangle {
                                 property <int> cols: max(1, floor((self.width - 10px) / 176px));
                                 height: ceil(root.seerr-results.length / self.cols) * 312px;
@@ -1168,6 +1152,129 @@ export component AppWindow inherits Window {
                                     x: mod(i, mine.cols) * 176px;
                                     y: floor(i / mine.cols) * 312px;
                                     card: c;
+                                    clicked => { root.seerr-open(c.id); }
+                                }
+                            }
+                        }
+                    }
+
+                    // A title from Seerr: artwork, facts, request, saga, cast.
+                    if root.page == Page.seerrtitle : ScrollView {
+                        VerticalLayout {
+                            spacing: 18px;
+                            padding-bottom: 40px;
+                            Rectangle {
+                                height: 380px;
+                                clip: true;
+                                Image { source: root.seerr-title.backdrop; width: parent.width; height: parent.height; image-fit: cover; }
+                                Rectangle { background: @linear-gradient(180deg, #09090c40 0%, #09090c00 30%, #09090c00 55%, #09090c 100%); }
+                            }
+                            HorizontalLayout {
+                                padding-left: 40px;
+                                padding-right: 40px;
+                                spacing: 22px;
+                                Rectangle {
+                                    width: 150px;
+                                    height: 225px;
+                                    border-radius: 14px;
+                                    clip: true;
+                                    background: Palette.surface;
+                                    Image { source: root.seerr-title.poster; width: parent.width; height: parent.height; image-fit: cover; }
+                                }
+                                VerticalLayout {
+                                    spacing: 10px;
+                                    alignment: start;
+                                    Text { text: root.seerr-title.title; color: Palette.text; font-size: 38px; font-weight: 800; letter-spacing: -0.5px; wrap: word-wrap; }
+                                    Text { text: root.seerr-title.meta; color: Palette.muted; font-size: 15px; }
+                                    if root.seerr-title.status != "" : HorizontalLayout {
+                                        alignment: start;
+                                        Badge {
+                                            label: root.seerr-title.status;
+                                            tone: root.seerr-title.available ? Palette.success : Palette.surface-high;
+                                            fg: root.seerr-title.available ? #000000 : #ffffff;
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        if root.seerr-panel.can-request : Button {
+                                            label: root.seerr-panel.is-tv ? "Request all seasons" : "Request";
+                                            primary: true;
+                                            has-icon: true;
+                                            icon: @image-url("icons/add.svg");
+                                            clicked => { root.seerr-request(true); }
+                                        }
+                                        if root.seerr-panel.can-request && root.seerr-panel.is-tv : Button {
+                                            label: "Request selected";
+                                            clicked => { root.seerr-request(false); }
+                                        }
+                                    }
+                                    if root.seerr-panel.can-request && root.seerr-panel.is-tv : HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: start;
+                                        for s in root.seerr-seasons : Button {
+                                            label: s.title;
+                                            primary: s.selected;
+                                            clicked => { root.seerr-toggle-season(s.id); }
+                                        }
+                                    }
+                                    if root.seerr-message != "" : Text { text: root.seerr-message; color: Palette.accent; }
+                                }
+                            }
+                            VerticalLayout {
+                                padding-left: 40px;
+                                padding-right: 40px;
+                                spacing: 12px;
+                                if root.seerr-title.tagline != "" : Text { text: root.seerr-title.tagline; color: Palette.text; font-size: 18px; font-weight: 700; wrap: word-wrap; }
+                                if root.seerr-title.overview != "" : Text { text: root.seerr-title.overview; color: Palette.muted; font-size: 15px; wrap: word-wrap; }
+                                if root.seerr-title.genres != "" : Text { text: root.seerr-title.genres; color: Palette.muted; font-size: 13px; }
+                                if root.seerr-title.saga-id != "" : ChoiceCard {
+                                    title: "PART OF THE SAGA";
+                                    subtitle: root.seerr-title.saga-name;
+                                    icon: @image-url("icons/movie.svg");
+                                    clicked => { root.seerr-open-saga(); }
+                                }
+                                if root.seerr-cast.length > 0 : Text { text: "Cast"; color: Palette.text; font-size: 20px; font-weight: 700; }
+                                if root.seerr-cast.length > 0 : ScrollView {
+                                    height: 150px;
+                                    viewport-width: root.seerr-cast.length * 104px;
+                                    for c[i] in root.seerr-cast : VerticalLayout {
+                                        x: i * 104px;
+                                        width: 92px;
+                                        spacing: 4px;
+                                        Rectangle {
+                                            width: 76px;
+                                            height: 76px;
+                                            border-radius: 38px;
+                                            clip: true;
+                                            background: Palette.surface;
+                                            Image { source: c.image; width: parent.width; height: parent.height; image-fit: cover; }
+                                        }
+                                        Text { text: c.title; color: Palette.text; font-size: 12px; horizontal-alignment: center; wrap: word-wrap; max-height: 32px; overflow: elide; }
+                                        Text { text: c.subtitle; color: Palette.muted; font-size: 11px; horizontal-alignment: center; overflow: elide; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // A saga: its films with their state; each opens its page.
+                    if root.page == Page.seerrsaga : ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 14px;
+                            alignment: start;
+                            PageTitle { title: root.seerr-saga.title; subtitle: root.seerr-saga.meta; }
+                            if root.seerr-saga.overview != "" : Text { text: root.seerr-saga.overview; color: Palette.muted; wrap: word-wrap; }
+                            parts := Rectangle {
+                                property <int> cols: max(1, floor((self.width - 10px) / 176px));
+                                height: ceil(root.seerr-parts.length / self.cols) * 312px;
+                                for c[i] in root.seerr-parts : PosterCard {
+                                    x: mod(i, parts.cols) * 176px;
+                                    y: floor(i / parts.cols) * 312px;
+                                    card: c;
+                                    clicked => { root.seerr-open(c.id); }
                                 }
                             }
                         }

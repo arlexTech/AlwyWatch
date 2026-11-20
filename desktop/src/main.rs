@@ -76,6 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match std::env::var("ALWYWATCH_TEST_PAGE").as_deref() {
         Ok("settings") => app.test_settings(),
         Ok("home") => app.test_home(),
+        Ok("seerrtitle") => app.test_seerr_title(),
         Ok(tab @ ("recommended" | "browse" | "collections" | "categories")) => {
             app.test_home();
             app.test_library(tab);
