@@ -82,6 +82,9 @@ class PlayerActivity : ComponentActivity() {
 
     /** The Back press that went down was used (closing a panel, hiding the controls): eat its release too. */
     private var backUsed = false
+
+    /** Event time of the last Back press (to drop remotes' duplicate events). */
+    private var lastBackAt = Long.MIN_VALUE / 2
     private var prefetchedNext = false
     private var originalModeId = 0
     private var transcoding = false
@@ -527,6 +530,16 @@ class PlayerActivity : ComponentActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val down = event.action == KeyEvent.ACTION_DOWN
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && down && event.repeatCount == 0) {
+            // Some remotes (Chromecast with Google TV) send Back twice per press, ~20 ms apart:
+            // the echo must not count as a second press (it would leave right after hiding).
+            val echo = event.eventTime - lastBackAt < BACK_ECHO_MS
+            lastBackAt = event.eventTime
+            if (echo) {
+                backUsed = true
+                return true
+            }
+        }
         val p = player
         when (event.keyCode) {
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
@@ -727,6 +740,7 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_START = "start"
         private const val TAG = "AlwyPlayer"
         private const val BACK_GRACE_MS = 2000L
+        private const val BACK_ECHO_MS = 300L
         private const val COUNTDOWN_S = 10
         private val AUTO_SKIP = setOf(SegmentKind.INTRO, SegmentKind.RECAP)
 

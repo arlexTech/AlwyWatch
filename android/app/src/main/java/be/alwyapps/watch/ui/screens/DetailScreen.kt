@@ -160,7 +160,7 @@ fun DetailScreen(
         }
     }
     val config = LocalConfiguration.current
-    val heroH = if (d.isTv) (config.screenHeightDp * 0.8f).dp else (config.screenWidthDp * 1.2f).coerceAtMost(560f).dp
+    val heroH = if (d.isTv) (config.screenHeightDp * 0.66f).dp else (config.screenWidthDp * 1.2f).coerceAtMost(560f).dp
 
     Box(Modifier.fillMaxSize().ambientGlow(item?.ambient())) {
         LazyColumn(Modifier.fillMaxSize()) {
@@ -194,7 +194,7 @@ fun DetailScreen(
                             Modifier
                                 .align(Alignment.BottomStart)
                                 .fillMaxWidth(if (d.isTv) 0.55f else 1f)
-                                .padding(horizontal = d.gutter, vertical = if (d.isTv) 40.dp else 8.dp),
+                                .padding(horizontal = d.gutter, vertical = if (d.isTv) 24.dp else 8.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             if (item.kind == ItemKind.EPISODE) {
@@ -207,12 +207,12 @@ fun DetailScreen(
                                     ),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Box(Modifier.weight(1f, fill = false)) { TitleArt(item, if (d.isTv) 460.dp else 280.dp, big = d.isTv) }
+                                    Box(Modifier.weight(1f, fill = false)) { TitleArt(item, if (d.isTv) 340.dp else 280.dp) }
                                     if (sid != null) Icon(Icons.ChevronRight, "Open the show", Modifier.size(32.dp), tint = Muted)
                                 }
                                 Text(item.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             } else {
-                                TitleArt(item, if (d.isTv) 460.dp else 300.dp, big = d.isTv)
+                                TitleArt(item, if (d.isTv) 340.dp else 300.dp)
                             }
                             HeroMeta(item)
                             val resumable = playable && item.user.positionMs > 0u
@@ -296,7 +296,12 @@ fun DetailScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         item.overview?.let {
-                            Text(it, style = MaterialTheme.typography.bodyLarge, color = OnSurface.copy(alpha = 0.85f), maxLines = if (d.isTv) 4 else 8)
+                            Text(
+                                it,
+                                style = if (d.isTv) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+                                color = OnSurface.copy(alpha = 0.85f),
+                                maxLines = if (d.isTv) 3 else 8,
+                            )
                         }
                         if (item.genres.isNotEmpty()) {
                             androidx.compose.foundation.layout.FlowRow(
@@ -548,7 +553,7 @@ private fun Episodes(
                     },
             ) {
                 Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(if (d.isTv) 260.dp else 150.dp).clip(RoundedCornerShape(d.radius - 4.dp))) {
+                    Box(Modifier.width(if (d.isTv) 176.dp else 150.dp).clip(RoundedCornerShape(d.radius - 4.dp))) {
                         RemoteImage(ep.id, ep.thumb(), 300.dp, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
                         ep.progress()?.let {
                             Box(

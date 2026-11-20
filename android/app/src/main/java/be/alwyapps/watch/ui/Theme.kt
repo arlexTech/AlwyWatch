@@ -65,7 +65,7 @@ private fun style(
 ) = TextStyle(fontFamily = Manrope, fontSize = size, fontWeight = FontWeight(weight), letterSpacing = tracking, lineHeight = lineHeight)
 
 private fun typography(tv: Boolean): Typography {
-    val k = if (tv) 1.25f else 1f
+    val k = if (tv) 1.1f else 1f
     return Typography(
         displayLarge = style((44 * k).sp, 800, (-0.02).em),
         displayMedium = style((36 * k).sp, 800, (-0.02).em),

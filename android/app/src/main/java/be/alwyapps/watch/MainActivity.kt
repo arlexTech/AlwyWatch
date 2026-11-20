@@ -42,6 +42,25 @@ import be.alwyapps.watch.ui.screens.SettingsScreen
 import be.alwyapps.watch.ui.screens.TriageScreen
 
 class MainActivity : ComponentActivity() {
+    private var lastBackAt = Long.MIN_VALUE / 2
+    private var echoDown = false
+
+    // Some remotes (Chromecast with Google TV) send Back twice per press, ~20 ms apart: drop
+    // the echo, or one press would go back two screens.
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                echoDown = event.eventTime - lastBackAt < 300
+                lastBackAt = event.eventTime
+            }
+            if (echoDown) {
+                if (event.action == android.view.KeyEvent.ACTION_UP) echoDown = false
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
