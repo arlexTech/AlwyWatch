@@ -1162,21 +1162,32 @@ impl MediaServer for JellyfinClient {
     }
 
     async fn watch_history(&self) -> Result<Vec<Item>> {
+        const PAGE: u32 = 500;
         let mut out: Vec<Item> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
         for filter in ["IsPlayed", "IsResumable"] {
-            let p = [
-                ("userId", self.uid().to_owned()),
-                ("recursive", "true".into()),
-                ("includeItemTypes", "Movie,Episode".into()),
-                ("filters", filter.into()),
-                ("fields", "ProviderIds".into()),
-                ("enableImages", "false".into()),
-                ("enableUserData", "true".into()),
-                ("enableTotalRecordCount", "false".into()),
-            ];
-            for i in self.convert_all(self.query("/Items", &p).await?.items) {
-                if !out.iter().any(|o| o.id == i.id) {
-                    out.push(i);
+            // A page at a time: a whole history in one response can outlast the read timeout.
+            let mut start = 0;
+            loop {
+                let p = [
+                    ("userId", self.uid().to_owned()),
+                    ("recursive", "true".into()),
+                    ("includeItemTypes", "Movie,Episode".into()),
+                    ("filters", filter.into()),
+                    ("fields", "ProviderIds".into()),
+                    ("enableImages", "false".into()),
+                    ("enableUserData", "true".into()),
+                    ("enableTotalRecordCount", "false".into()),
+                    ("sortBy", "SortName".into()),
+                    ("startIndex", start.to_string()),
+                    ("limit", PAGE.to_string()),
+                ];
+                let page = self.convert_all(self.query("/Items", &p).await?.items);
+                let n = page.len() as u32;
+                out.extend(page.into_iter().filter(|i| seen.insert(i.id.clone())));
+                start += n;
+                if n < PAGE {
+                    break;
                 }
             }
         }

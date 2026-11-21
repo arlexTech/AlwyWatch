@@ -180,6 +180,11 @@ private fun Root(core: AlwyWatch) {
                             Route.Watchlist ->
                                 be.alwyapps.watch.ui.screens
                                     .WatchlistScreen()
+                            is Route.SettingsSection ->
+                                be.alwyapps.watch.ui.screens.SettingsSectionScreen(r.id, onAccountChanged = {
+                                    account = it
+                                    nav.reset(Route.Home)
+                                })
                             Route.HistoryCopy ->
                                 be.alwyapps.watch.ui.screens
                                     .HistoryCopyScreen()

@@ -4,6 +4,7 @@ package be.alwyapps.watch.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -14,13 +15,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import be.alwyapps.watch.core.CoreException
-import be.alwyapps.watch.core.HistoryCopyResult
-import be.alwyapps.watch.core.HistoryPlan
 import be.alwyapps.watch.core.media.ServerKind
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.ChoiceRow
@@ -32,7 +30,6 @@ import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.PageTitle
 import be.alwyapps.watch.ui.initialFocus
-import kotlinx.coroutines.launch
 
 /**
  * Copy watch history from one server to another (Plex → Jellyfin when moving): watched titles
@@ -43,58 +40,39 @@ import kotlinx.coroutines.launch
 fun HistoryCopyScreen() {
     val core = LocalCore.current
     val d = LocalDimens.current
-    val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     val accounts = remember { runCatching { core.accounts() }.getOrDefault(emptyList()) }
-    val options = accounts.map { it.id to "${it.serverName} · ${it.userName}" }
+    val options =
+        accounts.map {
+            it.id to "${it.serverName} · ${it.userName} (${if (it.kind == ServerKind.PLEX) "Plex" else "Jellyfin"})"
+        }
     // Plex to Jellyfin by default: the usual move.
-    var from by remember {
-        mutableStateOf(accounts.firstOrNull { it.kind == ServerKind.PLEX }?.id ?: accounts.firstOrNull()?.id.orEmpty())
-    }
-    var to by remember {
-        mutableStateOf(accounts.firstOrNull { it.kind == ServerKind.JELLYFIN && it.id != from }?.id ?: accounts.firstOrNull { it.id != from }?.id.orEmpty())
-    }
-    var plan by remember { mutableStateOf<HistoryPlan?>(null) }
-    var result by remember { mutableStateOf<HistoryCopyResult?>(null) }
-    var busy by remember { mutableStateOf<String?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val job = be.alwyapps.watch.history.HistoryJob
+    // Plex to Jellyfin by default: the usual move.
+    val from = job.from ?: (accounts.firstOrNull { it.kind == ServerKind.PLEX }?.id ?: accounts.firstOrNull()?.id.orEmpty())
+    val to = job.to ?: (accounts.firstOrNull { it.kind == ServerKind.JELLYFIN && it.id != from }?.id ?: accounts.firstOrNull { it.id != from }?.id.orEmpty())
+    val plan = job.plan
+    val result = job.result
+    val error = job.error
     var showMissing by remember { mutableStateOf(false) }
-
-    fun reset() {
-        plan = null
-        result = null
-        error = null
+    // While it runs: where it is, twice a second.
+    var progress by remember { mutableStateOf<be.alwyapps.watch.core.HistoryProgress?>(null) }
+    androidx.compose.runtime.LaunchedEffect(job.running) {
+        while (job.running) {
+            progress = runCatching { core.historyCopyProgress() }.getOrNull()
+            kotlinx.coroutines.delay(500)
+        }
+        progress = null
     }
 
     fun check() {
-        if (busy != null || from == to) return
-        reset()
-        busy = "Reading both histories… this can take a minute on big libraries."
-        scope.launch {
-            try {
-                plan = core.historyCopyPlan(from, to)
-            } catch (e: CoreException) {
-                error = e.message
-            } finally {
-                busy = null
-            }
-        }
+        if (from == to) return
+        job.from = from
+        job.to = to
+        job.check(ctx, from, to)
     }
 
-    fun copy() {
-        val p = plan ?: return
-        if (busy != null) return
-        busy = "Copying ${p.changes.size} titles…"
-        scope.launch {
-            try {
-                result = core.historyCopyApply(to, p.changes)
-                plan = null
-            } catch (e: CoreException) {
-                error = e.message
-            } finally {
-                busy = null
-            }
-        }
-    }
+    fun copy() = job.copy(ctx)
 
     Column(
         Modifier
@@ -117,18 +95,23 @@ fun HistoryCopyScreen() {
         }
         Group(null) {
             ChoiceRow("From", options, from, {
-                from = it
-                reset()
-            }, icon = Icons.Download)
+                job.from = it
+                job.reset()
+            }, icon = Icons.Download, mark = {
+                be.alwyapps.watch.ui
+                    .ServerBadge(it, diameter = 28.dp)
+            })
             ChoiceRow("To", options, to, {
-                to = it
-                reset()
-            }, icon = Icons.Check)
+                job.to = it
+                job.reset()
+            }, icon = Icons.Check, mark = {
+                be.alwyapps.watch.ui
+                    .ServerBadge(it, diameter = 28.dp)
+            })
         }
         if (from == to) Text("Pick two different servers.", color = Danger)
-        val b = busy
         when {
-            b != null -> Text(b, color = Muted)
+            job.running -> RunningProgress(progress)
             plan == null && result == null ->
                 ActionButton("Check what will change", { check() }, Modifier.initialFocus(), primary = true, icon = Icons.Search)
         }
@@ -153,7 +136,7 @@ fun HistoryCopyScreen() {
                 ).joinToString(" · "),
                 color = Muted,
             )
-            if (p.changes.isNotEmpty() && busy == null) {
+            if (p.changes.isNotEmpty() && !job.running) {
                 ActionButton("Copy ${p.changes.size} titles", { copy() }, Modifier.initialFocus(), primary = true, icon = Icons.Check)
             }
             if (p.notFound.isNotEmpty()) {
@@ -171,5 +154,32 @@ fun HistoryCopyScreen() {
             ActionButton("Check again", { check() })
         }
         error?.let { Text(it, color = Danger) }
+    }
+}
+
+/** The step it is on, a bar (exact when the count is known), and that leaving is fine. */
+@Composable
+private fun RunningProgress(p: be.alwyapps.watch.core.HistoryProgress?) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val total = p?.total?.toInt() ?: 0
+        val done = p?.done?.toInt() ?: 0
+        Text(
+            (p?.step?.ifEmpty { null } ?: "Starting") + if (total > 0) " · $done of $total (${done * 100 / total} %)" else "…",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        if (total > 0) {
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { done.toFloat() / total },
+                modifier = Modifier.fillMaxWidth(),
+                color = be.alwyapps.watch.ui.Accent,
+            )
+        } else {
+            androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth(), color = be.alwyapps.watch.ui.Accent)
+        }
+        Text(
+            "You can leave the app: it keeps going (see the notification), and this page shows where it is when you come back.",
+            color = Muted,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }

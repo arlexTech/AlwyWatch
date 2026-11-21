@@ -24,7 +24,7 @@ mod tracks;
 pub use app::*;
 pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
 pub use error::{CoreError, Result};
-pub use history::{HistoryChange, HistoryCopyResult, HistoryPlan};
+pub use history::{HistoryChange, HistoryCopyResult, HistoryPlan, HistoryProgress};
 pub use keep_service::together::{
     TogetherCreate, TogetherJoined, TogetherMedia, TogetherMember, TogetherState, TogetherUpdate,
 };

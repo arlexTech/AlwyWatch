@@ -658,6 +658,26 @@ impl PlexClient {
         Ok(e.mc)
     }
 
+    /// Every item of a large listing, a page at a time (one response for a whole library of
+    /// episodes can take longer than the read timeout).
+    async fn get_all(&self, path: &str, params: &[(&str, String)]) -> Result<Vec<MetadataDto>> {
+        const PAGE: u32 = 400;
+        let mut out = Vec::new();
+        let mut start = 0;
+        loop {
+            let mut p = params.to_vec();
+            p.push(("X-Plex-Container-Start", start.to_string()));
+            p.push(("X-Plex-Container-Size", PAGE.to_string()));
+            let mc = self.get(path, &p).await?;
+            let n = mc.metadata.len() as u32;
+            out.extend(mc.metadata);
+            start += n;
+            if n < PAGE || mc.total_size.is_some_and(|t| start >= t) {
+                return Ok(out);
+            }
+        }
+    }
+
     fn convert_all(&self, list: Vec<MetadataDto>) -> Vec<Item> {
         list.into_iter().map(convert_item).collect()
     }
@@ -1318,14 +1338,19 @@ impl MediaServer for PlexClient {
                 LibraryKind::Shows => "4",
                 _ => continue,
             };
-            let mc = self
-                .get(
+            // Episodes are matched by show and number: their own guids aren't needed.
+            let mut p = vec![("type", kind.to_owned())];
+            if kind == "1" {
+                p.push(("includeGuids", "1".into()));
+            }
+            let all = self
+                .get_all(
                     &format!("/library/sections/{}/all", net::percent_encode(&lib.id)),
-                    &[("type", kind.into()), ("includeGuids", "1".into())],
+                    &p,
                 )
                 .await?;
             out.extend(
-                self.convert_all(mc.metadata)
+                self.convert_all(all)
                     .into_iter()
                     .filter(|i| i.user.played || i.user.position_ms > 0),
             );

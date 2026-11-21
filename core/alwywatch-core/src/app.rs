@@ -201,7 +201,7 @@ pub struct Core {
     profile: String,
     client: ClientInfo,
     http: net::reqwest::Client,
-    store: Arc<Store>,
+    pub(crate) store: Arc<Store>,
     images: ImageCache,
     image_permits: Semaphore,
     servers: RwLock<HashMap<String, Arc<AnyServer>>>,
@@ -214,6 +214,8 @@ pub struct Core {
     plex_tv: RwLock<HashMap<String, String>>,
     /// Queued offline position snapshot per (account, item): row id in the pending queue.
     snapshots: Mutex<HashMap<(String, String), i64>>,
+    /// Where a watch history copy is (check or copy), for the progress shown to the viewer.
+    pub(crate) history: Mutex<crate::history::HistoryProgress>,
 }
 
 impl Core {
@@ -793,6 +795,14 @@ impl AlwyWatch {
     pub fn store(&self) -> Arc<Store> {
         self.core.store.clone()
     }
+
+    pub(crate) fn history_progress(&self) -> crate::history::HistoryProgress {
+        self.core
+            .history
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
 }
 
 #[uniffi::export]
@@ -852,6 +862,7 @@ impl AlwyWatch {
                 transfer_keys: Mutex::new(HashMap::new()),
                 transfer_peers: Mutex::new(HashMap::new()),
                 plex_tv: RwLock::new(HashMap::new()),
+                history: Mutex::new(Default::default()),
             }),
             rt,
         }))

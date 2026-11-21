@@ -39,6 +39,15 @@ pub struct HistoryPlan {
     pub not_found: Vec<String>,
 }
 
+/// Where a check or a copy is: a step, and a count when it is known (`total` 0: not yet).
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct HistoryProgress {
+    pub running: bool,
+    pub step: String,
+    pub done: u32,
+    pub total: u32,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
 pub struct HistoryCopyResult {
     pub applied: u32,
@@ -121,6 +130,30 @@ fn plan_from(
 }
 
 impl Core {
+    fn progress(&self, step: impl Into<String>, done: u32, total: u32) {
+        *self.history.lock().unwrap_or_else(|e| e.into_inner()) = HistoryProgress {
+            running: true,
+            step: step.into(),
+            done,
+            total,
+        };
+    }
+
+    fn progress_end(&self) {
+        self.history
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .running = false;
+    }
+
+    fn server_name(&self, account: &str) -> String {
+        let accounts: Vec<crate::Account> = self.store.accounts().unwrap_or_default();
+        accounts
+            .into_iter()
+            .find(|a| a.id == account)
+            .map_or_else(|| "the server".into(), |a| a.server_name)
+    }
+
     async fn history_plan(&self, from: &str, to: &str) -> Result<HistoryPlan> {
         if from == to {
             return Err(CoreError::Invalid {
@@ -128,16 +161,30 @@ impl Core {
             });
         }
         let (src, dst) = (self.server(from)?, self.server(to)?);
+        let (from_name, to_name) = (self.server_name(from), self.server_name(to));
+        self.progress(format!("Reading what you watched on {from_name}"), 0, 0);
         let history = src.watch_history().await?;
         let src_shows = src.provider_index(ItemKind::Series).await?;
+        self.progress(format!("Reading what you watched on {to_name}"), 0, 0);
         let target_state: HashMap<String, UserData> = dst
             .watch_history()
             .await?
             .into_iter()
             .map(|i| (i.id, i.user))
             .collect();
+        self.progress(format!("Listing the movies and shows on {to_name}"), 0, 0);
         let dst_movies = dst.provider_index(ItemKind::Movie).await?;
         let dst_shows = dst.provider_index(ItemKind::Series).await?;
+        let show_count = history
+            .iter()
+            .filter_map(|i| i.series_id.as_ref())
+            .collect::<std::collections::HashSet<_>>()
+            .len() as u32;
+        self.progress(
+            format!("Finding your shows' episodes on {to_name}"),
+            0,
+            show_count,
+        );
 
         // Each show's episodes on the target, by (season, episode), fetched once per show.
         let mut episodes: HashMap<String, HashMap<(u32, u32), Item>> = HashMap::new();
@@ -173,6 +220,11 @@ impl Core {
                 episodes.insert(tid.clone(), by_number);
             }
             show_of.insert(sid.clone(), target);
+            self.progress(
+                format!("Finding your shows' episodes on {to_name}"),
+                show_of.len() as u32,
+                show_count,
+            );
         }
 
         let matched = history
@@ -206,8 +258,17 @@ impl AlwyWatch {
         from_account: String,
         to_account: String,
     ) -> Result<HistoryPlan> {
-        self.run(|c| async move { c.history_plan(&from_account, &to_account).await })
-            .await
+        self.run(|c| async move {
+            let r = c.history_plan(&from_account, &to_account).await;
+            c.progress_end();
+            r
+        })
+        .await
+    }
+
+    /// Where the running check or copy is (poll it while waiting).
+    pub fn history_copy_progress(&self) -> HistoryProgress {
+        self.history_progress()
     }
 
     /// Writes the plan's changes on `to` (one request each); continues past failures.
@@ -219,6 +280,9 @@ impl AlwyWatch {
         self.run(|c| async move {
             let srv = c.server(&to_account)?;
             let mut r = HistoryCopyResult::default();
+            let total = changes.len() as u32;
+            let step = format!("Copying to {}", c.server_name(&to_account));
+            c.progress(step.clone(), 0, total);
             for ch in changes {
                 let state = WatchState {
                     played: ch.played,
@@ -229,7 +293,9 @@ impl AlwyWatch {
                     Ok(()) => r.applied += 1,
                     Err(_) => r.failed += 1,
                 }
+                c.progress(step.clone(), r.applied + r.failed, total);
             }
+            c.progress_end();
             Ok(r)
         })
         .await

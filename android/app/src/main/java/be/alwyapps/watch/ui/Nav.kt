@@ -36,6 +36,11 @@ sealed interface Route {
     /** Copy watch history from one server to another. */
     data object HistoryCopy : Route
 
+    /** A section of Settings (servers, playback, audio…). */
+    data class SettingsSection(
+        val id: String,
+    ) : Route
+
     /** [account]: whose library (combined home: another account than the current one). */
     data class Library(
         val id: String,
@@ -99,6 +104,7 @@ sealed interface Route {
             Together -> "together"
             Watchlist -> "watchlist"
             HistoryCopy -> "history-copy"
+            is SettingsSection -> "settings-section\u001f$id"
             is Library -> "lib\u001f$id\u001f$title\u001f${account.orEmpty()}"
             is Detail -> "item\u001f$itemId\u001f${season.orEmpty()}\u001f${account.orEmpty()}"
             is DownloadedShow -> "dlshow\u001f$seriesId\u001f$title"
@@ -126,6 +132,7 @@ sealed interface Route {
                 "together" -> Together
                 "watchlist" -> Watchlist
                 "history-copy" -> HistoryCopy
+                "settings-section" -> p.getOrNull(1)?.let { SettingsSection(it) }
                 "lib" -> if (p.size >= 3) Library(p[1], p[2], p.getOrNull(3)?.ifEmpty { null }) else null
                 "item" -> if (p.size >= 2) Detail(p[1], p.getOrNull(2)?.ifEmpty { null }, p.getOrNull(3)?.ifEmpty { null }) else null
                 "dlshow" -> if (p.size == 3) DownloadedShow(p[1], p[2]) else null

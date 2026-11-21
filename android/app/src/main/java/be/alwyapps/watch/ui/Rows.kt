@@ -210,16 +210,28 @@ fun ChoiceRow(
     onPick: (String) -> Unit,
     subtitle: String? = null,
     icon: ImageVector? = null,
+    /** A mark before each value (a server's Plex/Jellyfin badge), in the row and the list. */
+    mark: (@Composable (String) -> Unit)? = null,
 ) {
     var open by androidx.compose.runtime.saveable
         .rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     val label = options.firstOrNull { it.first == value }?.second ?: options.firstOrNull()?.second.orEmpty()
-    ListRow(title, subtitle = subtitle, icon = icon, onClick = { open = true }, trailing = { Value(label) })
+    ListRow(title, subtitle = subtitle, icon = icon, onClick = { open = true }, trailing = {
+        androidx.compose.foundation.layout.Row(
+            horizontalArrangement =
+                androidx.compose.foundation.layout.Arrangement
+                    .spacedBy(8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            mark?.invoke(value)
+            Value(label)
+        }
+    })
     if (open) {
         ChoiceDialog(title, options, value, onPick = {
             onPick(it)
             open = false
-        }, onDismiss = { open = false })
+        }, onDismiss = { open = false }, mark = mark)
     }
 }
 
@@ -231,6 +243,7 @@ fun ChoiceDialog(
     value: String?,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
+    mark: (@Composable (String) -> Unit)? = null,
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -253,6 +266,7 @@ fun ChoiceDialog(
                         Modifier.focusRequester(focus),
                         onClick = { onPick(key) },
                         trailing = if (selected) ({ Icon(Icons.Check, null, Modifier.size(20.dp), tint = Accent) }) else null,
+                        leading = mark?.let { m -> { m(key) } },
                     )
                 }
             }
