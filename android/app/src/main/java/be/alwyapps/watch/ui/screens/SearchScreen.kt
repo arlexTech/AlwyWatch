@@ -80,26 +80,92 @@ fun SearchScreen() {
     LaunchedEffect(filter) { SearchMemory.filter = filter }
     val grid = rememberLazyGridState(SearchMemory.scroll.first, SearchMemory.scroll.second)
     DisposableEffect(Unit) { onDispose { SearchMemory.scroll = grid.firstVisibleItemIndex to grid.firstVisibleItemScrollOffset } }
-    // Voice input through the system's recognizer (it records: no microphone permission here).
+    // Voice input, listened to here (the system's own voice screen floats over the page and,
+    // on Google TV, doesn't hand its text back). The audio goes to the device's recognition
+    // service; the microphone permission is asked on first use.
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    val speech =
-        remember {
-            android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Search AlwyWatch")
+    var voice by remember { mutableStateOf(android.speech.SpeechRecognizer.isRecognitionAvailable(ctx)) }
+    var listening by remember { mutableStateOf(false) }
+    var voiceNote by remember { mutableStateOf<String?>(null) }
+    val recognizer = remember { mutableStateOf<android.speech.SpeechRecognizer?>(null) }
+    DisposableEffect(Unit) { onDispose { recognizer.value?.destroy() } }
+    val startListening = {
+        val r =
+            recognizer.value ?: android.speech.SpeechRecognizer.createSpeechRecognizer(ctx).also { created ->
+                created.setRecognitionListener(
+                    object : android.speech.RecognitionListener {
+                        fun text(b: android.os.Bundle?) =
+                            b
+                                ?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                                ?.firstOrNull()
+                                ?.takeIf { it.isNotBlank() }
+
+                        override fun onReadyForSpeech(params: android.os.Bundle?) {
+                            listening = true
+                        }
+
+                        override fun onPartialResults(partialResults: android.os.Bundle?) {
+                            text(partialResults)?.let { query = it }
+                        }
+
+                        override fun onResults(results: android.os.Bundle?) {
+                            listening = false
+                            text(results)?.let { query = it }
+                        }
+
+                        override fun onError(error: Int) {
+                            listening = false
+                            voiceNote =
+                                when (error) {
+                                    android.speech.SpeechRecognizer.ERROR_NO_MATCH,
+                                    android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+                                    -> "Didn't catch that. Try again."
+                                    android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Voice search needs the microphone permission."
+                                    android.speech.SpeechRecognizer.ERROR_NETWORK,
+                                    android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+                                    -> "Voice search needs the internet."
+                                    else -> "Voice search isn't working right now."
+                                }
+                            android.util.Log.i("AlwySearch", "voice error $error")
+                        }
+
+                        override fun onBeginningOfSpeech() {}
+
+                        override fun onRmsChanged(rmsdB: Float) {}
+
+                        override fun onBufferReceived(buffer: ByteArray?) {}
+
+                        override fun onEndOfSpeech() {}
+
+                        override fun onEvent(
+                            eventType: Int,
+                            params: android.os.Bundle?,
+                        ) {}
+                    },
+                )
+                recognizer.value = created
             }
+        voiceNote = null
+        listening = true
+        runCatching {
+            r.startListening(
+                android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    putExtra(android.speech.RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
+                },
+            )
+        }.onFailure {
+            listening = false
+            voice = false
         }
-    var voice by remember { mutableStateOf(speech.resolveActivity(ctx.packageManager) != null) }
-    val listen =
+    }
+    val askMic =
         androidx.activity.compose.rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts
-                .StartActivityForResult(),
-        ) { r ->
-            r.data
-                ?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()
-                ?.takeIf { it.isNotBlank() }
-                ?.let { query = it }
+                .RequestPermission(),
+        ) { granted ->
+            if (granted) startListening() else voiceNote = "Voice search needs the microphone permission."
         }
     val seerrOn = remember { core.seerrActive() }
     val focus = remember { FocusRequester() }
@@ -164,7 +230,7 @@ fun SearchScreen() {
                             .focusRequester(focus)
                             .focusProperties { if (query.length >= 2) down = chips }
                             .dpadEscape(),
-                        placeholder = { Text("Movies, shows, episodes…") },
+                        placeholder = { Text(if (listening) "Listening… say a title" else "Movies, shows, episodes…") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         leadingIcon = Icons.Search,
@@ -183,15 +249,21 @@ fun SearchScreen() {
                             },
                     )
                     if (voice) {
-                        IconAction(Icons.Mic, "Voice search", {
-                            try {
-                                listen.launch(speech)
-                            } catch (_: android.content.ActivityNotFoundException) {
-                                voice = false
+                        IconAction(Icons.Mic, if (listening) "Listening…" else "Voice search", {
+                            when {
+                                listening -> {
+                                    recognizer.value?.stopListening()
+                                    listening = false
+                                }
+                                androidx.core.content.ContextCompat
+                                    .checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) ==
+                                    android.content.pm.PackageManager.PERMISSION_GRANTED -> startListening()
+                                else -> askMic.launch(android.Manifest.permission.RECORD_AUDIO)
                             }
-                        })
+                        }, active = listening)
                     }
                 }
+                voiceNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = be.alwyapps.watch.ui.Muted) }
             }
         }
         if (query.length >= 2) {

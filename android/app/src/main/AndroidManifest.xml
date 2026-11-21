@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Voice search only: asked when the mic button is first used, the audio goes to the
+         device's speech recognition service, never to AlwyWatch servers. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <!-- One APK for phone, tablet and TV: neither touch nor leanback is required. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -21,9 +25,9 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" />
         </intent>
-        <!-- Voice search: is there a speech recognizer to start (Search screen's mic button). -->
+        <!-- Voice search: is there a speech recognition service (Search screen's mic button). -->
         <intent>
-            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+            <action android:name="android.speech.RecognitionService" />
         </intent>
     </queries>
 
