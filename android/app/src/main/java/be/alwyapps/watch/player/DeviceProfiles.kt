@@ -14,7 +14,7 @@ import be.alwyapps.watch.core.media.StreamKind
 
 /**
  * What this device can play without the server touching the file.
- * Video: hardware/platform decoders from MediaCodecList. Audio: platform decoders plus the
+ * Video: decoders from MediaCodecList (hardware only for HEVC, VP9 and AV1). Audio: platform decoders plus the
  * bundled FFmpeg decoder (DTS, DTS-HD, TrueHD, AC3, E-AC3...), and passthrough when an HDMI
  * receiver supports it (ExoPlayer negotiates that by itself). Computed once, then cached.
  */
@@ -36,6 +36,16 @@ object DeviceProfiles {
             "video/x-ms-wmv" to "vc1",
         )
 
+    private val HARDWARE_ONLY = setOf("hevc", "vp9", "av1")
+
+    private fun isHardware(info: android.media.MediaCodecInfo): Boolean =
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            info.isHardwareAccelerated
+        } else {
+            val n = info.name.lowercase()
+            !(n.startsWith("omx.google.") || n.startsWith("c2.android.") || n.startsWith("c2.google."))
+        }
+
     private fun build(ctx: Context): DeviceProfile {
         val video = linkedSetOf<String>()
         var maxW = 0
@@ -48,6 +58,10 @@ object DeviceProfiles {
                 val t = type.lowercase()
                 if (t == "video/dolby-vision") dolbyVisionDecoder = true
                 val codec = mimeToCodec[t] ?: continue
+                // Modern codecs only count with a hardware decoder: Android ships software
+                // ones (AV1, VP9, HEVC) that manage a few frames per second at 1080p on a
+                // TV stick. Without the chip, the server converts instead.
+                if (codec in HARDWARE_ONLY && !isHardware(info)) continue
                 video += codec
                 runCatching {
                     val levels = info.getCapabilitiesForType(type).profileLevels.map { it.profile }
