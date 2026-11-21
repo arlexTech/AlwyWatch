@@ -312,10 +312,14 @@ fun PlayerOverlay(
                         } else {
                             Spacer(Modifier.size(small.dp))
                         }
-                        RoundButton(Icons.Replay10, "Back 10 seconds", {
-                            player()?.seekBack()
-                            ui.poke()
-                        }, size = small)
+                        // Not on TV: ←/→ already seek there (and on the bar), the buttons only
+                        // stood between play and the episode buttons.
+                        if (!tv) {
+                            RoundButton(Icons.Replay10, "Back 10 seconds", {
+                                player()?.seekBack()
+                                ui.poke()
+                            }, size = small)
+                        }
                         RoundButton(
                             if (ui.playing) Icons.PauseFilled else Icons.Play,
                             if (ui.playing) "Pause" else "Play",
@@ -328,10 +332,12 @@ fun PlayerOverlay(
                             emphasized = true,
                             loading = ui.buffering,
                         )
-                        RoundButton(Icons.Forward30, "Forward 30 seconds", {
-                            player()?.seekForward()
-                            ui.poke()
-                        }, size = small)
+                        if (!tv) {
+                            RoundButton(Icons.Forward30, "Forward 30 seconds", {
+                                player()?.seekForward()
+                                ui.poke()
+                            }, size = small)
+                        }
                         if (ui.hasNext) {
                             RoundButton(Icons.SkipNext, "Next episode", onNext, size = small)
                         } else {
