@@ -95,6 +95,7 @@ dependencies = [
  "keep-service",
  "maintainerr",
  "net",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",
