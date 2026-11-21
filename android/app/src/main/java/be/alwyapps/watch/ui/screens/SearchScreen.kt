@@ -25,6 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -54,6 +55,7 @@ fun SearchScreen() {
     val account = LocalAccount.current
     val nav = LocalNavigator.current
     val d = LocalDimens.current
+    val chips = remember { FocusRequester() }
     // Survives opening a result and coming back (screens are disposed by the navigator).
     var query by rememberSaveable { mutableStateOf(SearchMemory.query) }
     LaunchedEffect(query) { SearchMemory.query = query }
@@ -119,7 +121,12 @@ fun SearchScreen() {
                 Field(
                     query,
                     { query = it },
-                    Modifier.fillMaxWidth().focusRequester(focus).dpadEscape(),
+                    // Down goes to the chosen filter (else the chip nearest the field's middle).
+                    Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focus)
+                        .focusProperties { if (query.length >= 2) down = chips }
+                        .dpadEscape(),
                     placeholder = { Text("Movies, shows, episodes…") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -136,7 +143,12 @@ fun SearchScreen() {
                 ) {
                     for ((key, label) in listOf("all" to "All", "mine" to "On my servers", "other" to "Not on my servers")) {
                         be.alwyapps.watch.ui
-                            .ActionButton(label, { filter = key }, selected = filter == key)
+                            .ActionButton(
+                                label,
+                                { filter = key },
+                                if (filter == key) Modifier.focusRequester(chips) else Modifier,
+                                selected = filter == key,
+                            )
                     }
                 }
             }

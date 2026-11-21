@@ -95,8 +95,11 @@ fun KeepForeverScreen() {
         item {
             PageTitle(
                 "Kept forever",
-                s?.let { "${it.titles} titles · ${it.shared} kept by several people · ${it.titles - it.shared} by one person" }
-                    ?: "Loading…",
+                when {
+                    s == null -> if (message == null) "Loading…" else null
+                    s.titles == 0u -> null
+                    else -> "${s.titles} titles · ${s.shared} kept by several people · ${s.titles - s.shared} by one person"
+                },
             )
         }
         message?.let { item { Text(it, color = Accent) } }

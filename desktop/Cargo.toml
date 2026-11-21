@@ -22,7 +22,8 @@ libloading = "0.8"
 # The device-transfer envelope (same JSON as Android); already compiled in through the core.
 serde_json = { workspace = true }
 # oneshot channel for the timer-based sleep (already compiled in through the core).
-tokio = { workspace = true, features = ["sync"] }
+# rt: the segments probe test hook (the core already links tokio's runtime).
+tokio = { workspace = true, features = ["sync", "rt"] }
 
 [target.'cfg(windows)'.dependencies]
 # DPAPI for token storage.

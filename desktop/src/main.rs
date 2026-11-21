@@ -47,6 +47,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         downloads_db: None,
     })?;
     app::activate_saved(&core, &tokens);
+    // Test hook: print the skippable segments of an item as each account sees it, then exit
+    // (checks intro/credits data end to end against the real servers without playing anything).
+    if let Ok(item) = std::env::var("ALWYWATCH_PROBE_SEGMENTS") {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        for a in core.accounts()? {
+            let found = rt.block_on(core.segments(a.id.clone(), item.clone()));
+            eprintln!("{} ({:?}): {:?}", a.server_name, a.kind, found);
+        }
+        return Ok(());
+    }
     let ui = AppWindow::new()?;
     let app = app::App::new(core.clone(), &ui, tokens);
     // Test hook (headless screenshots): start the Jellyfin sign-in with this address.
