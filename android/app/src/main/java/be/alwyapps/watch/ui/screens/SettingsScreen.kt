@@ -46,7 +46,6 @@ import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.ToggleRow
 import be.alwyapps.watch.ui.UiPrefs
 import be.alwyapps.watch.ui.Value
-import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.usesRail
 
 /** A page of Settings, opened from the list (`Route.SettingsSection`). */
@@ -79,16 +78,19 @@ private fun SettingsPage(
     content: @Composable () -> Unit,
 ) {
     val d = LocalDimens.current
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = d.gutter, vertical = 16.dp)
-            .widthIn(max = 760.dp),
-        verticalArrangement = Arrangement.spacedBy(26.dp),
-    ) {
-        PageTitle(title)
-        content()
+    // Back on this page: the row that was opened gets the focus (else its first row, TV).
+    androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalRowMemory provides "settings.$title") {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = d.gutter, vertical = 16.dp)
+                .widthIn(max = 760.dp),
+            verticalArrangement = Arrangement.spacedBy(26.dp),
+        ) {
+            PageTitle(title)
+            content()
+        }
     }
 }
 
@@ -152,7 +154,6 @@ fun SettingsScreen(
                     if (i > 0) Divider()
                     ListRow(
                         s.title,
-                        if (i == 0) Modifier.initialFocus() else Modifier,
                         subtitle = summary(s),
                         icon = s.icon,
                         onClick = { nav.push(Route.SettingsSection(s.id)) },
@@ -285,7 +286,12 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
                     together = it
                     core.setSetting(COMBINED_KEY, if (it) "1" else "0")
                 },
-                subtitle = if (together) "Tap an account above to make it the preferred one" else "One server at a time: tap an account above to switch",
+                subtitle =
+                    if (together) {
+                        "${if (d.isTv) "Select" else "Tap"} an account above to make it the preferred one"
+                    } else {
+                        "One server at a time: ${if (d.isTv) "select" else "tap"} an account above to switch"
+                    },
             )
         }
         SyncGroup(accounts)
@@ -567,7 +573,7 @@ private fun InterfaceSection() {
     val settings = remember { PlayerSettings(core) }
     val prefs = remember { UiPrefs(core, d.isTv) }
     if (usesRail()) {
-        Group("Libraries in the menu", footer = "Tap a library to show or hide it; arrows change the order.") {
+        Group("Libraries in the menu", footer = "${if (d.isTv) "Select" else "Tap"} a library to show or hide it; arrows change the order.") {
             val account = LocalAccount.current
             val libs =
                 remember(account) {

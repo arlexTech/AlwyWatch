@@ -164,13 +164,19 @@ class Navigator(
     val stack = mutableStateListOf<Route>().apply { addAll(initial.ifEmpty { listOf(Route.Home) }) }
     val current: Route get() = stack.last()
 
+    /** The current screen was reached with BACK (not opened anew): it may restore its state. */
+    var returning = false
+        private set
+
     fun push(route: Route) {
         if (current != route) stack.add(route)
+        returning = false
         save()
     }
 
     /** Replaces the whole stack (e.g. after sign-in). */
     fun reset(route: Route) {
+        returning = false
         stack.clear()
         stack.add(route)
         save()
@@ -180,6 +186,7 @@ class Navigator(
     fun pop(): Boolean {
         if (stack.size <= 1) return false
         stack.removeAt(stack.lastIndex)
+        returning = true
         save()
         return true
     }

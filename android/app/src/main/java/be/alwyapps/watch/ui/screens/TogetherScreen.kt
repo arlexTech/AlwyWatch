@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun TogetherScreen() {
     val d = LocalDimens.current
+    val nav = be.alwyapps.watch.ui.LocalNavigator.current
     val (rooms, unreachable) = rememberTogetherRooms(everyMs = 8_000)
     var joining by remember { mutableStateOf<TogetherRoom?>(null) }
     joining?.let { JoinDialog(it) { joining = null } }
@@ -93,6 +94,16 @@ fun TogetherScreen() {
                     },
                     Modifier.widthIn(max = 640.dp).padding(top = 12.dp),
                     style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+            // Something to focus on an empty page (TV: the D-pad, and closing the menu, need it).
+            item(key = "start") {
+                ActionButton(
+                    "Choose something to watch",
+                    { nav.reset(be.alwyapps.watch.ui.Route.Home) },
+                    Modifier.padding(top = 4.dp).initialFocus(),
+                    primary = true,
+                    icon = Icons.Play,
                 )
             }
         }

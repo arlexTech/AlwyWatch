@@ -64,7 +64,7 @@ import be.alwyapps.watch.ui.Subtle
 import be.alwyapps.watch.ui.Success
 import be.alwyapps.watch.ui.UrlImage
 import be.alwyapps.watch.ui.fadeEdges
-import be.alwyapps.watch.ui.initialFocus
+import be.alwyapps.watch.ui.focusOnAppear
 
 /** The state of a title as one label ("Available", "Requested", "Downloading 42%"…). */
 private fun SeerrDetails.stateLabel(): String? = downloadProgress?.let { "Downloading ${(it * 100).toInt()}%" } ?: availability.label()
@@ -100,7 +100,9 @@ fun SeerrTitleScreen(
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item(key = "hero") {
-            Box(Modifier.fillMaxWidth().height(if (d.isTv) 420.dp else 300.dp)) {
+            // TV: short enough that the title, its state and the Request button (or why not) are
+            // on the first screen (420 dp left them below the fold of a 540 dp-high TV).
+            Box(Modifier.fillMaxWidth().height(if (d.isTv) 200.dp else 300.dp)) {
                 UrlImage(title?.backdropUrl, 1280.dp, Modifier.fillMaxSize().fadeEdges(bottomFrom = 0.45f))
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.5f), 0.25f to Color.Transparent)))
                 if (!d.isTv) {
@@ -132,18 +134,13 @@ fun SeerrTitleScreen(
                             textColor = if (t.availability == Availability.AVAILABLE) Color.Black else Color.White,
                         )
                     }
+                    if (d.isTv && !requesting) PrimaryAction(t, onRequest = { requesting = true }, onBack = { nav.pop() })
                 }
             }
         }
         item(key = "actions") {
             Column(Modifier.padding(horizontal = d.gutter, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                val canRequest =
-                    t.availability == Availability.UNKNOWN ||
-                        t.availability == Availability.DELETED ||
-                        (t.mediaType == SeerrMediaType.TV && t.availability == Availability.PARTIALLY_AVAILABLE)
-                if (canRequest && !requesting) {
-                    ActionButton("Request", { requesting = true }, Modifier.fillMaxWidth().initialFocus(), primary = true, icon = Icons.Add)
-                }
+                if (!d.isTv && !requesting) PrimaryAction(t, onRequest = { requesting = true }, onBack = { nav.pop() })
                 if (requesting) {
                     RequestPanel(t.asResult(), onDone = { msg ->
                         requesting = false
@@ -222,6 +219,44 @@ fun SeerrTitleScreen(
     }
 }
 
+/** Whether the title can be requested now (not on the servers, or a show with seasons missing). */
+private fun SeerrDetails.canRequest() =
+    availability == Availability.UNKNOWN ||
+        availability == Availability.DELETED ||
+        (mediaType == SeerrMediaType.TV && availability == Availability.PARTIALLY_AVAILABLE)
+
+/** Why there is no Request button, in one line. */
+private fun SeerrDetails.whyNoRequest(): String =
+    when {
+        downloadProgress != null -> "Already requested: it is downloading."
+        availability == Availability.AVAILABLE -> "Already on your servers: search for it to watch it."
+        availability == Availability.PARTIALLY_AVAILABLE -> "Already partly on your servers."
+        availability == Availability.PROCESSING -> "Already requested and approved: it will be added soon."
+        availability == Availability.PENDING -> "Already requested: waiting for approval."
+        availability == Availability.BLOCKLISTED -> "Blocked on the request server: it can't be requested."
+        else -> "It can't be requested."
+    }
+
+/**
+ * The page's main element, always there and focused (TV): Request, or why not with a way back
+ * (a page with nothing to focus left the D-pad dead).
+ */
+@Composable
+private fun PrimaryAction(
+    t: SeerrDetails,
+    onRequest: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val d = LocalDimens.current
+    // focusOnAppear: it also comes back in place of the request panel (closed, or request sent).
+    if (t.canRequest()) {
+        ActionButton("Request", onRequest, Modifier.then(if (d.isTv) Modifier else Modifier.fillMaxWidth()).focusOnAppear(), primary = true, icon = Icons.Add)
+    } else {
+        Text(t.whyNoRequest(), color = Muted, style = MaterialTheme.typography.bodyMedium)
+        if (d.isTv) ActionButton("Back", onBack, Modifier.focusOnAppear(), icon = Icons.Back)
+    }
+}
+
 private fun formatRuntimeMin(min: Int) = if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"
 
 /** A saga: its films with their state; each opens its page. */
@@ -267,11 +302,12 @@ fun SeerrSagaScreen(
 @Composable
 fun SeerrPoster(
     r: SeerrResult,
+    cardModifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val d = LocalDimens.current
     Column(Modifier.width(d.posterWidth)) {
-        FocusCard(onClick = onClick) {
+        FocusCard(onClick = onClick, modifier = cardModifier) {
             UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
             r.stateLabel()?.let {
                 Badge(

@@ -207,7 +207,7 @@ private fun Rails(
         }
     // Like Plex: in progress and next episodes together, most recently watched first, as
     // posters with progress (an episode shows its show's poster), on TV too.
-    Rail("Continue watching", h.continueWatching, open, onFocus, focusKey = "home", defaultFocus = first == "resume")
+    Rail("Continue watching", h.continueWatching, open, onFocus, focusKey = "home", defaultFocus = first == "resume", continueWatching = true)
     // After what the user is watching, before the "new" rails.
     if (core.keepActive() && !offline) {
         // Friends watching together right now (nothing when nobody is).

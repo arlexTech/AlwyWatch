@@ -99,11 +99,16 @@ fun ListRow(
     val d = LocalDimens.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val bg by animateColorAsState(if (focused) Color.White.copy(alpha = if (d.isTv) 0.16f else 0.08f) else Color.Transparent, tween(120), label = "row")
+    // TV: a clearly lighter fill and the cards' white outline (16 % white was hard to see at 3 m).
+    val bg by animateColorAsState(if (focused) Color.White.copy(alpha = if (d.isTv) 0.26f else 0.08f) else Color.Transparent, tween(120), label = "row")
+    val memory = LocalRowMemory.current
     Row(
         modifier
+            .then(if (memory != null && onClick != null) Modifier.rememberFocus(memory, "row:$title") else Modifier)
+            .pageFocusTracked(focused)
             .fillMaxWidth()
             .background(bg)
+            .then(if (focused && d.isTv) Modifier.border(2.dp, Color.White, RoundedCornerShape(d.radius + 4.dp)) else Modifier)
             .then(if (onClick != null) Modifier.clickable(interactionSource = interaction, indication = null, onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = if (d.isTv) 16.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -126,6 +131,12 @@ fun ListRow(
         trailing?.invoke()
     }
 }
+
+/**
+ * Set by list pages (Settings): their rows remember which one was focused, and it gets the
+ * focus back when the page shows again (BACK from what the row opened).
+ */
+val LocalRowMemory = androidx.compose.runtime.staticCompositionLocalOf<String?> { null }
 
 @Composable
 fun Divider() {

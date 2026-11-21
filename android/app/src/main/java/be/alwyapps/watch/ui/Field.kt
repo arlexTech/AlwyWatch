@@ -19,6 +19,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 
 /**
@@ -39,15 +41,24 @@ fun Field(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     leadingIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     pill: Boolean = false,
+    // TV: OK on a filled field selects its text, so typing replaces it (a new search).
+    selectAllOnEdit: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val isTv = LocalDimens.current.isTv
     var editing by remember { mutableStateOf(!isTv) }
+    // The selection lives here; the caller only deals with the text.
+    var tfv by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    val shown = if (tfv.text == value) tfv else TextFieldValue(value, TextRange(value.length))
     val keyboard = LocalSoftwareKeyboardController.current
     val fm = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(editing) { if (isTv && editing) keyboard?.show() }
     OutlinedTextField(
-        value,
-        onValueChange,
+        shown,
+        {
+            tfv = it
+            if (it.text != value) onValueChange(it.text)
+        },
         modifier
             .onFocusChanged { if (isTv && !it.isFocused) editing = false }
             .onPreviewKeyEvent {
@@ -59,7 +70,10 @@ fun Field(
                 }
                 val ok = it.key == Key.DirectionCenter || it.key == Key.Enter || it.key == Key.NumPadEnter
                 if (!ok) return@onPreviewKeyEvent false
-                if (it.type == KeyEventType.KeyUp) editing = true
+                if (it.type == KeyEventType.KeyUp) {
+                    if (selectAllOnEdit) tfv = TextFieldValue(value, TextRange(0, value.length))
+                    editing = true
+                }
                 true
             },
         readOnly = !editing,
@@ -70,6 +84,7 @@ fun Field(
         keyboardActions = keyboardActions,
         visualTransformation = visualTransformation,
         leadingIcon = leadingIcon?.let { { androidx.compose.material3.Icon(it, null, tint = Muted) } },
+        trailingIcon = trailing,
         shape =
             androidx.compose.foundation.shape
                 .RoundedCornerShape(if (pill) 50 else 14),

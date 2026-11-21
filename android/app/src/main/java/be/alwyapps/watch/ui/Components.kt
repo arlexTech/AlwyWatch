@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -119,6 +120,9 @@ fun Item.ambient(): Color? = BlurHash.averageColor((backdrop() ?: poster())?.blu
 
 // ----- Focus ----------------------------------------------------------------------------------
 
+/** The dark line inside the TV focus outline (visible on white posters). */
+private val FocusEdge = Color.Black.copy(alpha = 0.7f)
+
 /**
  * Clickable surface with a clear focus state: on TV it scales up, gets a white outline and a
  * soft glow; on touch screens it is a plain clickable. `clickable` handles D-pad center/Enter.
@@ -143,6 +147,7 @@ fun FocusCard(
     val scale by animateFloatAsState(if (focused) focusScale ?: d.focusScale else 1f, tween(160), label = "scale")
     Box(
         modifier
+            .pageFocusTracked(focused)
             // Long press (touch, or holding OK on a remote): the item's menu. Before the layer:
             // the focused element is then measured without its zoom. Inside it, scrolling the
             // focused card into place followed the zoom animation, and every ←/→ lifted the
@@ -157,8 +162,9 @@ fun FocusCard(
                 clip = true
             }
             // TV focus: scale and a white border. (A 24 dp white shadow, redrawn on every frame of
-            // the scale animation, was too much for Chromecast-class GPUs.)
-            .then(if (focused && d.isTv) Modifier.border(2.5.dp, Color.White, shape) else Modifier),
+            // the scale animation, was too much for Chromecast-class GPUs.) A thin dark line just
+            // inside the white keeps the outline visible on white artwork; two flat strokes, no blur.
+            .then(if (focused && d.isTv) Modifier.border(2.5.dp, Color.White, shape).border(3.5.dp, FocusEdge, shape) else Modifier),
         content = content,
     )
 }
@@ -206,6 +212,7 @@ fun Modifier.ignoreHeldOk(): Modifier {
 @Composable
 fun ItemMenu(
     item: Item,
+    inContinueWatching: Boolean = false,
     onDismiss: () -> Unit,
 ) {
     val core = LocalCore.current
@@ -281,7 +288,8 @@ fun ItemMenu(
                     act { core.setPlayed(account, item.id, false) }
                 })
             }
-            if (!played && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)) {
+            // Only for what is in that row: started, or shown there (the next episode of a show).
+            if (!played && (started || inContinueWatching) && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)) {
                 ListRow("Remove from Continue watching", icon = Icons.Close, onClick = {
                     act { core.removeFromContinueWatching(account, item.id) }
                 })
@@ -366,9 +374,10 @@ fun PosterCard(
     cardModifier: Modifier = Modifier,
     showTitle: Boolean = !LocalDimens.current.isTv,
     badge: (@Composable BoxScope.() -> Unit)? = null,
+    inContinueWatching: Boolean = false,
 ) {
     var menu by remember { mutableStateOf(false) }
-    if (menu) ItemMenu(item) { menu = false }
+    if (menu) ItemMenu(item, inContinueWatching) { menu = false }
     Column(modifier.width(width)) {
         FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus, onLongClick = item.menuable { menu = true }) {
             RemoteImage(item.id, item.poster(), width, Modifier.fillMaxWidth().aspectRatio(2f / 3f), contentDescription = item.title)
@@ -417,9 +426,10 @@ fun LandscapeCard(
     modifier: Modifier = Modifier,
     onFocus: (() -> Unit)? = null,
     cardModifier: Modifier = Modifier,
+    inContinueWatching: Boolean = false,
 ) {
     var menu by remember { mutableStateOf(false) }
-    if (menu) ItemMenu(item) { menu = false }
+    if (menu) ItemMenu(item, inContinueWatching) { menu = false }
     Column(modifier.width(width)) {
         FocusCard(onClick = onClick, modifier = cardModifier, onFocus = onFocus, onLongClick = item.menuable { menu = true }) {
             RemoteImage(item.id, item.thumb(), width, Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentDescription = item.title)
@@ -492,6 +502,10 @@ fun SectionHeader(
 object HeldLeft {
     @Volatile
     var held = false
+
+    /** The last key pressed was ←: the only way into the TV side menu. */
+    @Volatile
+    var pressed = false
 }
 
 /**
@@ -503,12 +517,53 @@ object FocusMemory {
 
     operator fun get(screen: String): String? = last[screen]
 
+    fun forget(screen: String) {
+        last.remove(screen)
+    }
+
     operator fun set(
         screen: String,
         id: String,
     ) {
         last[screen] = id
     }
+}
+
+/**
+ * TV: records this element as [screen]'s last focused one, and gives it the focus when the
+ * screen is shown again (BACK from what it opened). With nothing remembered, [default] takes it.
+ */
+@Composable
+fun Modifier.rememberFocus(
+    screen: String,
+    id: String,
+    default: Boolean = false,
+): Modifier {
+    if (!LocalDimens.current.isTv) return this
+    val remembered = FocusMemory[screen]
+    val restore = remembered == id || (remembered == null && default)
+    return onFocusChanged { if (it.isFocused) FocusMemory[screen] = id }
+        .then(if (restore) Modifier.initialFocus() else Modifier)
+}
+
+/**
+ * TV: the page's focused element, kept while the side menu has the focus so that closing the
+ * menu puts it back exactly there (a focus restorer only remembers one level of a nested list).
+ */
+class PageFocus {
+    var last: FocusRequester? = null
+}
+
+/** Provided around the page content (not the menu) on TV. */
+val LocalPageFocus = androidx.compose.runtime.staticCompositionLocalOf<PageFocus?> { null }
+
+/** Registers a focusable element with [LocalPageFocus]; goes before its clickable. */
+@Composable
+fun Modifier.pageFocusTracked(focused: Boolean): Modifier {
+    val page = LocalPageFocus.current ?: return this
+    val fr = remember { FocusRequester() }
+    if (focused) androidx.compose.runtime.SideEffect { page.last = fr }
+    return focusRequester(fr)
 }
 
 @Composable
@@ -522,6 +577,8 @@ fun Rail(
     defaultFocus: Boolean = false,
     subtitle: String? = null,
     onSeeAll: (() -> Unit)? = null,
+    // The Continue watching row (its items' menu can remove them from it).
+    continueWatching: Boolean = false,
 ) {
     if (items.isEmpty()) return
     val d = LocalDimens.current
@@ -534,6 +591,20 @@ fun Rail(
                 .rememberLazyListState()
         val head = items.first().id
         LaunchedEffect(head) { if (rowState.firstVisibleItemIndex != 0) rowState.scrollToItem(0) }
+        // The focused card left the row (watched, or removed from it with its menu): the card
+        // now in its place (or the new last one) takes the focus, instead of nothing.
+        val before = remember { arrayOf(items) }
+        var moveTo by remember { mutableStateOf<String?>(null) }
+        val replacement = remember { FocusRequester() }
+        LaunchedEffect(items) {
+            val old = before[0]
+            before[0] = items
+            if (!d.isTv || focusKey == null) return@LaunchedEffect
+            val gone = FocusMemory[focusKey]?.takeIf { it.startsWith("$title|") }?.substringAfter('|') ?: return@LaunchedEffect
+            if (items.any { it.id == gone }) return@LaunchedEffect
+            val at = old.indexOfFirst { it.id == gone }.takeIf { it >= 0 } ?: return@LaunchedEffect
+            moveTo = items[at.coerceAtMost(items.lastIndex)].id
+        }
         TvScrollSpec(leading = d.gutter) {
             LazyRow(
                 // Its own layer: scrolling this row doesn't redraw the rows around it.
@@ -551,11 +622,36 @@ fun Rail(
                     }
                     val remembered = focusKey?.let { FocusMemory[it] }
                     val wantsFocus = d.isTv && (remembered == memo || (remembered == null && defaultFocus && item == items.first()))
-                    val cardMod = if (wantsFocus) Modifier.initialFocus() else Modifier
+                    val cardMod =
+                        when {
+                            item.id == moveTo -> {
+                                LaunchedEffect(Unit) {
+                                    runCatching { replacement.requestFocus() }
+                                    moveTo = null
+                                }
+                                Modifier.focusRequester(replacement)
+                            }
+                            wantsFocus -> Modifier.initialFocus()
+                            else -> Modifier
+                        }
                     if (landscape) {
-                        LandscapeCard(item, d.landscapeWidth, onClick = { onClick(item) }, onFocus = focus, cardModifier = cardMod)
+                        LandscapeCard(
+                            item,
+                            d.landscapeWidth,
+                            onClick = { onClick(item) },
+                            onFocus = focus,
+                            cardModifier = cardMod,
+                            inContinueWatching = continueWatching,
+                        )
                     } else {
-                        PosterCard(item, d.posterWidth, onClick = { onClick(item) }, onFocus = focus, cardModifier = cardMod)
+                        PosterCard(
+                            item,
+                            d.posterWidth,
+                            onClick = { onClick(item) },
+                            onFocus = focus,
+                            cardModifier = cardMod,
+                            inContinueWatching = continueWatching,
+                        )
                     }
                 }
             }
@@ -690,6 +786,7 @@ fun ActionButton(
     val scale by animateFloatAsState(if (focused && d.isTv) 1.05f else 1f, tween(140), label = "scale")
     Row(
         modifier
+            .pageFocusTracked(focused)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -724,6 +821,7 @@ fun IconAction(
     val bg by animateColorAsState(if (light) Color.White else Glass, tween(140), label = "bg")
     Row(
         modifier
+            .pageFocusTracked(focused)
             .height(if (d.isTv) 52.dp else 46.dp)
             .widthIn(min = if (d.isTv) 52.dp else 46.dp)
             .background(bg, RoundedCornerShape(50))
@@ -827,8 +925,21 @@ fun Modifier.initialFocus(enabled: Boolean = LocalDimens.current.isTv): Modifier
     val owner = LocalInitialFocusDone.current
     LaunchedEffect(Unit) {
         if (owner?.value == true) return@LaunchedEffect
-        if (runCatching { fr.requestFocus() }.isSuccess) owner?.value = true
+        if (runCatching { fr.requestFocus() }.getOrDefault(false)) owner?.value = true
     }
+    return focusRequester(fr)
+}
+
+/**
+ * Takes the focus whenever it appears, even after the screen's first focus: for what replaces
+ * the focused element (a Request button that becomes the request panel, and back).
+ */
+@Composable
+fun Modifier.focusOnAppear(enabled: Boolean = LocalDimens.current.isTv): Modifier {
+    if (!enabled) return this
+    val fr = remember { FocusRequester() }
+    val owner = LocalInitialFocusDone.current
+    LaunchedEffect(Unit) { if (runCatching { fr.requestFocus() }.getOrDefault(false)) owner?.value = true }
     return focusRequester(fr)
 }
 

@@ -41,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -126,20 +125,20 @@ fun AppScaffold(content: @Composable () -> Unit) {
     if (d.isTv) {
         // Like Plex: the menu floats over the content as a small pill of icons.
         Box(Modifier.fillMaxSize()) {
-            // Leaving the menu restores the focus where it was in the page.
+            // Leaving the menu puts the focus back on the page's element that had it.
             val page =
                 remember {
                     androidx.compose.ui.focus
                         .FocusRequester()
                 }
+            val pageFocus = remember { PageFocus() }
             Box(
                 Modifier
                     .fillMaxSize()
                     .focusRequester(page)
-                    .focusRestorer()
                     .then(if (edgeToEdge) Modifier else Modifier.padding(top = 24.dp)),
-            ) { content() }
-            TvMenu(tabs, selected, page) { nav.reset(it) }
+            ) { androidx.compose.runtime.CompositionLocalProvider(LocalPageFocus provides pageFocus) { content() } }
+            TvMenu(tabs, selected, page, pageFocus) { nav.reset(it) }
             if (UiPrefs(LocalCore.current, true).clock) TvClock(Modifier.align(Alignment.TopEnd))
         }
     } else if (rail) {
@@ -299,16 +298,25 @@ private fun TvMenu(
     tabs: List<Tab>,
     selected: Route,
     content: androidx.compose.ui.focus.FocusRequester,
+    pageFocus: PageFocus,
     onSelect: (Route) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val fm = androidx.compose.ui.platform.LocalFocusManager.current
     val current =
         remember {
             androidx.compose.ui.focus
                 .FocusRequester()
         }
-    val leave = { runCatching { content.requestFocus() } }
+    val leave = {
+        // The element that had the focus (gone after a page change: the page's first one).
+        val back =
+            runCatching { pageFocus.last?.requestFocus() == true }.getOrDefault(false) ||
+                runCatching { content.requestFocus() }.getOrDefault(false)
+        // Nothing focusable in the page (an empty list): the menu still closes.
+        if (!back) fm.clearFocus(force = true)
+    }
     val select: (Route) -> Unit = { route ->
         onSelect(route)
         scope.launch {
@@ -340,8 +348,15 @@ private fun TvMenu(
             Modifier
                 .clip(RoundedCornerShape(22.dp))
                 .background(if (open) Color.Transparent else Color.Black.copy(alpha = 0.55f))
-                .onFocusChanged { open = it.hasFocus }
-                .focusProperties { onEnter = { if (HeldLeft.held) cancelFocusChange() else runCatching { current.requestFocus() } } }
+                .onFocusChanged {
+                    // Only ← opens the menu. Focus lost elsewhere (a card removed by a reload)
+                    // goes to the first element on screen, this menu: hand it back to the page.
+                    if (it.hasFocus && !open && !HeldLeft.pressed) {
+                        scope.launch { leave() }
+                    } else {
+                        open = it.hasFocus
+                    }
+                }.focusProperties { onEnter = { if (HeldLeft.held) cancelFocusChange() else runCatching { current.requestFocus() } } }
                 .onPreviewKeyEvent {
                     val k = it.nativeKeyEvent
                     val out = k.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT || k.keyCode == android.view.KeyEvent.KEYCODE_BACK

@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -38,6 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -420,14 +423,7 @@ fun DetailScreen(
                         Modifier.padding(horizontal = d.gutter, vertical = 12.dp).fillMaxWidth(if (d.isTv) 0.6f else 1f),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        item.overview?.let {
-                            Text(
-                                it,
-                                style = if (d.isTv) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
-                                color = OnSurface.copy(alpha = 0.85f),
-                                maxLines = if (d.isTv) 3 else 8,
-                            )
-                        }
+                        item.overview?.let { Overview(item.title, it) }
                         if (item.genres.isNotEmpty()) {
                             androidx.compose.foundation.layout.FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -878,14 +874,68 @@ private fun ThemeMusic(
 
 private fun isTvDevice(ctx: android.content.Context) = ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
 
+/**
+ * The overview, a few lines with an ellipsis; cut, it opens in full with OK (or a tap), since
+ * a TV has no other way to read the rest.
+ */
+@Composable
+private fun Overview(
+    title: String,
+    text: String,
+) {
+    val d = LocalDimens.current
+    var cut by remember(text) { mutableStateOf(false) }
+    var full by remember { mutableStateOf(false) }
+    val body = @Composable { m: Modifier ->
+        Text(
+            text,
+            m,
+            style = if (d.isTv) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+            color = OnSurface.copy(alpha = 0.85f),
+            maxLines = if (d.isTv) 3 else 8,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { cut = cut || it.hasVisualOverflow },
+        )
+    }
+    if (!cut) {
+        body(Modifier)
+    } else {
+        be.alwyapps.watch.ui
+            .FocusCard(onClick = { full = true }, glow = false, focusScale = 1f) { body(Modifier.padding(6.dp)) }
+    }
+    if (full) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { full = false },
+            title = { Text(title) },
+            text = {
+                Text(
+                    text,
+                    Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            },
+            confirmButton = { ActionButton("Close", { full = false }) },
+            containerColor = be.alwyapps.watch.ui.Background,
+        )
+    }
+}
+
 /** "Cast" row: round photos, name and character (like Plex's cast row). */
 @Composable
 private fun CastRow(cast: List<be.alwyapps.watch.core.media.Person>) {
     val d = LocalDimens.current
     val photo = if (d.isTv) 88.dp else 76.dp
+    // Entering the row starts at its first person (else the one under the element above, the
+    // 4th or so, and the TV's pivot scrolling moved the row to it).
+    val first =
+        remember {
+            androidx.compose.ui.focus
+                .FocusRequester()
+        }
     Column(Modifier.padding(top = 16.dp)) {
         Text("Cast", Modifier.padding(horizontal = d.gutter), style = MaterialTheme.typography.titleMedium)
         androidx.compose.foundation.lazy.LazyRow(
+            Modifier.focusRestorer(first),
             contentPadding =
                 androidx.compose.foundation.layout
                     .PaddingValues(horizontal = d.gutter, vertical = 12.dp),
@@ -894,7 +944,11 @@ private fun CastRow(cast: List<be.alwyapps.watch.core.media.Person>) {
             items(cast.size) { n ->
                 val p = cast[n]
                 // Focusable on TV so the row scrolls with the D-pad.
-                be.alwyapps.watch.ui.FocusCard(onClick = {}, glow = false, modifier = Modifier.width(photo + 20.dp)) {
+                be.alwyapps.watch.ui.FocusCard(
+                    onClick = {},
+                    glow = false,
+                    modifier = Modifier.width(photo + 20.dp).then(if (n == 0) Modifier.focusRequester(first) else Modifier),
+                ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                         be.alwyapps.watch.ui
                             .UrlImage(p.photoUrl, photo, Modifier.size(photo).clip(RoundedCornerShape(50)))

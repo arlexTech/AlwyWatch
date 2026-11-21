@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -78,7 +79,7 @@ private const val DAY = 86_400L
 fun LeavingItem.paused(now: Long = System.currentTimeMillis() / 1000): Boolean =
     !collectionActive && protection == Protection.NONE && (effectiveDeletionDate ?: Long.MAX_VALUE) < now
 
-/** "Leaves in 4 days", "Deletion paused", "Kept forever"… */
+/** "Leaves in 4 days", "Not scheduled for deletion", "Kept forever"… */
 fun LeavingItem.leavesLabel(): String {
     val now = System.currentTimeMillis() / 1000
     return when (protection) {
@@ -86,7 +87,7 @@ fun LeavingItem.leavesLabel(): String {
         Protection.UNTIL_WATCHED -> "Kept until watched"
         else -> {
             val d = effectiveDeletionDate ?: return "No date"
-            if (paused(now)) return "Deletion paused"
+            if (paused(now)) return "Not scheduled for deletion"
             val days = (d - now) / DAY
             val base =
                 when {
@@ -101,11 +102,12 @@ fun LeavingItem.leavesLabel(): String {
     }
 }
 
-/** Short countdown for poster badges: "3 days", "Today", "Overdue", "Paused", "Kept". */
+/** Short countdown for poster badges: "3 days", "Today", "Overdue", "Not scheduled", "Kept". */
 fun LeavingItem.shortLabel(): Pair<String, Boolean> {
     val now = System.currentTimeMillis() / 1000
     if (protection == Protection.FOREVER || protection == Protection.UNTIL_WATCHED) return "Kept" to false
-    if (paused(now)) return "Paused" to false
+    // Past its date but deletion isn't turned on for its collection: nothing is planned yet.
+    if (paused(now)) return "Not scheduled" to false
     val d = effectiveDeletionDate ?: return "Soon" to false
     val days = (d - now) / DAY
     return when {
@@ -190,13 +192,16 @@ fun LeavingSoonRail() {
             ?.take(15)
             .orEmpty()
     if (items.isEmpty()) return
+    // Up from the cards goes to the header's button: at the far right, a geometric search
+    // from a card on the left found the row above first and the button was out of reach.
+    val sort = remember { FocusRequester() }
     Column(Modifier.padding(top = if (d.isTv) 18.dp else 24.dp)) {
         Row(Modifier.padding(horizontal = d.gutter), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("Leaving soon", style = MaterialTheme.typography.titleMedium)
                 Text("Keep what you still want to watch", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            ActionButton("Sort them out", { nav.push(Route.Triage) }, primary = true, icon = be.alwyapps.watch.ui.Icons.Favorite)
+            ActionButton("Sort them out", { nav.push(Route.Triage) }, Modifier.focusRequester(sort), primary = true, icon = be.alwyapps.watch.ui.Icons.Favorite)
             if (!d.isTv) {
                 be.alwyapps.watch.ui
                     .IconAction(be.alwyapps.watch.ui.Icons.ChevronRight, "See all", { nav.push(Route.LeavingSoon) })
@@ -207,7 +212,7 @@ fun LeavingSoonRail() {
             LazyRow(contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(d.railSpacing)) {
                 items(items, key = { it.key }) { item ->
                     Column(Modifier.width(d.posterWidth)) {
-                        FocusCard(onClick = { nav.push(Route.LeavingSoon) }) {
+                        FocusCard(onClick = { nav.push(Route.LeavingSoon) }, Modifier.focusProperties { up = sort }) {
                             UrlImage(item.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
                             val (label, urgent) = item.shortLabel()
                             be.alwyapps.watch.ui.Badge(
@@ -292,7 +297,7 @@ fun LeavingSoonScreen() {
         if (paused > 0) {
             item("paused") {
                 Text(
-                    "Deletion is paused for ${"%,d".format(paused)} of these: their date has passed but the server's owner hasn't " +
+                    "${"%,d".format(paused)} of these are not scheduled: their date has passed but the server's owner hasn't " +
                         "turned deletion on yet. Your choices still count when it is.",
                     Modifier
                         .fillMaxWidth()
@@ -327,14 +332,22 @@ fun LeavingSoonScreen() {
                     .clip(RoundedCornerShape(d.radius + 4.dp))
                     .background(if (expanded) be.alwyapps.watch.ui.SurfaceHigh else SurfaceColor),
             ) {
+                // No zoom: inside the row's rounded clip a zoomed card lost its outline at the
+                // edges, the only focus cue left.
                 FocusCard(
                     onClick = { open = if (expanded) null else item.key },
                     glow = false,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(d.radius + 4.dp),
+                    focusScale = 1f,
                 ) {
-                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        UrlImage(item.posterUrl, 80.dp, Modifier.width(if (d.isTv) 76.dp else 58.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)))
+                    // TV: a small poster (3 to 4 rows on screen instead of 1.5).
+                    Row(Modifier.padding(if (d.isTv) 8.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        UrlImage(
+                            item.posterUrl,
+                            80.dp,
+                            Modifier.width(if (d.isTv) 44.dp else 58.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(if (d.isTv) 6.dp else 10.dp)),
+                        )
                         Column(Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 listOfNotNull(item.title, item.year?.toString()).joinToString(" · "),
@@ -694,7 +707,10 @@ fun KeepAdminScreen() {
             }
         }
         item {
-            be.alwyapps.watch.ui.Group("People", footer = "Everyone can keep forever by default. Tap a value to change it.") {
+            be.alwyapps.watch.ui.Group(
+                "People",
+                footer = "Everyone can keep forever by default. ${if (LocalDimens.current.isTv) "Select" else "Tap"} a value to change it.",
+            ) {
                 users.orEmpty().forEachIndexed { i, u ->
                     if (i > 0) {
                         be.alwyapps.watch.ui

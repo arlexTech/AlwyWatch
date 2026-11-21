@@ -18,6 +18,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.lifecycle.lifecycleScope
 import be.alwyapps.watch.core.AlwyWatch
 import be.alwyapps.watch.ui.AlwyTheme
@@ -60,6 +62,9 @@ class MainActivity : ComponentActivity() {
                 if (event.action == android.view.KeyEvent.ACTION_UP) echoDown = false
                 return true
             }
+        }
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            be.alwyapps.watch.ui.HeldLeft.pressed = event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT
         }
         if (event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
             be.alwyapps.watch.ui.HeldLeft.held = event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount > 0
@@ -156,71 +161,95 @@ private fun Root(core: AlwyWatch) {
                 AppScaffold {
                     // One initial focus per screen visit (see initialFocus).
                     val focusDone = remember(nav.current) { mutableStateOf(false) }
+                    // TV: a screen where nothing took the focus by its first frame (no initial
+                    // focus, or the remembered element isn't there) gets it on its first element,
+                    // so the D-pad is never dead and the side menu never gets it by default.
+                    val screen =
+                        remember {
+                            androidx.compose.ui.focus
+                                .FocusRequester()
+                        }
+                    var screenHasFocus by remember { mutableStateOf(false) }
+                    if (isTv) {
+                        androidx.compose.runtime.LaunchedEffect(nav.current) {
+                            androidx.compose.runtime.withFrameNanos { }
+                            if (!focusDone.value && !screenHasFocus && runCatching { screen.requestFocus() }.getOrDefault(false)) {
+                                focusDone.value = true
+                            }
+                        }
+                    }
                     CompositionLocalProvider(be.alwyapps.watch.ui.LocalInitialFocusDone provides focusDone) {
-                        when (val r = nav.current) {
-                            Route.Home -> HomeScreen()
-                            Route.Search -> SearchScreen()
-                            Route.Settings ->
-                                SettingsScreen(onAccountChanged = {
-                                    account = it
-                                    nav.reset(Route.Home)
-                                })
-                            Route.AddServer ->
-                                AddServerScreen(onSignedIn = {
-                                    account = it
-                                    nav.reset(Route.Home)
-                                })
-                            Route.Downloads ->
-                                androidx.compose.foundation.layout.Column {
-                                    be.alwyapps.watch.ui
-                                        .PageTitle("Downloads")
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .focusRequester(screen)
+                                .onFocusChanged { screenHasFocus = it.hasFocus },
+                        ) {
+                            when (val r = nav.current) {
+                                Route.Home -> HomeScreen()
+                                Route.Search -> SearchScreen()
+                                Route.Settings ->
+                                    SettingsScreen(onAccountChanged = {
+                                        account = it
+                                        nav.reset(Route.Home)
+                                    })
+                                Route.AddServer ->
+                                    AddServerScreen(onSignedIn = {
+                                        account = it
+                                        nav.reset(Route.Home)
+                                    })
+                                Route.Downloads ->
+                                    androidx.compose.foundation.layout.Column {
+                                        be.alwyapps.watch.ui
+                                            .PageTitle("Downloads")
+                                        be.alwyapps.watch.ui.screens
+                                            .DownloadsHome()
+                                    }
+                                Route.ManageDownloads -> DownloadsScreen()
+                                is Route.SeerrTitle ->
                                     be.alwyapps.watch.ui.screens
-                                        .DownloadsHome()
-                                }
-                            Route.ManageDownloads -> DownloadsScreen()
-                            is Route.SeerrTitle ->
-                                be.alwyapps.watch.ui.screens
-                                    .SeerrTitleScreen(r.mediaType, r.tmdbId)
-                            is Route.SeerrSaga ->
-                                be.alwyapps.watch.ui.screens
-                                    .SeerrSagaScreen(r.id, r.name)
-                            is Route.PlexSwitch ->
-                                be.alwyapps.watch.ui.screens.PlexSwitchScreen(r.accountId, onSwitched = {
-                                    account = it
-                                    nav.reset(Route.Home)
-                                })
-                            is Route.DownloadedShow ->
-                                be.alwyapps.watch.ui.screens
-                                    .DownloadedShowScreen(r.seriesId, r.title)
-                            Route.Requests -> RequestsScreen()
-                            Route.LeavingSoon -> LeavingSoonScreen()
-                            Route.Together ->
-                                be.alwyapps.watch.ui.screens
-                                    .TogetherScreen()
-                            Route.Watchlist ->
-                                be.alwyapps.watch.ui.screens
-                                    .WatchlistScreen()
-                            is Route.SettingsSection ->
-                                be.alwyapps.watch.ui.screens.SettingsSectionScreen(r.id, onAccountChanged = {
-                                    account = it
-                                    nav.reset(Route.Home)
-                                })
-                            Route.HistoryCopy ->
-                                be.alwyapps.watch.ui.screens
-                                    .HistoryCopyScreen()
-                            Route.Triage -> TriageScreen()
-                            Route.KeepAdmin -> KeepAdminScreen()
-                            Route.KeepForever -> KeepForeverScreen()
-                            Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
-                            // Combined home: a page of another account's server runs as that account.
-                            is Route.Library ->
-                                CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { LibraryScreen(r.id, r.title) }
-                            is Route.Filtered ->
-                                CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) {
-                                    LibraryGrid(r.libraryId, r.title, r.genreId, r.collectionId)
-                                }
-                            is Route.Detail ->
-                                CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { DetailScreen(r.itemId, r.season) }
+                                        .SeerrTitleScreen(r.mediaType, r.tmdbId)
+                                is Route.SeerrSaga ->
+                                    be.alwyapps.watch.ui.screens
+                                        .SeerrSagaScreen(r.id, r.name)
+                                is Route.PlexSwitch ->
+                                    be.alwyapps.watch.ui.screens.PlexSwitchScreen(r.accountId, onSwitched = {
+                                        account = it
+                                        nav.reset(Route.Home)
+                                    })
+                                is Route.DownloadedShow ->
+                                    be.alwyapps.watch.ui.screens
+                                        .DownloadedShowScreen(r.seriesId, r.title)
+                                Route.Requests -> RequestsScreen()
+                                Route.LeavingSoon -> LeavingSoonScreen()
+                                Route.Together ->
+                                    be.alwyapps.watch.ui.screens
+                                        .TogetherScreen()
+                                Route.Watchlist ->
+                                    be.alwyapps.watch.ui.screens
+                                        .WatchlistScreen()
+                                is Route.SettingsSection ->
+                                    be.alwyapps.watch.ui.screens.SettingsSectionScreen(r.id, onAccountChanged = {
+                                        account = it
+                                        nav.reset(Route.Home)
+                                    })
+                                Route.HistoryCopy ->
+                                    be.alwyapps.watch.ui.screens
+                                        .HistoryCopyScreen()
+                                Route.Triage -> TriageScreen()
+                                Route.KeepAdmin -> KeepAdminScreen()
+                                Route.KeepForever -> KeepForeverScreen()
+                                Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
+                                // Combined home: a page of another account's server runs as that account.
+                                is Route.Library ->
+                                    CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { LibraryScreen(r.id, r.title) }
+                                is Route.Filtered ->
+                                    CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) {
+                                        LibraryGrid(r.libraryId, r.title, r.genreId, r.collectionId)
+                                    }
+                                is Route.Detail ->
+                                    CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { DetailScreen(r.itemId, r.season) }
+                            }
                         }
                     }
                 }

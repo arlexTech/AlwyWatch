@@ -33,7 +33,6 @@ import be.alwyapps.watch.core.media.ItemQuery
 import be.alwyapps.watch.core.media.SortBy
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.ErrorBanner
-import be.alwyapps.watch.ui.FocusMemory
 import be.alwyapps.watch.ui.LocalAccount
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
@@ -41,7 +40,7 @@ import be.alwyapps.watch.ui.LocalNavigator
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.PosterCard
 import be.alwyapps.watch.ui.Route
-import be.alwyapps.watch.ui.initialFocus
+import be.alwyapps.watch.ui.rememberFocus
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val PAGE = 60
@@ -128,7 +127,7 @@ private enum class LibTab(
 
 /**
  * A library like Plex: Recommended (the home rails, only this library's kind), Browse (the
- * whole library, sortable), Collections and Categories (genres). The tab is remembered.
+ * whole library, sortable), Collections and Categories (genres). The tab is kept for BACK.
  */
 @Composable
 fun LibraryScreen(
@@ -139,8 +138,18 @@ fun LibraryScreen(
     val account = LocalAccount.current
     val d = LocalDimens.current
     val tabKey = "ui.libtab.$account.$id"
+    // Opened anew (menu, home): Recommended, focus on it. Back from a title or a category:
+    // the tab (and the focused title) it was on.
+    val nav = LocalNavigator.current
+    val back = remember(id) { nav.returning }
     var tab by remember(id) {
-        mutableStateOf(runCatching { LibTab.valueOf(core.getSetting(tabKey) ?: "") }.getOrDefault(LibTab.RECOMMENDED))
+        if (!back) {
+            be.alwyapps.watch.ui.FocusMemory
+                .forget("lib.$id")
+        }
+        mutableStateOf(
+            if (back) runCatching { LibTab.valueOf(core.getSetting(tabKey) ?: "") }.getOrDefault(LibTab.RECOMMENDED) else LibTab.RECOMMENDED,
+        )
     }
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(start = d.gutter, end = d.gutter, top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -152,7 +161,9 @@ fun LibraryScreen(
                     ActionButton(t.label, {
                         tab = t
                         runCatching { core.setSetting(tabKey, t.name) }
-                    }, if (i == 0) Modifier.initialFocus() else Modifier, selected = tab == t)
+                        // Back from what the page opened: focus where it was (the opened title, a
+                        // category…), else on the current tab.
+                    }, Modifier.rememberFocus("lib.$id", "tab.${t.name}", default = tab == t), selected = tab == t)
                 }
             }
         }
@@ -206,7 +217,7 @@ private fun Recommended(
             item {
                 Column {
                     be.alwyapps.watch.ui
-                        .Rail("Continue watching", h.continueWatching.filter(keep), open, focusKey = "lib.$id")
+                        .Rail("Continue watching", h.continueWatching.filter(keep), open, focusKey = "lib.$id", continueWatching = true)
                     h.latest.firstOrNull { it.library.id == id }?.let { rail ->
                         be.alwyapps.watch.ui
                             .Rail("Recently added", rail.items, open, focusKey = "lib.$id")
@@ -247,7 +258,13 @@ private fun Collections(id: String) {
             item(span = { GridItemSpan(maxLineSpan) }) { Text("No collections in this library.", color = Muted) }
         }
         itemsIndexed(cols.orEmpty(), key = { _, it -> it.id }) { _, c ->
-            PosterCard(c, d.posterWidth, onClick = { nav.push(Route.Filtered(id, c.title, null, c.id, account)) }, showTitle = true)
+            PosterCard(
+                c,
+                d.posterWidth,
+                onClick = { nav.push(Route.Filtered(id, c.title, null, c.id, account)) },
+                cardModifier = Modifier.rememberFocus("lib.$id", "col.${c.id}"),
+                showTitle = true,
+            )
         }
     }
 }
@@ -286,6 +303,7 @@ private fun Categories(
                     }
                     be.alwyapps.watch.ui.ListRow(
                         g.name,
+                        Modifier.rememberFocus("lib.$id", "genre.${g.id}"),
                         onClick = { nav.push(Route.Filtered(id, "${g.name} · $title", g.id, null, account)) },
                         trailing = {
                             be.alwyapps.watch.ui
@@ -365,15 +383,14 @@ fun LibraryGrid(
             }
         }
         pager.error?.let { msg -> item(span = { GridItemSpan(maxLineSpan) }, key = "err") { ErrorBanner(msg) { pager.error = null } } }
+        // A narrowed grid (genre, collection) remembers its own title; Browse, the library's.
+        val memory = if (header) "lib.$id.${genreId.orEmpty()}.${collectionId.orEmpty()}" else "lib.$id"
         itemsIndexed(pager.items, key = { _, it -> it.id }) { i, item ->
-            val memo = "lib.$id|${item.id}"
-            val focusMe = FocusMemory["lib.$id"]?.let { it == memo } ?: (i == 0)
             PosterCard(
                 item,
                 d.posterWidth,
                 onClick = { nav.push(Route.Detail(item.id, account = account)) },
-                onFocus = { FocusMemory["lib.$id"] = memo },
-                cardModifier = if (focusMe && d.isTv && header) Modifier.initialFocus() else Modifier,
+                cardModifier = Modifier.rememberFocus(memory, "lib|${item.id}", default = header && i == 0),
                 showTitle = true,
             )
         }

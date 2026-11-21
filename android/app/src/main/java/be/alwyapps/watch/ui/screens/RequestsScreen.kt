@@ -46,6 +46,7 @@ import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.UrlImage
+import be.alwyapps.watch.ui.focusOnAppear
 import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.rememberSwr
 import kotlinx.coroutines.launch
@@ -111,8 +112,18 @@ fun RequestsScreen() {
             }
         }
         val items = list.value.orEmpty()
-        if (items.isEmpty() && list.value != null) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Text(if (all) "No requests." else "You haven't requested anything yet.", color = Muted) }
+        // Never a blank page: loading, or nothing yet (with how to request).
+        if (items.isEmpty() && list.error == null) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    when {
+                        list.value == null -> "Loading requests…"
+                        all -> "No requests."
+                        else -> "You haven't requested anything yet. Search for a title that isn't on your servers to request it."
+                    },
+                    color = Muted,
+                )
+            }
         }
         items(items, key = { "req-${it.id}" }) { MyRequest(it, showWho = all) }
     }
@@ -213,7 +224,7 @@ fun RequestPanel(
                     ActionButton(
                         if (busy) "Requesting…" else "Request",
                         { send(emptyList()) },
-                        Modifier.initialFocus(),
+                        Modifier.focusOnAppear(),
                         primary = true,
                         icon = be.alwyapps.watch.ui.Icons.Add,
                     )
@@ -233,7 +244,7 @@ fun RequestPanel(
                                 "Request ${chosen.size} season${if (chosen.size > 1) "s" else ""}"
                             },
                             { send(chosen.sorted()) },
-                            Modifier.initialFocus(),
+                            Modifier.focusOnAppear(),
                             primary = true,
                             icon = be.alwyapps.watch.ui.Icons.Add,
                         )
