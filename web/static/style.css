@@ -170,3 +170,47 @@ button.danger:hover { background: #ff7a7e; }
 .skip-row .skip { position: static; }
 label.row.toggle { cursor: pointer; }
 label.row.toggle input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+
+/* Before the app starts, and when it crashes. */
+#boot { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 16px; text-align: center; }
+#crash { position: fixed; inset: auto 16px 16px; z-index: 100; display: flex; gap: 16px; align-items: center; justify-content: center;
+  flex-wrap: wrap; background: #16161b; border: 1px solid var(--danger); border-radius: var(--radius); padding: 12px 20px; }
+#crash p { margin: 0; }
+
+/* A server refused an account. */
+.banner { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: var(--surface-high);
+  border-left: 3px solid var(--danger); border-radius: var(--radius); padding: 10px 16px; margin-bottom: 16px; }
+.banner span { flex: 1 1 240px; }
+
+/* Playback failed. */
+.player-msg { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px;
+  padding: 24px; text-align: center; background: #000c; }
+.player-msg p { max-width: 50ch; }
+.player:focus-within .player-top { opacity: 1; }
+
+/* Long titles wrap instead of pushing the page sideways. */
+h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
+.row > div { min-width: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 720px) {
+  h1 { font-size: 1.5rem; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 14px 10px; }
+  .episodes { grid-template-columns: 1fr; }
+  .card { width: 120px; }
+  .card.wide { width: 220px; }
+  .rail-row { margin-right: -16px; }
+  .row { flex-wrap: wrap; }
+  .leaving-row img { width: 56px; }
+  .triage-card { width: 100%; max-width: 260px; margin: 0 auto; }
+  .triage-info { min-width: 0; }
+  .player-top { padding: 10px 12px 30px; gap: 8px; flex-wrap: wrap; }
+  .player:not(:hover) .player-top { opacity: 1; }
+  .pill.together { max-width: 60vw; }
+  .skip, .skip-row { right: 12px; bottom: 70px; }
+  .toast { left: 12px; right: 12px; bottom: 120px; }
+  .knock { left: 12px; right: 12px; top: 70px; }
+  .join-code { flex-wrap: wrap; }
+  .dialog { padding: 8px 16px 12px; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .chip { flex: none; }
+}

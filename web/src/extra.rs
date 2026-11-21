@@ -4,7 +4,7 @@
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use media_api::{Item, ItemKind, MediaServer, Person};
+use media_api::{Item, ItemKind, MediaServer, Person, ServerKind};
 
 use crate::state;
 use crate::ui::{ErrorText, Grid, Loading};
@@ -19,6 +19,7 @@ pub fn ItemActions(acc: String, item: Item) -> impl IntoView {
     let (a1, i1) = (acc.clone(), id.clone());
     let toggle_played = move |_| {
         let (acc, id, want) = (a1.clone(), i1.clone(), !played.get_untracked());
+        error.set(None);
         spawn_local(async move {
             let Some(srv) = state::ctx().server(&acc) else {
                 return;
@@ -27,25 +28,33 @@ pub fn ItemActions(acc: String, item: Item) -> impl IntoView {
                 Ok(()) => {
                     played.set(want);
                     // The home rails kept in the browser are now out of date.
-                    state::remove("aw.home");
+                    state::remove(state::HOME);
                 }
-                Err(e) => error.set(Some(e.to_string())),
+                Err(e) => error.set(Some(state::plain(&e))),
             }
         });
     };
+    // Plex keeps the list on plex.tv, under the account's own token (kept at Plex sign-in;
+    // accounts signed in before that have none: no list button rather than a failing one).
+    let c = state::ctx();
+    let plex = c.session(&acc).is_some_and(|s| s.kind == ServerKind::Plex);
+    let plex_tv = plex.then(|| c.plex_tv_token(&acc)).flatten();
+    let pt = plex_tv.clone();
     let toggle_listed = move |_| {
-        let (acc, id, want) = (acc.clone(), id.clone(), !listed.get_untracked());
+        let (acc, id, want, pt) = (acc.clone(), id.clone(), !listed.get_untracked(), pt.clone());
+        error.set(None);
         spawn_local(async move {
             let Some(srv) = state::ctx().server(&acc) else {
                 return;
             };
-            match srv.set_watchlisted(&id, want, None).await {
+            match srv.set_watchlisted(&id, want, pt.as_deref()).await {
                 Ok(()) => listed.set(want),
-                Err(e) => error.set(Some(e.to_string())),
+                Err(e) => error.set(Some(state::plain(&e))),
             }
         });
     };
-    let can_list = matches!(item.kind, ItemKind::Movie | ItemKind::Series);
+    let can_list =
+        matches!(item.kind, ItemKind::Movie | ItemKind::Series) && (!plex || plex_tv.is_some());
     view! {
         <div class="actions">
             <button on:click=toggle_played>
@@ -104,22 +113,37 @@ pub fn Cast(acc: String, id: String) -> impl IntoView {
 #[component]
 pub fn MyList() -> impl IntoView {
     let items = LocalResource::new(move || async move {
-        let mut all = Vec::new();
-        for (acc, srv) in state::ctx().servers() {
-            if let Ok(l) = srv.watchlist(None).await {
-                all.extend(l.into_iter().map(|i| (acc.clone(), i)));
+        let c = state::ctx();
+        let lists = state::join_all(c.servers().into_iter().map(|(acc, srv)| {
+            let plex_tv = c.plex_tv_token(&acc);
+            async move {
+                let l = srv.watchlist(plex_tv.as_deref()).await;
+                (acc, l)
             }
-        }
-        all
+        }))
+        .await;
+        let failed = lists.iter().all(|(_, l)| l.is_err()) && !lists.is_empty();
+        let all: Vec<_> = lists
+            .into_iter()
+            .flat_map(|(acc, l)| {
+                l.unwrap_or_default()
+                    .into_iter()
+                    .map(move |i| (acc.clone(), i))
+            })
+            .collect();
+        (all, failed)
     });
     view! {
         <h1>"My list"</h1>
         {move || match items.get() {
             None => view! { <Loading /> }.into_any(),
-            Some(l) if l.is_empty() => view! {
+            Some((_, true)) => view! {
+                <ErrorText text="Can't reach your servers right now.".to_string() />
+            }.into_any(),
+            Some((l, _)) if l.is_empty() => view! {
                 <p class="muted">"Nothing yet. Open a movie or a show and add it to your list."</p>
             }.into_any(),
-            Some(l) => view! { <Grid items=l /> }.into_any(),
+            Some((l, _)) => view! { <Grid items=l /> }.into_any(),
         }}
     }
 }

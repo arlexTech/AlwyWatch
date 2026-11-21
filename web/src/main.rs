@@ -18,12 +18,56 @@ use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
 
 fn main() {
+    show_crashes();
+    // The page's own "Loading…" (shown while the app downloads) makes way for the app.
+    if let Some(boot) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("boot"))
+    {
+        boot.remove();
+    }
     leptos::mount::mount_to_body(App);
+}
+
+/// A crash leaves a dead page behind: say so, with a way out, instead.
+fn show_crashes() {
+    std::panic::set_hook(Box::new(|info| {
+        web_sys::console::error_1(&info.to_string().into());
+        let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+            return;
+        };
+        if doc.get_element_by_id("crash").is_some() {
+            return;
+        }
+        let (Ok(box_), Ok(text), Ok(link), Some(body)) = (
+            doc.create_element("div"),
+            doc.create_element("p"),
+            doc.create_element("a"),
+            doc.body(),
+        ) else {
+            return;
+        };
+        box_.set_id("crash");
+        let _ = box_.set_attribute("role", "alert");
+        text.set_text_content(Some("Something went wrong."));
+        link.set_text_content(Some("Reload"));
+        let here = doc
+            .location()
+            .and_then(|l| l.href().ok())
+            .unwrap_or_else(|| "/".into());
+        let _ = link.set_attribute("href", &here);
+        let _ = link.set_attribute("class", "button primary");
+        let _ = box_.append_child(&text);
+        let _ = box_.append_child(&link);
+        let _ = body.append_child(&box_);
+    }));
 }
 
 #[component]
 fn App() -> impl IntoView {
-    provide_context(state::install());
+    let c = state::install();
+    provide_context(c.clone());
+    leptos::task::spawn_local(signin::check_keep(c));
     view! {
         <Router>
             <Routes fallback=|| view! { <main class="page"><h1>"Not found"</h1></main> }>
@@ -71,6 +115,7 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                 <A href="/settings">"Settings"</A>
             </nav>
             <main class="page">
+                <Expired />
                 {move || if signed_in() || matches!(current_path().as_str(), "/signin" | "/settings") {
                     children().into_any()
                 } else {
@@ -83,4 +128,26 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
 
 fn current_path() -> String {
     leptos_router::hooks::use_location().pathname.get()
+}
+
+/// A server refused an account (its session ended): offer to sign in again.
+#[component]
+fn Expired() -> impl IntoView {
+    let c = state::ctx();
+    let navigate = leptos_router::hooks::use_navigate();
+    move || {
+        let key = c.expired.get()?;
+        let s = c.session(&key)?;
+        let (c1, c2, k1, nav) = (c.clone(), c.clone(), key.clone(), navigate.clone());
+        Some(view! {
+            <div class="banner" role="alert">
+                <span>{format!("{} on {} was signed out by the server.", s.user_name, s.server_name)}</span>
+                <button class="small primary" on:click=move |_| {
+                    c1.remove_account(&k1);
+                    nav("/signin", Default::default());
+                }>"Sign in again"</button>
+                <button class="small subtle" on:click=move |_| c2.expired.set(None)>"Dismiss"</button>
+            </div>
+        })
+    }
 }

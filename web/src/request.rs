@@ -12,6 +12,9 @@ use seerr::{Availability, RequestStatus, SeerrDetails, SeerrMediaType, SeerrRequ
 use crate::state;
 use crate::ui::{ErrorText, Loading};
 
+const NO_SEERR: &str =
+    "Requests need an account on this AlwyWatch server: sign in with one in Settings.";
+
 /// Where a title's page is.
 pub fn title_href(kind: SeerrMediaType, tmdb_id: i64) -> String {
     let kind = match kind {
@@ -97,9 +100,7 @@ pub fn SeerrTitle() -> impl IntoView {
         reload.track();
         let (kind, tmdb) = (kind.get(), tmdb.get());
         async move {
-            let s = state::ctx()
-                .seerr()
-                .ok_or("Requests need an account on this AlwyWatch server.".to_string())?;
+            let s = state::ctx().seerr().ok_or(NO_SEERR.to_string())?;
             s.title(kind, tmdb).await.map_err(|e| plain_error(&e))
         }
     });
@@ -147,7 +148,7 @@ fn TitleView(
     let available = t.availability == Availability::Available;
     let cast = t.cast.clone();
     view! {
-        <div class="hero" style=t.backdrop_url.clone().map(|b| format!("background-image:url('{b}')")).unwrap_or_default()>
+        <div class="hero" style=t.backdrop_url.clone().map(|b| format!("background-image:{}", state::css_url(&b))).unwrap_or_default()>
             <div class="hero-inner">
                 {t.poster_url.clone().map(|p| view! { <img class="hero-poster" src=p alt="" /> })}
                 <div>
@@ -192,7 +193,7 @@ fn RequestPanel(
     if kind == SeerrMediaType::Tv {
         spawn_local(async move {
             let Some(s) = state::ctx().seerr() else {
-                return;
+                return seasons.set(Some(Err(NO_SEERR.into())));
             };
             seasons.set(Some(s.seasons(id).await.map_err(|e| plain_error(&e))));
         });
@@ -201,14 +202,14 @@ fn RequestPanel(
         if busy.get_untracked() {
             return;
         }
+        let Some(s) = state::ctx().seerr() else {
+            return message.set(Some(NO_SEERR.into()));
+        };
         busy.set(true);
         let mut numbers = chosen.get_untracked();
         numbers.sort_unstable();
         let name = name.clone();
         spawn_local(async move {
-            let Some(s) = state::ctx().seerr() else {
-                return;
-            };
             message.set(Some(match s.request(kind, id, &numbers).await {
                 Ok(_) => format!("Requested: {name}"),
                 Err(e) => format!("Couldn't request {name}: {}", plain_error(&e)),
@@ -279,7 +280,7 @@ fn request_state(r: &SeerrRequest) -> &'static str {
     }
 }
 
-const EVERYONE: &str = "aw.requests.everyone";
+use crate::state::REQUESTS_EVERYONE as EVERYONE;
 
 /// Seerr requests: mine, or everyone's for the people Seerr lets see them.
 #[component]
@@ -303,22 +304,49 @@ pub fn Requests() -> impl IntoView {
             all.set(false);
         }
     });
-    let list = LocalResource::new(move || {
+    // The last list of each kind at once (Seerr answers slowly: one call per title), then
+    // the fresh one. Only the latest load counts.
+    let cache = |all: bool| {
+        if all {
+            state::REQUESTS_ALL
+        } else {
+            state::REQUESTS_MINE
+        }
+    };
+    let list = RwSignal::new(state::load::<Vec<SeerrRequest>>(cache(false)).map(Ok));
+    let seq = StoredValue::new(0u32);
+    Effect::new(move |_| {
         let all = all.get();
-        async move {
-            let s = state::ctx()
-                .seerr()
-                .ok_or("Requests need an account on this AlwyWatch server.".to_string())?;
-            match s.requests(50, all).await {
-                Ok(l) => Ok(l),
+        seq.update_value(|s| *s += 1);
+        let mine = seq.get_value();
+        list.set(state::load::<Vec<SeerrRequest>>(cache(all)).map(Ok));
+        spawn_local(async move {
+            let Some(s) = state::ctx().seerr() else {
+                return list.set(Some(Err(NO_SEERR.to_string())));
+            };
+            let res = s.requests(50, all).await;
+            if seq.try_get_value() != Some(mine) {
+                return;
+            }
+            let res = match res {
+                Ok(l) => {
+                    state::save(cache(all), &l);
+                    Ok(l)
+                }
                 Err(Error::Unauthorized | Error::Status { status: 403 }) if all => {
                     state::save(EVERYONE, &false);
                     everyone_ok.set(false);
                     Err("Only Seerr managers can see everyone's requests.".to_string())
                 }
+                // Offline: what was shown stays.
+                Err(_) if list.with_untracked(|l| matches!(l, Some(Ok(_)))) => return,
+                Err(Error::NotFound) => {
+                    Err("Requests aren't available on this AlwyWatch server.".to_string())
+                }
                 Err(e) => Err(plain_error(&e)),
-            }
-        }
+            };
+            list.set(Some(res));
+        });
     });
     view! {
         <h1>"Requests"</h1>

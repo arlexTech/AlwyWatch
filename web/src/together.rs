@@ -423,9 +423,10 @@ impl Room {
                         "Watch together is open: friends can join from Together".into(),
                     ));
                 }
-                Err(e) => self
-                    .note
-                    .set(Some(format!("Watch together unavailable: {e}"))),
+                Err(e) => self.note.set(Some(format!(
+                    "Watch together unavailable: {}",
+                    state::plain_keep(&e)
+                ))),
             }
         });
     }
@@ -465,13 +466,18 @@ impl Room {
         let c = state::ctx();
         spawn_local(async move {
             let Some(k) = c.keep_client() else { return };
-            let before = self.state.get_untracked();
+            let Some(before) = self.state.try_get_untracked() else {
+                return;
+            };
             let answer = TogetherAnswer {
                 member_id: me,
                 accept,
             };
             // Gone meanwhile (they stopped asking): nothing to do.
-            if let Ok(after) = k.together_answer(&code, &request_id, &answer).await {
+            if let Ok(after) = k.together_answer(&code, &request_id, &answer).await
+                // Still in this room (the player may have closed meanwhile).
+                && self.ids().is_some_and(|(c, _)| c == code)
+            {
                 let joined = after
                     .members
                     .iter()
@@ -672,7 +678,7 @@ fn JoinDialog(join: Join, on_close: impl Fn() + Clone + Send + Sync + 'static) -
         let mut ks = match k.together_knock(&join.code).await {
             Ok(x) => x,
             Err(Error::NotFound) => return end("This session has ended.".into()),
-            Err(e) => return end(format!("Couldn't ask to join: {e}")),
+            Err(e) => return end(format!("Couldn't ask to join: {}", state::plain_keep(&e))),
         };
         let _ = request.try_update_value(|r| *r = Some(ks.request_id.clone()));
         let mut failures = 0u32;
@@ -689,7 +695,7 @@ fn JoinDialog(join: Join, on_close: impl Fn() + Clone + Send + Sync + 'static) -
                 Err(e) => {
                     failures += 1;
                     if failures > 5 {
-                        return end(format!("Couldn't ask to join: {e}"));
+                        return end(format!("Couldn't ask to join: {}", state::plain_keep(&e)));
                     }
                     state::sleep(2000 * failures as i32).await;
                 }
@@ -727,9 +733,18 @@ fn JoinDialog(join: Join, on_close: impl Fn() + Clone + Send + Sync + 'static) -
         );
     });
     let close = on_close.clone();
+    let close_key = on_close.clone();
+    let first = NodeRef::<leptos::html::Div>::new();
+    // Focus inside the dialog, so Escape closes it.
+    Effect::new(move |_| {
+        if let Some(d) = first.get() {
+            let _ = d.focus();
+        }
+    });
     view! {
-        <div class="dialog-back" on:click=move |_| close()>
-            <div class="dialog" role="dialog" aria-modal="true" on:click=|ev| ev.stop_propagation()>
+        <div class="dialog-back" on:click=move |_| close()
+            on:keydown=move |ev| if ev.key() == "Escape" { close_key() }>
+            <div class="dialog" role="dialog" aria-modal="true" tabindex="-1" node_ref=first on:click=|ev| ev.stop_propagation()>
                 <h2>{title}</h2>
                 {move || match message.get() {
                     None => view! { <p>{format!("Waiting for {host} to let you in…")}</p> }.into_any(),

@@ -8,7 +8,9 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_params_map, use_query_map};
-use media_api::{ImageKind, Item, ItemKind, ItemQuery, LibraryKind, MediaServer, SortBy};
+use media_api::{
+    AnyServer, ImageKind, Item, ItemKind, ItemQuery, LibraryKind, MediaServer, SortBy,
+};
 use seerr::{Availability, SeerrMediaType, SeerrResult};
 
 use crate::state::{self, fmt_time};
@@ -39,30 +41,76 @@ fn dedupe(list: Vec<(String, Item)>) -> Vec<(String, Item)> {
         .collect()
 }
 
-async fn load_home(c: &state::Ctx) -> Rails {
+/// A library chip on the home page: account, library id, title, server name.
+type LibLink = (String, String, String, String);
+
+/// One server's part of the home page.
+struct ServerHome {
+    resume: Vec<(String, Item)>,
+    next: Vec<(String, Item)>,
+    latest: Rails,
+    libs: Vec<LibLink>,
+    /// The server answered (else its part is left as it was).
+    ok: bool,
+}
+
+async fn load_server(c: &state::Ctx, acc: String, srv: AnyServer) -> ServerHome {
+    let ((resume, next), libs) = state::join2(
+        state::join2(srv.resume(16), srv.next_up(16)),
+        srv.libraries(),
+    )
+    .await;
+    if let Err(e) = &resume {
+        c.failed(&acc, e);
+    }
+    let ok = resume.is_ok() || libs.is_ok();
+    let libs: Vec<_> = libs
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.kind != LibraryKind::Other)
+        .collect();
+    let latest = state::join_all(libs.iter().map(|l| srv.latest(&l.id, 20))).await;
+    let tag = |l: Vec<Item>| l.into_iter().map(|i| (acc.clone(), i)).collect::<Vec<_>>();
+    let server = srv.session().server_name.clone();
+    ServerHome {
+        resume: tag(resume.unwrap_or_default()),
+        next: tag(next.unwrap_or_default()),
+        latest: libs
+            .iter()
+            .zip(latest)
+            .filter_map(|(lib, l)| {
+                let l = l.ok()?;
+                Some((format!("Recently added · {}", lib.title), tag(l), false))
+            })
+            .collect(),
+        libs: libs
+            .into_iter()
+            .map(|l| (acc.clone(), l.id, l.title, server.clone()))
+            .collect(),
+        ok,
+    }
+}
+
+/// Every server at once. None when none of them answered (offline: keep what we had).
+async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
+    let parts = state::join_all(
+        c.servers()
+            .into_iter()
+            .map(|(acc, srv)| load_server(c, acc, srv)),
+    )
+    .await;
+    if !parts.iter().any(|p| p.ok) {
+        return None;
+    }
     let mut resume = Vec::new();
     let mut next = Vec::new();
     let mut latest: Rails = Vec::new();
-    for (acc, srv) in c.servers() {
-        if let Ok(l) = srv.resume(16).await {
-            resume.extend(l.into_iter().map(|i| (acc.clone(), i)));
-        }
-        if let Ok(l) = srv.next_up(16).await {
-            next.extend(l.into_iter().map(|i| (acc.clone(), i)));
-        }
-        for lib in srv.libraries().await.unwrap_or_default() {
-            if lib.kind == LibraryKind::Other {
-                continue;
-            }
-            if let Ok(l) = srv.latest(&lib.id, 20).await {
-                let name = format!("Recently added · {}", lib.title);
-                latest.push((
-                    name,
-                    l.into_iter().map(|i| (acc.clone(), i)).collect(),
-                    false,
-                ));
-            }
-        }
+    let mut libs = Vec::new();
+    for p in parts {
+        resume.extend(p.resume);
+        next.extend(p.next);
+        latest.extend(p.latest);
+        libs.extend(p.libs);
     }
     resume.sort_by_key(|(_, i)| std::cmp::Reverse(i.user.last_played_at.unwrap_or(0)));
     let mut rails: Rails = vec![
@@ -70,51 +118,51 @@ async fn load_home(c: &state::Ctx) -> Rails {
         ("Next up".into(), dedupe(next), true),
     ];
     rails.extend(latest);
-    rails
+    Some((rails, libs))
 }
 
 #[component]
 pub fn Home() -> impl IntoView {
     let c = state::ctx();
-    let rails = RwSignal::new(state::load::<Rails>("aw.home"));
-    let c2 = c.clone();
+    // The last copy at once, then the servers' (one request per server at the same time).
+    let rails = RwSignal::new(state::load::<Rails>(state::HOME));
+    let libs = RwSignal::new(state::load::<Vec<LibLink>>(state::LIBS).unwrap_or_default());
+    let offline = RwSignal::new(false);
     Effect::new(move |_| {
-        c2.accounts.track();
-        let c = c2.clone();
-        spawn_local(async move {
-            let fresh = load_home(&c).await;
-            state::save("aw.home", &fresh);
-            rails.set(Some(fresh));
-        });
-    });
-    let libs = LocalResource::new(move || {
-        let c = c.clone();
         c.accounts.track();
-        async move {
-            let mut out = Vec::new();
-            for (acc, srv) in c.servers() {
-                for l in srv.libraries().await.unwrap_or_default() {
-                    if l.kind != LibraryKind::Other {
-                        out.push((
-                            acc.clone(),
-                            l.id,
-                            l.title,
-                            srv.session().server_name.clone(),
-                        ));
-                    }
+        let c = c.clone();
+        spawn_local(async move {
+            match load_home(&c).await {
+                Some((fresh, l)) => {
+                    state::save(state::HOME, &fresh);
+                    state::save(state::LIBS, &l);
+                    offline.set(false);
+                    rails.set(Some(fresh));
+                    libs.set(l);
+                }
+                None => {
+                    offline.set(true);
+                    rails.update(|r| {
+                        r.get_or_insert_with(Vec::new);
+                    });
                 }
             }
-            out
-        }
+        });
     });
     view! {
         <div class="chips">
-            {move || libs.get().unwrap_or_default().into_iter().map(|(acc, id, title, server)| view! {
+            {move || libs.get().into_iter().map(|(acc, id, title, server)| view! {
                 <A href=format!("/library/{acc}/{id}") attr:class="chip" attr:title=server>{title}</A>
             }).collect_view()}
         </div>
+        {move || offline.get().then(|| view! {
+            <ErrorText text="Can't reach your servers right now. Showing what was here last time.".to_string() />
+        })}
         {move || match rails.get() {
             None => view! { <Loading /> }.into_any(),
+            Some(r) if r.iter().all(|(_, items, _)| items.is_empty()) && !offline.get() => view! {
+                <p class="muted">"Nothing here yet. Your libraries are above."</p>
+            }.into_any(),
             Some(r) => r.into_iter().map(|(t, items, wide)| view! { <Rail title=t items=items wide=wide /> }).collect_view().into_any(),
         }}
     }
@@ -133,6 +181,8 @@ pub fn Library() -> impl IntoView {
         RwSignal::new(state::load::<String>("aw.lib.sort").unwrap_or_else(|| "title".into()));
     let unwatched = RwSignal::new(false);
     let genre = RwSignal::new(String::new());
+    // Only the latest load counts (a quick change of sort or filter overtakes the last one).
+    let seq = StoredValue::new(0u32);
     let genres = LocalResource::new(move || {
         let (acc, id) = (acc(), id());
         async move {
@@ -153,9 +203,19 @@ pub fn Library() -> impl IntoView {
         };
         q.unplayed_only = unwatched.get_untracked();
         q.genre_id = Some(genre.get_untracked()).filter(|g| !g.is_empty());
+        seq.update_value(|s| *s += 1);
+        let mine = seq.get_value();
+        error.set(None);
         spawn_local(async move {
-            let Some(srv) = c.server(&acc) else { return };
-            match srv.items(&q).await {
+            let Some(srv) = c.server(&acc) else {
+                total.try_set(Some(0));
+                return error.set(Some("This account isn't signed in any more.".into()));
+            };
+            let res = srv.items(&q).await;
+            if seq.try_get_value() != Some(mine) {
+                return;
+            }
+            match res {
                 Ok(p) => {
                     total.set(Some(p.total));
                     if start == 0 {
@@ -163,7 +223,14 @@ pub fn Library() -> impl IntoView {
                     }
                     items.update(|v| v.extend(p.items.into_iter().map(|i| (acc.clone(), i))));
                 }
-                Err(e) => error.set(Some(e.to_string())),
+                Err(e) => {
+                    c.failed(&acc, &e);
+                    // Not loading any more: what's shown stays, with the reason.
+                    total.update(|t| {
+                        t.get_or_insert(0);
+                    });
+                    error.set(Some(state::plain(&e)));
+                }
             }
         });
     };
@@ -194,7 +261,7 @@ pub fn Library() -> impl IntoView {
             <button class="chip" class:selected=move || unwatched.get() on:click=move |_| unwatched.update(|u| *u = !*u)>"Not watched"</button>
         </div>
         {move || total.get().is_none().then(|| view! { <Loading /> })}
-        {move || (total.get() == Some(0)).then(|| view! { <p class="muted">"Nothing matches."</p> })}
+        {move || (total.get() == Some(0) && error.with(Option::is_none)).then(|| view! { <p class="muted">"Nothing matches."</p> })}
         {move || view! { <Grid items=items.get() /> }}
         {move || {
             let n = items.with(|v| v.len() as u32);
@@ -214,11 +281,17 @@ pub fn Detail() -> impl IntoView {
     let item = LocalResource::new(move || {
         let (acc, id) = (acc.get(), id.get());
         async move {
-            let srv = state::ctx().server(&acc).ok_or("Account not found")?;
-            srv.item(&id)
-                .await
-                .map_err(|e| e.to_string())
-                .map(|i| (srv, i))
+            let c = state::ctx();
+            let srv = c
+                .server(&acc)
+                .ok_or("This account isn't signed in any more.")?;
+            match srv.item(&id).await {
+                Ok(i) => Ok((srv, i)),
+                Err(e) => {
+                    c.failed(&acc, &e);
+                    Err(state::plain(&e))
+                }
+            }
         }
     });
     view! {
@@ -245,7 +318,7 @@ pub fn Detail() -> impl IntoView {
                     _ => String::new(),
                 };
                 view! {
-                    <div class="hero" style=backdrop.map(|b| format!("background-image:url('{b}')")).unwrap_or_default()>
+                    <div class="hero" style=backdrop.map(|b| format!("background-image:{}", state::css_url(&b))).unwrap_or_default()>
                         <div class="hero-inner">
                             {poster.map(|p| view! { <img class="hero-poster" src=p alt="" /> })}
                             <div>
@@ -299,6 +372,9 @@ fn Seasons(acc: String, series: String) -> impl IntoView {
     });
     let picked = RwSignal::new(None::<String>);
     view! {
+        {move || matches!(seasons.get(), Some(None)).then(|| view! {
+            <ErrorText text="Couldn't load the seasons.".to_string() />
+        })}
         {move || seasons.get().flatten().map(|list| {
             // The first season not fully watched, else the first.
             if picked.get_untracked().is_none() {
@@ -350,8 +426,17 @@ pub fn Search() -> impl IntoView {
     let found = RwSignal::new(None::<Vec<(String, Item)>>);
     let others = RwSignal::new(Vec::<SeerrResult>::new());
     let seq = StoredValue::new(0u32);
+    let navigate = leptos_router::hooks::use_navigate();
+    let input = NodeRef::<leptos::html::Input>::new();
+    // `autofocus` only works when the page loads, not on a link inside the app.
+    Effect::new(move |_| {
+        if let Some(i) = input.get() {
+            let _ = i.focus();
+        }
+    });
     Effect::new(move |_| {
         let q = text.get();
+        let navigate = navigate.clone();
         seq.update_value(|s| *s += 1);
         let mine = seq.get_value();
         if q.trim().len() < 2 {
@@ -361,28 +446,40 @@ pub fn Search() -> impl IntoView {
         }
         spawn_local(async move {
             state::sleep(300).await;
-            if seq.get_value() != mine {
+            // Typed on (or left the page) meanwhile.
+            if seq.try_get_value() != Some(mine) {
                 return;
             }
             let c = state::ctx();
-            let mut all = Vec::new();
-            for (acc, srv) in c.servers() {
-                if let Ok(l) = srv.search(&q, 40).await {
-                    all.extend(l.into_iter().map(|i| (acc.clone(), i)));
+            let found_on = state::join_all(c.servers().into_iter().map(|(acc, srv)| {
+                let q = q.clone();
+                async move {
+                    let l = srv.search(&q, 40).await.unwrap_or_default();
+                    l.into_iter().map(|i| (acc.clone(), i)).collect::<Vec<_>>()
                 }
-            }
-            let all = dedupe(all);
+            }))
+            .await;
+            let all = dedupe(found_on.into_iter().flatten().collect());
             let have: HashSet<String> = all
                 .iter()
                 .filter_map(|(_, i)| i.provider_ids.tmdb.clone())
                 .collect();
-            if seq.get_value() != mine {
+            if seq.try_get_value() != Some(mine) {
                 return;
             }
             found.set(Some(all));
+            // In the address too: back from a title comes back to these results.
+            navigate(
+                &format!("/search?q={}", net::percent_encode(&q)),
+                leptos_router::NavigateOptions {
+                    replace: true,
+                    scroll: false,
+                    ..Default::default()
+                },
+            );
             if let Some(s) = c.seerr() {
                 let list = s.search(&q, 1).await.unwrap_or_default();
-                if seq.get_value() == mine {
+                if seq.try_get_value() == Some(mine) {
                     others.set(
                         list.into_iter()
                             .filter(|r| {
@@ -396,7 +493,7 @@ pub fn Search() -> impl IntoView {
         });
     });
     view! {
-        <input class="search" type="search" placeholder="Movies, shows, episodes…" autofocus
+        <input class="search" type="search" placeholder="Movies, shows, episodes…" aria-label="Search" node_ref=input
             prop:value=move || text.get() on:input=move |ev| text.set(event_target_value(&ev)) />
         {move || found.get().map(|f| if f.is_empty() && others.with(|o| o.is_empty()) {
             view! { <p class="muted">"Nothing found."</p> }.into_any()

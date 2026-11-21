@@ -17,15 +17,63 @@ use crate::ui::ErrorText;
 /// serves its media server (keep, requests and watch together then work).
 async fn finish(c: &Ctx, s: Session, served: &[ServerEntry]) {
     c.add_account(s.clone());
-    if c.keep.get_untracked().is_none()
-        && served.iter().any(|e| e.id == s.server_id)
-        && let Ok(me) = c.keep_for(&s).me().await
-    {
-        c.set_keep(Some(KeepLink {
-            account: state::account_key(&s),
-            user_name: me.name,
-            is_admin: me.is_admin,
-        }));
+    if c.expired.get_untracked().as_deref() == Some(state::account_key(&s).as_str()) {
+        c.expired.set(None);
+    }
+    if c.keep.get_untracked().is_none() && served.iter().any(|e| e.id == s.server_id) {
+        link(c, &s).await;
+    }
+}
+
+async fn link(c: &Ctx, s: &Session) -> bool {
+    let Some(k) = c.keep_for(s) else {
+        return false;
+    };
+    match k.me().await {
+        Ok(me) => {
+            c.set_keep(Some(KeepLink {
+                account: state::account_key(s),
+                user_name: me.name,
+                is_admin: me.is_admin,
+            }));
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// At start: refreshes the AlwyWatch server link (name, admin right; a refused account is
+/// flagged), or makes it when an earlier sign-in couldn't (server unreachable then).
+pub async fn check_keep(c: Ctx) {
+    if let Some(k) = c.keep.get_untracked() {
+        let Some(client) = c.session(&k.account).and_then(|s| c.keep_for(&s)) else {
+            return c.set_keep(None);
+        };
+        match client.me().await {
+            Ok(me) => {
+                let fresh = KeepLink {
+                    account: k.account.clone(),
+                    user_name: me.name,
+                    is_admin: me.is_admin,
+                };
+                if fresh != k {
+                    c.set_keep(Some(fresh));
+                }
+            }
+            Err(e) => c.failed(&k.account, &e),
+        }
+        return;
+    }
+    if c.accounts.get_untracked().is_empty() {
+        return;
+    }
+    let Ok(served) = KeepClient::servers(&c.http, &Ctx::origin()).await else {
+        return;
+    };
+    for s in c.accounts.get_untracked() {
+        if served.iter().any(|e| e.id == s.server_id) && link(&c, &s).await {
+            return;
+        }
     }
 }
 
@@ -112,7 +160,7 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
                     finish(&c, s, &served).await;
                     navigate("/", Default::default());
                 }
-                Err(e) => error.set(Some(sign_in_error(&e))),
+                Err(e) => error.set(Some(sign_in_error(&e, &base))),
             }
             busy.set(false);
         });
@@ -131,25 +179,43 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
             };
             let start = match auth.quick_connect_start(&base).await {
                 Ok(s) => s,
-                Err(e) => return error.set(Some(sign_in_error(&e))),
+                // Jellyfin answers 401 when Quick Connect is turned off.
+                Err(Error::Unauthorized) => {
+                    return error.set(Some(
+                        "Quick Connect is turned off on this server. Use your password.".into(),
+                    ));
+                }
+                Err(e) => return error.set(Some(sign_in_error(&e, &base))),
             };
             code.set(Some(start.code.clone()));
-            // Up to 5 minutes, every 2 s, while this form is shown.
+            // Up to 5 minutes, every 2 s, while this form is shown (and this code is the one
+            // shown: a new code or leaving the page stops it).
+            let current =
+                || code.try_get_untracked().flatten().as_deref() == Some(start.code.as_str());
             for _ in 0..150 {
                 state::sleep(2000).await;
-                if code.get_untracked().as_deref() != Some(start.code.as_str()) {
+                if !current() {
                     return;
                 }
                 match auth.quick_connect_poll(&base, &start.secret).await {
                     Ok(s) => {
+                        if !current() {
+                            return;
+                        }
                         finish(&c, s, &served).await;
                         return navigate("/", Default::default());
                     }
                     Err(Error::Pending) => {}
-                    Err(e) => return error.set(Some(sign_in_error(&e))),
+                    Err(e) => {
+                        code.try_set(None);
+                        return error.set(Some(sign_in_error(&e, &base)));
+                    }
                 }
             }
-            code.set(None);
+            code.try_set(None);
+            error.set(Some(
+                "The Quick Connect code expired. Ask for a new one.".into(),
+            ));
         });
     };
     view! {
@@ -197,45 +263,59 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
         });
         spawn_local(async move {
             let auth = PlexAuth::new(c.http.clone(), c.client.clone());
-            let result: Result<Session, String> = async {
-                let pin = auth.create_pin(true).await.map_err(|e| sign_in_error(&e))?;
-                match &win {
-                    Some(w) => {
-                        let _ = w.location().set_href(&pin.auth_url);
-                    }
-                    None => return Err("Allow pop-ups for this site, then try again.".into()),
-                }
+            let plain = |e: Error| sign_in_error(&e, "");
+            let result: Result<Option<(Session, String)>, String> = async {
+                let Some(w) = &win else {
+                    return Err("Allow pop-ups for this site, then try again.".into());
+                };
+                let pin = auth.create_pin(true).await.map_err(plain)?;
+                let _ = w.location().set_href(&pin.auth_url);
                 let mut token = None;
+                // Once the Plex tab is closed, one last look (it may close right after
+                // saying yes), then stop. Leaving this page stops too.
+                let mut closed = false;
                 for _ in 0..150 {
                     state::sleep(2000).await;
+                    if waiting.try_get_untracked().is_none() {
+                        return Ok(None);
+                    }
                     match auth.check_pin(pin.id).await {
                         Ok(t) => {
                             token = Some(t);
                             break;
                         }
-                        Err(Error::Pending) => {}
-                        Err(e) => return Err(sign_in_error(&e)),
+                        Err(Error::Pending) if closed => {
+                            return Err("The Plex tab was closed before signing in.".into());
+                        }
+                        Err(Error::Pending) => closed = w.closed().unwrap_or(false),
+                        Err(e) => return Err(plain(e)),
                     }
                 }
                 let token = token.ok_or("The Plex sign-in timed out.")?;
-                let user = auth.user(&token).await.map_err(|e| sign_in_error(&e))?;
-                let servers = auth.servers(&token).await.map_err(|e| sign_in_error(&e))?;
+                let user = auth.user(&token).await.map_err(plain)?;
+                let servers = auth.servers(&token).await.map_err(plain)?;
                 let server = servers
                     .iter()
                     .find(|s| s.machine_id == entry.id)
                     .or_else(|| servers.first())
                     .ok_or("Your Plex account has no server.")?;
                 let preferred = (!entry.url.is_empty()).then_some(entry.url.as_str());
-                auth.connect(server, &user, preferred)
+                let s = auth
+                    .connect(server, &user, preferred)
                     .await
-                    .map_err(|e| sign_in_error(&e))
+                    .map_err(plain)?;
+                Ok(Some((s, token)))
             }
             .await;
             if let Some(w) = win {
                 let _ = w.close();
             }
             match result {
-                Ok(s) => {
+                // This page is gone: nothing to show it on.
+                Ok(None) => return,
+                Ok(Some((s, plex_tv))) => {
+                    // The watchlist (My list) lives on plex.tv, under the account's own token.
+                    c.set_plex_tv_token(&state::account_key(&s), &plex_tv);
                     finish(&c, s, &served).await;
                     navigate("/", Default::default());
                 }
@@ -258,12 +338,20 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
     }
 }
 
-fn sign_in_error(e: &Error) -> String {
+/// `base`: the server's address, when known (to explain a blocked http one).
+fn sign_in_error(e: &Error, base: &str) -> String {
     match e {
         Error::Unauthorized => "Wrong username or password.".into(),
-        Error::Network { .. } => "Can't reach the server.".into(),
-        other => other.to_string(),
+        Error::Network { .. } if base.starts_with("http://") && page_is_https() => {
+            "This site is secure (https), so the browser won't talk to a server on plain http. Use its https address.".into()
+        }
+        Error::Network { .. } => "Can't reach the server. Check the address and your connection.".into(),
+        other => state::plain(other),
     }
+}
+
+fn page_is_https() -> bool {
+    Ctx::origin().starts_with("https://")
 }
 
 #[component]
@@ -296,7 +384,14 @@ pub fn Settings() -> impl IntoView {
             {move || match c2.keep.get() {
                 Some(k) => view! { <p>"Signed in as "<strong>{k.user_name}</strong>{k.is_admin.then_some(" · admin")}
                     " on "{Ctx::origin()}</p> }.into_any(),
-                None => view! { <p class="muted">"None of your accounts is on a server this site serves."</p> }.into_any(),
+                None => {
+                    // Plex accounts from before the plex.tv token was kept can't sign in here.
+                    let old_plex = c2.accounts.get().iter().any(|s| s.kind == media_api::ServerKind::Plex && c2.keep_token(s).is_none());
+                    view! {
+                        <p class="muted">"None of your accounts is on a server this site serves."</p>
+                        {old_plex.then(|| view! { <p class="muted small">"Plex account: sign out and sign in again to use requests, Leaving soon and watch together."</p> })}
+                    }.into_any()
+                }
             }}
         </section>
         <h2>"Playback"</h2>

@@ -34,6 +34,9 @@ fn status(i: &LeavingItem) -> String {
     }
 }
 
+const NO_KEEP: &str =
+    "This needs an account on this AlwyWatch server: sign in with one in Settings.";
+
 fn mine(i: &LeavingItem) -> Option<&'static str> {
     i.my_vote.as_ref().map(|v| match v.kind {
         VoteKind::KeepForever => "You keep it forever",
@@ -45,19 +48,19 @@ fn mine(i: &LeavingItem) -> Option<&'static str> {
 
 #[component]
 pub fn Leaving() -> impl IntoView {
-    let items = RwSignal::new(state::load::<Vec<LeavingItem>>("aw.leaving"));
+    let items = RwSignal::new(state::load::<Vec<LeavingItem>>(state::LEAVING));
     let error = RwSignal::new(None::<String>);
     let filter = RwSignal::new("all");
     spawn_local(async move {
         let Some(k) = state::ctx().keep_client() else {
-            return;
+            return error.set(Some(NO_KEEP.into()));
         };
         match k.leaving_soon().await {
             Ok(l) => {
-                state::save("aw.leaving", &l);
+                state::save(state::LEAVING, &l);
                 items.set(Some(l));
             }
-            Err(e) => error.set(Some(e.to_string())),
+            Err(e) => error.set(Some(state::plain_keep(&e))),
         }
     });
     let shown = move || {
@@ -90,7 +93,10 @@ pub fn Leaving() -> impl IntoView {
             }).collect_view()}
         </div>
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
-        {move || items.get().is_none().then(|| view! { <Loading /> })}
+        {move || (items.with(Option::is_none) && error.with(Option::is_none)).then(|| view! { <Loading /> })}
+        {move || (items.with(|i| i.as_ref().is_some_and(Vec::is_empty))).then(|| view! {
+            <p class="muted">"Nothing is leaving. Nothing to do."</p>
+        })}
         <div class="leaving">
             {move || shown().into_iter().map(|i| view! { <LeavingRow item=i items=items /> }).collect_view()}
         </div>
@@ -101,26 +107,29 @@ pub fn Leaving() -> impl IntoView {
 fn LeavingRow(item: LeavingItem, items: RwSignal<Option<Vec<LeavingItem>>>) -> impl IntoView {
     let key = item.key.clone();
     let busy = RwSignal::new(false);
+    let error = RwSignal::new(None::<String>);
     let vote = move |req: Option<VoteRequest>| {
         let key = key.clone();
+        let Some(k) = state::ctx().keep_client() else {
+            return error.set(Some(NO_KEEP.into()));
+        };
         busy.set(true);
+        error.set(None);
         spawn_local(async move {
-            let Some(k) = state::ctx().keep_client() else {
-                return;
-            };
             let res = match req {
                 Some(r) => k.vote(&key, &r).await,
                 None => k.unvote(&key).await,
             };
-            if let Ok(updated) = res {
-                items.update(|l| {
+            match res {
+                Ok(updated) => items.update(|l| {
                     if let Some(l) = l {
                         if let Some(x) = l.iter_mut().find(|x| x.key == updated.key) {
                             *x = updated;
                         }
-                        state::save("aw.leaving", l);
+                        state::save(state::LEAVING, l);
                     }
-                });
+                }),
+                Err(e) => error.set(Some(state::plain_keep(&e))),
             }
             busy.set(false);
         });
@@ -150,6 +159,7 @@ fn LeavingRow(item: LeavingItem, items: RwSignal<Option<Vec<LeavingItem>>>) -> i
                         <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>"Undo"</button>
                     })}
                 </div>
+                {move || error.get().map(|e| view! { <ErrorText text=e /> })}
             </div>
         </div>
     }
@@ -162,9 +172,9 @@ pub fn Forever() -> impl IntoView {
     let spread = RwSignal::new("all");
     spawn_local(async move {
         let Some(k) = state::ctx().keep_client() else {
-            return;
+            return stats.set(Some(Err(NO_KEEP.into())));
         };
-        stats.set(Some(k.admin_forever().await.map_err(|e| e.to_string())));
+        stats.set(Some(k.admin_forever().await.map_err(|e| admin_error(&e))));
     });
     view! {
         <h1>"Kept forever"</h1>
@@ -178,7 +188,7 @@ pub fn Forever() -> impl IntoView {
                 let n2 = name.clone();
                 let items = s.items.clone();
                 view! {
-                    <p class="muted">{format!("{} titles · {} kept by several people · {} by one person", s.titles, s.shared, s.titles - s.shared)}</p>
+                    <p class="muted">{format!("{} titles · {} kept by several people · {} by one person", s.titles, s.shared, s.titles.saturating_sub(s.shared))}</p>
                     <section class="group">
                         <h2>"People"</h2>
                         {s.people.into_iter().map(|p| {
@@ -280,14 +290,11 @@ pub fn Triage() -> impl IntoView {
     let done = RwSignal::new(0u32);
     spawn_local(async move {
         let Some(k) = state::ctx().keep_client() else {
-            error.set(Some(
-                "Leaving soon needs an account on this AlwyWatch server.".into(),
-            ));
-            return;
+            return error.set(Some(NO_KEEP.into()));
         };
         match k.triage(50).await {
             Ok(l) => queue.set(Some(l)),
-            Err(e) => error.set(Some(e.to_string())),
+            Err(e) => error.set(Some(state::plain_keep(&e))),
         }
     });
     let vote = move |r: VoteRequest| {
@@ -295,27 +302,43 @@ pub fn Triage() -> impl IntoView {
         else {
             return;
         };
+        let Some(k) = state::ctx().keep_client() else {
+            return error.set(Some(NO_KEEP.into()));
+        };
+        // At once to the next one; put back if the server says no.
         queue.update(|q| {
             if let Some(q) = q {
                 q.remove(0);
             }
         });
         done.update(|d| *d += 1);
+        error.set(None);
         spawn_local(async move {
-            let Some(k) = state::ctx().keep_client() else {
-                return;
-            };
             match k.vote(&item.key, &r).await {
                 // The list kept for Leaving soon follows.
                 Ok(updated) => {
-                    if let Some(mut l) = state::load::<Vec<LeavingItem>>("aw.leaving") {
+                    if let Some(mut l) = state::load::<Vec<LeavingItem>>(state::LEAVING) {
                         if let Some(x) = l.iter_mut().find(|x| x.key == updated.key) {
                             *x = updated;
                         }
-                        state::save("aw.leaving", &l);
+                        state::save(state::LEAVING, &l);
                     }
                 }
-                Err(e) => error.set(Some(format!("{}: {e}", item.title))),
+                Err(e) => {
+                    error.set(Some(format!(
+                        "{} wasn't saved: {}",
+                        item.title,
+                        state::plain_keep(&e)
+                    )));
+                    queue.update(|q| {
+                        if let Some(q) = q
+                            && !q.iter().any(|x| x.key == item.key)
+                        {
+                            q.insert(0, item);
+                        }
+                    });
+                    done.update(|d| *d = d.saturating_sub(1));
+                }
             }
         });
     };
@@ -396,6 +419,14 @@ pub fn Triage() -> impl IntoView {
     }
 }
 
+/// Admin calls: a refusal means this account isn't an admin (any more).
+fn admin_error(e: &net::Error) -> String {
+    match e {
+        net::Error::Unauthorized => "Only admins of this AlwyWatch server can see this.".into(),
+        other => state::plain_keep(other),
+    }
+}
+
 /// The next value of a cycling choice ("Max days: ∞ → 7 → 30 → 90 → ∞"), as on the apps.
 pub fn cycle(options: &[Option<u32>], current: Option<u32>) -> Option<u32> {
     let at = options.iter().position(|o| *o == current);
@@ -420,18 +451,27 @@ pub fn Admin() -> impl IntoView {
     let message = RwSignal::new(None::<String>);
     let armed = RwSignal::new(None::<Armed>);
     let busy = RwSignal::new(false);
-    let items = RwSignal::new(state::load::<Vec<LeavingItem>>("aw.leaving").unwrap_or_default());
+    let items = RwSignal::new(state::load::<Vec<LeavingItem>>(state::LEAVING).unwrap_or_default());
+    let cancel = NodeRef::<leptos::html::Button>::new();
+    // The dialog opens with the focus on Cancel (Enter or Space can't change dates by mistake).
+    Effect::new(move |_| {
+        if let Some(b) = cancel.get() {
+            let _ = b.focus();
+        }
+    });
     spawn_local(async move {
         let Some(k) = state::ctx().keep_client() else {
-            users.set(Some(Err(
-                "Admin needs an account on this AlwyWatch server.".into(),
-            )));
-            return;
+            return users.set(Some(Err(NO_KEEP.into())));
         };
-        users.set(Some(k.admin_users().await.map_err(|e| e.to_string())));
-        seerr_users.set(k.admin_seerr_users().await.unwrap_or_default());
-        if let Ok(l) = k.leaving_soon().await {
-            state::save("aw.leaving", &l);
+        let ((u, su), l) = state::join2(
+            state::join2(k.admin_users(), k.admin_seerr_users()),
+            k.leaving_soon(),
+        )
+        .await;
+        users.set(Some(u.map_err(|e| admin_error(&e))));
+        seerr_users.set(su.unwrap_or_default());
+        if let Ok(l) = l {
+            state::save(state::LEAVING, &l);
             items.set(l);
         }
     });
@@ -467,7 +507,7 @@ pub fn Admin() -> impl IntoView {
             };
             match k.admin_set_rights(&user_key, &r).await {
                 Ok(nu) => replace(nu),
-                Err(e) => message.set(Some(e.to_string())),
+                Err(e) => message.set(Some(admin_error(&e))),
             }
         });
     };
@@ -478,7 +518,7 @@ pub fn Admin() -> impl IntoView {
             };
             match k.admin_link_seerr(&user_key, seerr).await {
                 Ok(nu) => replace(nu),
-                Err(e) => message.set(Some(e.to_string())),
+                Err(e) => message.set(Some(admin_error(&e))),
             }
         });
     };
@@ -486,11 +526,15 @@ pub fn Admin() -> impl IntoView {
         let Some((id, title, stagger)) = armed.get_untracked() else {
             return;
         };
+        if busy.get_untracked() {
+            return;
+        }
+        let Some(k) = state::ctx().keep_client() else {
+            armed.set(None);
+            return message.set(Some(NO_KEEP.into()));
+        };
         busy.set(true);
         spawn_local(async move {
-            let Some(k) = state::ctx().keep_client() else {
-                return;
-            };
             let r = k
                 .admin_countdown(
                     id,
@@ -501,7 +545,7 @@ pub fn Admin() -> impl IntoView {
                 .await;
             message.set(Some(match r {
                 Ok(r) => format!("{title}: {} restarted, {} skipped", r.reset, r.skipped),
-                Err(e) => format!("{title}: {e}"),
+                Err(e) => format!("{title}: {}", admin_error(&e)),
             }));
             busy.set(false);
             armed.set(None);
@@ -588,9 +632,10 @@ pub fn Admin() -> impl IntoView {
             <p class="muted small">"Everyone can keep forever by default. Click a value to change it."</p>
         </section>
         {move || armed.get().map(|(_, title, stagger)| view! {
-            <div class="dialog-back" on:click=move |_| if !busy.get_untracked() { armed.set(None) }>
-                <div class="dialog" role="alertdialog" aria-modal="true" on:click=|ev| ev.stop_propagation()>
-                    <h2>{format!("Restart the countdown of {title}?")}</h2>
+            <div class="dialog-back" on:click=move |_| if !busy.get_untracked() { armed.set(None) }
+                on:keydown=move |ev| if ev.key() == "Escape" && !busy.get_untracked() { armed.set(None) }>
+                <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="countdown-title" on:click=|ev| ev.stop_propagation()>
+                    <h2 id="countdown-title">{format!("Restart the countdown of {title}?")}</h2>
                     <p>{COUNTDOWN_WARNING}</p>
                     <p class="muted">{if stagger == 0 {
                         "Every item of this collection gets its full delay starting today.".to_string()
@@ -598,7 +643,7 @@ pub fn Admin() -> impl IntoView {
                         format!("New deletion dates are spread over {stagger} days.")
                     }}</p>
                     <div class="actions">
-                        <button disabled=move || busy.get() on:click=move |_| armed.set(None)>"Cancel"</button>
+                        <button node_ref=cancel disabled=move || busy.get() on:click=move |_| armed.set(None)>"Cancel"</button>
                         <button class="danger" disabled=move || busy.get() on:click=confirm>
                             {move || if busy.get() { "Changing dates…" } else { "Change deletion dates" }}
                         </button>
