@@ -38,6 +38,8 @@ pub const EVENT_SHUTDOWN: c_int = 1;
 pub const EVENT_CLIENT_MESSAGE: c_int = 16;
 pub const EVENT_END_FILE: c_int = 7;
 pub const EVENT_FILE_LOADED: c_int = 8;
+/// Playback resumed after a seek (also once at the start).
+pub const EVENT_PLAYBACK_RESTART: c_int = 21;
 pub const END_FILE_EOF: c_int = 0;
 pub const END_FILE_ERROR: c_int = 4;
 const FORMAT_STRING: c_int = 1;

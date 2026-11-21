@@ -111,6 +111,15 @@ export struct LeavingRow {
     voted: bool,
 }
 
+export struct TogetherRow {
+    code: string,
+    title: string,
+    people: string,
+    status: string,
+    poster: image,
+    mine: bool,
+}
+
 export struct AdminRow {
     key: string,
     name: string,
@@ -120,7 +129,7 @@ export struct AdminRow {
     max-days: string,
 }
 
-export enum Page { add, home, library, detail, search, mylist, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin }
+export enum Page { add, home, library, detail, search, mylist, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin, together }
 
 export global Palette {
     out property <color> bg: #09090c;
@@ -298,8 +307,11 @@ component Field inherits Rectangle {
     in-out property <string> text <=> ti.text;
     in property <string> placeholder;
     in property <InputType> input-type: InputType.text;
+    /// Takes the keyboard when it appears (the search page: type at once).
+    in property <bool> autofocus;
     callback accepted(string);
     callback edited(string);
+    init => { if root.autofocus { ti.focus(); } }
     height: 48px;
     border-radius: 24px;
     background: Palette.surface;
@@ -591,6 +603,12 @@ export component AppWindow inherits Window {
     in property <string> keep-label;
     in property <string> keep-message;
     in property <[LeavingRow]> leaving;
+    in property <[TogetherRow]> together-rooms;
+    in property <string> together-status;
+    // Join dialog: shown while join-message is set; join-done swaps Cancel for Close.
+    in property <string> join-title;
+    in property <string> join-message;
+    in property <bool> join-done;
     in-out property <string> leaving-open;
     in property <LeavingRow> triage-card;
     in property <int> triage-left;
@@ -654,6 +672,9 @@ export component AppWindow inherits Window {
     callback keep-choose();
     callback keep-disconnect();
     callback keep-vote(string, string); // key, choice
+    callback watch-together(string); // item: play it in a new room
+    callback together-join(string); // room code
+    callback together-cancel();
     callback leaving-scrolled(int); // first visible row, to load the posters around it
     callback triage-vote(string);       // choice
     callback admin-rights(string, string); // user key, field
@@ -703,6 +724,12 @@ export component AppWindow inherits Window {
                         icon: @image-url("icons/hourglass_bottom.svg");
                         selected: root.page == Page.leaving || root.page == Page.triage || root.page == Page.keepadmin;
                         clicked => { root.go(Page.leaving); }
+                    }
+                    if root.keep-active : NavItem {
+                        label: "Together";
+                        icon: @image-url("icons/group.svg");
+                        selected: root.page == Page.together;
+                        clicked => { root.go(Page.together); }
                     }
                     if root.seerr-active : NavItem { label: "Requests"; icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
                     NavItem { label: "Downloads"; icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
@@ -860,8 +887,11 @@ export component AppWindow inherits Window {
                         if root.page == Page.mylist && root.grid.length == 0 : Text { text: root.status; color: Palette.muted; wrap: word-wrap; }
                         if root.page == Page.search : VerticalLayout {
                             spacing: 14px;
+                            // Its own height only: the results grid below takes the rest.
+                            vertical-stretch: 0;
                             PageTitle { title: "Search"; }
                             Field {
+                                autofocus: true;
                                 placeholder: "Movies, shows, episodes…";
                                 text <=> root.search-text;
                                 edited(t) => { root.search(t); }
@@ -932,6 +962,12 @@ export component AppWindow inherits Window {
                                         if root.detail.resumable : Button {
                                             label: "From start";
                                             clicked => { root.play(root.detail.id, true); }
+                                        }
+                                        if root.detail.playable && root.keep-active : Button {
+                                            label: "Watch together";
+                                            has-icon: true;
+                                            icon: @image-url("icons/group.svg");
+                                            clicked => { root.watch-together(root.detail.id); }
                                         }
                                         if root.detail.has-trailer : IconButton {
                                             icon: @image-url("icons/movie.svg");
@@ -1423,6 +1459,48 @@ export component AppWindow inherits Window {
                         }
                     }
 
+                    if root.page == Page.together : ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 10px;
+                            alignment: start;
+                            PageTitle { title: "Together"; subtitle: "What people on your AlwyWatch server are watching together. Join one: its host lets you in."; }
+                            if root.together-status != "" : Text { text: root.together-status; color: Palette.muted; font-size: 16px; wrap: word-wrap; }
+                            for room in root.together-rooms : Focusable {
+                                height: 128px;
+                                background: self.active ? Palette.surface-high : Palette.surface;
+                                border-radius: 18px;
+                                clicked => { root.together-join(room.code); }
+                                HorizontalLayout {
+                                    padding: 10px;
+                                    spacing: 16px;
+                                    Rectangle {
+                                        width: 72px;
+                                        border-radius: 10px;
+                                        clip: true;
+                                        background: Palette.surface-high;
+                                        Image { source: room.poster; width: parent.width; height: parent.height; image-fit: cover; }
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 4px;
+                                        Text { text: room.title; color: Palette.text; font-size: 18px; font-weight: 700; overflow: elide; }
+                                        Text { text: room.people; color: Palette.muted; font-size: 14px; overflow: elide; }
+                                        Text { text: room.status; color: Palette.subtle; font-size: 13px; overflow: elide; }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    Button {
+                                        label: "Join";
+                                        primary: true;
+                                        y: (parent.height - self.height) / 2;
+                                        clicked => { root.together-join(room.code); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if root.page == Page.triage : FocusScope {
                         key-pressed(e) => {
                             if (e.text == Key.LeftArrow) { root.triage-vote("dontcare"); return accept; }
@@ -1658,6 +1736,33 @@ export component AppWindow inherits Window {
                             }
                             Text { text: root.about; color: Palette.subtle; }
                         }
+                    }
+                }
+            }
+        }
+    }
+    // Asking to join a watch together room: over everything until let in, declined or closed.
+    if root.join-message != "" : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #000000b0;
+        TouchArea { }
+        Rectangle {
+            width: min(480px, root.width - 48px);
+            height: jd.preferred-height;
+            border-radius: 22px;
+            background: Palette.surface-high;
+            jd := VerticalLayout {
+                padding: 28px;
+                spacing: 14px;
+                Text { text: root.join-title; color: Palette.text; font-size: 22px; font-weight: 800; wrap: word-wrap; }
+                Text { text: root.join-message; color: Palette.muted; font-size: 15px; wrap: word-wrap; }
+                HorizontalLayout {
+                    alignment: end;
+                    Button {
+                        label: root.join-done ? "Close" : "Cancel";
+                        primary: root.join-done;
+                        clicked => { root.together-cancel(); }
                     }
                 }
             }

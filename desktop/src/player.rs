@@ -2,6 +2,7 @@
 //! Playback session: one mpv instance in its own native window (best hardware decoding and HDR
 //! path), driven from a dedicated thread. Progress is reported back through a callback.
 
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use alwywatch_core::{
@@ -25,6 +26,33 @@ pub struct PlayRequest {
     pub has_previous: bool,
     pub auto_skip_intro: bool,
     pub auto_next: bool,
+    /// Watching together: the room's play/pause/seek come in, ours go out.
+    pub together: Option<TogetherLink>,
+}
+
+/// From the app to a player in a watch together room.
+pub enum ToPlayer {
+    /// Play or pause like the room, at this position (seek when more than 1.5 s apart).
+    Sync { playing: bool, position_ms: u64 },
+    /// A short message on the video ("Sam paused").
+    Note(String),
+    /// Someone asks the host to join: (request id, name); None when nobody waits.
+    Request(Option<(String, String)>),
+    /// Close the player (the room moved to a title found elsewhere).
+    Quit,
+}
+
+/// From a player in a room to the app.
+pub enum FromPlayer {
+    /// The viewer played, paused or moved.
+    User { playing: bool, position_ms: u64 },
+    /// The host answered a join request.
+    Answer { request_id: String, accept: bool },
+}
+
+pub struct TogetherLink {
+    pub rx: mpsc::Receiver<ToPlayer>,
+    pub send: Box<dyn Fn(FromPlayer) + Send>,
 }
 
 /// A subtitle file next to the media, added with its language so the choice can find it.
@@ -59,6 +87,8 @@ pub struct Progress {
     pub finished: bool,
     /// Set on the final Stop when the viewer asked for the next/previous episode.
     pub go: Option<Go>,
+    /// Set on the final Stop when playback could not start or the file could not be played.
+    pub error: Option<String>,
 }
 
 /// Starts playback on a new thread. `report` is called for start, every 10 s, pause and stop.
@@ -73,8 +103,17 @@ pub fn spawn(req: PlayRequest, report: impl Fn(Progress) + Send + 'static) -> Re
     std::thread::Builder::new()
         .name("mpv".into())
         .spawn(move || {
+            let start_ms = req.start_ms;
             if let Err(e) = run(req, &report) {
                 eprintln!("playback failed: {e}");
+                report(Progress {
+                    event: PlaybackEvent::Stop,
+                    position_ms: start_ms,
+                    duration_ms: None,
+                    finished: false,
+                    go: None,
+                    error: Some(format!("Playback failed: {e}")),
+                });
             }
         })
         .map(|_| ())
@@ -111,14 +150,17 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
     if req.start_ms > 0 {
         m.set_option("start", &format!("{:.3}", req.start_ms as f64 / 1000.0))?;
     }
-    // One header per call: the Jellyfin header contains commas that list-splitting would break.
-    for h in &req.media.headers {
-        m.set_option(
-            "http-header-fields-append",
-            &format!("{}: {}", h.name, h.value),
-        )?;
-    }
     m.initialize()?;
+    // One header per call: the Jellyfin header contains commas that list-splitting would break.
+    // (`http-header-fields-append` is a command-line form only: libmpv rejects it as an option.)
+    for h in &req.media.headers {
+        m.command(&[
+            "change-list",
+            "http-header-fields",
+            "append",
+            &format!("{}: {}", h.name, h.value),
+        ])?;
+    }
     // Our keys, on top of mpv's defaults: S skips, > and < (mpv's playlist keys) and the media
     // keys change episode, C cancels the credits countdown.
     m.command(&[
@@ -127,7 +169,9 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         "s script-message alwy skip\nS script-message alwy skip\n\
          > script-message alwy next\nNEXT script-message alwy next\n\
          < script-message alwy previous\nPREV script-message alwy previous\n\
-         c script-message alwy cancel",
+         c script-message alwy cancel\n\
+         y script-message alwy yes\nY script-message alwy yes\n\
+         n script-message alwy no\nN script-message alwy no",
         "force",
     ])?;
     m.command(&["enable-section", "alwywatch"])?;
@@ -142,6 +186,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         duration_ms: m.get_f64("duration").map(|s| (s * 1000.0) as u64),
         finished,
         go: None,
+        error: None,
     };
     let mut last = Instant::now();
     let mut paused = false;
@@ -151,6 +196,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         duration_ms: None,
         finished: false,
         go: None,
+        error: None,
     };
     let mut skipped: Vec<u64> = Vec::new();
     let mut countdown: Option<Instant> = None;
@@ -159,8 +205,51 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
     let mut tracks = Tracks::default();
     let mut pref = req.tracks.pref.clone();
     let mut applied: (Option<String>, Option<String>) = (None, None);
+    // Watching together: changes we make for the room are not the viewer's to send back.
+    let together = req.together.as_ref();
+    let mut quiet_until = Instant::now() + Duration::from_secs(3);
+    let mut request: Option<(String, String)> = None;
+    let mut started = false;
+    let mut note: Option<(String, Instant)> = None;
+    let send_user = |m: &Mpv| {
+        if let Some(t) = together {
+            t.send.as_ref()(FromPlayer::User {
+                playing: !m.get_flag("pause").unwrap_or(false),
+                position_ms: m
+                    .get_f64("time-pos")
+                    .map(|s| (s.max(0.0) * 1000.0) as u64)
+                    .unwrap_or(0),
+            });
+        }
+    };
     loop {
-        let event = m.wait_event(0.5);
+        let event = m.wait_event(if together.is_some() { 0.1 } else { 0.5 });
+        if let Some(t) = together {
+            while let Ok(msg) = t.rx.try_recv() {
+                match msg {
+                    ToPlayer::Sync {
+                        playing,
+                        position_ms,
+                    } => {
+                        quiet_until = Instant::now() + Duration::from_millis(1500);
+                        let _ = m.command(&["set", "pause", if playing { "no" } else { "yes" }]);
+                        paused = !playing;
+                        let pos = m
+                            .get_f64("time-pos")
+                            .map(|s| (s.max(0.0) * 1000.0) as u64)
+                            .unwrap_or(0);
+                        if pos.abs_diff(position_ms) > 1500 {
+                            seek_to(&m, position_ms);
+                        }
+                    }
+                    ToPlayer::Note(t) => note = Some((t, Instant::now())),
+                    ToPlayer::Request(r) => request = r,
+                    ToPlayer::Quit => {
+                        let _ = m.command(&["quit"]);
+                    }
+                }
+            }
+        }
         let reason = event.reason;
         match event.id {
             mpv::EVENT_FILE_LOADED => {
@@ -190,13 +279,16 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 applied = (selected(&m, "aid"), selected(&m, "sid"));
                 report(snapshot(PlaybackEvent::Start, false));
             }
+            // The first one is the start itself, not the viewer moving.
+            mpv::EVENT_PLAYBACK_RESTART if !started => started = true,
+            mpv::EVENT_PLAYBACK_RESTART if Instant::now() >= quiet_until => send_user(&m),
             mpv::EVENT_END_FILE => {
                 let finished = reason == Some(mpv::END_FILE_EOF);
-                if reason == Some(mpv::END_FILE_ERROR) {
-                    eprintln!("mpv could not play the file");
-                }
+                let error = (reason == Some(mpv::END_FILE_ERROR))
+                    .then(|| "The player could not play this file.".to_owned());
                 report(Progress {
                     finished,
+                    error,
                     ..last_pos
                 });
                 break;
@@ -222,6 +314,14 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                     }
                     Some("next") if req.has_next => go = Some(Go::Next),
                     Some("previous") if req.has_previous => go = Some(Go::Previous),
+                    Some(answer @ ("yes" | "no")) => {
+                        if let (Some(t), Some((id, _))) = (together, request.take()) {
+                            t.send.as_ref()(FromPlayer::Answer {
+                                request_id: id,
+                                accept: answer == "yes",
+                            });
+                        }
+                    }
                     Some("cancel") => {
                         cancelled = true;
                         countdown = None;
@@ -266,6 +366,9 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         let is_paused = m.get_flag("pause").unwrap_or(false);
         if is_paused != paused {
             paused = is_paused;
+            if Instant::now() >= quiet_until {
+                send_user(&m);
+            }
             report(snapshot(
                 if paused {
                     PlaybackEvent::Pause
@@ -278,6 +381,19 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         if !paused && last.elapsed() >= Duration::from_secs(10) {
             last = Instant::now();
             report(snapshot(PlaybackEvent::Progress, false));
+        }
+        // Watching together: who asks to join (until answered), then short notes.
+        if let Some((_, name)) = &request {
+            let t = format!("{name} wants to watch with you   ·   Y let them in   ·   N not now");
+            let _ = m.command(&["show-text", &t, "900"]);
+            continue;
+        }
+        if let Some((t, at)) = &note {
+            if at.elapsed() < Duration::from_secs(4) {
+                let _ = m.command(&["show-text", t, "900"]);
+                continue;
+            }
+            note = None;
         }
         // Skip intro / next episode prompts, shared with the other players (core).
         let Some(dur) = last_pos.duration_ms else {

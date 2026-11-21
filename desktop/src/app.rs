@@ -15,11 +15,13 @@ use slint::{
 };
 
 use crate::platform::{self, Tokens};
+mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
 use crate::{
     AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, LeavingRow, NamedId, Page, Rail,
     SeerrPage, SeerrPanel, ServerChoice,
 };
+use together::TogetherPlay;
 
 const POSTER_PX: u32 = 300;
 const EPISODE_PX: u32 = 320;
@@ -46,6 +48,7 @@ enum Route {
     MyList,
     Settings,
     Add,
+    Together,
 }
 
 /// What a poster grid shows: a library (sorted), or one of its genres or collections.
@@ -107,6 +110,11 @@ struct State {
     /// Leaving soon posters, loaded around the visible rows only: (url, requested).
     leaving_posters: Vec<(Option<String>, bool)>,
     leaving_model: Option<Rc<VecModel<LeavingRow>>>,
+    /// Watch together: the room a player follows, the rooms last listed, the join in progress.
+    together: Option<together::Room>,
+    rooms_seen: Vec<TogetherRoom>,
+    join_gen: u64,
+    knock: Option<(String, String)>,
     admin_users: Vec<AdminUser>,
     armed: Option<(String, i32)>,
     poll_gen: u64,
@@ -124,6 +132,7 @@ thread_local! {
 pub struct App {
     downloads_timer: slint::Timer,
     runner_timer: slint::Timer,
+    together_timer: slint::Timer,
     core: Arc<AlwyWatch>,
     ui: Weak<AppWindow>,
     tokens: Tokens,
@@ -163,7 +172,9 @@ fn item_subtitle(i: &Item) -> String {
         .join(" · "),
         _ => [
             i.year.map(|y| y.to_string()),
-            i.runtime_ms.map(|r| format!("{} min", r / 60_000)),
+            i.runtime_ms
+                .filter(|&r| r >= 60_000)
+                .map(|r| format!("{} min", r / 60_000)),
         ]
         .into_iter()
         .flatten()
@@ -198,6 +209,7 @@ impl App {
         let app = Rc::new(Self {
             downloads_timer: slint::Timer::default(),
             runner_timer: slint::Timer::default(),
+            together_timer: slint::Timer::default(),
             core,
             ui: ui.as_weak(),
             tokens,
@@ -226,6 +238,10 @@ impl App {
                 triage: vec![],
                 leaving_posters: vec![],
                 leaving_model: None,
+                together: None,
+                rooms_seen: vec![],
+                join_gen: 0,
+                knock: None,
                 admin_users: vec![],
                 armed: None,
                 poll_gen: 0,
@@ -1653,6 +1669,10 @@ impl App {
                 ui.set_page(Page::Leaving);
                 self.load_leaving();
             }
+            Route::Together => {
+                ui.set_page(Page::Together);
+                self.load_together();
+            }
             Route::Triage => {
                 ui.set_page(Page::Triage);
                 self.load_triage();
@@ -2712,13 +2732,27 @@ impl App {
         self.play_for(account, id, from_start);
     }
 
+    /// Plays a title; in a watch together room, it becomes the room's title.
     fn play_for(self: &Rc<Self>, account: String, id: String, from_start: bool) {
-        let item = self.state.borrow().items.get(&id).cloned();
-        let start_ms = if from_start {
-            0
+        let together = if self.in_room() {
+            TogetherPlay::Room { announce: true }
         } else {
-            item.as_ref().map(|i| i.user.position_ms).unwrap_or(0)
+            TogetherPlay::Alone
         };
+        self.play_with(account, id, from_start.then_some(0), together);
+    }
+
+    /// Plays from `start` (None: where the viewer left it), alone or in a room.
+    fn play_with(
+        self: &Rc<Self>,
+        account: String,
+        id: String,
+        start: Option<u64>,
+        together: TogetherPlay,
+    ) {
+        let item = self.state.borrow().items.get(&id).cloned();
+        let start_ms =
+            start.unwrap_or_else(|| item.as_ref().map(|i| i.user.position_ms).unwrap_or(0));
         let title = item.as_ref().map(|i| i.title.clone()).unwrap_or_default();
         let title_key = item
             .clone()
@@ -2830,7 +2864,16 @@ impl App {
                 has_previous: previous.is_some(),
                 auto_skip_intro,
                 auto_next,
+                together: None,
             };
+            let mut req = req;
+            if together == TogetherPlay::Create {
+                App::create_room(&this, &core, account.clone(), id.clone(), start_ms).await;
+            }
+            if together != TogetherPlay::Alone {
+                req.together = this.upgrade().and_then(|t| t.player_link());
+            }
+            let linked = req.together.is_some();
             let (src_id, session) = (src.id.clone(), info.play_session_id.clone());
             let rt = core.runtime();
             let (core2, acct2, id2) = (core.clone(), account.clone(), id.clone());
@@ -2845,44 +2888,61 @@ impl App {
                     audio_index: None,
                     subtitle_index: None,
                 };
-                let (core, acct) = (core2.clone(), acct2.clone());
-                rt.spawn(async move {
-                    let _ = core.report_progress(acct, report).await;
-                });
+                // A start that failed played nothing: nothing to report.
+                if p.error.is_none() {
+                    let (core, acct) = (core2.clone(), acct2.clone());
+                    rt.spawn(async move {
+                        let _ = core.report_progress(acct, report).await;
+                    });
+                }
                 if p.event == PlaybackEvent::Stop {
                     // Back on the UI thread: refresh the page and autoplay the next episode.
                     let (next, previous, acct) = (next.clone(), previous.clone(), acct2.clone());
-                    let (finished, go) = (p.finished, p.go);
+                    let (finished, go, error) = (p.finished, p.go, p.error);
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(t) = APP.with(|a| a.borrow().upgrade()) {
                             let current = t.state.borrow().stack.last().cloned();
                             if let Some(r) = current {
                                 t.show(r);
                             }
-                            match go {
-                                Some(player::Go::Next) => {
-                                    if let Some(n) = next {
-                                        t.play_for(acct, n, false);
-                                    }
-                                }
-                                Some(player::Go::Previous) => {
-                                    if let Some(p) = previous {
-                                        t.play_for(acct, p, false);
-                                    }
-                                }
-                                None if finished => {
-                                    if let Some(n) = next {
-                                        t.play_for(acct, n, true);
-                                    }
-                                }
-                                None => {}
+                            // Said on the page the viewer is back on (after `show` cleared it).
+                            if let Some(e) = error {
+                                t.ui().set_error(sstr(e));
+                                t.leave_room(None, true);
+                                return;
+                            }
+                            // Watching together: the room's new title, else ours (the room
+                            // follows), else the room is left with the player.
+                            if let Some((a, i, start)) = t.take_switch() {
+                                t.play_with(
+                                    a,
+                                    i,
+                                    Some(start),
+                                    TogetherPlay::Room { announce: false },
+                                );
+                                return;
+                            }
+                            let then = match go {
+                                Some(player::Go::Next) => next.map(|n| (n, false)),
+                                Some(player::Go::Previous) => previous.map(|p| (p, false)),
+                                None if finished => next.map(|n| (n, true)),
+                                None => None,
+                            };
+                            match then {
+                                Some((n, from_start)) => t.play_for(acct, n, from_start),
+                                None => t.leave_room(None, true),
                             }
                         }
                     });
                 }
             });
-            if let (Err(e), Some(t)) = (result, this.upgrade()) {
-                t.ui().set_error(sstr(e));
+            match (result, this.upgrade()) {
+                (Err(e), Some(t)) => {
+                    t.ui().set_error(sstr(e));
+                    t.leave_room(None, true);
+                }
+                (Ok(()), Some(t)) if linked => t.player_started(account, id, together, start_ms),
+                _ => {}
             }
         })
         .ok();
@@ -4016,6 +4076,7 @@ impl App {
             Page::Downloads => Route::Downloads,
             Page::Requests => Route::Requests,
             Page::Leaving => Route::Leaving,
+            Page::Together => Route::Together,
             Page::Triage => Route::Triage,
             Page::Keepadmin => Route::KeepAdmin,
             _ => Route::Home,
@@ -4056,6 +4117,13 @@ impl App {
         });
         on!(on_keep_vote, |a, key, choice| a
             .keep_vote(key.into(), choice.into()));
+        on!(on_watch_together, |a, id| {
+            if let Some(account) = a.account_of(&id) {
+                a.play_with(account, id.into(), None, TogetherPlay::Create);
+            }
+        });
+        on!(on_together_join, |a, code| a.together_join(code.into()));
+        on!(on_together_cancel, |a| a.together_cancel());
         on!(on_leaving_scrolled, |a, first| a.leaving_scrolled(first));
         on!(on_triage_vote, |a, choice| a.triage_vote(choice.into()));
         on!(on_admin_rights, |a, user, field| a
