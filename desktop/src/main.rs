@@ -16,7 +16,8 @@ slint::include_modules!();
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let t0 = Instant::now();
-    if let Some(out) = std::env::var_os("ALWYWATCH_SCREENSHOT") {
+    let driven = std::env::var_os("ALWYWATCH_DRIVE").is_some();
+    if let Some(out) = std::env::var_os("ALWYWATCH_SCREENSHOT").or(driven.then(Default::default)) {
         let after = std::env::var("ALWYWATCH_SCREENSHOT_AFTER_MS")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -24,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         headless::Headless::install(
             out.to_string_lossy().into_owned(),
             std::time::Duration::from_millis(after),
+            driven,
         );
     }
     let paths = platform::paths();

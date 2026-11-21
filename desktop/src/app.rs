@@ -104,6 +104,9 @@ struct State {
     seerr_selected: Option<SeerrResult>,
     seerr_seasons: Vec<(SeerrSeason, bool)>,
     triage: Vec<LeavingItem>,
+    /// Leaving soon posters, loaded around the visible rows only: (url, requested).
+    leaving_posters: Vec<(Option<String>, bool)>,
+    leaving_model: Option<Rc<VecModel<LeavingRow>>>,
     admin_users: Vec<AdminUser>,
     armed: Option<(String, i32)>,
     poll_gen: u64,
@@ -221,6 +224,8 @@ impl App {
                 seerr_selected: None,
                 seerr_seasons: vec![],
                 triage: vec![],
+                leaving_posters: vec![],
+                leaving_model: None,
                 admin_users: vec![],
                 armed: None,
                 poll_gen: 0,
@@ -448,21 +453,12 @@ impl App {
             list.iter().map(Self::leaving_row).collect::<Vec<_>>(),
         ));
         self.ui().set_leaving(ModelRc::from(model.clone()));
-        for (row, i) in list.iter().enumerate() {
-            let Some(url) = i.poster_url.clone() else {
-                continue;
-            };
-            let (m, key) = (Rc::downgrade(&model), i.key.clone());
-            self.load_url_image(url, move |_, img| {
-                if let Some(m) = m.upgrade()
-                    && let Some(mut r) = m.row_data(row)
-                    && r.key.as_str() == key
-                {
-                    r.poster = img;
-                    m.set_row_data(row, r);
-                }
-            });
+        {
+            let mut st = self.state.borrow_mut();
+            st.leaving_posters = list.iter().map(|i| (i.poster_url.clone(), false)).collect();
+            st.leaving_model = Some(model);
         }
+        self.leaving_scrolled(0);
         let mut cols: Vec<NamedId> = vec![];
         for i in list {
             if let (Some(id), Some(t)) = (i.collection_id, &i.collection_title)
@@ -477,6 +473,40 @@ impl App {
         }
         self.ui()
             .set_admin_collections(ModelRc::new(VecModel::from(cols)));
+    }
+
+    /// Loads the posters of the rows on screen (and a few past them), each once.
+    fn leaving_scrolled(self: &Rc<Self>, first: i32) {
+        let first = first.max(0) as usize;
+        let (model, todo) = {
+            let mut st = self.state.borrow_mut();
+            let Some(model) = st.leaving_model.clone() else {
+                return;
+            };
+            let end = (first + 16).min(st.leaving_posters.len());
+            let todo: Vec<(usize, String)> = (first.min(end)..end)
+                .filter_map(|row| {
+                    let p = &mut st.leaving_posters[row];
+                    if p.1 {
+                        return None;
+                    }
+                    p.1 = true;
+                    p.0.clone().map(|u| (row, u))
+                })
+                .collect();
+            (model, todo)
+        };
+        for (row, url) in todo {
+            let m = Rc::downgrade(&model);
+            self.load_url_image(url, move |_, img| {
+                if let Some(m) = m.upgrade()
+                    && let Some(mut r) = m.row_data(row)
+                {
+                    r.poster = img;
+                    m.set_row_data(row, r);
+                }
+            });
+        }
     }
 
     fn load_leaving(self: &Rc<Self>) {
@@ -905,7 +935,13 @@ impl App {
             let decoded = core
                 .runtime()
                 .spawn_blocking(move || {
-                    let img = image::open(path).ok()?.into_rgba8();
+                    let img = image::ImageReader::open(path)
+                        .ok()?
+                        .with_guessed_format()
+                        .ok()?
+                        .decode()
+                        .ok()?
+                        .into_rgba8();
                     let (w, h) = img.dimensions();
                     Some(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
                         img.as_raw(),
@@ -1699,7 +1735,13 @@ impl App {
             let decoded = core
                 .runtime()
                 .spawn_blocking(move || {
-                    let img = image::open(path).ok()?.into_rgba8();
+                    let img = image::ImageReader::open(path)
+                        .ok()?
+                        .with_guessed_format()
+                        .ok()?
+                        .decode()
+                        .ok()?
+                        .into_rgba8();
                     let (w, h) = img.dimensions();
                     Some(SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(
                         img.as_raw(),
@@ -4014,6 +4056,7 @@ impl App {
         });
         on!(on_keep_vote, |a, key, choice| a
             .keep_vote(key.into(), choice.into()));
+        on!(on_leaving_scrolled, |a, first| a.leaving_scrolled(first));
         on!(on_triage_vote, |a, choice| a.triage_vote(choice.into()));
         on!(on_admin_rights, |a, user, field| a
             .admin_rights(user.into(), field.into()));

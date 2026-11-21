@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // AlwyWatch desktop UI. Same design language as the Android app: Manrope, near-black with
 // translucent surfaces, artwork-led pages, white pill for the main action.
-import { ScrollView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import "fonts/Manrope.ttf";
 
 export struct Card {
@@ -654,6 +654,7 @@ export component AppWindow inherits Window {
     callback keep-choose();
     callback keep-disconnect();
     callback keep-vote(string, string); // key, choice
+    callback leaving-scrolled(int); // first visible row, to load the posters around it
     callback triage-vote(string);       // choice
     callback admin-rights(string, string); // user key, field
     callback admin-countdown(string, int); // collection id, stagger days
@@ -1347,24 +1348,31 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    if root.page == Page.leaving : ScrollView {
-                        VerticalLayout {
-                            padding: 40px;
-                            padding-top: 28px;
+                    // A ListView, not a ScrollView: only the visible rows exist (the list can hold
+                    // a thousand titles, past the software renderer's 16-bit coordinates).
+                    if root.page == Page.leaving : VerticalLayout {
+                        padding: 40px;
+                        padding-top: 28px;
+                        padding-bottom: 0;
+                        spacing: 10px;
+                        PageTitle { title: "Leaving soon"; subtitle: "What the server will delete, soonest first. Keep what you want to watch or love."; }
+                        HorizontalLayout {
                             spacing: 10px;
                             alignment: start;
-                            PageTitle { title: "Leaving soon"; subtitle: "What the server will delete, soonest first. Keep what you want to watch or love."; }
-                            HorizontalLayout {
-                                spacing: 10px;
-                                alignment: start;
-                                padding-bottom: 8px;
-                                Button { label: "Sort them out"; primary: true; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.go(Page.triage); } }
-                                if root.keep-admin : Button { label: "Admin"; has-icon: true; icon: @image-url("icons/settings.svg"); clicked => { root.go(Page.keepadmin); } }
-                            }
+                            padding-bottom: 8px;
+                            Button { label: "Sort them out"; primary: true; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.go(Page.triage); } }
+                            if root.keep-admin : Button { label: "Admin"; has-icon: true; icon: @image-url("icons/settings.svg"); clicked => { root.go(Page.keepadmin); } }
+                        }
+                        ListView {
+                            vertical-stretch: 1;
+                            changed content-y => { root.leaving-scrolled(-self.content-y / 118px); }
                             for row in root.leaving : Rectangle {
+                                height: (root.leaving-open == row.key ? 164px : 108px) + 10px;
+                                Rectangle {
+                                y: 0;
+                                height: parent.height - 10px;
                                 background: root.leaving-open == row.key ? Palette.surface-high : Palette.surface;
                                 border-radius: 18px;
-                                height: root.leaving-open == row.key ? 164px : 108px;
                                 VerticalLayout {
                                     padding: 10px;
                                     spacing: 10px;
@@ -1409,6 +1417,7 @@ export component AppWindow inherits Window {
                                         Button { label: "Don't care"; clicked => { root.keep-vote(row.key, "dontcare"); } }
                                         if row.voted : Button { label: "Remove my choice"; clicked => { root.keep-vote(row.key, "remove"); } }
                                     }
+                                }
                                 }
                             }
                         }
