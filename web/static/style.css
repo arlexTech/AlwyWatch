@@ -219,3 +219,9 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
 .rail-row::-webkit-scrollbar { height: 6px; }
 .rail-row::-webkit-scrollbar-thumb { background: #ffffff2e; border-radius: 3px; }
 .rail-row::-webkit-scrollbar-track, .rail-row::-webkit-scrollbar-button { background: transparent; display: none; }
+/* The top menu on phones: one line, scrolled sideways without a visible bar. */
+.menu a { white-space: nowrap; }
+@media (max-width: 720px) {
+  .menu { scrollbar-width: none; }
+  .menu::-webkit-scrollbar { display: none; }
+}
