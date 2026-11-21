@@ -341,7 +341,7 @@ private fun TvMenu(
                 .clip(RoundedCornerShape(22.dp))
                 .background(if (open) Color.Transparent else Color.Black.copy(alpha = 0.55f))
                 .onFocusChanged { open = it.hasFocus }
-                .focusProperties { onEnter = { runCatching { current.requestFocus() } } }
+                .focusProperties { onEnter = { if (HeldLeft.held) cancelFocusChange() else runCatching { current.requestFocus() } } }
                 .onPreviewKeyEvent {
                     val k = it.nativeKeyEvent
                     val out = k.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT || k.keyCode == android.view.KeyEvent.KEYCODE_BACK

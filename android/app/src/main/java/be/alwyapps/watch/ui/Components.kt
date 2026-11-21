@@ -143,6 +143,11 @@ fun FocusCard(
     val scale by animateFloatAsState(if (focused) focusScale ?: d.focusScale else 1f, tween(160), label = "scale")
     Box(
         modifier
+            // Long press (touch, or holding OK on a remote): the item's menu. Before the layer:
+            // the focused element is then measured without its zoom. Inside it, scrolling the
+            // focused card into place followed the zoom animation, and every ←/→ lifted the
+            // page a little.
+            .combinedClickable(interactionSource = interaction, indication = null, onLongClick = onLongClick, onClick = onClick)
             // One layer for the scale and the rounded clip (a clip is a layer of its own
             // otherwise: two per card in every row).
             .graphicsLayer {
@@ -153,9 +158,7 @@ fun FocusCard(
             }
             // TV focus: scale and a white border. (A 24 dp white shadow, redrawn on every frame of
             // the scale animation, was too much for Chromecast-class GPUs.)
-            .then(if (focused && d.isTv) Modifier.border(2.5.dp, Color.White, shape) else Modifier)
-            // Long press (touch, or holding OK on a remote): the item's menu.
-            .combinedClickable(interactionSource = interaction, indication = null, onLongClick = onLongClick, onClick = onClick),
+            .then(if (focused && d.isTv) Modifier.border(2.5.dp, Color.White, shape) else Modifier),
         content = content,
     )
 }
@@ -216,6 +219,8 @@ fun ItemMenu(
         onDismissRequest = onDismiss,
         // Fully open: half open, the rows below the fold took the focus out of sight (TV).
         sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        // On TV a full-width sheet is a wall of empty space: a compact panel instead.
+        sheetMaxWidth = if (d.isTv) 460.dp else androidx.compose.material3.BottomSheetDefaults.SheetMaxWidth,
         containerColor = Background,
         // On TV the handle would take the focus first (it is only for touch).
         dragHandle =
@@ -481,6 +486,15 @@ fun SectionHeader(
 }
 
 /**
+ * True while ← is held (key repeats): a fast run back to the start of a row stops on its
+ * first card instead of carrying on into the side menu. A new press opens it.
+ */
+object HeldLeft {
+    @Volatile
+    var held = false
+}
+
+/**
  * TV: the last focused card per screen, so coming back (BACK from a detail page) puts the
  * remote where it was instead of nowhere.
  */
@@ -564,22 +578,15 @@ fun TvScrollSpec(
         content()
         return
     }
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val px = with(density) { leading.toPx() }
-    // The focused card zooms in (a layer scale, which bring-into-view measures): its edges move
-    // by about 12 dp while it animates. Following that lifted the whole page on every ←/→.
-    val slack = with(density) { 24.dp.toPx() }
+    val px = with(androidx.compose.ui.platform.LocalDensity.current) { leading.toPx() }
     val spec =
-        remember(px, slack) {
+        remember(px) {
             object : androidx.compose.foundation.gestures.BringIntoViewSpec {
                 override fun calculateScrollDistance(
                     offset: Float,
                     size: Float,
                     containerSize: Float,
-                ): Float {
-                    val d = offset - px
-                    return if (kotlin.math.abs(d) < slack) 0f else d
-                }
+                ): Float = offset - px
             }
         }
     androidx.compose.runtime.CompositionLocalProvider(

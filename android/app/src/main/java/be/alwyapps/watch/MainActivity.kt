@@ -61,6 +61,9 @@ class MainActivity : ComponentActivity() {
                 return true
             }
         }
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
+            be.alwyapps.watch.ui.HeldLeft.held = event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount > 0
+        }
         return super.dispatchKeyEvent(event)
     }
 
