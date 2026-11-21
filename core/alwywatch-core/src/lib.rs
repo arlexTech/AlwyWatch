@@ -19,6 +19,7 @@ mod error;
 mod history;
 mod merge;
 mod playback;
+mod sync;
 mod tracks;
 
 pub use app::*;
@@ -42,6 +43,7 @@ pub use seerr::{
     SeerrCollectionRef, SeerrDetails, SeerrInfo, SeerrLogin, SeerrMediaType, SeerrRequest,
     SeerrResult, SeerrSeason,
 };
+pub use sync::{SyncPair, SyncStatus};
 pub use tracks::{
     TrackChoice, TrackInfo, TrackKind, TrackPref, TrackRules, choose_tracks, lang3, pick_track,
     remembered_track, track_title_key,

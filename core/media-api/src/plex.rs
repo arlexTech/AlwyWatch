@@ -1362,7 +1362,12 @@ impl MediaServer for PlexClient {
         if state.played {
             return self.set_played(item_id, true).await;
         }
-        // Plex's own resume point (no session needed); its last-viewed date can't be set.
+        // Not watched (a sync may unmark it), then Plex's own resume point (no session
+        // needed); its last-viewed date can't be set.
+        self.set_played(item_id, false).await?;
+        if state.position_ms == 0 {
+            return Ok(());
+        }
         net::send(self.req(Method::GET, "/:/progress").query(&[
             ("key", item_id.to_owned()),
             ("identifier", LIBRARY_IDENTIFIER.to_owned()),

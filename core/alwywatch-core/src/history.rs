@@ -16,7 +16,7 @@ use crate::app::{AlwyWatch, Core, ids_match, same_title};
 use crate::error::{CoreError, Result};
 
 /// A resume point this close to the target's is the same place (no change).
-const SAME_PLACE_MS: u64 = 30_000;
+pub(crate) const SAME_PLACE_MS: u64 = 30_000;
 
 /// One item to update on the target server.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -54,7 +54,7 @@ pub struct HistoryCopyResult {
     pub failed: u32,
 }
 
-fn label(i: &Item) -> String {
+pub(crate) fn label(i: &Item) -> String {
     match (i.kind, i.season_number, i.episode_number) {
         (ItemKind::Episode, Some(s), Some(e)) => format!(
             "{} S{s} · E{e}",
@@ -130,7 +130,7 @@ fn plan_from(
 }
 
 impl Core {
-    fn progress(&self, step: impl Into<String>, done: u32, total: u32) {
+    pub(crate) fn progress(&self, step: impl Into<String>, done: u32, total: u32) {
         *self.history.lock().unwrap_or_else(|e| e.into_inner()) = HistoryProgress {
             running: true,
             step: step.into(),
@@ -139,14 +139,14 @@ impl Core {
         };
     }
 
-    fn progress_end(&self) {
+    pub(crate) fn progress_end(&self) {
         self.history
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .running = false;
     }
 
-    fn server_name(&self, account: &str) -> String {
+    pub(crate) fn server_name(&self, account: &str) -> String {
         let accounts: Vec<crate::Account> = self.store.accounts().unwrap_or_default();
         accounts
             .into_iter()
@@ -160,18 +160,40 @@ impl Core {
                 detail: "pick two different servers".into(),
             });
         }
-        let (src, dst) = (self.server(from)?, self.server(to)?);
-        let (from_name, to_name) = (self.server_name(from), self.server_name(to));
+        let from_name = self.server_name(from);
         self.progress(format!("Reading what you watched on {from_name}"), 0, 0);
-        let history = src.watch_history().await?;
-        let src_shows = src.provider_index(ItemKind::Series).await?;
-        self.progress(format!("Reading what you watched on {to_name}"), 0, 0);
-        let target_state: HashMap<String, UserData> = dst
+        let history = self.server(from)?.watch_history().await?;
+        let target_state = self.history_state(to).await?;
+        let matched = self.match_on(from, to, &history).await?;
+        Ok(plan_from(
+            matched.iter().map(|(s, t)| (s, t.as_ref())).collect(),
+            &target_state,
+        ))
+    }
+
+    /// An account's history by item id (watched or started items only).
+    pub(crate) async fn history_state(&self, account: &str) -> Result<HashMap<String, UserData>> {
+        let name = self.server_name(account);
+        self.progress(format!("Reading what you watched on {name}"), 0, 0);
+        Ok(self
+            .server(account)?
             .watch_history()
             .await?
             .into_iter()
             .map(|i| (i.id, i.user))
-            .collect();
+            .collect())
+    }
+
+    /// Each item of `history` (from `from`) with the same title on `to`, if it has it.
+    pub(crate) async fn match_on(
+        &self,
+        from: &str,
+        to: &str,
+        history: &[Item],
+    ) -> Result<Vec<(Item, Option<Item>)>> {
+        let (src, dst) = (self.server(from)?, self.server(to)?);
+        let to_name = self.server_name(to);
+        let src_shows = src.provider_index(ItemKind::Series).await?;
         self.progress(format!("Listing the movies and shows on {to_name}"), 0, 0);
         let dst_movies = dst.provider_index(ItemKind::Movie).await?;
         let dst_shows = dst.provider_index(ItemKind::Series).await?;
@@ -227,25 +249,24 @@ impl Core {
             );
         }
 
-        let matched = history
+        Ok(history
             .iter()
             .map(|i| {
                 let target = match i.kind {
-                    ItemKind::Movie => same_title_in(i, &dst_movies),
+                    ItemKind::Movie => same_title_in(i, &dst_movies).cloned(),
                     ItemKind::Episode => i
                         .series_id
                         .as_ref()
                         .and_then(|sid| show_of.get(sid).cloned().flatten())
                         .and_then(|tid| {
                             let key = (i.season_number?, i.episode_number?);
-                            episodes.get(&tid)?.get(&key)
+                            episodes.get(&tid)?.get(&key).cloned()
                         }),
                     _ => None,
                 };
-                (i, target)
+                (i.clone(), target)
             })
-            .collect();
-        Ok(plan_from(matched, &target_state))
+            .collect())
     }
 }
 

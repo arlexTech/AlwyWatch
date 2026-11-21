@@ -85,6 +85,23 @@ Server side: `MediaServer::watch_history()` (watched or started movies and episo
 `set_watch_state(item, WatchState)` (Jellyfin `POST /UserItems/{id}/UserData`, with the last played
 date; Plex `/:/scrobble` or `/:/progress`).
 
+## Keeping two servers in sync
+
+Two accounts (a viewer's Plex and Jellyfin) kept in sync both ways. Each run reads both histories,
+links titles both ways (same matching as the copy) and compares each with the state agreed at the
+previous run (a snapshot per pair, in the cache): changed on one side only, that side wins, unwatching
+and rewinding included; changed on both, or never synced, the more advanced state wins. A failed write
+leaves the title out of the snapshot, so the next run settles it as never synced. Watching in
+AlwyWatch is mirrored at once (playback stop and watched toggles), for titles a run already linked.
+
+| Function | Notes |
+|---|---|
+| `sync_pairs()`, `set_sync_pair(a, b, on)` | Off forgets the snapshot |
+| `sync_now()` | Every pair; progress through `history_copy_progress` |
+| `sync_status(a, b)` | Last run time, changes, failures, error, a few updated titles |
+
+Android runs it every 6 hours (WorkManager, foreground while running) and on demand.
+
 ## Audio and subtitles
 
 One choice per movie or show (episodes follow), shared by every player. Besides the language, the

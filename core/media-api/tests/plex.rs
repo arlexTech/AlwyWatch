@@ -543,6 +543,12 @@ async fn watch_history_and_setting_watch_state() {
         .expect(1)
         .mount(&s)
         .await;
+    Mock::given(path("/:/unscrobble"))
+        .and(query_param("key", "20"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&s)
+        .await;
     Mock::given(path("/:/progress"))
         .and(query_param("key", "20"))
         .and(query_param("time", "120000"))

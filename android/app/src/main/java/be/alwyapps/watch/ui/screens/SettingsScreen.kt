@@ -288,13 +288,96 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
                 subtitle = if (together) "Tap an account above to make it the preferred one" else "One server at a time: tap an account above to switch",
             )
         }
-        Group("Moving between servers", footer = "Each person copies their own history, with their own accounts.") {
+        SyncGroup(accounts)
+        Group("Moving between servers", footer = "A one-time copy, one way. Each person copies their own history, with their own accounts.") {
             ListRow(
                 "Copy watch history",
                 subtitle = "What you watched and where you stopped, from one server to another (Plex to Jellyfin)",
                 icon = Icons.Refresh,
                 onClick = { nav.push(Route.HistoryCopy) },
                 trailing = { Chevron() },
+            )
+        }
+    }
+}
+
+/**
+ * Keep two servers in sync: one switch per pair of servers, with when it last ran and what it
+ * changed. Turning one on syncs at once, then every 6 hours; watching in AlwyWatch is mirrored
+ * right away.
+ */
+@Composable
+private fun SyncGroup(accounts: List<be.alwyapps.watch.core.Account>) {
+    val core = LocalCore.current
+    val ctx = LocalContext.current
+    val state = be.alwyapps.watch.history.SyncState
+    val version = state.version
+    var pairs by remember(version) { mutableStateOf(runCatching { core.syncPairs() }.getOrDefault(emptyList())) }
+    // Every pair of accounts on different servers.
+    val candidates =
+        accounts.flatMapIndexed { i, a -> accounts.drop(i + 1).filter { it.serverId != a.serverId }.map { a to it } }
+    if (candidates.isEmpty()) return
+    Group(
+        "Keep in sync",
+        footer =
+            "Both ways: what you watch, unwatch or where you stop on one server is copied to the other. " +
+                "Right away for what you watch in AlwyWatch, every 6 hours for other apps. " +
+                "Changed on both since the last sync: the further one wins.",
+    ) {
+        candidates.forEachIndexed { i, (a, b) ->
+            if (i > 0) Divider()
+            val on = pairs.any { (it.a == a.id && it.b == b.id) || (it.a == b.id && it.b == a.id) }
+            val status = remember(version, on) { runCatching { core.syncStatus(a.id, b.id) }.getOrNull() }
+            val subtitle =
+                when {
+                    !on -> "${a.serverName} (${kindName(a.kind)}) and ${b.serverName} (${kindName(b.kind)})"
+                    state.running -> "Syncing now…"
+                    status?.error != null -> "Last sync failed: ${status.error}"
+                    status?.lastRunAt != null -> {
+                        val at =
+                            java.text.DateFormat
+                                .getTimeInstance(java.text.DateFormat.SHORT)
+                                .format(java.util.Date(status.lastRunAt!! * 1000))
+                        val changed = status.changes.toInt()
+                        "Last synced $at · " + if (changed == 0) "nothing to change" else "$changed updated"
+                    }
+                    else -> "Waiting for the first sync"
+                }
+            ToggleRow(
+                "${a.serverName} ⇄ ${b.serverName}",
+                on,
+                { want ->
+                    runCatching { core.setSyncPair(a.id, b.id, want) }
+                    pairs = runCatching { core.syncPairs() }.getOrDefault(emptyList())
+                    be.alwyapps.watch.history.SyncWorker
+                        .schedule(ctx, core)
+                    if (want) {
+                        be.alwyapps.watch.history.SyncWorker
+                            .now(ctx)
+                    }
+                },
+                subtitle = subtitle,
+            )
+            if (on && status?.recent?.isNotEmpty() == true && !state.running) {
+                Text(
+                    status.recent.take(5).joinToString("\n"),
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    color = be.alwyapps.watch.ui.Muted,
+                )
+            }
+        }
+        if (pairs.isNotEmpty()) {
+            Divider()
+            ListRow(
+                if (state.running) "Syncing…" else "Sync now",
+                icon = Icons.Refresh,
+                onClick = {
+                    if (!state.running) {
+                        be.alwyapps.watch.history.SyncWorker
+                            .now(ctx)
+                    }
+                },
             )
         }
     }

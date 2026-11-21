@@ -253,7 +253,7 @@ impl Core {
 
     /// Positions or watched marks changed: everything showing them (home, items, episode and
     /// season lists, library pages) is shown from cache, then refreshed on the next visit.
-    fn watch_state_changed(&self, account: &str) -> Result<()> {
+    pub(crate) fn watch_state_changed(&self, account: &str) -> Result<()> {
         self.store.cache_mark_stale(&key(account, &["home"]))?;
         for family in ["item", "episodes", "seasons", "items"] {
             self.store
@@ -796,6 +796,10 @@ impl AlwyWatch {
         self.core.store.clone()
     }
 
+    pub(crate) fn core(&self) -> Arc<Core> {
+        self.core.clone()
+    }
+
     pub(crate) fn history_progress(&self) -> crate::history::HistoryProgress {
         self.core
             .history
@@ -1295,6 +1299,7 @@ impl AlwyWatch {
                 c.mark_watched(&account_id, &item_id);
             }
             c.watch_state_changed(&account_id)?;
+            tokio::spawn(c.clone().mirror(account_id, item_id));
             Ok(())
         })
         .await
@@ -1497,8 +1502,17 @@ impl AlwyWatch {
 
     /// Reports playback state. Offline, start/pause/stop reports are queued and sent later.
     pub async fn report_progress(&self, account_id: String, report: ProgressReport) -> Result<()> {
-        self.run(|c| async move { c.report_progress(&account_id, report).await })
-            .await
+        self.run(|c| async move {
+            let stop = report.event == PlaybackEvent::Stop;
+            let item = report.item_id.clone();
+            c.report_progress(&account_id, report).await?;
+            // Synced servers: the same state there, without waiting for the next run.
+            if stop {
+                tokio::spawn(c.clone().mirror(account_id, item));
+            }
+            Ok(())
+        })
+        .await
     }
 
     /// Sends queued progress reports (call when the network comes back). Returns how many.
