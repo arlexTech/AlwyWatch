@@ -16,7 +16,9 @@ use media_api::{
 };
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
+use crate::prefs::{self, SubTrack};
 use crate::state::{self, fmt_time};
+use crate::together::{self, Room};
 
 fn test_video() -> Option<web_sys::HtmlMediaElement> {
     web_sys::window()?
@@ -304,18 +306,96 @@ async fn show_subtitle(l: &Loaded, video: &web_sys::HtmlVideoElement, index: i64
     }
 }
 
+/// The subtitle stream the settings choose at start, among those the browser can show.
+fn start_subtitle(l: &Loaded, prefs: &prefs::PlayerPrefs) -> Option<i64> {
+    let src = l.info.sources.first()?;
+    let drawable = text_subtitles(l);
+    let subs: Vec<SubTrack> = src
+        .streams
+        .iter()
+        .filter(|s| s.kind == StreamKind::Subtitle && drawable.iter().any(|(i, _)| *i == s.index))
+        .map(|s| SubTrack {
+            index: s.index,
+            language: s.language.clone(),
+            forced: s.is_forced,
+        })
+        .collect();
+    let audio = src
+        .streams
+        .iter()
+        .filter(|s| s.kind == StreamKind::Audio)
+        .find(|s| s.is_default)
+        .or_else(|| src.streams.iter().find(|s| s.kind == StreamKind::Audio))
+        .and_then(|s| s.language.clone());
+    let lang = if prefs.sub_lang.is_empty() {
+        prefs::browser_language()
+    } else {
+        prefs.sub_lang.clone()
+    };
+    prefs::pick_subtitle(&subs, audio.as_deref(), &prefs.sub_mode, &lang)
+}
+
+/// The player page: one per title (rebuilt when the next episode starts), and the watch
+/// together room, which outlives the titles and is left when the page closes.
 #[component]
 pub fn Player() -> impl IntoView {
     let params = use_params_map();
     let query = use_query_map();
+    let room = Room::new();
+    let (code, member, start_together) =
+        query.with_untracked(|q| (q.get("room"), q.get("member"), q.get("together").is_some()));
+    if let (Some(code), Some(member)) = (code, member) {
+        room.open(code, member, None);
+    }
+    on_cleanup(move || room.leave("", true));
+    // Notes go away after a few seconds.
+    Effect::new(move |_| {
+        let Some(n) = room.note.get() else { return };
+        spawn_local(async move {
+            state::sleep(5000).await;
+            if room.note.try_get_untracked().flatten().as_deref() == Some(n.as_str()) {
+                room.note.try_set(None);
+            }
+        });
+    });
+    let title = Memo::new(move |_| {
+        params.with(|p| {
+            (
+                p.get("acc").unwrap_or_default(),
+                p.get("id").unwrap_or_default(),
+            )
+        })
+    });
+    let first = StoredValue::new(true);
+    move || {
+        let (acc, id) = title.get();
+        let start_ms: u64 = query
+            .with_untracked(|q| q.get("t").and_then(|t| t.parse().ok()))
+            .unwrap_or(0);
+        let start_together = start_together && first.get_value();
+        first.set_value(false);
+        view! { <PlayerView acc=acc id=id start_ms=start_ms room=room start_together=start_together /> }
+    }
+}
+
+#[component]
+fn PlayerView(
+    acc: String,
+    id: String,
+    start_ms: u64,
+    room: Room,
+    start_together: bool,
+) -> impl IntoView {
     let navigate = use_navigate();
-    let acc = params.read_untracked().get("acc").unwrap_or_default();
-    let id = params.read_untracked().get("id").unwrap_or_default();
-    let start_ms: u64 = query
-        .read_untracked()
-        .get("t")
-        .and_then(|t| t.parse().ok())
-        .unwrap_or(0);
+    let prefs = prefs::load();
+    let (auto_skip, auto_next, countdown_s) =
+        (prefs.auto_skip_intro, prefs.auto_next, prefs.countdown_s);
+    // Shown subtitle stream (-1: none), picked from the settings at start.
+    let sub_pick = RwSignal::new(-1i64);
+    // Next episode countdown: where the credits started showing, and whether it was cancelled.
+    let credits_from = RwSignal::new(None::<u64>);
+    let cancelled = RwSignal::new(false);
+    let auto_skipped = StoredValue::new(None::<u64>);
     let video = NodeRef::<leptos::html::Video>::new();
     let loaded = RwSignal::new(None::<Result<Loaded, String>>);
     let pos = RwSignal::new(0u64);
@@ -369,6 +449,13 @@ pub fn Player() -> impl IntoView {
             play_hls(&v, state::with_token(&t.url, &session));
         }
         let _ = v.play();
+        // The settings' subtitles, once per title.
+        if sub_pick.get_untracked() < 0
+            && let Some(i) = start_subtitle(&l, &prefs)
+        {
+            sub_pick.set(i);
+            spawn_local(async move { show_subtitle(&l, &v, i).await });
+        }
     });
 
     // The original file failed: same position, through the server.
@@ -387,16 +474,77 @@ pub fn Player() -> impl IntoView {
         let _ = v.play();
     };
 
+    // This title isn't the room's (the room moved to one we don't have): don't send.
+    let off_title = StoredValue::new(false);
+    let started = StoredValue::new(false);
     let on_meta = move |_| {
-        if let Some(v) = video.get_untracked() {
-            let at = if transcoding.get_untracked() && pos.get_untracked() > 0 {
-                pos.get_untracked()
-            } else {
-                start_ms
-            };
-            if at > 0 {
-                v.set_current_time(at as f64 / 1000.0);
+        let Some(v) = video.get_untracked() else {
+            return;
+        };
+        let first = !started.get_value();
+        started.set_value(true);
+        let at = if transcoding.get_untracked() && pos.get_untracked() > 0 {
+            pos.get_untracked()
+        } else {
+            start_ms
+        };
+        let Some(Ok(l)) = loaded.get_untracked() else {
+            return;
+        };
+        // In a room: a title chosen here is announced, one chosen by the room follows it.
+        if room.active() && first && room.announce.get_value() {
+            room.announce.set_value(false);
+            room.send(Some((l.srv.clone(), l.item.clone())), true, at);
+        } else if room.active()
+            && room.plays(&l.item)
+            && let Some((exp, playing)) = room.expected()
+        {
+            v.set_current_time(exp as f64 / 1000.0);
+            if !playing {
+                let _ = v.pause();
             }
+            return;
+        }
+        if at > 0 {
+            v.set_current_time(at as f64 / 1000.0);
+        }
+        if first && start_together {
+            room.create(l.srv.clone(), l.item.clone(), at, true);
+        }
+    };
+
+    // Plays or pauses like the room and seeks when more than 1.5 s apart.
+    let sync = move || {
+        let (Some(v), Some((exp, playing))) = (video.get_untracked(), room.expected()) else {
+            return;
+        };
+        if v.ready_state() == 0 {
+            return;
+        }
+        if playing && v.paused() {
+            let _ = v.play();
+        } else if !playing && !v.paused() {
+            let _ = v.pause();
+        }
+        if together::drifted((v.current_time() * 1000.0) as u64, exp) {
+            v.set_current_time(exp as f64 / 1000.0);
+        }
+    };
+    // Our own play, pause or seek: tell the room (its own changes, once applied, match it).
+    let local_action = move || {
+        if !room.active() || room.busy() || off_title.get_value() {
+            return;
+        }
+        let (Some(v), Some((exp, room_playing))) = (video.get_untracked(), room.expected()) else {
+            return;
+        };
+        if v.ended() || v.ready_state() == 0 {
+            return;
+        }
+        let playing = !v.paused();
+        let at = (v.current_time() * 1000.0) as u64;
+        if together::local_change(playing, at, room_playing, exp) {
+            room.send(None, playing, at);
         }
     };
 
@@ -405,7 +553,38 @@ pub fn Player() -> impl IntoView {
             return;
         };
         let t = v.current_time();
-        pos.set((t * 1000.0) as u64);
+        let p = (t * 1000.0) as u64;
+        pos.set(p);
+        let seg = loaded.with_untracked(|l| match l {
+            Some(Ok(l)) => l
+                .segments
+                .iter()
+                .find(|s| p >= s.start_ms && p + 500 < s.end_ms)
+                .cloned(),
+            _ => None,
+        });
+        match &seg {
+            // Intros and recaps go by themselves when asked (once: seeking back replays them).
+            Some(s)
+                if auto_skip
+                    && matches!(s.kind, SegmentKind::Intro | SegmentKind::Recap)
+                    && auto_skipped.get_value() != Some(s.start_ms) =>
+            {
+                auto_skipped.set_value(Some(s.start_ms));
+                v.set_current_time(s.end_ms as f64 / 1000.0);
+            }
+            Some(s) if s.kind == SegmentKind::Credits => {
+                if credits_from.get_untracked().is_none() {
+                    credits_from.set(Some(p));
+                }
+            }
+            _ => {
+                if credits_from.get_untracked().is_some() {
+                    credits_from.set(None);
+                    cancelled.set(false);
+                }
+            }
+        }
         if (t - last_report.get_value()).abs() >= 10.0 {
             last_report.set_value(t);
             report(PlaybackEvent::Progress);
@@ -441,7 +620,18 @@ pub fn Player() -> impl IntoView {
         stopped.set_value(true);
         report(PlaybackEvent::Stop);
         match next {
-            Some(n) => nav2(&format!("/play/{}/{}?t=0", acc2, n.id), Default::default()),
+            Some(n) => {
+                let href = match (room.code.get_untracked(), room.member.get_untracked()) {
+                    (Some(code), Some(member)) => {
+                        room.announce.set_value(true);
+                        together::play_href(&acc2, &n.id, 0, &code, &member)
+                    }
+                    _ => format!("/play/{}/{}?t=0", acc2, n.id),
+                };
+                nav2(&href, Default::default())
+            }
+            // Watching together: stay with the others.
+            None if room.active() => {}
             None => {
                 if let Some(h) = web_sys::window().and_then(|w| w.history().ok()) {
                     let _ = h.back();
@@ -450,6 +640,23 @@ pub fn Player() -> impl IntoView {
         }
     };
     let go_next2 = go_next.clone();
+    let has_next = move || loaded.with(|l| matches!(l, Some(Ok(l)) if l.next.is_some()));
+    // Seconds before the next episode starts by itself (credits shown, setting on).
+    let countdown = Memo::new(move |_| {
+        if !auto_next || cancelled.get() || !has_next() {
+            return None;
+        }
+        credits_from
+            .get()
+            .map(|from| prefs::countdown_left(countdown_s, from, pos.get()))
+    });
+    let go_next3 = go_next.clone();
+    Effect::new(move |_| {
+        if countdown.get() == Some(0) {
+            cancelled.set(true);
+            go_next3();
+        }
+    });
     let back = move |_| {
         if let Some(h) = web_sys::window().and_then(|w| w.history().ok()) {
             let _ = h.back();
@@ -461,12 +668,63 @@ pub fn Player() -> impl IntoView {
         }
     });
 
+    // Others' changes (not the one left over from the previous title).
+    let nav3 = navigate.clone();
+    Effect::new(move |prev: Option<()>| {
+        let incoming = room.incoming.get();
+        if prev.is_none() {
+            return;
+        }
+        match incoming {
+            Some((false, _)) => sync(),
+            // The room moved to another title: find it on our servers and play it.
+            Some((true, s)) => {
+                let nav = nav3.clone();
+                spawn_local(async move {
+                    match together::find(&s.media).await {
+                        None => {
+                            room.note.try_set(Some(format!(
+                                "{} isn't on your servers",
+                                together::media_label(&s.media)
+                            )));
+                            off_title.try_update_value(|o| *o = true);
+                            if let Some(v) = video.try_get_untracked().flatten() {
+                                let _ = v.pause();
+                            }
+                        }
+                        Some((acc, item)) => {
+                            let (Some(code), Some(member)) = (
+                                room.code.try_get_untracked().flatten(),
+                                room.member.try_get_untracked().flatten(),
+                            ) else {
+                                return;
+                            };
+                            if stopped.try_get_value() == Some(false) {
+                                stopped.set_value(true);
+                                report(PlaybackEvent::Stop);
+                            }
+                            room.announce.set_value(false);
+                            let at = room.expected().map_or(0, |(p, _)| p);
+                            nav(
+                                &together::play_href(&acc, &item, at, &code, &member),
+                                Default::default(),
+                            );
+                        }
+                    }
+                });
+            }
+            None => {}
+        }
+    });
+
     view! {
         <div class="player">
             <video node_ref=video controls autoplay playsinline
                 on:loadedmetadata=on_meta on:timeupdate=on_time on:error=on_error
                 on:playing=move |_| report(PlaybackEvent::Start)
-                on:pause=move |_| report(PlaybackEvent::Pause)
+                on:play=move |_| local_action()
+                on:seeked=move |_| local_action()
+                on:pause=move |_| { report(PlaybackEvent::Pause); local_action() }
                 on:ended=move |_| go_next() />
             <div class="player-top">
                 <button class="icon" on:click=back aria-label="Back">"←"</button>
@@ -482,14 +740,34 @@ pub fn Player() -> impl IntoView {
                     None => view! { <div class="muted">"Loading…"</div> }.into_any(),
                 }}
                 {move || transcoding.get().then(|| view! { <span class="pill">"Converted by the server"</span> })}
+                {move || match room.state.get() {
+                    Some(s) => {
+                        let names = s.members.iter().map(|m| m.name.clone()).collect::<Vec<_>>().join(", ");
+                        view! {
+                            <span class="pill together" title=names.clone()>{format!("{} watching · {}", s.members.len(), names)}</span>
+                            <button class="small" on:click=move |_| room.leave("You left watch together", true)>"Leave"</button>
+                        }.into_any()
+                    }
+                    None => {
+                        let can = state::ctx().keep.get().is_some() && loaded.with(|l| matches!(l, Some(Ok(l))
+                            if matches!(l.item.kind, ItemKind::Movie | ItemKind::Episode)));
+                        (can && !room.active()).then(|| view! {
+                            <button class="small" on:click=move |_| {
+                                let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else { return };
+                                room.create(l.srv.clone(), l.item.clone(), (v.current_time() * 1000.0) as u64, !v.paused());
+                            }>"Watch together"</button>
+                        }).into_any()
+                    }
+                }}
                 {move || {
                     let subs = loaded.with(|l| match l {
                         Some(Ok(l)) => text_subtitles(l),
                         _ => Vec::new(),
                     });
                     (!subs.is_empty()).then(|| view! {
-                        <select class="chip subs" aria-label="Subtitles" on:change=move |ev| {
+                        <select class="chip subs" aria-label="Subtitles" prop:value=move || sub_pick.get().to_string() on:change=move |ev| {
                             let pick: i64 = event_target_value(&ev).parse().unwrap_or(-1);
+                            sub_pick.set(pick);
                             let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else { return };
                             spawn_local(async move { show_subtitle(&l, &v, pick).await });
                         }>
@@ -499,12 +777,38 @@ pub fn Player() -> impl IntoView {
                     })
                 }}
             </div>
+            {move || room.note.get().map(|n| view! { <div class="toast">{n}</div> })}
+            {move || room.request().map(|r| {
+                let (a, b) = (r.id.clone(), r.id.clone());
+                view! {
+                    <div class="knock">
+                        <div><strong>{r.name.clone()}</strong>" wants to watch with you"</div>
+                        <div class="actions tight">
+                            <button class="primary small" on:click=move |_| room.answer(a.clone(), true)>"Let in"</button>
+                            <button class="small" on:click=move |_| room.answer(b.clone(), false)>"Not now"</button>
+                        </div>
+                    </div>
+                }
+            })}
             {move || current.get().map(|s| {
                 let has_next = loaded.with(|l| matches!(l, Some(Ok(l)) if l.next.is_some()));
                 let go_next = go_next2.clone();
                 match s.kind {
                     SegmentKind::Credits if has_next => view! {
-                        <button class="skip" on:click=move |_| go_next()>"Next episode"</button>
+                        <div class="skip-row">
+                            {move || countdown.get().map(|_| view! {
+                                <button class="small" on:click=move |_| cancelled.set(true)>"Cancel"</button>
+                            })}
+                            <button class="skip" on:click={
+                                let go_next = go_next.clone();
+                                move |_| go_next()
+                            }>
+                                {move || match countdown.get() {
+                                    Some(n) => format!("Next episode in {n} s"),
+                                    None => "Next episode".to_string(),
+                                }}
+                            </button>
+                        </div>
                     }.into_any(),
                     k => {
                         let label = match k {

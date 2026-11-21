@@ -299,6 +299,8 @@ pub fn Settings() -> impl IntoView {
                 None => view! { <p class="muted">"None of your accounts is on a server this site serves."</p> }.into_any(),
             }}
         </section>
+        <h2>"Playback"</h2>
+        <crate::prefs::PlaybackSettings />
         <p class="muted small">"Accounts are kept in this browser only. Sign out on shared computers."</p>
     }
 }

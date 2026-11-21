@@ -195,8 +195,25 @@ pub fn fmt_time(ms: u64) -> String {
     }
 }
 
+thread_local! {
+    /// The same state for code running outside the component tree: futures started with
+    /// `spawn_local` don't carry the reactive owner, so `use_context` finds nothing there.
+    static APP: std::cell::OnceCell<Ctx> = const { std::cell::OnceCell::new() };
+}
+
+/// Creates the app state, reachable from components and from spawned futures alike.
+pub fn install() -> Ctx {
+    let c = Ctx::new();
+    APP.with(|a| {
+        let _ = a.set(c.clone());
+    });
+    c
+}
+
 pub fn ctx() -> Ctx {
-    expect_context::<Ctx>()
+    use_context::<Ctx>()
+        .or_else(|| APP.with(|a| a.get().cloned()))
+        .expect("app state installed at start")
 }
 
 /// Waits without blocking the page (setTimeout).

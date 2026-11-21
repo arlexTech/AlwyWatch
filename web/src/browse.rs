@@ -262,6 +262,9 @@ pub fn Detail() -> impl IntoView {
                                         } else {
                                             view! { <A href=format!("{base}?t=0") attr:class="button primary">"Play"</A> }.into_any()
                                         }}
+                                        {state::ctx().keep.get_untracked().is_some().then(|| view! {
+                                            <A href=format!("{base}?t={pos}&together=1") attr:class="button">"Watch together"</A>
+                                        })}
                                     </div>
                                 })}
                                 {(i.kind != ItemKind::Season).then(|| view! {
@@ -409,35 +412,19 @@ pub fn Search() -> impl IntoView {
     }
 }
 
+/// A title Seerr knows but the servers don't: opens its page (to request it there).
 #[component]
 fn Requestable(r: SeerrResult) -> impl IntoView {
-    let status = RwSignal::new(match r.availability {
-        Availability::Pending | Availability::Processing => Some("Requested".to_string()),
-        Availability::PartiallyAvailable => Some("Partly available".to_string()),
-        _ => None,
-    });
-    let (kind, id) = (r.media_type, r.tmdb_id);
-    let request = move |_| {
-        status.set(Some("Requesting…".into()));
-        spawn_local(async move {
-            let Some(s) = state::ctx().seerr() else {
-                return;
-            };
-            status.set(Some(match s.request(kind, id, &[]).await {
-                Ok(_) => "Requested".into(),
-                Err(e) => format!("Couldn't request: {e}"),
-            }));
-        });
-    };
+    let label = crate::request::availability_label(r.availability, r.download_progress);
+    let show = r.media_type == SeerrMediaType::Tv;
     view! {
-        <div class="card">
-            <div class="art">{r.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}</div>
+        <A href=crate::request::title_href(r.media_type, r.tmdb_id) attr:class="card">
+            <div class="art">
+                {r.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
+                {label.map(|l| view! { <span class="state on-art">{l}</span> })}
+            </div>
             <div class="title">{r.title.clone()}</div>
-            <div class="sub">{r.year.clone().unwrap_or_default()}{if kind == SeerrMediaType::Tv { " · show" } else { "" }}</div>
-            {move || match status.get() {
-                Some(s) => view! { <div class="sub">{s}</div> }.into_any(),
-                None => view! { <button class="small" on:click=request>"Request"</button> }.into_any(),
-            }}
-        </div>
+            <div class="sub">{r.year.clone().unwrap_or_default()}{if show { " · show" } else { "" }}</div>
+        </A>
     }
 }

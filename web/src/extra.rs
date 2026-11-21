@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! What the title page and the menu offer beyond browsing: watched state, My list, the cast,
-//! and the pages My list and Requests.
+//! and the My list page.
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use media_api::{Item, ItemKind, MediaServer, Person};
-use seerr::{Availability, RequestStatus, SeerrMediaType, SeerrRequest};
 
 use crate::state;
 use crate::ui::{ErrorText, Grid, Loading};
@@ -121,57 +120,6 @@ pub fn MyList() -> impl IntoView {
                 <p class="muted">"Nothing yet. Open a movie or a show and add it to your list."</p>
             }.into_any(),
             Some(l) => view! { <Grid items=l /> }.into_any(),
-        }}
-    }
-}
-
-fn request_state(r: &SeerrRequest) -> &'static str {
-    match (r.status, r.availability) {
-        (_, Availability::Available) => "Available",
-        (_, Availability::PartiallyAvailable) => "Partly available",
-        (RequestStatus::Declined, _) => "Declined",
-        (RequestStatus::Failed, _) => "Failed",
-        (RequestStatus::Pending, _) => "Waiting for approval",
-        (_, Availability::Processing) => "Downloading",
-        _ => "Approved",
-    }
-}
-
-/// What the user asked for through Seerr, newest first.
-#[component]
-pub fn Requests() -> impl IntoView {
-    let list = LocalResource::new(move || async move {
-        let s = state::ctx()
-            .seerr()
-            .ok_or("Requests need an account on this AlwyWatch server.".to_string())?;
-        s.requests(50, false).await.map_err(|e| e.to_string())
-    });
-    view! {
-        <h1>"Requests"</h1>
-        <p class="muted">"Search for a title that isn't on your servers to request it."</p>
-        {move || match list.get() {
-            None => view! { <Loading /> }.into_any(),
-            Some(Err(e)) => view! { <ErrorText text=e /> }.into_any(),
-            Some(Ok(l)) if l.is_empty() => view! { <p class="muted">"You haven't requested anything yet."</p> }.into_any(),
-            Some(Ok(l)) => view! {
-                <div class="leaving">
-                    {l.into_iter().map(|r| {
-                        let state = request_state(&r);
-                        let kind = if r.media_type == SeerrMediaType::Tv { "Show" } else { "Movie" };
-                        let day = r.created_at.chars().take(10).collect::<String>();
-                        view! {
-                            <div class="leaving-row">
-                                {r.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
-                                <div class="leaving-info">
-                                    <strong>{r.title.clone().unwrap_or_else(|| "Untitled".into())}</strong>
-                                    <span class="muted">{kind}" · requested "{day}</span>
-                                    <span class="accent small">{state}</span>
-                                </div>
-                            </div>
-                        }
-                    }).collect_view()}
-                </div>
-            }.into_any(),
         }}
     }
 }

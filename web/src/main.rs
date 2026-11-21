@@ -6,15 +6,16 @@ mod browse;
 mod extra;
 mod keep;
 mod player;
+mod prefs;
+mod request;
 mod signin;
 mod state;
+mod together;
 mod ui;
 
 use leptos::prelude::*;
 use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
-
-use state::Ctx;
 
 fn main() {
     leptos::mount::mount_to_body(App);
@@ -22,7 +23,7 @@ fn main() {
 
 #[component]
 fn App() -> impl IntoView {
-    provide_context(Ctx::new());
+    provide_context(state::install());
     view! {
         <Router>
             <Routes fallback=|| view! { <main class="page"><h1>"Not found"</h1></main> }>
@@ -33,8 +34,12 @@ fn App() -> impl IntoView {
                 <Route path=path!("/item/:acc/:id") view=|| view! { <Shell><browse::Detail /></Shell> } />
                 <Route path=path!("/search") view=|| view! { <Shell><browse::Search /></Shell> } />
                 <Route path=path!("/list") view=|| view! { <Shell><extra::MyList /></Shell> } />
-                <Route path=path!("/requests") view=|| view! { <Shell><extra::Requests /></Shell> } />
+                <Route path=path!("/requests") view=|| view! { <Shell><request::Requests /></Shell> } />
+                <Route path=path!("/request/:kind/:tmdb") view=|| view! { <Shell><request::SeerrTitle /></Shell> } />
+                <Route path=path!("/together") view=|| view! { <Shell><together::Together /></Shell> } />
                 <Route path=path!("/leaving") view=|| view! { <Shell><keep::Leaving /></Shell> } />
+                <Route path=path!("/leaving/sort") view=|| view! { <Shell><keep::Triage /></Shell> } />
+                <Route path=path!("/admin") view=|| view! { <Shell><keep::Admin /></Shell> } />
                 <Route path=path!("/admin/forever") view=|| view! { <Shell><keep::Forever /></Shell> } />
                 <Route path=path!("/settings") view=|| view! { <Shell><signin::Settings /></Shell> } />
             </Routes>
@@ -58,8 +63,10 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                     <A href="/search">"Search"</A>
                     <A href="/list">"My list"</A>
                     <Show when=keep_on><A href="/requests">"Requests"</A></Show>
+                    <Show when=keep_on><A href="/together">"Together"</A></Show>
                     <Show when=keep_on><A href="/leaving">"Leaving soon"</A></Show>
                     <Show when=admin><A href="/admin/forever">"Kept forever"</A></Show>
+                    <Show when=admin><A href="/admin">"Admin"</A></Show>
                 </Show>
                 <A href="/settings">"Settings"</A>
             </nav>

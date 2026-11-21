@@ -127,3 +127,46 @@ select.chip option { background: #1a1a1f; color: var(--text); }
 .player-top .subs { margin-left: auto; }
 .player-top .pill + .subs { margin-left: 0; }
 video::cue { background: #000a; }
+
+/* Seerr state badge, on title pages and on posters. */
+.state { display: inline-block; background: var(--surface-high); border-radius: 999px; padding: 3px 12px; font-size: .85rem; }
+.state.ok { background: #3ddc84; color: #000; }
+.state.on-art { position: absolute; top: 6px; left: 6px; background: #000a; color: var(--text); font-size: .75rem; }
+a.leaving-row:hover { background: var(--surface-high); }
+
+/* Sort them out: one title at a time. */
+.triage { max-width: 900px; }
+.triage-bar { max-width: 260px; margin: 0 0 12px; }
+.triage-body { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+.triage-card { width: 260px; aspect-ratio: 2/3; border-radius: var(--radius); overflow: hidden; background: var(--surface);
+  box-shadow: 0 0 60px #ffb2242e; flex: none; }
+.triage-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.triage-info { flex: 1; min-width: 240px; }
+.triage-info h2 { font-size: 1.6rem; margin: 0 0 .4em; }
+.state.urgent { background: var(--danger); }
+
+/* Admin. */
+.row.wrap { flex-wrap: wrap; }
+.actions.tight { margin: 6px 0; gap: 6px; }
+.link-row:hover { color: var(--accent); }
+.person-rights { padding: 10px 0; border-top: 1px solid var(--outline); }
+.person-rights:first-of-type { border-top: 0; }
+button.small.selected { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent); }
+select.chip.small { font-size: .9rem; padding-top: 6px; padding-bottom: 6px; }
+button.danger { background: var(--danger); color: #000; font-weight: 600; }
+button.danger:hover { background: #ff7a7e; }
+.dialog-back { position: fixed; inset: 0; background: #000b; display: grid; place-items: center; z-index: 10; padding: 16px; }
+.dialog { background: #16161b; border: 1px solid var(--outline); border-radius: var(--radius); padding: 8px 24px 16px; max-width: 520px; width: 100%; }
+
+/* Watch together. */
+.join-code { display: flex; gap: 10px; align-items: center; margin: 14px 0 20px; max-width: 420px; }
+.search.small { font-size: 1rem; padding: 10px 18px; margin: 0; }
+.room-row { align-items: center; justify-content: space-between; padding: 14px 18px; }
+.pill.together { color: var(--accent); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast { position: absolute; left: 32px; bottom: 90px; background: #000c; border-radius: 999px; padding: 10px 20px; }
+.knock { position: absolute; left: 32px; top: 90px; background: #16161bf2; border: 1px solid var(--outline);
+  border-radius: var(--radius); padding: 14px 18px; box-shadow: 0 6px 24px #0008; }
+.skip-row { position: absolute; right: 32px; bottom: 90px; display: flex; gap: 10px; align-items: center; }
+.skip-row .skip { position: static; }
+label.row.toggle { cursor: pointer; }
+label.row.toggle input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
