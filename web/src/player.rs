@@ -12,7 +12,7 @@ use leptos::task::spawn_local;
 use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
 use media_api::{
     AnyServer, DeviceProfile, Item, ItemKind, MediaServer, PlaybackEvent, PlaybackInfo,
-    ProgressReport, Segment, SegmentKind,
+    ProgressReport, Segment, SegmentKind, ServerKind, StreamKind,
 };
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
@@ -182,6 +182,126 @@ async fn load(acc: &str, id: &str) -> Result<Loaded, String> {
         segments,
         next,
     })
+}
+
+/// Subtitles a browser can draw: text ones (image subtitles need the server to burn them in).
+fn text_subtitles(l: &Loaded) -> Vec<(i64, String)> {
+    let Some(src) = l.info.sources.first() else {
+        return Vec::new();
+    };
+    let jellyfin = l.srv.session().kind == ServerKind::Jellyfin;
+    src.streams
+        .iter()
+        .filter(|s| s.kind == StreamKind::Subtitle)
+        .filter(|s| {
+            matches!(
+                s.codec.to_lowercase().as_str(),
+                "srt" | "subrip" | "vtt" | "webvtt" | "ass" | "ssa" | "mov_text"
+            )
+        })
+        // Jellyfin converts any text track on request; Plex only hands out external files.
+        .filter(|s| {
+            jellyfin
+                || (s.external.is_some()
+                    && !matches!(s.codec.to_lowercase().as_str(), "ass" | "ssa"))
+        })
+        .map(|s| {
+            let label = s
+                .display_title
+                .clone()
+                .or(s.title.clone())
+                .or(s.language.clone())
+                .unwrap_or_else(|| "Subtitles".into());
+            (s.index, label)
+        })
+        .collect()
+}
+
+/// SubRip to WebVTT: a header, and dots in the times.
+fn to_vtt(text: &str) -> String {
+    if text.trim_start().starts_with("WEBVTT") {
+        return text.to_owned();
+    }
+    let mut out = String::from("WEBVTT\n\n");
+    for line in text.replace("\r\n", "\n").lines() {
+        if line.contains("-->") {
+            out.push_str(&line.replace(',', "."));
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// Shows the subtitle stream `index` (or none): fetched as text, given to the video as a
+/// track from this page (no cross-origin rules on the video itself).
+async fn show_subtitle(l: &Loaded, video: &web_sys::HtmlVideoElement, index: i64) {
+    while let Ok(Some(old)) = video.query_selector("track") {
+        old.remove();
+    }
+    let Some(src) = l.info.sources.first() else {
+        return;
+    };
+    let Some(stream) = src
+        .streams
+        .iter()
+        .find(|s| s.kind == StreamKind::Subtitle && s.index == index)
+    else {
+        return;
+    };
+    let session = l.srv.session();
+    let url = match (session.kind, &stream.external) {
+        (ServerKind::Jellyfin, _) => state::with_token(
+            &format!(
+                "{}/Videos/{}/{}/Subtitles/{}/Stream.vtt",
+                session.base_url, l.item.id, src.id, index
+            ),
+            session,
+        ),
+        (_, Some(ext)) => state::with_token(&ext.url, session),
+        _ => return,
+    };
+    let Ok(resp) = state::ctx().http.get(url).send().await else {
+        return;
+    };
+    let Ok(text) = resp.text().await else { return };
+    let parts = js_sys::Array::of1(&JsValue::from_str(&to_vtt(&text)));
+    let bag = web_sys::BlobPropertyBag::new();
+    bag.set_type("text/vtt");
+    let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&parts, &bag) else {
+        return;
+    };
+    let Ok(blob_url) = web_sys::Url::create_object_url_with_blob(&blob) else {
+        return;
+    };
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
+    let Ok(track) = doc.create_element("track") else {
+        return;
+    };
+    let _ = track.set_attribute("kind", "subtitles");
+    let _ = track.set_attribute(
+        "label",
+        stream.display_title.as_deref().unwrap_or("Subtitles"),
+    );
+    let _ = track.set_attribute("src", &blob_url);
+    let _ = track.set_attribute("default", "");
+    let _ = video.append_child(&track);
+    // "default" only applies to tracks present at load: show this one explicitly.
+    if let Ok(tracks) = js_sys::Reflect::get(video, &"textTracks".into()) {
+        let n = js_sys::Reflect::get(&tracks, &"length".into())
+            .ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0) as u32;
+        for i in 0..n {
+            if let Ok(t) = js_sys::Reflect::get_u32(&tracks, i) {
+                let mode = if i + 1 == n { "showing" } else { "disabled" };
+                let _ = js_sys::Reflect::set(&t, &"mode".into(), &mode.into());
+            }
+        }
+    }
 }
 
 #[component]
@@ -362,6 +482,22 @@ pub fn Player() -> impl IntoView {
                     None => view! { <div class="muted">"Loading…"</div> }.into_any(),
                 }}
                 {move || transcoding.get().then(|| view! { <span class="pill">"Converted by the server"</span> })}
+                {move || {
+                    let subs = loaded.with(|l| match l {
+                        Some(Ok(l)) => text_subtitles(l),
+                        _ => Vec::new(),
+                    });
+                    (!subs.is_empty()).then(|| view! {
+                        <select class="chip subs" aria-label="Subtitles" on:change=move |ev| {
+                            let pick: i64 = event_target_value(&ev).parse().unwrap_or(-1);
+                            let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else { return };
+                            spawn_local(async move { show_subtitle(&l, &v, pick).await });
+                        }>
+                            <option value="-1">"Subtitles off"</option>
+                            {subs.into_iter().map(|(i, label)| view! { <option value=i.to_string()>{label}</option> }).collect_view()}
+                        </select>
+                    })
+                }}
             </div>
             {move || current.get().map(|s| {
                 let has_next = loaded.with(|l| matches!(l, Some(Ok(l)) if l.next.is_some()));

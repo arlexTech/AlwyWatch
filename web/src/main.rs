@@ -3,6 +3,7 @@
 //! to wasm32), a Leptos UI, and the browser's own video player. Served by alwywatch-server.
 
 mod browse;
+mod extra;
 mod keep;
 mod player;
 mod signin;
@@ -31,6 +32,8 @@ fn App() -> impl IntoView {
                 <Route path=path!("/library/:acc/:id") view=|| view! { <Shell><browse::Library /></Shell> } />
                 <Route path=path!("/item/:acc/:id") view=|| view! { <Shell><browse::Detail /></Shell> } />
                 <Route path=path!("/search") view=|| view! { <Shell><browse::Search /></Shell> } />
+                <Route path=path!("/list") view=|| view! { <Shell><extra::MyList /></Shell> } />
+                <Route path=path!("/requests") view=|| view! { <Shell><extra::Requests /></Shell> } />
                 <Route path=path!("/leaving") view=|| view! { <Shell><keep::Leaving /></Shell> } />
                 <Route path=path!("/admin/forever") view=|| view! { <Shell><keep::Forever /></Shell> } />
                 <Route path=path!("/settings") view=|| view! { <Shell><signin::Settings /></Shell> } />
@@ -53,6 +56,8 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                 <Show when=signed_in>
                     <A href="/">"Home"</A>
                     <A href="/search">"Search"</A>
+                    <A href="/list">"My list"</A>
+                    <Show when=keep_on><A href="/requests">"Requests"</A></Show>
                     <Show when=keep_on><A href="/leaving">"Leaving soon"</A></Show>
                     <Show when=admin><A href="/admin/forever">"Kept forever"</A></Show>
                 </Show>

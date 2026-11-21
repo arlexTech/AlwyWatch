@@ -8,7 +8,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_params_map, use_query_map};
-use media_api::{ImageKind, Item, ItemKind, ItemQuery, LibraryKind, MediaServer};
+use media_api::{ImageKind, Item, ItemKind, ItemQuery, LibraryKind, MediaServer, SortBy};
 use seerr::{Availability, SeerrMediaType, SeerrResult};
 
 use crate::state::{self, fmt_time};
@@ -128,14 +128,39 @@ pub fn Library() -> impl IntoView {
     let items = RwSignal::new(Vec::<(String, Item)>::new());
     let total = RwSignal::new(None::<u32>);
     let error = RwSignal::new(None::<String>);
+    // The view: remembered per browser.
+    let sort =
+        RwSignal::new(state::load::<String>("aw.lib.sort").unwrap_or_else(|| "title".into()));
+    let unwatched = RwSignal::new(false);
+    let genre = RwSignal::new(String::new());
+    let genres = LocalResource::new(move || {
+        let (acc, id) = (acc(), id());
+        async move {
+            let srv = state::ctx().server(&acc)?;
+            srv.genres(&id).await.ok()
+        }
+    });
     let load = move |start: u32| {
         let c = state::ctx();
         let (acc, id) = (acc(), id());
+        let mut q = ItemQuery::library(id, start, 60);
+        (q.sort_by, q.descending) = match sort.get_untracked().as_str() {
+            "added" => (SortBy::DateAdded, true),
+            "released" => (SortBy::ReleaseDate, true),
+            "rating" => (SortBy::Rating, true),
+            "random" => (SortBy::Random, false),
+            _ => (SortBy::Title, false),
+        };
+        q.unplayed_only = unwatched.get_untracked();
+        q.genre_id = Some(genre.get_untracked()).filter(|g| !g.is_empty());
         spawn_local(async move {
             let Some(srv) = c.server(&acc) else { return };
-            match srv.items(&ItemQuery::library(id, start, 60)).await {
+            match srv.items(&q).await {
                 Ok(p) => {
                     total.set(Some(p.total));
+                    if start == 0 {
+                        items.set(Vec::new());
+                    }
                     items.update(|v| v.extend(p.items.into_iter().map(|i| (acc.clone(), i))));
                 }
                 Err(e) => error.set(Some(e.to_string())),
@@ -143,13 +168,33 @@ pub fn Library() -> impl IntoView {
         });
     };
     Effect::new(move |_| {
-        let _ = (acc(), id());
-        items.set(Vec::new());
+        let _ = (acc(), id(), sort.get(), unwatched.get(), genre.get());
         total.set(None);
         load(0);
     });
     view! {
+        <div class="chips">
+            <select class="chip" aria-label="Sort by" prop:value=move || sort.get() on:change=move |ev| {
+                let v = event_target_value(&ev);
+                state::save("aw.lib.sort", &v);
+                sort.set(v);
+            }>
+                <option value="title">"A to Z"</option>
+                <option value="added">"Recently added"</option>
+                <option value="released">"Newest releases"</option>
+                <option value="rating">"Best rated"</option>
+                <option value="random">"Random"</option>
+            </select>
+            <select class="chip" aria-label="Genre" prop:value=move || genre.get() on:change=move |ev| genre.set(event_target_value(&ev))>
+                <option value="">"All genres"</option>
+                {move || genres.get().flatten().unwrap_or_default().into_iter().map(|g| view! {
+                    <option value=g.id>{g.name}</option>
+                }).collect_view()}
+            </select>
+            <button class="chip" class:selected=move || unwatched.get() on:click=move |_| unwatched.update(|u| *u = !*u)>"Not watched"</button>
+        </div>
         {move || total.get().is_none().then(|| view! { <Loading /> })}
+        {move || (total.get() == Some(0)).then(|| view! { <p class="muted">"Nothing matches."</p> })}
         {move || view! { <Grid items=items.get() /> }}
         {move || {
             let n = items.with(|v| v.len() as u32);
@@ -219,6 +264,9 @@ pub fn Detail() -> impl IntoView {
                                         }}
                                     </div>
                                 })}
+                                {(i.kind != ItemKind::Season).then(|| view! {
+                                    <crate::extra::ItemActions acc=acc.clone() item=i.clone() />
+                                })}
                                 <p class="overview">{i.overview.clone().unwrap_or_default()}</p>
                             </div>
                         </div>
@@ -226,6 +274,9 @@ pub fn Detail() -> impl IntoView {
                     {(i.kind == ItemKind::Series).then(|| view! { <Seasons acc=acc.clone() series=i.id.clone() /> })}
                     {(i.kind == ItemKind::Season).then(|| view! {
                         <Episodes acc=acc.clone() series=i.series_id.clone().unwrap_or_default() season=i.id.clone() />
+                    })}
+                    {matches!(i.kind, ItemKind::Movie | ItemKind::Series).then(|| view! {
+                        <crate::extra::Cast acc=acc.clone() id=i.id.clone() />
                     })}
                 }.into_any()
             }
