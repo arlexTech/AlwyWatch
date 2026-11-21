@@ -276,3 +276,6 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
   background: radial-gradient(circle at center, transparent var(--r), #000000b3 calc(var(--r) + 1px));
   box-shadow: inset 0 0 0 1px #ffffff22; }
 .crop-zoom { width: 100%; margin: 14px 0 4px; accent-color: var(--accent); }
+/* The welcome name field keeps a normal height (it stretched to fill its row). */
+.welcome-name { align-self: center; }
+.welcome-name input { flex: none; }
