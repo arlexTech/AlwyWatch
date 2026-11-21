@@ -532,20 +532,28 @@ private fun TrackPills(
     }
     val src = pi.sources.firstOrNull { it.id == version } ?: pi.sources.firstOrNull() ?: return
     val audio = src.streams.filter { it.kind == be.alwyapps.watch.core.media.StreamKind.AUDIO }
-    val subs = src.streams.filter { it.kind == be.alwyapps.watch.core.media.StreamKind.SUBTITLE }
+    // In the player's order: tracks in the file, then the side-loaded ones.
+    val subs =
+        src.streams
+            .filter { it.kind == be.alwyapps.watch.core.media.StreamKind.SUBTITLE }
+            .sortedBy { if (it.external == null) 0 else 1 }
     val settings = remember { PlayerSettings(core, true) }
     val p = pref
+
+    fun lang(st: be.alwyapps.watch.core.media.MediaStream) =
+        be.alwyapps.watch.player
+            .lang3(st.language)
+
+    fun sameAudio(l: String?) = audio.filter { lang(it) == l }
+
+    fun sameSubs(
+        l: String?,
+        forced: Boolean,
+    ) = subs.filter { lang(it) == l && it.isForced == forced }
     val currentAudio =
         p?.audio?.let { a ->
-            audio.firstOrNull {
-                be.alwyapps.watch.player
-                    .lang3(it.language) == a &&
-                    (p.audioTitle == null || it.title == p.audioTitle)
-            }
-                ?: audio.firstOrNull {
-                    be.alwyapps.watch.player
-                        .lang3(it.language) == a
-                }
+            be.alwyapps.watch.player
+                .likeRemembered(sameAudio(a), p.audioTitle, p.audioNth) { it.title }
         } ?: settings.audioLanguage.takeIf { it.isNotEmpty() }?.let { a ->
             audio.firstOrNull {
                 be.alwyapps.watch.player
@@ -557,7 +565,9 @@ private fun TrackPills(
         when {
             p?.subs == "off" -> "Off"
             p?.subs != null ->
-                (
+                be.alwyapps.watch.player
+                    .likeRemembered(sameSubs(p.subs, p.forced), p.subsTitle, p.subsNth) { it.title }
+                    ?.let(::subtitleLabel) ?: (
                     be.alwyapps.watch.player
                         .languageName(p.subs) ?: p.subs
                 ) + if (p.forced) " · forced" else ""
@@ -621,10 +631,9 @@ private fun TrackPills(
                             pref ?: be.alwyapps.watch.player
                                 .TrackPref()
                         ).copy(
-                            audio =
-                                be.alwyapps.watch.player
-                                    .lang3(st.language),
+                            audio = lang(st),
                             audioTitle = st.title,
+                            audioNth = sameAudio(lang(st)).indexOf(st).takeIf { it >= 0 },
                         )
                     be.alwyapps.watch.player.TrackPrefs
                         .set(core, account, key, np)
@@ -641,12 +650,9 @@ private fun TrackPills(
                     p?.subs == null -> "auto"
                     p.subs == "off" -> "off"
                     else ->
-                        subs
-                            .firstOrNull {
-                                be.alwyapps.watch.player
-                                    .lang3(it.language) == p.subs &&
-                                    it.isForced == p.forced
-                            }?.index
+                        be.alwyapps.watch.player
+                            .likeRemembered(sameSubs(p.subs, p.forced), p.subsTitle, p.subsNth) { it.title }
+                            ?.index
                             ?.toString()
                 },
                 onPick = { k ->
@@ -655,15 +661,15 @@ private fun TrackPills(
                             .TrackPref()
                     val np =
                         when (k) {
-                            "auto" -> base.copy(subs = null, forced = false)
-                            "off" -> base.copy(subs = "off", forced = false)
+                            "auto" -> base.copy(subs = null, forced = false, subsTitle = null, subsNth = null)
+                            "off" -> base.copy(subs = "off", forced = false, subsTitle = null, subsNth = null)
                             else -> {
                                 val st = subs.first { it.index.toString() == k }
                                 base.copy(
-                                    subs =
-                                        be.alwyapps.watch.player
-                                            .lang3(st.language) ?: "off",
+                                    subs = lang(st) ?: "off",
                                     forced = st.isForced,
+                                    subsTitle = st.title,
+                                    subsNth = sameSubs(lang(st), st.isForced).indexOf(st).takeIf { it >= 0 },
                                 )
                             }
                         }

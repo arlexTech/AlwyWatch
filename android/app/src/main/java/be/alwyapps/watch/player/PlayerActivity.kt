@@ -789,13 +789,29 @@ class PlayerActivity : ComponentActivity() {
         format: androidx.media3.common.Format?,
     ) {
         val old = TrackPrefs.get(core, account, trackKey) ?: TrackPref()
+
+        fun forced(f: androidx.media3.common.Format) = f.selectionFlags and C.SELECTION_FLAG_FORCED != 0
+
+        // Its position among the same-language (same-kind) tracks, so the next episodes of a pack
+        // with the same layout get the same track even when titles differ slightly.
+        fun nth(f: androidx.media3.common.Format): Int? {
+            val same =
+                player
+                    ?.currentTracks
+                    ?.groups
+                    ?.filter { it.type == type }
+                    ?.flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { g.getTrackFormat(it) } }
+                    ?.filter { lang3(it.language) == lang3(f.language) && (type == C.TRACK_TYPE_AUDIO || forced(it) == forced(f)) }
+                    ?: return null
+            return same.indexOfFirst { it.id == f.id && it.label == f.label }.takeIf { it >= 0 }
+        }
         val pref =
             if (type == C.TRACK_TYPE_AUDIO) {
-                format?.let { old.copy(audio = lang3(it.language), audioTitle = it.label) } ?: old
+                format?.let { old.copy(audio = lang3(it.language), audioTitle = it.label, audioNth = nth(it)) } ?: old
             } else if (format == null) {
-                old.copy(subs = "off", forced = false)
+                old.copy(subs = "off", forced = false, subsTitle = null, subsNth = null)
             } else {
-                old.copy(subs = lang3(format.language) ?: "off", forced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0)
+                old.copy(subs = lang3(format.language) ?: "off", forced = forced(format), subsTitle = format.label, subsNth = nth(format))
             }
         TrackPrefs.set(core, account, trackKey, pref)
     }
