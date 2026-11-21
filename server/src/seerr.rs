@@ -304,14 +304,10 @@ impl Bridge {
     }
 }
 
+/// Never stored nor shown: the bridge acts through the API key, the password only has to be
+/// unguessable.
 fn random_password() -> String {
-    use std::hash::{BuildHasher, RandomState};
-    // Never stored nor shown: the bridge acts through the API key, the password only has to be
-    // unguessable. std's RandomState keys come from the OS RNG (128-bit seed), which avoids a
-    // rand dependency for this one use.
-    (0..4u8)
-        .map(|i| format!("{:016x}", RandomState::new().hash_one(i)))
-        .collect()
+    crate::transfer::random_hex::<32>()
 }
 
 #[cfg(test)]

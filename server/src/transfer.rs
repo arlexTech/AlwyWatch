@@ -71,13 +71,7 @@ impl Transfers {
                 break c;
             }
         };
-        let handle = format!(
-            "{:016x}{:016x}{:016x}{:016x}",
-            random_u64(),
-            random_u64(),
-            random_u64(),
-            random_u64()
-        );
+        let handle = random_hex::<32>();
         map.insert(
             code.clone(),
             Pending {
@@ -151,10 +145,26 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// OS-seeded randomness through std (see `seerr::random_password`): avoids a rand dependency.
+/// Random bytes from the operating system's cryptographic generator.
+pub(crate) fn random_bytes<const N: usize>() -> [u8; N] {
+    use ring::rand::SecureRandom;
+    let mut b = [0u8; N];
+    ring::rand::SystemRandom::new()
+        .fill(&mut b)
+        .expect("the OS random generator is available");
+    b
+}
+
 pub(crate) fn random_u64() -> u64 {
-    use std::hash::{BuildHasher, RandomState};
-    RandomState::new().hash_one(Instant::now())
+    u64::from_le_bytes(random_bytes())
+}
+
+/// Lowercase hex of `N` random bytes (secrets: handles, passwords).
+pub(crate) fn random_hex<const N: usize>() -> String {
+    random_bytes::<N>()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 #[cfg(test)]

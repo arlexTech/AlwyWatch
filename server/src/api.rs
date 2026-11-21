@@ -59,8 +59,20 @@ impl IntoResponse for Error {
     }
 }
 
+/// Details go to the log, not to the client (they can name internal hosts).
 fn internal(e: impl ToString) -> Error {
-    Error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    eprintln!("[api] internal error: {}", e.to_string());
+    Error(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "server error, try again later".into(),
+    )
+}
+
+fn too_many() -> Error {
+    Error(
+        StatusCode::TOO_MANY_REQUESTS,
+        "too many attempts, try again in a few minutes".into(),
+    )
 }
 
 /// The authenticated caller (Bearer token + X-AlwyWatch-Server).
@@ -94,15 +106,23 @@ impl FromRequestParts<Shared> for Caller {
             StatusCode::FORBIDDEN,
             "this server is not served here".into(),
         ))?;
+        // Too many rejected tokens from this address: refuse before asking the media server.
+        let ip = crate::limit::client(h);
+        if state.limits.failed_auth.blocked(&ip) {
+            return Err(too_many());
+        }
         let id = state
             .auth
             .identify(server, token)
             .await
             .map_err(|e| match e {
-                AuthError::Denied => Error(
-                    StatusCode::UNAUTHORIZED,
-                    "invalid token or no access to this server".into(),
-                ),
+                AuthError::Denied => {
+                    state.limits.failed_auth.hit(&ip);
+                    Error(
+                        StatusCode::UNAUTHORIZED,
+                        "invalid token or no access to this server".into(),
+                    )
+                }
                 AuthError::Unavailable => {
                     Error(StatusCode::BAD_GATEWAY, "media server unreachable".into())
                 }
@@ -151,6 +171,9 @@ async fn together_create(
     Caller(id): Caller,
     Json(c): Json<keep_service::together::TogetherCreate>,
 ) -> Result<Json<keep_service::together::TogetherJoined>, Error> {
+    if !s.limits.together_creates.allow(&id.user_key) {
+        return Err(too_many());
+    }
     s.rooms
         .create(c, &id.name, &id.user_key)
         .map(Json)
@@ -162,10 +185,19 @@ async fn together_join(
     Caller(id): Caller,
     Path(code): Path<String>,
 ) -> Result<Json<keep_service::together::TogetherJoined>, Error> {
+    // Codes are six digits: a few wrong ones, then a pause (no guessing others' rooms).
+    if s.limits.together_misses.blocked(&id.user_key) {
+        return Err(too_many());
+    }
     s.rooms
         .join(&code, &id.name, &id.user_key)
         .map(Json)
-        .map_err(together_error)
+        .map_err(|e| {
+            if e == crate::together::TogetherError::NotFound {
+                s.limits.together_misses.hit(&id.user_key);
+            }
+            together_error(e)
+        })
 }
 
 async fn together_update(
@@ -227,8 +259,17 @@ fn transfer_error(e: crate::transfer::TransferError) -> Error {
 
 async fn transfer_start(
     State(s): State<Shared>,
+    headers: HeaderMap,
     Json(start): Json<keep_service::transfer::TransferStart>,
 ) -> Result<Json<keep_service::transfer::TransferStarted>, Error> {
+    // No sign-in here: a few per address, so nobody can fill the pending slots.
+    if !s
+        .limits
+        .transfer_starts
+        .allow(&crate::limit::client(&headers))
+    {
+        return Err(too_many());
+    }
     s.transfers.start(start).map(Json).map_err(transfer_error)
 }
 

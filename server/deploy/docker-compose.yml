@@ -8,6 +8,12 @@ services:
     image: alwywatch-server:latest
     container_name: alwywatch-server
     restart: unless-stopped
+    # Least privilege: no Linux capabilities, no privilege escalation, read-only root (it only
+    # writes to /data).
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     environment:
       TZ: Europe/Brussels
       # Secrets (put them in an .env file next to this compose file, chmod 600).

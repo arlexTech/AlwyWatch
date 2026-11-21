@@ -1072,3 +1072,65 @@ async fn settings_follow_each_user_and_stay_theirs() {
         StatusCode::BAD_REQUEST
     );
 }
+
+#[tokio::test]
+async fn wrong_tokens_and_room_codes_get_a_pause() {
+    let e = env().await;
+    // 20 rejected tokens from one address, then even a good one waits.
+    for _ in 0..20 {
+        assert_eq!(
+            e.call("GET", "/v1/me", "jfsrv", "nope", None).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    assert_eq!(
+        e.call("GET", "/v1/me", "jfsrv", "jf-alice", None).await.0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+
+    // Room codes: ten unknown ones per user, then a pause; other users are not affected.
+    let e = env().await;
+    for n in 0..10 {
+        let code = format!("/v1/together/{:06}/join", 900_000 + n);
+        assert_eq!(
+            e.call("POST", &code, "jfsrv", "jf-alice", None).await.0,
+            StatusCode::NOT_FOUND
+        );
+    }
+    assert_eq!(
+        e.call(
+            "POST",
+            "/v1/together/123456/join",
+            "jfsrv",
+            "jf-alice",
+            None
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        e.call(
+            "POST",
+            "/v1/together/123456/join",
+            "plexsrv",
+            "px-friend",
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn internal_errors_do_not_leak_details() {
+    let e = env().await;
+    // No Maintainerr mounted: the leaving list fails upstream.
+    let (s, body) = e
+        .call("GET", "/v1/leaving-soon", "jfsrv", "jf-alice", None)
+        .await;
+    if s == StatusCode::INTERNAL_SERVER_ERROR {
+        assert_eq!(body["error"], "server error, try again later");
+    }
+}

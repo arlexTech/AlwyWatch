@@ -9,7 +9,7 @@ id = "<plex machineIdentifier>"
 kind = "plex"
 name = "HomePlex"
 public_url = "https://plex.example.org"
-internal_url = "https://plex:32400"
+internal_url = "http://plex:32400"
 
 [[servers]]
 id = "<jellyfin server id>"

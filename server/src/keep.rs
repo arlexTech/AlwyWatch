@@ -37,6 +37,33 @@ pub struct State {
     pub transfers: crate::transfer::Transfers,
     /// Watch together rooms (in memory only).
     pub rooms: crate::together::Rooms,
+    /// Attempt limits (see `limit.rs`).
+    pub limits: Limits,
+}
+
+pub struct Limits {
+    /// Rejected tokens, per client address.
+    pub failed_auth: crate::limit::Limiter,
+    /// Transfers started (no sign-in needed), per client address.
+    pub transfer_starts: crate::limit::Limiter,
+    /// Unknown room codes tried, per user.
+    pub together_misses: crate::limit::Limiter,
+    /// Rooms opened, per user.
+    pub together_creates: crate::limit::Limiter,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        use crate::limit::Limiter;
+        use std::time::Duration;
+        let min = |m: u64| Duration::from_secs(60 * m);
+        Self {
+            failed_auth: Limiter::new(20, min(10)),
+            transfer_starts: Limiter::new(10, min(10)),
+            together_misses: Limiter::new(10, min(10)),
+            together_creates: Limiter::new(20, min(60)),
+        }
+    }
 }
 
 pub type Shared = Arc<State>;
@@ -76,6 +103,7 @@ impl State {
             jf_index: Mutex::new(HashMap::new()),
             transfers: Default::default(),
             rooms: Default::default(),
+            limits: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),
         }
     }
