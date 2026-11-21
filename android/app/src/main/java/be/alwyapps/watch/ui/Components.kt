@@ -564,15 +564,22 @@ fun TvScrollSpec(
         content()
         return
     }
-    val px = with(androidx.compose.ui.platform.LocalDensity.current) { leading.toPx() }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val px = with(density) { leading.toPx() }
+    // The focused card zooms in (a layer scale, which bring-into-view measures): its edges move
+    // by about 12 dp while it animates. Following that lifted the whole page on every ←/→.
+    val slack = with(density) { 24.dp.toPx() }
     val spec =
-        remember(px) {
+        remember(px, slack) {
             object : androidx.compose.foundation.gestures.BringIntoViewSpec {
                 override fun calculateScrollDistance(
                     offset: Float,
                     size: Float,
                     containerSize: Float,
-                ): Float = offset - px
+                ): Float {
+                    val d = offset - px
+                    return if (kotlin.math.abs(d) < slack) 0f else d
+                }
             }
         }
     androidx.compose.runtime.CompositionLocalProvider(
