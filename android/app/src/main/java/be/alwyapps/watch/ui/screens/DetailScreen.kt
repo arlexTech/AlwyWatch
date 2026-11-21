@@ -209,6 +209,34 @@ fun DetailScreen(
             DownloadSheet(show, seasonItem, item.takeIf { it.kind == ItemKind.EPISODE }) { sheet = false }
         }
     }
+    // Shows: seasons and the shown season's episodes, each episode its own lazy row (a long
+    // season was one block: all its cards and images built and drawn at once).
+    val seasonList =
+        if (item?.kind == ItemKind.SERIES) {
+            rememberSwr(account, "seasons", item.id, cached = { core.cachedSeasons(account, item.id)?.items }, refresh = {
+                core.refreshSeasons(account, item.id, it).items
+            }).value.orEmpty()
+        } else {
+            emptyList()
+        }
+    // The season picked here survives a refresh of the list (it went back to the default).
+    var pickedSeason by remember(itemId) { mutableStateOf(season) }
+    val shownSeason =
+        seasonList.firstOrNull { it.id == pickedSeason } ?: seasonList.firstOrNull { !it.user.played } ?: seasonList.firstOrNull()
+    LaunchedEffect(shownSeason?.id) { selectedSeason = shownSeason }
+    val episodes =
+        if (item != null && shownSeason != null) {
+            rememberSwr(account, "eps", shownSeason.id, cached = { core.cachedEpisodes(account, item.id, shownSeason.id)?.items }, refresh = {
+                core.refreshEpisodes(account, item.id, shownSeason.id, it).items
+            }).also { eps -> LaunchedEffect(changed) { if (changed > 0) eps.reload() } }
+        } else {
+            null
+        }
+    var episodeMenu by remember { mutableStateOf<Item?>(null) }
+    episodeMenu?.let {
+        be.alwyapps.watch.ui
+            .ItemMenu(it) { episodeMenu = null }
+    }
     val config = LocalConfiguration.current
     val heroH = if (d.isTv) (config.screenHeightDp * 0.66f).dp else (config.screenWidthDp * 1.2f).coerceAtMost(560f).dp
 
@@ -401,7 +429,14 @@ fun DetailScreen(
                             }
                     }
                 }
-                if (item.kind == ItemKind.SERIES) item(key = "seasons") { Seasons(item, season, dls) { selectedSeason = it } }
+                if (item.kind == ItemKind.SERIES && shownSeason != null) {
+                    item(key = "seasons") { SeasonPicker(seasonList, shownSeason) { pickedSeason = it.id } }
+                    item(key = "eps-top") { Spacer(Modifier.height(7.dp)) }
+                    items(episodes?.value.orEmpty(), key = { "ep:" + it.id }) { ep ->
+                        EpisodeRow(ep, dls[ep.id]) { episodeMenu = ep }
+                    }
+                    item(key = "eps-end") { Spacer(Modifier.height(7.dp)) }
+                }
                 val cast = people.filter { it.kind == be.alwyapps.watch.core.media.PersonKind.ACTOR }.take(20)
                 if (cast.isNotEmpty()) item(key = "cast") { CastRow(cast) }
             }
@@ -1036,117 +1071,90 @@ private fun DownloadButton(
 }
 
 @Composable
-private fun Seasons(
-    series: Item,
-    initial: String?,
-    dls: Map<String, be.alwyapps.watch.core.downloads.Download>,
+private fun SeasonPicker(
+    list: List<Item>,
+    selected: Item,
     onSelected: (Item) -> Unit,
 ) {
-    val core = LocalCore.current
-    val account = LocalAccount.current
     val d = LocalDimens.current
-    val seasons =
-        rememberSwr(account, "seasons", series.id, cached = { core.cachedSeasons(account, series.id)?.items }, refresh = {
-            core.refreshSeasons(account, series.id, it).items
-        })
-    val list = seasons.value ?: return
-    if (list.isEmpty()) return
-    // Open the first season with unwatched episodes.
-    var selected by remember(list) {
-        mutableStateOf(list.firstOrNull { it.id == initial } ?: list.firstOrNull { !it.user.played } ?: list.first())
+    Column {
+        Text("Episodes", Modifier.padding(horizontal = d.gutter, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
+        LazyRow(contentPadding = PaddingValues(horizontal = d.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(list, key = { it.id }) { s -> ActionButton(s.title, { onSelected(s) }, selected = s.id == selected.id) }
+        }
     }
-    LaunchedEffect(selected) { onSelected(selected) }
-    Text("Episodes", Modifier.padding(horizontal = d.gutter, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
-    LazyRow(contentPadding = PaddingValues(horizontal = d.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(list, key = { it.id }) { s -> ActionButton(s.title, { selected = s }, selected = s.id == selected.id) }
-    }
-    Episodes(series.id, selected.id, dls)
 }
 
 @Composable
-private fun Episodes(
-    seriesId: String,
-    seasonId: String,
-    dls: Map<String, be.alwyapps.watch.core.downloads.Download>,
+private fun EpisodeRow(
+    ep: Item,
+    dl: be.alwyapps.watch.core.downloads.Download?,
+    onMenu: () -> Unit,
 ) {
     val core = LocalCore.current
     val account = LocalAccount.current
     val ctx = LocalContext.current
     val d = LocalDimens.current
-    val eps =
-        rememberSwr(account, "eps", seasonId, cached = { core.cachedEpisodes(account, seriesId, seasonId)?.items }, refresh = {
-            core.refreshEpisodes(account, seriesId, seasonId, it).items
-        })
-    // Marked watched/unwatched from an episode's menu: refresh the list.
-    val changed = be.alwyapps.watch.ui.ItemsChanged.version
-    LaunchedEffect(changed) { if (changed > 0) eps.reload() }
-    var menuFor by remember { mutableStateOf<be.alwyapps.watch.core.media.Item?>(null) }
-    menuFor?.let {
-        be.alwyapps.watch.ui
-            .ItemMenu(it) { menuFor = null }
-    }
-    Column(Modifier.padding(horizontal = d.gutter, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        for (ep in eps.value.orEmpty()) {
-            FocusCard(
-                onClick = { play(ctx, account, ep, fromStart = false) },
-                // Long press (hold OK on a remote): watched / unwatched, download…
-                onLongClick = { menuFor = ep },
-                glow = false,
-                modifier =
-                    Modifier.fillMaxWidth().onFocusChanged {
-                        if (it.isFocused) core.prefetchPlaybackInfo(account, ep.id, DeviceProfiles.get(ctx))
-                    },
-            ) {
-                Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(if (d.isTv) 176.dp else 150.dp).clip(RoundedCornerShape(d.radius - 4.dp))) {
-                        RemoteImage(ep.id, ep.thumb(), 300.dp, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-                        ep.progress()?.let {
-                            Box(
-                                Modifier
-                                    .align(Alignment.BottomStart)
-                                    .fillMaxWidth(it)
-                                    .height(3.dp)
-                                    .background(Accent),
-                            )
-                        }
-                        if (ep.user.played) {
-                            Icon(
-                                Icons.Check,
-                                "Watched",
-                                Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(6.dp)
-                                    .size(20.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(Color.Black.copy(alpha = 0.6f))
-                                    .padding(3.dp),
-                                tint = Accent,
-                            )
-                        }
-                    }
-                    Column(Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(
-                            "${ep.episodeNumber ?: ""}. ${ep.title}",
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+    Box(Modifier.padding(horizontal = d.gutter, vertical = 5.dp)) {
+        FocusCard(
+            onClick = { play(ctx, account, ep, fromStart = false) },
+            // Long press (hold OK on a remote): watched / unwatched, download…
+            onLongClick = onMenu,
+            glow = false,
+            modifier =
+                Modifier.fillMaxWidth().onFocusChanged {
+                    if (it.isFocused) core.prefetchPlaybackInfo(account, ep.id, DeviceProfiles.get(ctx))
+                },
+        ) {
+            Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(if (d.isTv) 176.dp else 150.dp).clip(RoundedCornerShape(d.radius - 4.dp))) {
+                    RemoteImage(ep.id, ep.thumb(), 300.dp, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+                    ep.progress()?.let {
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomStart)
+                                .fillMaxWidth(it)
+                                .height(3.dp)
+                                .background(Accent),
                         )
-                        Text(
-                            listOfNotNull(
-                                ep.runtimeMs?.let { formatRuntime(it.toLong()) },
-                                ep.remaining(),
-                                dls[ep.id]?.let { if (it.state == DownloadState.COMPLETED) it.progressLabel() else "downloading ${it.progressLabel()}" },
-                            ).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Subtle,
-                        )
-                        ep.overview?.let {
-                            Text(it, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                        }
                     }
-                    // Phones/tablets: download an episode straight from the list.
-                    if (!d.isTv) DownloadButton(ep, dls[ep.id])
+                    if (ep.user.played) {
+                        Icon(
+                            Icons.Check,
+                            "Watched",
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(6.dp)
+                                .size(20.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(Color.Black.copy(alpha = 0.6f))
+                                .padding(3.dp),
+                            tint = Accent,
+                        )
+                    }
                 }
+                Column(Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        "${ep.episodeNumber ?: ""}. ${ep.title}",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        listOfNotNull(
+                            ep.runtimeMs?.let { formatRuntime(it.toLong()) },
+                            ep.remaining(),
+                            dl?.let { if (it.state == DownloadState.COMPLETED) it.progressLabel() else "downloading ${it.progressLabel()}" },
+                        ).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Subtle,
+                    )
+                    ep.overview?.let {
+                        Text(it, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                // Phones/tablets: download an episode straight from the list.
+                if (!d.isTv) DownloadButton(ep, dl)
             }
         }
     }

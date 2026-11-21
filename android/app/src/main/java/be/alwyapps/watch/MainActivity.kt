@@ -76,6 +76,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val services = services
+        // Once Compose draws (its root paints the background), the window's own background is a
+        // full-screen fill under it on every frame for nothing.
+        window.decorView.post { window.setBackgroundDrawable(null) }
         setContent {
             AlwyTheme(isTv = services.isTv) {
                 // The window background is already the app color, so waiting a few ms for the

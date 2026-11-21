@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,7 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -138,13 +139,16 @@ fun FocusCard(
     val scale by animateFloatAsState(if (focused) d.focusScale else 1f, tween(160), label = "scale")
     Box(
         modifier
+            // One layer for the scale and the rounded clip (a clip is a layer of its own
+            // otherwise: two per card in every row).
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                this.shape = shape
+                clip = true
             }
             // TV focus: scale and a white border. (A 24 dp white shadow, redrawn on every frame of
             // the scale animation, was too much for Chromecast-class GPUs.)
-            .clip(shape)
             .then(if (focused && d.isTv) Modifier.border(2.5.dp, Color.White, shape) else Modifier)
             // Long press (touch, or holding OK on a remote): the item's menu.
             .combinedClickable(interactionSource = interaction, indication = null, onLongClick = onLongClick, onClick = onClick),
@@ -274,25 +278,24 @@ fun ItemMenu(
 
 // ----- Cards ----------------------------------------------------------------------------------
 
+/** Drawn in one pass (two rounded clips before: two layers on every Continue watching card). */
 @Composable
 private fun ProgressBar(
     fraction: Float,
     modifier: Modifier = Modifier,
 ) {
-    Box(
+    Spacer(
         modifier
             .fillMaxWidth()
             .height(4.dp)
-            .clip(RoundedCornerShape(50))
-            .background(Color.White.copy(alpha = 0.25f)),
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth(fraction)
-                .height(4.dp)
-                .background(Accent),
-        )
-    }
+            .drawBehind {
+                val r =
+                    androidx.compose.ui.geometry
+                        .CornerRadius(size.height / 2)
+                drawRoundRect(Color.White.copy(alpha = 0.25f), cornerRadius = r)
+                drawRoundRect(Accent, size = size.copy(width = size.width * fraction), cornerRadius = r)
+            },
+    )
 }
 
 @Composable
@@ -305,8 +308,7 @@ fun Badge(
     Text(
         text.uppercase(),
         modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(color)
+            .background(color, RoundedCornerShape(6.dp))
             .padding(horizontal = 7.dp, vertical = 3.dp),
         color = textColor,
         style = MaterialTheme.typography.labelSmall,
@@ -338,8 +340,7 @@ fun PosterCard(
                         .align(Alignment.TopEnd)
                         .padding(8.dp)
                         .size(22.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color.Black.copy(alpha = 0.6f)),
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50)),
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Check, "Watched", Modifier.size(15.dp), tint = Accent) }
             }
@@ -689,19 +690,27 @@ fun IconAction(
 // ----- Ambient background ---------------------------------------------------------------------
 
 /** A soft glow of the artwork's color from the top of the screen, fading into the background. */
-fun Modifier.ambientGlow(color: Color?): Modifier =
-    drawBehind {
-        drawRect(Background)
-        if (color != null) {
-            drawRect(
+fun Modifier.ambientGlow(color: Color?): Modifier = ambientGlow { color }
+
+/**
+ * [color] is read while drawing: a state read there (the TV home's hero) repaints the glow
+ * without recomposing the screen. The gradient is built once per size and color, not per frame.
+ */
+fun Modifier.ambientGlow(color: () -> Color?): Modifier =
+    drawWithCache {
+        val c = color()
+        val brush =
+            c?.let {
                 Brush.radialGradient(
-                    0f to color.copy(alpha = 0.38f),
+                    0f to it.copy(alpha = 0.38f),
                     1f to Color.Transparent,
                     center = Offset(size.width * 0.3f, 0f),
                     radius = size.maxDimension * 0.75f,
-                ),
-            )
-        }
+                )
+            }
+        // The background color itself is painted once by the root (one full-screen fill less
+        // per frame: a Chromecast's GPU feels every one).
+        onDrawBehind { brush?.let { drawRect(it) } }
     }
 
 /**
@@ -713,17 +722,14 @@ fun Modifier.fadeEdges(
     leftTo: Float = 0f,
 ): Modifier =
     graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
-        .drawWithContent {
-            drawContent()
-            drawRect(
-                Brush.verticalGradient(bottomFrom to Color.Black, 1f to Color.Transparent),
-                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-            )
-            if (leftTo > 0f) {
-                drawRect(
-                    Brush.horizontalGradient(0f to Color.Transparent, leftTo to Color.Black),
-                    blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-                )
+        .drawWithCache {
+            // Built once per size, not on every frame of a cross-fade.
+            val bottom = Brush.verticalGradient(bottomFrom to Color.Black, 1f to Color.Transparent)
+            val left = if (leftTo > 0f) Brush.horizontalGradient(0f to Color.Transparent, leftTo to Color.Black) else null
+            onDrawWithContent {
+                drawContent()
+                drawRect(bottom, blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+                left?.let { drawRect(it, blendMode = androidx.compose.ui.graphics.BlendMode.DstIn) }
             }
         }
 
@@ -781,10 +787,10 @@ fun ServerBadge(
     Box(
         modifier
             .size(diameter)
-            .clip(RoundedCornerShape(50))
-            .background(Color.Black.copy(alpha = 0.72f))
+            .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(50))
             .padding(diameter * 0.23f)
-            .drawBehind {
+            // Paths built once per size, not on every frame a card moves.
+            .drawWithCache {
                 val w = size.width
                 val h = size.height
                 if (plex) {
@@ -798,7 +804,7 @@ fun ServerBadge(
                             lineTo(w * 0.56f, h / 2)
                             close()
                         }
-                    drawPath(chevron, Color(0xFFE5A00D))
+                    onDrawBehind { drawPath(chevron, Color(0xFFE5A00D)) }
                 } else {
                     val outer =
                         androidx.compose.ui.graphics.Path().apply {
@@ -807,7 +813,7 @@ fun ServerBadge(
                             lineTo(0f, h)
                             close()
                         }
-                    drawPath(outer, Brush.linearGradient(listOf(Color(0xFFAA5CC3), Color(0xFF00A4DC)), Offset(0f, 0f), Offset(w, h)))
+                    val brush = Brush.linearGradient(listOf(Color(0xFFAA5CC3), Color(0xFF00A4DC)), Offset(0f, 0f), Offset(w, h))
                     val inner =
                         androidx.compose.ui.graphics.Path().apply {
                             moveTo(w / 2, h * 0.42f)
@@ -815,7 +821,10 @@ fun ServerBadge(
                             lineTo(w * 0.28f, h * 0.86f)
                             close()
                         }
-                    drawPath(inner, Color.Black.copy(alpha = 0.72f))
+                    onDrawBehind {
+                        drawPath(outer, brush)
+                        drawPath(inner, Color.Black.copy(alpha = 0.72f))
+                    }
                 }
             },
     )

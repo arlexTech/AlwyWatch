@@ -96,7 +96,11 @@ object Images {
     ): ImageBitmap? {
         val k = "url|$url|${bucket(px)}"
         memory.get(k)?.let { return it }
-        val path = core.cachedRemoteImage(url) ?: runCatching { core.remoteImage(url) }.getOrNull() ?: return null
+        // Disk cache lookup off the main thread, like [load].
+        val path =
+            withContext(decoder) { core.cachedRemoteImage(url) }
+                ?: runCatching { core.remoteImage(url) }.getOrNull()
+                ?: return null
         return withContext(decoder) {
             val opts =
                 BitmapFactory.Options().apply {

@@ -628,51 +628,42 @@ private fun TvHome(
 ) {
     val d = LocalDimens.current
     val featured = remember(h) { h?.let(::featured).orEmpty() }
-    var hero by remember(featured) {
-        val remembered = be.alwyapps.watch.ui.FocusMemory["home"]
-        val all = h?.let { it.continueWatching + it.latest.flatMap { r -> r.items } }.orEmpty()
-        mutableStateOf(all.firstOrNull { remembered?.endsWith("|${it.id}") == true && it.backdrop() != null } ?: featured.firstOrNull())
-    }
+    // Read only by the artwork, the text and the glow below: a new hero redraws those, it
+    // doesn't recompose the home (and every card of every row with it).
+    val hero =
+        remember(featured) {
+            val remembered = be.alwyapps.watch.ui.FocusMemory["home"]
+            val all = h?.let { it.continueWatching + it.latest.flatMap { r -> r.items } }.orEmpty()
+            mutableStateOf(all.firstOrNull { remembered?.endsWith("|${it.id}") == true && it.backdrop() != null } ?: featured.firstOrNull())
+        }
     // The hero follows the focused card once focus rests: rapid ←/→ through a row costs no
     // artwork decode or cross-fade per card (on a Chromecast that dropped to a few fps).
     // A flow, not state read here: a focus move doesn't recompose the home at all.
     val focused = remember { kotlinx.coroutines.flow.MutableStateFlow<Item?>(null) }
-    LaunchedEffect(focused) {
+    // Keyed on the hero state too: a refreshed home makes a new one, and the old collector
+    // would keep updating the discarded state (the hero then stopped following focus).
+    LaunchedEffect(focused, hero) {
         focused.collectLatest { f ->
             if (f != null) {
                 kotlinx.coroutines.delay(300)
-                hero = f
+                hero.value = f
             }
         }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().ambientGlow(hero?.ambient())) {
+    val onFocus = remember(focused) { { it: Item -> focused.value = it } }
+    BoxWithConstraints(Modifier.fillMaxSize().ambientGlow { hero.value?.ambient() }) {
         val screenH = maxHeight
         // Artwork on the right two thirds, fading into the background on the left and bottom.
         // Own drawing layers (here, the hero text and the rows): a moving row redraws itself,
         // not the whole screen with the glow and the artwork.
-        Crossfade(
+        HeroArt(
             hero,
             Modifier
                 .align(Alignment.TopEnd)
                 .fillMaxWidth()
                 .height(screenH * 0.78f)
                 .graphicsLayer(),
-            animationSpec = tween(350),
-            label = "hero",
-        ) { item ->
-            if (item != null) {
-                // Faded to transparent (not darkened) so it melts into the ambient glow.
-                // 1280 px is plenty for artwork faded into the background (2560 before: four
-                // times the pixels, and it pushed posters out of the memory cache).
-                RemoteImage(
-                    item.id,
-                    item.backdrop(),
-                    640.dp,
-                    Modifier.fillMaxSize().fadeEdges(bottomFrom = 0.4f, leftTo = 0.6f),
-                    background = Color.Transparent,
-                )
-            }
-        }
+        )
         Column(Modifier.fillMaxSize()) {
             Box(
                 Modifier
@@ -681,17 +672,7 @@ private fun TvHome(
                     .graphicsLayer()
                     .padding(start = d.gutter, top = 36.dp, end = d.gutter),
             ) {
-                Crossfade(hero, animationSpec = tween(250), label = "heroText") { item ->
-                    if (item != null) {
-                        Column(Modifier.fillMaxWidth(0.48f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            TitleArt(item, 400.dp, big = true)
-                            HeroMeta(item)
-                            item.overview?.let {
-                                Text(it, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                    }
-                }
+                HeroText(hero)
             }
             // Focused row pinned just below the hero (room for its title).
             be.alwyapps.watch.ui.TvScrollSpec(leading = 58.dp) {
@@ -700,9 +681,45 @@ private fun TvHome(
                     if (h == null) {
                         items(2) { SkeletonRail() }
                     } else {
-                        item(key = "rails") { Column { Rails(h, { focused.value = it }) } }
+                        item(key = "rails") { Column { Rails(h, onFocus) } }
                     }
                     item { Spacer(Modifier.height(400.dp)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroArt(
+    hero: androidx.compose.runtime.State<Item?>,
+    modifier: Modifier,
+) {
+    Crossfade(hero.value, modifier, animationSpec = tween(350), label = "hero") { item ->
+        if (item != null) {
+            // Faded to transparent (not darkened) so it melts into the ambient glow.
+            // 1280 px is plenty for artwork faded into the background (2560 before: four
+            // times the pixels, and it pushed posters out of the memory cache).
+            RemoteImage(
+                item.id,
+                item.backdrop(),
+                640.dp,
+                Modifier.fillMaxSize().fadeEdges(bottomFrom = 0.4f, leftTo = 0.6f),
+                background = Color.Transparent,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HeroText(hero: androidx.compose.runtime.State<Item?>) {
+    Crossfade(hero.value, animationSpec = tween(250), label = "heroText") { item ->
+        if (item != null) {
+            Column(Modifier.fillMaxWidth(0.48f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                TitleArt(item, 400.dp, big = true)
+                HeroMeta(item)
+                item.overview?.let {
+                    Text(it, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
