@@ -339,9 +339,142 @@ async fn progress_reports_use_ticks_and_right_endpoints() {
             event: ev,
             audio_index: None,
             subtitle_index: None,
+            play_method: PlayMethod::Direct,
         })
         .await
         .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn report_says_when_the_stream_is_converted() {
+    let s = MockServer::start().await;
+    for (play_method, m) in [
+        ("DirectPlay", PlayMethod::Direct),
+        ("Transcode", PlayMethod::Transcode),
+    ] {
+        Mock::given(method("POST"))
+            .and(path("/Sessions/Playing/Progress"))
+            .and(body_partial_json(json!({
+                "ItemId": "i1", "PlaySessionId": "ps1", "PlayMethod": play_method,
+                "AudioStreamIndex": 2, "SubtitleStreamIndex": 5,
+            })))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&s)
+            .await;
+        let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+        c.report_progress(&ProgressReport {
+            item_id: "i1".into(),
+            media_source_id: Some("ms1".into()),
+            play_session_id: Some("ps1".into()),
+            position_ms: 1000,
+            duration_ms: None,
+            event: PlaybackEvent::Progress,
+            audio_index: Some(2),
+            subtitle_index: Some(5),
+            play_method: m,
+        })
+        .await
+        .unwrap();
+    }
+}
+
+fn plain_profile() -> DeviceProfile {
+    DeviceProfile {
+        max_bitrate: None,
+        containers: vec!["mp4".into()],
+        video_codecs: vec!["h264".into()],
+        video_10bit_codecs: vec![],
+        audio_codecs: vec!["aac".into()],
+        subtitle_codecs: vec!["srt".into()],
+        max_width: None,
+        max_height: None,
+        hdr: vec![],
+    }
+}
+
+#[tokio::test]
+async fn chosen_tracks_go_into_the_playback_info_request() {
+    let s = MockServer::start().await;
+    let answer = |url: &str| {
+        ResponseTemplate::new(200).set_body_json(json!({
+            "PlaySessionId": "ps2",
+            "MediaSources": [{"Id": "ms1", "SupportsDirectPlay": false, "TranscodingUrl": url}]
+        }))
+    };
+    // A subtitle stream: asked by index, burned into the conversion.
+    Mock::given(method("POST"))
+        .and(path("/Items/i1/PlaybackInfo"))
+        .and(body_partial_json(json!({
+            "MediaSourceId": "ms1", "AudioStreamIndex": 2, "SubtitleStreamIndex": 4,
+            "AlwaysBurnInSubtitleWhenTranscoding": true, "EnableTranscoding": true,
+        })))
+        .respond_with(answer(
+            "/videos/i1/master.m3u8?AudioStreamIndex=2&SubtitleStreamIndex=4&SubtitleMethod=Encode",
+        ))
+        .expect(1)
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    let info = c
+        .playback_info_with(
+            "i1",
+            &plain_profile(),
+            &TrackSelection {
+                source_id: Some("ms1".into()),
+                audio_index: Some(2),
+                subtitle: SubtitleSelection::Stream { index: 4 },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(info.play_session_id.as_deref(), Some("ps2"));
+    assert_eq!(
+        info.sources[0].transcode.as_ref().unwrap().url,
+        format!(
+            "{}/videos/i1/master.m3u8?AudioStreamIndex=2&SubtitleStreamIndex=4&SubtitleMethod=Encode",
+            s.uri()
+        )
+    );
+    s.reset().await;
+
+    // Off is Jellyfin's -1, nothing burned; the default selection adds nothing at all.
+    Mock::given(method("POST"))
+        .and(path("/Items/i1/PlaybackInfo"))
+        .respond_with(answer("/videos/i1/master.m3u8"))
+        .mount(&s)
+        .await;
+    let off = TrackSelection {
+        subtitle: SubtitleSelection::Off,
+        ..Default::default()
+    };
+    c.playback_info_with("i1", &plain_profile(), &off)
+        .await
+        .unwrap();
+    c.playback_info("i1", &plain_profile()).await.unwrap();
+    let bodies: Vec<serde_json::Value> = s
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| serde_json::from_slice(&r.body).unwrap())
+        .collect();
+    assert_eq!(bodies[0]["SubtitleStreamIndex"], json!(-1));
+    for key in [
+        "AudioStreamIndex",
+        "AlwaysBurnInSubtitleWhenTranscoding",
+        "MediaSourceId",
+    ] {
+        assert!(bodies[0].get(key).is_none(), "{key}");
+    }
+    for key in [
+        "AudioStreamIndex",
+        "SubtitleStreamIndex",
+        "AlwaysBurnInSubtitleWhenTranscoding",
+        "MediaSourceId",
+    ] {
+        assert!(bodies[1].get(key).is_none(), "default: {key}");
     }
 }
 

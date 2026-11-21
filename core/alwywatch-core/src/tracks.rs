@@ -11,7 +11,7 @@
 
 use crate::app::AlwyWatch;
 use crate::error::Result;
-use media_api::{Item, ItemKind};
+use media_api::{Item, ItemKind, MediaSource, StreamKind, SubtitleSelection, TrackSelection};
 
 /// The remembered choice for a movie or a show.
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
@@ -373,6 +373,68 @@ pub fn pick_track(
     }
 }
 
+/// A source's audio and subtitle streams as tracks, for a server conversion (whose stream
+/// carries one audio track and no switchable subtitles). `id` is the stream's position in
+/// `source.streams`.
+#[uniffi::export]
+pub fn source_tracks(source: &MediaSource) -> Vec<TrackInfo> {
+    source
+        .streams
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| {
+            let kind = match s.kind {
+                StreamKind::Audio => TrackKind::Audio,
+                StreamKind::Subtitle => TrackKind::Subtitle,
+                StreamKind::Video => return None,
+            };
+            Some(TrackInfo {
+                id: i as u32,
+                kind,
+                language: s.language.clone(),
+                // What players read as the track's label (the file's track name).
+                title: s.title.clone(),
+                forced: s.is_forced,
+            })
+        })
+        .collect()
+}
+
+/// What a server conversion of `source` must carry, by the same rules as `choose_tracks`
+/// (`rules.default_audio` is ignored: the source's default audio stands in for it). Subtitles
+/// are always explicit (a stream or off), so the server never adds its own pick.
+#[uniffi::export]
+pub fn conversion_tracks(
+    pref: Option<TrackPref>,
+    rules: TrackRules,
+    source: &MediaSource,
+) -> TrackSelection {
+    let tracks = source_tracks(source);
+    let pos = |index: i64, kind: StreamKind| {
+        source
+            .streams
+            .iter()
+            .position(|s| s.index == index && s.kind == kind)
+            .map(|p| p as u32)
+    };
+    let rules = TrackRules {
+        default_audio: source
+            .default_audio_index
+            .and_then(|i| pos(i, StreamKind::Audio)),
+        ..rules
+    };
+    let choice = choose_tracks(pref, rules, tracks);
+    let index = |id: u32| source.streams.get(id as usize).map(|s| s.index);
+    TrackSelection {
+        source_id: Some(source.id.clone()),
+        audio_index: choice.audio.and_then(index),
+        subtitle: match choice.subtitle.and_then(index) {
+            Some(index) => SubtitleSelection::Stream { index },
+            None => SubtitleSelection::Off,
+        },
+    }
+}
+
 /// Episodes share their show's choice.
 #[uniffi::export]
 pub fn track_title_key(item: Item) -> String {
@@ -568,5 +630,90 @@ mod tests {
         let old = decode("fra\u{1f}VFQ\u{1f}off\u{1f}").unwrap();
         assert_eq!(old.subs.as_deref(), Some("off"));
         assert_eq!(old.audio_nth, None);
+    }
+
+    fn stream(
+        index: i64,
+        kind: StreamKind,
+        lang: &str,
+        title: &str,
+        forced: bool,
+    ) -> media_api::MediaStream {
+        media_api::MediaStream {
+            index,
+            kind,
+            codec: String::new(),
+            profile: None,
+            language: Some(lang.into()),
+            title: (!title.is_empty()).then(|| title.into()),
+            display_title: None,
+            channels: None,
+            channel_layout: None,
+            bit_depth: None,
+            width: None,
+            height: None,
+            hdr: None,
+            dv_profile: None,
+            is_default: false,
+            is_forced: forced,
+            is_external: false,
+            external: None,
+        }
+    }
+
+    /// A Plex-like source: stream ids, not positions.
+    fn source() -> MediaSource {
+        let req = media_api::HttpRequest {
+            url: String::new(),
+            headers: vec![],
+        };
+        MediaSource {
+            id: "m1".into(),
+            container: None,
+            size: None,
+            bitrate: None,
+            duration_ms: None,
+            file_name: None,
+            streams: vec![
+                stream(101, StreamKind::Video, "eng", "", false),
+                stream(102, StreamKind::Audio, "eng", "VO", false),
+                stream(103, StreamKind::Audio, "fre", "VFF", false),
+                stream(104, StreamKind::Subtitle, "fre", "Forced", true),
+                stream(105, StreamKind::Subtitle, "fre", "Full", false),
+            ],
+            direct: req.clone(),
+            transcode: Some(req),
+            supports_direct_play: true,
+            default_audio_index: Some(102),
+            default_subtitle_index: Some(104),
+        }
+    }
+
+    #[test]
+    fn conversion_tracks_use_the_servers_stream_indexes() {
+        let src = source();
+        let tracks = source_tracks(&src);
+        assert_eq!(tracks.len(), 4, "video left out");
+        assert_eq!(tracks[0].id, 1, "position in the source's streams");
+        // English film, French viewer, automatic: French full subtitles, burned in.
+        let sel = conversion_tracks(None, rules(), &src);
+        assert_eq!(sel.source_id.as_deref(), Some("m1"));
+        assert_eq!(sel.audio_index, None, "the server's default audio stays");
+        assert_eq!(sel.subtitle, SubtitleSelection::Stream { index: 105 });
+        // The title's choice: French audio, subtitles off (explicitly: never the server's pick).
+        let pref = pick_track(None, Audio, tracks.clone(), Some(2));
+        let pref = pick_track(Some(pref), Subtitle, tracks.clone(), None);
+        let sel = conversion_tracks(Some(pref), rules(), &src);
+        assert_eq!(sel.audio_index, Some(103));
+        assert_eq!(sel.subtitle, SubtitleSelection::Off);
+        assert!(!sel.is_default());
+        // French audio by the settings: only forced French subtitles.
+        let fr = TrackRules {
+            audio_language: "fr".into(),
+            ..rules()
+        };
+        let sel = conversion_tracks(None, fr, &src);
+        assert_eq!(sel.audio_index, Some(103));
+        assert_eq!(sel.subtitle, SubtitleSelection::Stream { index: 104 });
     }
 }

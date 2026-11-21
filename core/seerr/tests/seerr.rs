@@ -218,6 +218,49 @@ async fn my_requests_with_titles_and_season_list() {
 }
 
 #[tokio::test]
+async fn requests_list_fetches_every_title_and_keeps_the_order() {
+    let s = MockServer::start().await;
+    let results: Vec<_> = (1..=10)
+        .map(|i| {
+            let kind = if i % 2 == 0 { "tv" } else { "movie" };
+            json!({"id": i, "status": 2, "createdAt": "x", "media": {"mediaType": kind, "tmdbId": 100 + i, "status": 3}})
+        })
+        .collect();
+    Mock::given(path("/api/v1/request"))
+        .and(query_param("take", "10"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"pageInfo": {}, "results": results})),
+        )
+        .mount(&s)
+        .await;
+    for i in 1..=10u64 {
+        let (kind, key) = if i % 2 == 0 {
+            ("tv", "name")
+        } else {
+            ("movie", "title")
+        };
+        Mock::given(path(format!("/api/v1/{kind}/{}", 100 + i)))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({key: format!("Title {i}")}))
+                    // The first ones answer last.
+                    .set_delay(std::time::Duration::from_millis(15 * (10 - i))),
+            )
+            .expect(1)
+            .mount(&s)
+            .await;
+    }
+    let c = SeerrClient::new(http(), &s.uri(), "connect.sid=x", false);
+    let reqs = c.requests(10, true).await.unwrap();
+    let titles: Vec<_> = reqs.iter().map(|r| r.title.clone().unwrap()).collect();
+    assert_eq!(
+        titles,
+        (1..=10).map(|i| format!("Title {i}")).collect::<Vec<_>>()
+    );
+    assert!(reqs.iter().zip(1..).all(|(r, i)| r.tmdb_id == 100 + i));
+}
+
+#[tokio::test]
 async fn expired_session_is_unauthorized() {
     let s = MockServer::start().await;
     Mock::given(path("/api/v1/auth/me"))

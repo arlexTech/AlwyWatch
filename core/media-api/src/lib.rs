@@ -28,6 +28,13 @@ pub trait MaybeSend {}
 #[cfg(target_arch = "wasm32")]
 impl<T> MaybeSend for T {}
 
+/// No track choice: the server's own.
+static NO_SELECTION: TrackSelection = TrackSelection {
+    source_id: None,
+    audio_index: None,
+    subtitle: SubtitleSelection::Default,
+};
+
 /// The read and playback surface every supported server implements.
 pub trait MediaServer: Send + Sync {
     fn session(&self) -> &Session;
@@ -72,10 +79,23 @@ pub trait MediaServer: Send + Sync {
     /// Collections (Jellyfin box sets, Plex collections) of a library.
     fn collections(&self, library_id: &str) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     /// Playback sources, original file first. Transcoding is only offered as a fallback.
+    /// The server picks the conversion's audio and subtitles; asking changes nothing on it.
     fn playback_info(
         &self,
         item_id: &str,
         profile: &DeviceProfile,
+    ) -> impl Future<Output = Result<PlaybackInfo>> + MaybeSend {
+        self.playback_info_with(item_id, profile, &NO_SELECTION)
+    }
+    /// Like `playback_info`, with the conversion (`MediaSource::transcode`) carrying these
+    /// audio and subtitles. On Plex a non-default selection is saved as the account's choice
+    /// for that file (`PUT /library/parts/{id}`), as Plex's own apps do: the converter reads it
+    /// from there.
+    fn playback_info_with(
+        &self,
+        item_id: &str,
+        profile: &DeviceProfile,
+        selection: &TrackSelection,
     ) -> impl Future<Output = Result<PlaybackInfo>> + MaybeSend;
     /// Skippable intro/credits spans, by start time. Empty when the server has not detected any.
     fn segments(&self, item_id: &str) -> impl Future<Output = Result<Vec<Segment>>> + MaybeSend;
@@ -205,8 +225,13 @@ impl MediaServer for AnyServer {
     async fn collections(&self, library_id: &str) -> Result<Vec<Item>> {
         dispatch!(self, c => c.collections(library_id).await)
     }
-    async fn playback_info(&self, item_id: &str, profile: &DeviceProfile) -> Result<PlaybackInfo> {
-        dispatch!(self, c => c.playback_info(item_id, profile).await)
+    async fn playback_info_with(
+        &self,
+        item_id: &str,
+        profile: &DeviceProfile,
+        selection: &TrackSelection,
+    ) -> Result<PlaybackInfo> {
+        dispatch!(self, c => c.playback_info_with(item_id, profile, selection).await)
     }
     async fn segments(&self, item_id: &str) -> Result<Vec<Segment>> {
         dispatch!(self, c => c.segments(item_id).await)

@@ -783,6 +783,26 @@ fn jellyfin_profile(p: &DeviceProfile) -> serde_json::Value {
     })
 }
 
+/// Puts the chosen tracks in a `PlaybackInfo` request body, so the `TranscodingUrl` it
+/// returns carries them. A chosen subtitle is burned in when converting (players don't fetch
+/// Jellyfin's separately delivered subtitles for a conversion); -1 is Jellyfin's "none".
+fn apply_selection(body: &mut serde_json::Value, selection: &TrackSelection) {
+    if let Some(id) = &selection.source_id {
+        body["MediaSourceId"] = json!(id);
+    }
+    if let Some(a) = selection.audio_index {
+        body["AudioStreamIndex"] = json!(a);
+    }
+    match selection.subtitle {
+        SubtitleSelection::Default => {}
+        SubtitleSelection::Off => body["SubtitleStreamIndex"] = json!(-1),
+        SubtitleSelection::Stream { index } => {
+            body["SubtitleStreamIndex"] = json!(index);
+            body["AlwaysBurnInSubtitleWhenTranscoding"] = json!(true);
+        }
+    }
+}
+
 impl MediaServer for JellyfinClient {
     fn session(&self) -> &Session {
         &self.session
@@ -967,8 +987,13 @@ impl MediaServer for JellyfinClient {
         Ok(self.convert_all(self.query("/Items", &p).await?.items))
     }
 
-    async fn playback_info(&self, item_id: &str, profile: &DeviceProfile) -> Result<PlaybackInfo> {
-        let body = json!({
+    async fn playback_info_with(
+        &self,
+        item_id: &str,
+        profile: &DeviceProfile,
+        selection: &TrackSelection,
+    ) -> Result<PlaybackInfo> {
+        let mut body = json!({
             "UserId": self.uid(),
             "MaxStreamingBitrate": profile.max_bitrate,
             "DeviceProfile": jellyfin_profile(profile),
@@ -977,6 +1002,7 @@ impl MediaServer for JellyfinClient {
             "EnableTranscoding": true,
             "AutoOpenLiveStream": true,
         });
+        apply_selection(&mut body, selection);
         let r: PlaybackInfoResponse = net::send_json(
             self.req(
                 Method::POST,
@@ -1050,7 +1076,10 @@ impl MediaServer for JellyfinClient {
             "PlaySessionId": r.play_session_id,
             "PositionTicks": r.position_ms as i64 * TICKS_PER_MS,
             "IsPaused": r.event == PlaybackEvent::Pause,
-            "PlayMethod": "DirectPlay",
+            "PlayMethod": match r.play_method {
+                PlayMethod::Direct => "DirectPlay",
+                PlayMethod::Transcode => "Transcode",
+            },
             "CanSeek": true,
             "AudioStreamIndex": r.audio_index,
             "SubtitleStreamIndex": r.subtitle_index,

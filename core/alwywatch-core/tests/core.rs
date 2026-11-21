@@ -177,6 +177,7 @@ fn progress_is_queued_offline_and_flushed_later() {
         event: ev,
         audio_index: None,
         subtitle_index: None,
+        play_method: PlayMethod::Direct,
     };
     {
         let _down = env.block(
@@ -224,6 +225,7 @@ fn offline_position_survives_without_a_stop() {
         event: PlaybackEvent::Progress,
         audio_index: None,
         subtitle_index: None,
+        play_method: PlayMethod::Direct,
     };
     {
         let _down = env.block(
@@ -571,6 +573,7 @@ fn next_episodes_are_kept_downloaded_and_watched_ones_deleted() {
             event: PlaybackEvent::Stop,
             audio_index: None,
             subtitle_index: None,
+            play_method: PlayMethod::Direct,
         },
     ))
     .unwrap();

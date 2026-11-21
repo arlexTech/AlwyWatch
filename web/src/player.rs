@@ -11,8 +11,9 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
 use media_api::{
-    AnyServer, DeviceProfile, Item, ItemKind, MediaServer, MediaSource, PlaybackEvent,
-    PlaybackInfo, ProgressReport, Segment, SegmentKind, ServerKind, StreamKind,
+    AnyServer, DeviceProfile, Item, ItemKind, MediaServer, MediaSource, MediaStream, PlayMethod,
+    PlaybackEvent, PlaybackInfo, ProgressReport, Segment, SegmentKind, ServerKind, StreamKind,
+    SubtitleSelection, TrackSelection,
 };
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
@@ -320,16 +321,43 @@ fn text_subtitles(l: &Loaded) -> Vec<(i64, String)> {
                 || (s.external.is_some()
                     && !matches!(s.codec.to_lowercase().as_str(), "ass" | "ssa"))
         })
-        .map(|s| {
-            let label = s
-                .display_title
-                .clone()
-                .or(s.title.clone())
-                .or(s.language.clone())
-                .unwrap_or_else(|| "Subtitles".into());
-            (s.index, label)
-        })
+        .map(|s| (s.index, sub_label(s)))
         .collect()
+}
+
+fn sub_label(s: &MediaStream) -> String {
+    s.display_title
+        .clone()
+        .or(s.title.clone())
+        .or(s.language.clone())
+        .unwrap_or_else(|| "Subtitles".into())
+}
+
+/// The subtitles offered: those the page draws, or every one while the server converts (it
+/// burns in those the page can't draw).
+fn menu_subtitles(l: &Loaded, converting: bool) -> Vec<(i64, String)> {
+    if !converting {
+        return text_subtitles(l);
+    }
+    let Some(src) = l.info.sources.first() else {
+        return Vec::new();
+    };
+    src.streams
+        .iter()
+        .filter(|s| s.kind == StreamKind::Subtitle)
+        .map(|s| (s.index, sub_label(s)))
+        .collect()
+}
+
+/// What the server's conversion must carry for subtitle stream `pick` (-1: none): burned in
+/// when the page can't draw it (image subtitles; Plex's embedded ones, which it doesn't hand
+/// out), else none (the page draws it). Always explicit, so the server adds none of its own.
+fn server_subtitle(l: &Loaded, pick: i64) -> SubtitleSelection {
+    if pick < 0 || text_subtitles(l).iter().any(|(i, _)| *i == pick) {
+        SubtitleSelection::Off
+    } else {
+        SubtitleSelection::Stream { index: pick }
+    }
 }
 
 /// SubRip to WebVTT: a header, and dots in the times.
@@ -439,10 +467,10 @@ async fn show_subtitle(
     }
 }
 
-/// The subtitle stream the settings choose at start, among those the browser can show.
-fn start_subtitle(l: &Loaded, prefs: &prefs::PlayerPrefs) -> Option<i64> {
+/// The subtitle stream the settings choose at start, among those offered.
+fn start_subtitle(l: &Loaded, prefs: &prefs::PlayerPrefs, converting: bool) -> Option<i64> {
     let src = l.info.sources.first()?;
-    let drawable = text_subtitles(l);
+    let drawable = menu_subtitles(l, converting);
     let subs: Vec<SubTrack> = src
         .streams
         .iter()
@@ -584,16 +612,21 @@ fn PlayerView(
         ));
     };
 
-    let report = move |event: PlaybackEvent| {
-        let Some(v) = video.get_untracked() else {
-            return;
-        };
+    // The subtitles the current conversion was asked with (Default: none asked).
+    let burned = StoredValue::new(SubtitleSelection::Default);
+    let build_report = move |event: PlaybackEvent| -> Option<(AnyServer, ProgressReport)> {
+        let v = video.get_untracked()?;
         let event = match event {
             PlaybackEvent::Progress if v.paused() => PlaybackEvent::Pause,
             e => e,
         };
         let sub = sub_pick.get_untracked();
-        let Some((srv, r)) = loaded.with_untracked(|l| {
+        let play_method = if transcoding.get_untracked() {
+            PlayMethod::Transcode
+        } else {
+            PlayMethod::Direct
+        };
+        loaded.with_untracked(|l| {
             let Some(Ok(l)) = l else { return None };
             let src = l.info.sources.first();
             Some((
@@ -610,9 +643,13 @@ fn PlayerView(
                     event,
                     audio_index: src.and_then(|s| s.default_audio_index),
                     subtitle_index: (sub >= 0).then_some(sub),
+                    play_method,
                 },
             ))
-        }) else {
+        })
+    };
+    let report = move |event: PlaybackEvent| {
+        let Some((srv, r)) = build_report(event) else {
             return;
         };
         spawn_local(async move {
@@ -625,6 +662,78 @@ fn PlayerView(
             stopped.set_value(true);
             report(PlaybackEvent::Stop);
         }
+    };
+
+    // Plays the server's conversion carrying subtitle `pick` (-1: none; burned in when the page
+    // can't draw it). `restart`: one is playing with other subtitles; it is reported stopped
+    // first (Plex ends a session reported stopped, Jellyfin its conversion), then the new one
+    // starts where it was (`pos`, see `on_meta`) and reports a fresh start.
+    let convert = move |v: web_sys::HtmlVideoElement, pick: i64, restart: bool| {
+        let Some(Ok(l)) = loaded.get_untracked() else {
+            return;
+        };
+        let Some(fallback) = l
+            .info
+            .sources
+            .first()
+            .map(|s| (s.id.clone(), s.transcode.clone()))
+        else {
+            return;
+        };
+        let sel = TrackSelection {
+            source_id: Some(fallback.0),
+            audio_index: None,
+            subtitle: server_subtitle(&l, pick),
+        };
+        let stop_old = restart.then(|| build_report(PlaybackEvent::Stop)).flatten();
+        transcoding.set(true);
+        spawn_local(async move {
+            if let Some((srv, r)) = stop_old {
+                let _ = srv.report_progress(&r).await;
+            }
+            let info = l
+                .srv
+                .playback_info_with(&l.item.id, &l.profile, &sel)
+                .await
+                .ok()
+                .filter(|i| i.sources.first().is_some_and(|s| s.transcode.is_some()));
+            // Gone, or another pick since: that one plays.
+            if !alive() || sub_pick.try_get_untracked() != Some(pick) {
+                return;
+            }
+            let t = match &info {
+                Some(i) => i.sources.first().and_then(|s| s.transcode.clone()),
+                None => fallback.1,
+            };
+            let Some(t) = t else { return cant_play() };
+            burned.set_value(if info.is_some() {
+                sel.subtitle
+            } else {
+                SubtitleSelection::Default
+            });
+            if let Some(info) = info {
+                loaded.update(|l| {
+                    if let Some(Ok(l)) = l {
+                        l.info = info;
+                    }
+                });
+            }
+            if restart {
+                start_sent.set_value(false);
+            }
+            play_hls(&v, state::media_url(&t, l.srv.session()), hls, cant_play);
+            play(&v);
+            // Drawn by the page (not burned in).
+            match loaded.get_untracked() {
+                Some(Ok(l))
+                    if pick >= 0
+                        && burned.get_value() != (SubtitleSelection::Stream { index: pick }) =>
+                {
+                    show_subtitle(&l, &v, pick, sub_pick).await
+                }
+                _ => clear_tracks(&v),
+            }
+        });
     };
 
     // Starts the source once both the data and the element are there (once: the extras
@@ -643,19 +752,22 @@ fn PlayerView(
         let session = l.srv.session().clone();
         if src.supports_direct_play && can_direct(src, &l.profile) {
             v.set_src(&state::media_url(&src.direct, &session));
-        } else if let Some(t) = &src.transcode {
-            transcoding.set(true);
-            play_hls(&v, state::media_url(t, &session), hls, cant_play);
+            play(&v);
+            // The settings' subtitles, once per title.
+            if sub_pick.get_untracked() < 0
+                && let Some(i) = start_subtitle(&l, &prefs, false)
+            {
+                sub_pick.set(i);
+                spawn_local(async move { show_subtitle(&l, &v, i, sub_pick).await });
+            }
+        } else if src.transcode.is_some() {
+            // Converted: the server must know the subtitles before it starts (it would add
+            // its own pick otherwise).
+            let pick = start_subtitle(&l, &prefs, true).unwrap_or(-1);
+            sub_pick.set(pick);
+            convert(v, pick, false);
         } else {
-            return cant_play();
-        }
-        play(&v);
-        // The settings' subtitles, once per title.
-        if sub_pick.get_untracked() < 0
-            && let Some(i) = start_subtitle(&l, &prefs)
-        {
-            sub_pick.set(i);
-            spawn_local(async move { show_subtitle(&l, &v, i, sub_pick).await });
+            cant_play();
         }
     });
 
@@ -675,12 +787,15 @@ fn PlayerView(
         if transcoding.get_untracked() {
             return cant_play();
         }
-        let Some(t) = l.info.sources.first().and_then(|s| s.transcode.clone()) else {
+        if l.info
+            .sources
+            .first()
+            .and_then(|s| s.transcode.as_ref())
+            .is_none()
+        {
             return cant_play();
-        };
-        transcoding.set(true);
-        play_hls(&v, state::media_url(&t, l.srv.session()), hls, cant_play);
-        play(&v);
+        }
+        convert(v, sub_pick.get_untracked(), false);
     };
 
     on_cleanup(move || {
@@ -1000,8 +1115,9 @@ fn PlayerView(
                     }
                 }}
                 {move || {
+                    let converting = transcoding.get();
                     let subs = loaded.with(|l| match l {
-                        Some(Ok(l)) => text_subtitles(l),
+                        Some(Ok(l)) => menu_subtitles(l, converting),
                         _ => Vec::new(),
                     });
                     (!subs.is_empty()).then(|| view! {
@@ -1009,6 +1125,11 @@ fn PlayerView(
                             let pick: i64 = event_target_value(&ev).parse().unwrap_or(-1);
                             sub_pick.set(pick);
                             let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else { return };
+                            // Converted and the server's part changes (burn another one, or stop
+                            // burning): ask it again, at the same place.
+                            if transcoding.get_untracked() && server_subtitle(&l, pick) != burned.get_value() {
+                                return convert(v, pick, true);
+                            }
                             spawn_local(async move { show_subtitle(&l, &v, pick, sub_pick).await });
                         }>
                             <option value="-1">"Subtitles off"</option>

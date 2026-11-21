@@ -33,12 +33,15 @@ import be.alwyapps.watch.core.CoreException
 import be.alwyapps.watch.core.media.HttpRequest
 import be.alwyapps.watch.core.media.ItemKind
 import be.alwyapps.watch.core.media.MediaSource
+import be.alwyapps.watch.core.media.PlayMethod
 import be.alwyapps.watch.core.media.PlaybackEvent
 import be.alwyapps.watch.core.media.PlaybackInfo
 import be.alwyapps.watch.core.media.ProgressReport
 import be.alwyapps.watch.core.media.Segment
 import be.alwyapps.watch.core.media.SegmentKind
 import be.alwyapps.watch.core.media.StreamKind
+import be.alwyapps.watch.core.media.SubtitleSelection
+import be.alwyapps.watch.core.media.TrackSelection
 import be.alwyapps.watch.services
 import io.github.peerless2012.ass.media.kt.buildWithAssSupport
 import io.github.peerless2012.ass.media.type.AssRenderType
@@ -89,6 +92,9 @@ class PlayerActivity : ComponentActivity() {
     private var prefetchedNext = false
     private var originalModeId = 0
     private var transcoding = false
+
+    /** The tracks the server's conversion was asked with (null: direct play, or the server's own choice). */
+    private var conversion: TrackSelection? = null
     private val ui = PlayerUi()
 
     // ----- watch together: the room this player follows (null: alone) -----
@@ -153,6 +159,7 @@ class PlayerActivity : ComponentActivity() {
                             onLeaveTogether = { leaveTogether("You left watch together") },
                             onAnswerTogether = { id, accept -> answerTogether(id, accept) },
                             onTrackPicked = { type, format -> rememberTrack(type, format) },
+                            onServerTrackPicked = { kind, index -> pickServerTrack(kind, index) },
                             onStillWatching = {
                                 ui.stillWatching = false
                                 lastInteraction = android.os.SystemClock.uptimeMillis()
@@ -243,9 +250,84 @@ class PlayerActivity : ComponentActivity() {
         }
         info = pi
         source = src
-        val direct = DeviceProfiles.canDirectPlay(src, profile)
-        val request = if (direct || src.transcode == null) src.direct else src.transcode!!
-        startPlayer(request, src, transcoding = !direct && src.transcode != null, startMs)
+        if (DeviceProfiles.canDirectPlay(src, profile) || src.transcode == null) {
+            startPlayer(src.direct, src, transcoding = false, startMs)
+        } else {
+            startConversion(src, startMs, null)
+        }
+    }
+
+    /**
+     * Plays the server's conversion of [src] carrying [selection], else the tracks the title's
+     * choice or the settings pick (the same rules as direct play, over the file's streams): a
+     * converted stream has a single audio track and burned-in subtitles, so the server must
+     * know the choice before it starts. If that request fails, the plain conversion plays.
+     */
+    private suspend fun startConversion(
+        src: MediaSource,
+        startMs: Long,
+        selection: TrackSelection?,
+        rewind: Boolean = true,
+    ) {
+        val id = itemId
+        val sel =
+            selection ?: be.alwyapps.watch.core.conversionTracks(
+                TrackPrefs.get(core, account, trackKey),
+                trackRules(PlayerSettings(core, services.isTv), null),
+                src,
+            )
+        val pi =
+            runCatching { core.playbackInfoWith(account, id, DeviceProfiles.get(this), sel) }
+                .onFailure { android.util.Log.w(TAG, "conversion with tracks: ${it.javaClass.simpleName}") }
+                .getOrNull()
+        if (itemId != id) return
+        val converted = pi?.sources?.firstOrNull { it.id == src.id }
+        val req = converted?.transcode
+        if (pi == null || converted == null || req == null) {
+            conversion = null
+            ui.serverTracks = null
+            startPlayer(src.transcode ?: return, src, transcoding = true, startMs, rewind = rewind)
+            return
+        }
+        info = pi
+        source = converted
+        conversion = sel
+        ui.serverTracks = ServerTracks(converted.streams, sel)
+        startPlayer(req, converted, transcoding = true, startMs, rewind = rewind)
+    }
+
+    /** A track picked in the panel while converting: remembered, then the conversion restarts with it, here. */
+    private fun pickServerTrack(
+        kind: StreamKind,
+        index: Long?,
+    ) {
+        val src = source ?: return
+        val sel = conversion ?: return
+        val pos = index?.let { i -> src.streams.indexOfFirst { it.kind == kind && it.index == i }.takeIf { it >= 0 } }
+        if (index != null && pos == null) return
+        val trackKind = if (kind == StreamKind.AUDIO) be.alwyapps.watch.core.TrackKind.AUDIO else be.alwyapps.watch.core.TrackKind.SUBTITLE
+        val pref =
+            be.alwyapps.watch.core
+                .pickTrack(
+                    TrackPrefs.get(core, account, trackKey),
+                    trackKind,
+                    be.alwyapps.watch.core
+                        .sourceTracks(src),
+                    pos?.toUInt(),
+                )
+        TrackPrefs.set(core, account, trackKey, pref)
+        val next =
+            when (kind) {
+                StreamKind.AUDIO -> sel.copy(audioIndex = index ?: return)
+                else -> sel.copy(subtitle = index?.let { SubtitleSelection.Stream(it) } ?: SubtitleSelection.Off)
+            }
+        if (next == sel) return
+        val position = player?.currentPosition?.coerceAtLeast(0) ?: 0L
+        lifecycleScope.launch {
+            // Ends this conversion on the server (Plex stops converting a session reported stopped).
+            report(PlaybackEvent.STOP)?.join()
+            startConversion(src, position, next, rewind = false)
+        }
     }
 
     private fun startPlayer(
@@ -253,10 +335,17 @@ class PlayerActivity : ComponentActivity() {
         src: MediaSource,
         transcoding: Boolean,
         startMs: Long,
+        rewind: Boolean = true,
     ) {
         player?.release()
         this.transcoding = transcoding
-        tracksApplied = false
+        if (!transcoding) {
+            conversion = null
+            ui.serverTracks = null
+        }
+        // Tracks picked by the server (burned in): nothing for the player to choose or add.
+        val serverPicks = transcoding && conversion != null
+        tracksApplied = serverPicks
         val settings = PlayerSettings(core, services.isTv)
         styleSubtitles(settings)
         val http =
@@ -277,6 +366,7 @@ class PlayerActivity : ComponentActivity() {
                 .buildUponParameters()
                 .setTunnelingEnabled(settings.tunneling)
                 .setPreferredTextLanguage(null)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, serverPicks)
                 .build()
         val p =
             ExoPlayer
@@ -310,7 +400,7 @@ class PlayerActivity : ComponentActivity() {
                 .apply { if (transcoding) setMimeType(MimeTypes.APPLICATION_M3U8) }
                 .setSubtitleConfigurations(
                     src.streams
-                        .filter { it.kind == StreamKind.SUBTITLE && it.external != null }
+                        .filter { !serverPicks && it.kind == StreamKind.SUBTITLE && it.external != null }
                         .mapNotNull { s ->
                             val mime =
                                 when (s.codec) {
@@ -333,7 +423,7 @@ class PlayerActivity : ComponentActivity() {
         p.addListener(listener)
         applyingRoom = true
         // Resuming: a few seconds again, to pick up the thread (not in a room: it sets the time).
-        val from = if (room == null && startMs > 0) (startMs - settings.resumeRewindS * 1000L).coerceAtLeast(0) else startMs
+        val from = if (rewind && room == null && startMs > 0) (startMs - settings.resumeRewindS * 1000L).coerceAtLeast(0) else startMs
         p.setMediaItem(item, from)
         p.prepare()
         p.playWhenReady = true
@@ -428,7 +518,7 @@ class PlayerActivity : ComponentActivity() {
                     // Direct play first; the server's conversion only when this device fails.
                     val position = player?.currentPosition ?: 0L
                     Toast.makeText(this@PlayerActivity, "This device can't decode this file: using the server's converted version", Toast.LENGTH_LONG).show()
-                    lifecycleScope.launch { startPlayer(fallback, src, transcoding = true, position) }
+                    lifecycleScope.launch { startConversion(src, position, null) }
                 } else {
                     Toast.makeText(this@PlayerActivity, "Playback failed: ${error.errorCodeName}", Toast.LENGTH_LONG).show()
                 }
@@ -601,8 +691,10 @@ class PlayerActivity : ComponentActivity() {
                 positionMs = p.currentPosition.coerceAtLeast(0).toULong(),
                 durationMs = p.duration.takeIf { it > 0 }?.toULong(),
                 event = event,
-                audioIndex = null,
-                subtitleIndex = null,
+                // Converting with chosen tracks: the server's streams it carries.
+                audioIndex = conversion?.audioIndex,
+                subtitleIndex = (conversion?.subtitle as? SubtitleSelection.Stream)?.index,
+                playMethod = if (transcoding) PlayMethod.TRANSCODE else PlayMethod.DIRECT,
             )
         return services.scope.launch { runCatching { core.reportProgress(account, report) } }
     }

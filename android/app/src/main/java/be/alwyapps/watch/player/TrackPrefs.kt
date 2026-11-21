@@ -107,6 +107,22 @@ class PlayerTracks(
             ?.toUInt()
 }
 
+/** The settings' track rules; [defaultAudio] is the track the player picked by itself. */
+fun trackRules(
+    settings: PlayerSettings,
+    defaultAudio: UInt?,
+): TrackRules =
+    TrackRules(
+        settings.audioLanguage,
+        settings.subtitleMode,
+        settings.subtitleLanguage.ifEmpty {
+            java.util.Locale
+                .getDefault()
+                .language
+        },
+        defaultAudio,
+    )
+
 /**
  * Picks audio and subtitles once the file's tracks are known: the title's choice, else the
  * settings (audio language; subtitles automatic/forced/always/off in the subtitle language).
@@ -122,18 +138,7 @@ fun applyTrackPrefs(
             .indexOfFirst { (g, i) -> g.type == C.TRACK_TYPE_AUDIO && g.isTrackSelected(i) }
             .takeIf { it >= 0 }
             ?.toUInt()
-    val rules =
-        TrackRules(
-            settings.audioLanguage,
-            settings.subtitleMode,
-            settings.subtitleLanguage.ifEmpty {
-                java.util.Locale
-                    .getDefault()
-                    .language
-            },
-            default,
-        )
-    val choice = chooseTracks(pref, rules, tracks.infos)
+    val choice = chooseTracks(pref, trackRules(settings, default), tracks.infos)
     val b = p.trackSelectionParameters.buildUpon()
     choice.audio?.let { id ->
         val (g, i) = tracks.refs[id.toInt()]

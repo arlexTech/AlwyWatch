@@ -92,6 +92,13 @@ class PlayerUi {
     }
 
     var tracksOpen by mutableStateOf(false)
+
+    /**
+     * Playing the server's conversion: the file's tracks and the ones it carries (its stream
+     * has one audio track and burned-in subtitles, so the panel lists the file's and a pick
+     * asks the server again). Null for direct play (the player's own tracks).
+     */
+    var serverTracks by mutableStateOf<ServerTracks?>(null)
     var title by mutableStateOf("")
     var subtitle by mutableStateOf("")
     var hasNext by mutableStateOf(false)
@@ -137,6 +144,12 @@ class PlayerUi {
     }
 }
 
+/** The file's streams and the selection the conversion was asked with. */
+data class ServerTracks(
+    val streams: List<be.alwyapps.watch.core.media.MediaStream>,
+    val selection: be.alwyapps.watch.core.media.TrackSelection,
+)
+
 fun formatTime(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0)
     val h = s / 3600
@@ -157,6 +170,7 @@ fun PlayerOverlay(
     onLeaveTogether: () -> Unit = {},
     onAnswerTogether: (String, Boolean) -> Unit = { _, _ -> },
     onTrackPicked: (Int, androidx.media3.common.Format?) -> Unit = { _, _ -> },
+    onServerTrackPicked: (be.alwyapps.watch.core.media.StreamKind, Long?) -> Unit = { _, _ -> },
     onStillWatching: () -> Unit = {},
 ) {
     if (ui.stillWatching && !ui.pip) {
@@ -523,10 +537,16 @@ fun PlayerOverlay(
             enter = slideInHorizontally { it } + fadeIn(),
             exit = slideOutHorizontally { it } + fadeOut(),
         ) {
-            TracksPanel(player, onPicked = onTrackPicked, onClose = {
+            val close = {
                 ui.tracksOpen = false
                 ui.poke()
-            })
+            }
+            val server = ui.serverTracks
+            if (server != null) {
+                ServerTracksPanel(server, onPicked = onServerTrackPicked, onClose = close)
+            } else {
+                TracksPanel(player, onPicked = onTrackPicked, onClose = close)
+            }
         }
     }
 }
@@ -783,6 +803,56 @@ private fun TracksPanel(
             item { Section("Subtitles") }
             item { TrackRow("Off", subsOff, { select(C.TRACK_TYPE_TEXT, null, 0) }) }
             items(subs) { o -> TrackRow(o.label, o.selected && !subsOff, o.pick) }
+        }
+    }
+}
+
+/** The conversion's choice among the file's streams; a pick restarts it with the new tracks. */
+@Composable
+private fun ServerTracksPanel(
+    tracks: ServerTracks,
+    onPicked: (be.alwyapps.watch.core.media.StreamKind, Long?) -> Unit,
+    onClose: () -> Unit,
+) {
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { firstFocus.requestFocus() } }
+    val audio = tracks.streams.filter { it.kind == be.alwyapps.watch.core.media.StreamKind.AUDIO }
+    val subs = tracks.streams.filter { it.kind == be.alwyapps.watch.core.media.StreamKind.SUBTITLE }
+    val sel = tracks.selection
+    // Nothing chosen for the audio: the server's default stream plays.
+    val audioNow = sel.audioIndex ?: audio.firstOrNull { it.isDefault }?.index ?: audio.firstOrNull()?.index
+    val subNow = (sel.subtitle as? be.alwyapps.watch.core.media.SubtitleSelection.Stream)?.index
+
+    fun label(s: be.alwyapps.watch.core.media.MediaStream): String =
+        s.displayTitle ?: listOfNotNull(s.title ?: languageName(s.language), s.codec.uppercase().ifEmpty { null }).joinToString(" · ")
+    Column(
+        Modifier
+            .fillMaxHeight()
+            .width(if (LocalDimens.current.isTv) 340.dp else 320.dp)
+            .background(Color(0xF2111116))
+            .pointerInput(Unit) { detectTapGestures { } }
+            .safeDrawingPadding()
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Audio & subtitles", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            RoundButton(Icons.Close, "Close", onClose, size = 36)
+        }
+        Text("Converted by the server: changing a track restarts the stream", style = MaterialTheme.typography.labelSmall, color = Subtle)
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            item { Section("Audio") }
+            items(audio.withIndex().toList()) { (i, s) ->
+                TrackRow(
+                    label(s),
+                    s.index == audioNow,
+                    { if (s.index != audioNow) onPicked(s.kind, s.index) },
+                    if (i == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                )
+            }
+            item { Section("Subtitles") }
+            item { TrackRow("Off", subNow == null, { if (subNow != null) onPicked(be.alwyapps.watch.core.media.StreamKind.SUBTITLE, null) }) }
+            items(subs) { s -> TrackRow(label(s), s.index == subNow, { if (s.index != subNow) onPicked(s.kind, s.index) }) }
         }
     }
 }

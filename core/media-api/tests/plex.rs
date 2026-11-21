@@ -263,6 +263,134 @@ async fn playback_info_direct_play_and_download() {
 }
 
 #[tokio::test]
+async fn chosen_tracks_are_selected_on_the_part_only_when_asked() {
+    let s = MockServer::start().await;
+    Mock::given(path("/library/metadata/77"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {"Metadata": [{
+            "ratingKey": "77", "type": "movie", "title": "Heat",
+            "Media": [{
+                "id": 500, "container": "mkv",
+                "Part": [{
+                    "id": 600, "key": "/library/parts/600/1/file.mkv", "container": "mkv",
+                    "Stream": [
+                        {"id": 1, "streamType": 1, "codec": "h264"},
+                        {"id": 2, "streamType": 2, "codec": "dca", "languageCode": "eng", "default": true},
+                        {"id": 3, "streamType": 2, "codec": "ac3", "languageCode": "fra"},
+                        {"id": 4, "streamType": 3, "codec": "srt", "languageCode": "fra", "forced": true},
+                        {"id": 5, "streamType": 3, "codec": "pgs", "languageCode": "eng"}
+                    ]
+                }]
+            }]
+        }]}})))
+        .mount(&s)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/library/parts/600"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&s)
+        .await;
+    let c = PlexClient::new(session(&s.uri()), client_info(), http());
+    let profile = DeviceProfile {
+        max_bitrate: None,
+        containers: vec![],
+        video_codecs: vec![],
+        video_10bit_codecs: vec![],
+        audio_codecs: vec![],
+        subtitle_codecs: vec![],
+        max_width: None,
+        max_height: None,
+        hdr: vec![],
+    };
+    let puts = || async {
+        s.received_requests()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.method.as_str() == "PUT")
+            .map(|r| r.url)
+            .collect::<Vec<_>>()
+    };
+
+    // Asking with no choice (the direct play case) changes nothing on the server.
+    let info = c.playback_info("77", &profile).await.unwrap();
+    let url = &info.sources[0].transcode.as_ref().unwrap().url;
+    assert!(!url.contains("subtitles="), "{url}");
+    assert!(puts().await.is_empty());
+
+    // A subtitle: selected on the part with the audio, then burned in.
+    let info = c
+        .playback_info_with(
+            "77",
+            &profile,
+            &TrackSelection {
+                source_id: Some("500".into()),
+                audio_index: Some(3),
+                subtitle: SubtitleSelection::Stream { index: 5 },
+            },
+        )
+        .await
+        .unwrap();
+    let url = &info.sources[0].transcode.as_ref().unwrap().url;
+    assert!(url.ends_with("&subtitles=burn"), "{url}");
+    assert!(
+        url.contains("&session=77-500&"),
+        "same session as before: {url}"
+    );
+    let put = puts().await;
+    assert_eq!(put.len(), 1);
+    let q: Vec<(String, String)> = put[0].query_pairs().into_owned().collect();
+    for pair in [
+        ("audioStreamID", "3"),
+        ("subtitleStreamID", "5"),
+        ("allParts", "1"),
+    ] {
+        assert!(q.contains(&(pair.0.into(), pair.1.into())), "{q:?}");
+    }
+
+    // Off: no subtitle selected on the part, none shown.
+    let off = TrackSelection {
+        subtitle: SubtitleSelection::Off,
+        ..Default::default()
+    };
+    let info = c.playback_info_with("77", &profile, &off).await.unwrap();
+    let url = &info.sources[0].transcode.as_ref().unwrap().url;
+    assert!(url.ends_with("&subtitles=none"), "{url}");
+    let put = puts().await;
+    assert_eq!(put.len(), 2);
+    let q: Vec<(String, String)> = put[1].query_pairs().into_owned().collect();
+    assert!(
+        q.contains(&("subtitleStreamID".into(), "0".into())),
+        "{q:?}"
+    );
+    assert!(!q.iter().any(|(k, _)| k == "audioStreamID"), "{q:?}");
+
+    // Another version's choice, or streams this file doesn't have: nothing saved.
+    let other = TrackSelection {
+        source_id: Some("999".into()),
+        audio_index: Some(3),
+        subtitle: SubtitleSelection::Off,
+    };
+    let info = c.playback_info_with("77", &profile, &other).await.unwrap();
+    assert!(
+        !info.sources[0]
+            .transcode
+            .as_ref()
+            .unwrap()
+            .url
+            .contains("subtitles=")
+    );
+    let missing = TrackSelection {
+        audio_index: Some(42),
+        subtitle: SubtitleSelection::Stream { index: 43 },
+        ..Default::default()
+    };
+    c.playback_info_with("77", &profile, &missing)
+        .await
+        .unwrap();
+    assert_eq!(puts().await.len(), 2);
+}
+
+#[tokio::test]
 async fn timeline_and_scrobble() {
     let s = MockServer::start().await;
     Mock::given(path("/:/timeline"))
@@ -291,6 +419,7 @@ async fn timeline_and_scrobble() {
         event: PlaybackEvent::Pause,
         audio_index: None,
         subtitle_index: None,
+        play_method: PlayMethod::Direct,
     })
     .await
     .unwrap();

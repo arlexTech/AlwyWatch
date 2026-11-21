@@ -2997,6 +2997,8 @@ impl App {
                     event: p.event,
                     audio_index: None,
                     subtitle_index: None,
+                    // mpv always plays the original file.
+                    play_method: PlayMethod::Direct,
                 };
                 // A start that failed played nothing: nothing to report.
                 if p.error.is_none() {

@@ -300,6 +300,51 @@ record! {
     }
 }
 
+/// Subtitles of a server conversion (they are burned into the picture or left out).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+pub enum SubtitleSelection {
+    /// Whatever the server picks by itself (Plex: the account's own choice; Jellyfin: its
+    /// defaults).
+    #[default]
+    Default,
+    /// No subtitles.
+    Off,
+    /// This subtitle stream (`MediaStream::index`), burned in.
+    Stream { index: i64 },
+}
+
+record! {
+    /// The audio and subtitles a server conversion must carry, in the server's stream
+    /// indexes (`MediaStream::index`). The default (nothing chosen) leaves both to the server.
+    /// Direct play ignores it: the player switches the original file's tracks itself.
+    #[derive(Default)]
+    pub struct TrackSelection {
+        /// The version (`MediaSource::id`) the indexes belong to; None: any that has them.
+        pub source_id: Option<String>,
+        /// Audio stream; None: the server's default.
+        pub audio_index: Option<i64>,
+        pub subtitle: SubtitleSelection,
+    }
+}
+
+impl TrackSelection {
+    /// Nothing chosen: the server decides, and asking has no side effect.
+    pub fn is_default(&self) -> bool {
+        self.audio_index.is_none() && self.subtitle == SubtitleSelection::Default
+    }
+}
+
+simple_enum! {
+    /// How a stream reaches the player: the original file, or the server's conversion.
+    #[derive(Default)]
+    pub enum PlayMethod {
+        #[default]
+        Direct,
+        Transcode,
+    }
+}
+
 record! {
     pub struct ProgressReport {
         pub item_id: String,
@@ -310,6 +355,10 @@ record! {
         pub event: PlaybackEvent,
         pub audio_index: Option<i64>,
         pub subtitle_index: Option<i64>,
+        /// Original file or conversion (Jellyfin shows and handles the session accordingly).
+        /// Reports queued offline before this field existed read as `Direct`.
+        #[serde(default)]
+        pub play_method: PlayMethod,
     }
 }
 
@@ -358,5 +407,19 @@ record! {
         pub request: HttpRequest,
         pub size: Option<u64>,
         pub file_name: String,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reports_queued_before_play_method_read_as_direct() {
+        let old = r#"{"item_id":"i1","media_source_id":null,"play_session_id":null,"position_ms":5,
+            "duration_ms":null,"event":"Stop","audio_index":null,"subtitle_index":null}"#;
+        let r: ProgressReport = serde_json::from_str(old).unwrap();
+        assert_eq!(r.play_method, PlayMethod::Direct);
+        assert!(TrackSelection::default().is_default());
     }
 }

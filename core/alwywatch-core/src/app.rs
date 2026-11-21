@@ -534,6 +534,24 @@ impl Core {
         Ok(info)
     }
 
+    /// Never cached: the conversion it describes carries this selection (and on Plex asking
+    /// saves the selection), so neither is shared with plain `playback_info`.
+    async fn playback_info_with(
+        &self,
+        account: &str,
+        item_id: &str,
+        profile: &DeviceProfile,
+        selection: &TrackSelection,
+    ) -> Result<PlaybackInfo> {
+        if selection.is_default() {
+            return self.playback_info(account, item_id, profile).await;
+        }
+        Ok(self
+            .server(account)?
+            .playback_info_with(item_id, profile, selection)
+            .await?)
+    }
+
     async fn report_progress(&self, account: &str, report: ProgressReport) -> Result<()> {
         let result = match self.server(account) {
             Ok(srv) => srv.report_progress(&report).await.map_err(CoreError::from),
@@ -1353,6 +1371,24 @@ impl AlwyWatch {
     ) -> Result<PlaybackInfo> {
         self.run(|c| async move { c.playback_info(&account_id, &item_id, &profile).await })
             .await
+    }
+
+    /// Playback sources whose conversion (`MediaSource::transcode`) carries the chosen audio
+    /// and subtitles (see `conversion_tracks`). For playing the conversion only: direct play
+    /// switches tracks in the player. On Plex a chosen track is saved as the account's choice
+    /// for the file, as Plex's own apps do. The default selection is `playback_info`.
+    pub async fn playback_info_with(
+        &self,
+        account_id: String,
+        item_id: String,
+        profile: DeviceProfile,
+        selection: TrackSelection,
+    ) -> Result<PlaybackInfo> {
+        self.run(|c| async move {
+            c.playback_info_with(&account_id, &item_id, &profile, &selection)
+                .await
+        })
+        .await
     }
 
     /// Skippable intro and credits of an item; empty when the server detected none.

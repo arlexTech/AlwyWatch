@@ -547,6 +547,7 @@ struct MediaDto {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct PartDto {
+    id: serde_json::Value,
     key: String,
     file: Option<String>,
     size: Option<u64>,
@@ -580,6 +581,20 @@ struct StreamDto {
     default: Option<bool>,
     forced: Option<bool>,
     key: Option<String>,
+}
+
+/// A part's id: its `id`, else the number in its key (`/library/parts/{id}/…`).
+fn part_id(p: &PartDto) -> Option<String> {
+    match &p.id {
+        serde_json::Value::Null => p
+            .key
+            .strip_prefix("/library/parts/")?
+            .split('/')
+            .next()
+            .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
+            .map(str::to_owned),
+        v => Some(id_string(v)),
+    }
 }
 
 fn id_string(v: &serde_json::Value) -> String {
@@ -777,6 +792,63 @@ impl PlexClient {
             default_audio_index: default_audio,
             default_subtitle_index: default_sub,
         })
+    }
+
+    /// Makes `selection` the account's audio and subtitles for this version, where it has
+    /// those streams: Plex's converter takes the streams selected on the part (the same
+    /// persistent, per-user choice Plex's own apps make). Returns the conversion's
+    /// `subtitles=` value: "burn" for a chosen subtitle (once selected), "none" for off.
+    async fn select_streams(
+        &self,
+        m: &MediaDto,
+        selection: &TrackSelection,
+    ) -> Option<&'static str> {
+        if selection
+            .source_id
+            .as_ref()
+            .is_some_and(|id| *id != id_string(&m.id))
+        {
+            return None;
+        }
+        let part = m.part.first()?;
+        let has = |id: i64, kind: u8| {
+            part.stream
+                .iter()
+                .any(|s| s.id == id && s.stream_type == kind)
+        };
+        let mut query = vec![];
+        if let Some(a) = selection.audio_index.filter(|a| has(*a, 2)) {
+            query.push(("audioStreamID", a.to_string()));
+        }
+        let subs = match selection.subtitle {
+            SubtitleSelection::Off => {
+                query.push(("subtitleStreamID", "0".into()));
+                Some("none")
+            }
+            SubtitleSelection::Stream { index } if has(index, 3) => {
+                query.push(("subtitleStreamID", index.to_string()));
+                Some("burn")
+            }
+            _ => None,
+        };
+        if query.is_empty() {
+            return None;
+        }
+        query.push(("allParts", "1".into()));
+        let saved = match part_id(part) {
+            Some(id) => net::send(
+                self.req(Method::PUT, &format!("/library/parts/{id}"))
+                    .query(&query),
+            )
+            .await
+            .is_ok(),
+            None => false,
+        };
+        // Not saved: Plex would burn its own pick, so burn nothing rather than the wrong one.
+        match subs {
+            Some("burn") if !saved => None,
+            other => other,
+        }
     }
 
     async fn on_deck(&self, limit: u32) -> Result<Vec<MetadataDto>> {
@@ -1154,7 +1226,12 @@ impl MediaServer for PlexClient {
         ))
     }
 
-    async fn playback_info(&self, item_id: &str, profile: &DeviceProfile) -> Result<PlaybackInfo> {
+    async fn playback_info_with(
+        &self,
+        item_id: &str,
+        profile: &DeviceProfile,
+        selection: &TrackSelection,
+    ) -> Result<PlaybackInfo> {
         let mc = self
             .get(
                 &format!("/library/metadata/{}", net::percent_encode(item_id)),
@@ -1162,11 +1239,26 @@ impl MediaServer for PlexClient {
             )
             .await?;
         let meta = mc.metadata.into_iter().next().ok_or(Error::NotFound)?;
+        // The `subtitles=` of each version's conversion; nothing (Plex decides) by default.
+        let mut subtitles = vec![None; meta.media.len()];
+        if !selection.is_default() {
+            for (m, subs) in meta.media.iter().zip(subtitles.iter_mut()) {
+                *subs = self.select_streams(m, selection).await;
+            }
+        }
         let sources = meta
             .media
             .into_iter()
+            .zip(subtitles)
             .enumerate()
-            .filter_map(|(i, m)| self.convert_source(item_id, i, m, profile))
+            .filter_map(|(i, (m, subs))| {
+                let mut src = self.convert_source(item_id, i, m, profile)?;
+                if let (Some(subs), Some(t)) = (subs, src.transcode.as_mut()) {
+                    t.url.push_str("&subtitles=");
+                    t.url.push_str(subs);
+                }
+                Some(src)
+            })
             .collect();
         Ok(PlaybackInfo {
             item_id: item_id.to_owned(),
@@ -1510,6 +1602,22 @@ fn empty_profile() -> DeviceProfile {
 #[cfg(test)]
 mod transcode_tests {
     use super::*;
+
+    #[test]
+    fn part_id_from_its_id_else_its_key() {
+        let part = |id: serde_json::Value, key: &str| PartDto {
+            id,
+            key: key.into(),
+            ..Default::default()
+        };
+        let key = "/library/parts/555/1690000/file.mkv";
+        assert_eq!(part_id(&part(serde_json::json!(7), key)), Some("7".into()));
+        assert_eq!(
+            part_id(&part(serde_json::Value::Null, key)),
+            Some("555".into())
+        );
+        assert_eq!(part_id(&part(serde_json::Value::Null, "/other/1")), None);
+    }
 
     #[test]
     fn transcode_request_describes_the_device_so_plex_accepts_unknown_clients() {

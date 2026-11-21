@@ -14,6 +14,48 @@ use net::{Error, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+/// Title lookups in flight at once for the requests list.
+const DETAIL_LOOKUPS: usize = 6;
+
+/// Runs `futs` with at most `limit` in flight, results in the input order. No runtime needed
+/// (works in a browser too): one future polls the running ones and starts the next as one
+/// finishes.
+async fn join_bounded<F: std::future::Future>(futs: Vec<F>, limit: usize) -> Vec<F::Output> {
+    use std::pin::Pin;
+    use std::task::Poll;
+    let mut waiting = futs.into_iter().map(Box::pin).enumerate();
+    let mut running: Vec<(usize, Pin<Box<F>>)> = Vec::new();
+    let mut out: Vec<Option<F::Output>> = Vec::new();
+    out.resize_with(waiting.len(), || None);
+    std::future::poll_fn(|cx| {
+        loop {
+            while running.len() < limit.max(1) {
+                match waiting.next() {
+                    Some(f) => running.push(f),
+                    None => break,
+                }
+            }
+            let before = running.len();
+            running.retain_mut(|(i, f)| match f.as_mut().poll(cx) {
+                Poll::Ready(v) => {
+                    out[*i] = Some(v);
+                    false
+                }
+                Poll::Pending => true,
+            });
+            if running.is_empty() && waiting.len() == 0 {
+                return Poll::Ready(());
+            }
+            // Nothing finished: wait to be woken. Otherwise start the next ones now.
+            if running.len() == before {
+                return Poll::Pending;
+            }
+        }
+    })
+    .await;
+    out.into_iter().flatten().collect()
+}
+
 macro_rules! record {
     ($(#[$m:meta])* pub struct $name:ident { $($body:tt)* }) => {
         $(#[$m])*
@@ -704,9 +746,16 @@ impl SeerrClient {
             .iter()
             .filter_map(|v| self.convert_request(v))
             .collect();
-        // Titles and posters come from the details endpoints (cached by Seerr).
-        for r in out.iter_mut() {
-            if let Some((title, poster)) = self.details(r.media_type, r.tmdb_id).await {
+        // Titles and posters come from the details endpoints (cached by Seerr), a few at once.
+        let details = join_bounded(
+            out.iter()
+                .map(|r| self.details(r.media_type, r.tmdb_id))
+                .collect(),
+            DETAIL_LOOKUPS,
+        )
+        .await;
+        for (r, d) in out.iter_mut().zip(details) {
+            if let Some((title, poster)) = d {
                 r.title = Some(title);
                 r.poster_url = poster;
             }
@@ -906,5 +955,44 @@ mod tests {
         assert_eq!(availability(Some(7)), Availability::Deleted);
         assert_eq!(availability(None), Availability::Unknown);
         assert_eq!(request_status(4), RequestStatus::Failed);
+    }
+
+    #[tokio::test]
+    async fn bounded_join_keeps_order_and_the_limit() {
+        use std::cell::Cell;
+        /// Pending a given number of polls (waking itself), then ready.
+        struct Yield(u32);
+        impl std::future::Future for Yield {
+            type Output = ();
+            fn poll(
+                mut self: std::pin::Pin<&mut Self>,
+                cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<()> {
+                if self.0 == 0 {
+                    return std::task::Poll::Ready(());
+                }
+                self.0 -= 1;
+                cx.waker().wake_by_ref();
+                std::task::Poll::Pending
+            }
+        }
+        let (now, most) = (Cell::new(0), Cell::new(0));
+        let futs = (0..20u32)
+            .map(|i| {
+                let (now, most) = (&now, &most);
+                async move {
+                    now.set(now.get() + 1);
+                    most.set(most.get().max(now.get()));
+                    // Later ones finish sooner: order must still be the input's.
+                    Yield(20 - i).await;
+                    now.set(now.get() - 1);
+                    i * 10
+                }
+            })
+            .collect();
+        let out = join_bounded(futs, 6).await;
+        assert_eq!(out, (0..20).map(|i| i * 10).collect::<Vec<_>>());
+        assert_eq!(most.get(), 6);
+        assert!(join_bounded(Vec::<Yield>::new(), 6).await.is_empty());
     }
 }

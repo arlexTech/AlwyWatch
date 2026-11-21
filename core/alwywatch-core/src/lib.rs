@@ -47,8 +47,8 @@ pub use seerr::{
 };
 pub use sync::{SyncPair, SyncStatus};
 pub use tracks::{
-    TrackChoice, TrackInfo, TrackKind, TrackPref, TrackRules, choose_tracks, lang3, pick_track,
-    remembered_track, track_title_key,
+    TrackChoice, TrackInfo, TrackKind, TrackPref, TrackRules, choose_tracks, conversion_tracks,
+    lang3, pick_track, remembered_track, source_tracks, track_title_key,
 };
 
 /// Version of the core library, shown in the about screens.
