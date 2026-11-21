@@ -48,6 +48,12 @@ export struct Detail {
     resume-at: string,
     played: bool,
     is-series: bool,
+    /// Movies and shows can go on "My list" (Plex watchlist, Jellyfin favorites).
+    can-watchlist: bool,
+    watchlisted: bool,
+    has-trailer: bool,
+    /// "Directed by …".
+    crew: string,
 }
 
 export struct AccountRow {
@@ -114,7 +120,7 @@ export struct AdminRow {
     max-days: string,
 }
 
-export enum Page { add, home, library, detail, search, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin }
+export enum Page { add, home, library, detail, search, mylist, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin }
 
 export global Palette {
     out property <color> bg: #09090c;
@@ -228,6 +234,28 @@ component IconButton inherits Focusable {
     border-radius: 22px;
     background: root.active ? #ffffff : Palette.surface-high;
     Icon { source: root.icon; tint: root.active ? #000 : Palette.text; }
+}
+
+// Cast and crew: round photos with name and role, scrolling sideways.
+component CastRow inherits ScrollView {
+    in property <[Card]> people;
+    height: 150px;
+    content-width: root.people.length * 104px;
+    for c[i] in root.people : VerticalLayout {
+        x: i * 104px;
+        width: 92px;
+        spacing: 4px;
+        Rectangle {
+            width: 76px;
+            height: 76px;
+            border-radius: 38px;
+            clip: true;
+            background: Palette.surface;
+            Image { source: c.image; width: parent.width; height: parent.height; image-fit: cover; }
+        }
+        Text { text: c.title; color: Palette.text; font-size: 12px; horizontal-alignment: center; wrap: word-wrap; max-height: 32px; overflow: elide; }
+        Text { text: c.subtitle; color: Palette.muted; font-size: 11px; horizontal-alignment: center; overflow: elide; }
+    }
 }
 
 component NavItem inherits Focusable {
@@ -553,6 +581,8 @@ export component AppWindow inherits Window {
     in property <[NamedId]> seerr-seasons;
     in property <SeerrPage> seerr-title;
     in property <[Card]> seerr-cast;
+    /// Cast of the title page.
+    in property <[Card]> cast;
     in property <SeerrPage> seerr-saga;
     in property <[Card]> seerr-parts;
     // Keep service
@@ -578,6 +608,8 @@ export component AppWindow inherits Window {
     callback open-genre(string, string); // id, name
     callback play(string, bool);
     callback toggle-played(string);
+    callback toggle-watchlist(string);
+    callback play-trailer(string);
     callback select-season(string);
     callback search(string);
     callback go(Page);
@@ -658,6 +690,7 @@ export component AppWindow inherits Window {
                     Rectangle { height: 22px; }
                     NavItem { label: "Home"; icon: @image-url("icons/home.svg"); selected: root.page == Page.home; clicked => { root.go(Page.home); } }
                     NavItem { label: "Search"; icon: @image-url("icons/search.svg"); selected: root.page == Page.search; clicked => { root.go(Page.search); } }
+                    NavItem { label: "My list"; icon: @image-url("icons/bookmark.svg"); selected: root.page == Page.mylist; clicked => { root.go(Page.mylist); } }
                     for lib in root.libraries : NavItem {
                         label: lib.title;
                         icon: @image-url("icons/movie.svg");
@@ -760,7 +793,7 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    if root.page == Page.library || root.page == Page.search : VerticalLayout {
+                    if root.page == Page.library || root.page == Page.search || root.page == Page.mylist : VerticalLayout {
                         padding-left: 40px;
                         padding-right: 24px;
                         padding-top: 28px;
@@ -822,6 +855,8 @@ export component AppWindow inherits Window {
                             text: root.status;
                             color: Palette.muted;
                         }
+                        if root.page == Page.mylist : PageTitle { title: "My list"; }
+                        if root.page == Page.mylist && root.grid.length == 0 : Text { text: root.status; color: Palette.muted; wrap: word-wrap; }
                         if root.page == Page.search : VerticalLayout {
                             spacing: 14px;
                             PageTitle { title: "Search"; }
@@ -831,7 +866,7 @@ export component AppWindow inherits Window {
                                 edited(t) => { root.search(t); }
                             }
                         }
-                        if root.page == Page.search || root.library-tab == "browse" || root.library-tab == "collections" || root.library-tab == "" : grid := ScrollView {
+                        if root.page == Page.search || root.page == Page.mylist || root.library-tab == "browse" || root.library-tab == "collections" || root.library-tab == "" : grid := ScrollView {
                             property <int> cols: max(1, floor((self.visible-width - 10px) / 176px));
                             content-height: ceil(root.grid.length / self.cols) * 312px + 20px;
                             scrolled => {
@@ -897,6 +932,14 @@ export component AppWindow inherits Window {
                                             label: "From start";
                                             clicked => { root.play(root.detail.id, true); }
                                         }
+                                        if root.detail.has-trailer : IconButton {
+                                            icon: @image-url("icons/movie.svg");
+                                            clicked => { root.play-trailer(root.detail.id); }
+                                        }
+                                        if root.detail.can-watchlist : IconButton {
+                                            icon: root.detail.watchlisted ? @image-url("icons/bookmark_fill1.svg") : @image-url("icons/bookmark.svg");
+                                            clicked => { root.toggle-watchlist(root.detail.id); }
+                                        }
                                         if root.detail.playable : IconButton {
                                             icon: @image-url("icons/download.svg");
                                             clicked => { root.download(root.detail.id); }
@@ -915,6 +958,7 @@ export component AppWindow inherits Window {
                                 spacing: 14px;
                                 Text { text: root.detail.overview; color: #f4f4f6d9; font-size: 16px; wrap: word-wrap; }
                                 if root.detail.genres != "" : Text { text: root.detail.genres; color: Palette.subtle; }
+                                if root.detail.crew != "" : Text { text: root.detail.crew; color: Palette.muted; }
                                 if root.detail.is-series : Text { text: "Episodes"; color: Palette.text; font-size: 20px; font-weight: 700; }
                                 if root.detail.is-series : HorizontalLayout {
                                     spacing: 8px;
@@ -950,6 +994,8 @@ export component AppWindow inherits Window {
                                         if ep.played : Icon { source: @image-url("icons/check.svg"); tint: Palette.accent; y: (parent.height - self.height) / 2; }
                                     }
                                 }
+                                if root.cast.length > 0 : Text { text: "Cast"; color: Palette.text; font-size: 20px; font-weight: 700; }
+                                if root.cast.length > 0 : CastRow { people: root.cast; }
                             }
                         }
                     }
@@ -1274,25 +1320,7 @@ export component AppWindow inherits Window {
                                     clicked => { root.seerr-open-saga(); }
                                 }
                                 if root.seerr-cast.length > 0 : Text { text: "Cast"; color: Palette.text; font-size: 20px; font-weight: 700; }
-                                if root.seerr-cast.length > 0 : ScrollView {
-                                    height: 150px;
-                                    content-width: root.seerr-cast.length * 104px;
-                                    for c[i] in root.seerr-cast : VerticalLayout {
-                                        x: i * 104px;
-                                        width: 92px;
-                                        spacing: 4px;
-                                        Rectangle {
-                                            width: 76px;
-                                            height: 76px;
-                                            border-radius: 38px;
-                                            clip: true;
-                                            background: Palette.surface;
-                                            Image { source: c.image; width: parent.width; height: parent.height; image-fit: cover; }
-                                        }
-                                        Text { text: c.title; color: Palette.text; font-size: 12px; horizontal-alignment: center; wrap: word-wrap; max-height: 32px; overflow: elide; }
-                                        Text { text: c.subtitle; color: Palette.muted; font-size: 11px; horizontal-alignment: center; overflow: elide; }
-                                    }
-                                }
+                                if root.seerr-cast.length > 0 : CastRow { people: root.seerr-cast; }
                             }
                         }
                     }

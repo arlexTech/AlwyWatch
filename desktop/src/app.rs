@@ -43,6 +43,7 @@ enum Route {
     /// A saga (TMDB collection): id, name.
     SeerrSaga(i64, String),
     Search,
+    MyList,
     Settings,
     Add,
 }
@@ -108,6 +109,8 @@ struct State {
     poll_gen: u64,
     /// Bumped to stop waiting for a device transfer.
     transfer_gen: u64,
+    /// The title page's first trailer: (title id, account, trailer).
+    trailer: Option<(String, String, Trailer)>,
 }
 
 thread_local! {
@@ -222,6 +225,7 @@ impl App {
                 armed: None,
                 poll_gen: 0,
                 transfer_gen: 0,
+                trailer: None,
             }),
             images: RefCell::new(HashMap::new()),
         });
@@ -1593,6 +1597,10 @@ impl App {
                 ui.set_page(Page::Search);
                 self.state.borrow().grid_model.set_vec(vec![]);
             }
+            Route::MyList => {
+                ui.set_page(Page::Mylist);
+                self.load_watchlist();
+            }
             Route::Leaving => {
                 ui.set_page(Page::Leaving);
                 self.load_leaving();
@@ -2317,6 +2325,10 @@ impl App {
             resume_at: sstr(clock(i.user.position_ms)),
             played: i.user.played,
             is_series: i.kind == ItemKind::Series,
+            can_watchlist: matches!(i.kind, ItemKind::Movie | ItemKind::Series),
+            watchlisted: i.user.favorite,
+            has_trailer: false,
+            crew: SharedString::default(),
         }
     }
 
@@ -2367,12 +2379,21 @@ impl App {
         let playable = matches!(i.kind, ItemKind::Movie | ItemKind::Episode);
         let mut d = Self::detail_of(i);
         d.title = sstr(&i.title);
-        if ui.get_detail().id == d.id {
-            d.backdrop = ui.get_detail().backdrop;
-            d.poster = ui.get_detail().poster;
-            d.logo = ui.get_detail().logo;
+        let account = self.account_of(&i.id).unwrap_or_default();
+        d.watchlisted = self.core.is_watchlisted(account.clone(), i.id.clone());
+        let same = ui.get_detail().id == d.id;
+        if same {
+            let prev = ui.get_detail();
+            d.backdrop = prev.backdrop;
+            d.poster = prev.poster;
+            d.logo = prev.logo;
+            d.has_trailer = prev.has_trailer;
+            d.crew = prev.crew;
         }
         ui.set_detail(d);
+        if !same && i.kind != ItemKind::Episode {
+            self.load_extras(account, i.id.clone());
+        }
         let id = i.id.clone();
         if i.kind != ItemKind::Episode && image_ref(i, ImageKind::Logo).is_some() {
             let id = id.clone();
@@ -2809,6 +2830,180 @@ impl App {
             if let (Err(e), Some(t)) = (result, this.upgrade()) {
                 t.ui().set_error(sstr(e));
             }
+        })
+        .ok();
+    }
+
+    /// Cast, crew and trailer of the title page: cached people first, then the server's.
+    fn load_extras(self: &Rc<Self>, account: String, id: String) {
+        self.ui().set_cast(ModelRc::default());
+        self.state.borrow_mut().trailer = None;
+        if let Some(p) = self.core.cached_people(account.clone(), id.clone()) {
+            self.render_people(&id, p);
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let people = core.people(account.clone(), id.clone()).await;
+            let trailers = core.trailers(account.clone(), id.clone()).await;
+            let Some(this) = this.upgrade() else { return };
+            if this.ui().get_detail().id.as_str() != id {
+                return;
+            }
+            if let Ok(p) = people {
+                this.render_people(&id, p);
+            }
+            if let Some(t) = trailers.ok().and_then(|t| t.into_iter().next()) {
+                this.state.borrow_mut().trailer = Some((id.clone(), account, t));
+                let ui = this.ui();
+                let mut d = ui.get_detail();
+                d.has_trailer = true;
+                ui.set_detail(d);
+            }
+        })
+        .ok();
+    }
+
+    fn render_people(self: &Rc<Self>, id: &str, people: Vec<Person>) {
+        let ui = self.ui();
+        let mut d = ui.get_detail();
+        if d.id.as_str() != id {
+            return;
+        }
+        let directors: Vec<&str> = people
+            .iter()
+            .filter(|p| p.kind == PersonKind::Director)
+            .map(|p| p.name.as_str())
+            .collect();
+        d.crew = sstr(if directors.is_empty() {
+            String::new()
+        } else {
+            format!("Directed by {}", directors.join(", "))
+        });
+        ui.set_detail(d);
+        let cast = people
+            .into_iter()
+            .filter(|p| p.kind == PersonKind::Actor)
+            .take(30)
+            .enumerate()
+            .map(|(n, p)| {
+                (
+                    format!("{n}"),
+                    p.name,
+                    p.role.unwrap_or_default(),
+                    p.photo_url,
+                )
+            })
+            .collect();
+        self.seerr_cards(cast, AppWindow::set_cast);
+    }
+
+    fn play_trailer(self: &Rc<Self>, id: String) {
+        let Some((of, account, t)) = self.state.borrow().trailer.clone() else {
+            return;
+        };
+        if of != id {
+            return;
+        }
+        if let Some(item) = t.item_id {
+            self.play_for(account, item, true);
+        } else if let Some(url) = t.url {
+            platform::open_url(&url);
+        }
+    }
+
+    /// Adds to or removes from My list (Plex watchlist, Jellyfin favorites); the button
+    /// follows at once and goes back if the server refuses.
+    fn toggle_watchlist(self: &Rc<Self>, id: String) {
+        let Some(account) = self.account_of(&id) else {
+            return;
+        };
+        let set = |this: &Rc<Self>, on: bool| {
+            let ui = this.ui();
+            let mut d = ui.get_detail();
+            if d.id.as_str() == id {
+                d.watchlisted = on;
+                ui.set_detail(d);
+            }
+        };
+        let on = !self.ui().get_detail().watchlisted;
+        set(self, on);
+        let (core, this, id2) = (self.core.clone(), Rc::downgrade(self), id.clone());
+        slint::spawn_local(async move {
+            let r = core.set_watchlisted(account, id2, on).await;
+            let Some(this) = this.upgrade() else { return };
+            if let Err(e) = r {
+                let ui = this.ui();
+                let mut d = ui.get_detail();
+                if d.id.as_str() == id {
+                    d.watchlisted = !on;
+                    ui.set_detail(d);
+                }
+                this.set_error(Some(e));
+            }
+        })
+        .ok();
+    }
+
+    /// My list: every server of the home, cached first, then refreshed.
+    fn load_watchlist(self: &Rc<Self>) {
+        let accounts = self.home_accounts();
+        let render = |this: &Rc<Self>, lists: Vec<(String, Vec<Item>)>| {
+            let badges = lists.iter().filter(|(_, l)| !l.is_empty()).count() > 1;
+            let mut seen = HashSet::new();
+            let mut items = Vec::new();
+            for (a, list) in lists {
+                for i in list {
+                    if seen.insert(same_as(&i)) {
+                        this.own(std::slice::from_ref(&i), &a);
+                        items.push(i);
+                    }
+                }
+            }
+            if items.is_empty() {
+                this.ui().set_status(sstr(
+                    "Nothing saved yet. On a movie or show, press the bookmark to keep it here.",
+                ));
+            }
+            let model = this.state.borrow().grid_model.clone();
+            model.set_vec(vec![]);
+            this.fill(&model, &items, ImageKind::Primary, POSTER_PX, 0, badges);
+        };
+        let cached = accounts
+            .iter()
+            .map(|a| {
+                let items = self
+                    .core
+                    .cached_watchlist(a.clone())
+                    .map(|r| r.items)
+                    .unwrap_or_default();
+                (a.clone(), items)
+            })
+            .collect();
+        render(self, cached);
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let mut lists = Vec::new();
+            let mut failed = None;
+            for a in accounts {
+                match core.refresh_watchlist(a.clone(), false).await {
+                    Ok(r) => lists.push((a, r.items)),
+                    Err(e) => {
+                        failed = Some(e);
+                        let items = core.cached_watchlist(a.clone()).map(|r| r.items);
+                        lists.push((a, items.unwrap_or_default()));
+                    }
+                }
+            }
+            let Some(this) = this.upgrade() else { return };
+            if this.ui().get_page() != Page::Mylist {
+                return;
+            }
+            if lists.iter().all(|(_, l)| l.is_empty())
+                && let Some(e) = failed
+            {
+                this.set_error(Some(e));
+            }
+            render(&this, lists);
         })
         .ok();
     }
@@ -3483,6 +3678,50 @@ impl App {
     }
 
     /// Test hook used by headless screenshots: a home from two made-up servers (server marks).
+    /// A title page with sample data: trailer and list buttons, crew, cast.
+    pub fn test_detail(self: &Rc<Self>) {
+        let ui = self.ui();
+        ui.set_page(Page::Detail);
+        ui.set_detail(Detail {
+            id: sstr("t"),
+            title: sstr("Sample movie"),
+            meta: sstr("2008  ·  1 h 36 min  ·  PG  ·  ★ 7.4"),
+            overview: sstr("A dog who believes he has super powers crosses the country."),
+            genres: sstr("Family, Animation"),
+            playable: true,
+            can_watchlist: true,
+            watchlisted: true,
+            has_trailer: true,
+            crew: sstr("Directed by Chris Williams, Byron Howard"),
+            ..Default::default()
+        });
+        let cast = ["John", "Miley", "Susie", "Mark"]
+            .iter()
+            .enumerate()
+            .map(|(n, name)| (n.to_string(), (*name).to_owned(), "Role".to_owned(), None))
+            .collect();
+        self.seerr_cards(cast, AppWindow::set_cast);
+    }
+
+    /// My list on the real profile; with `open_first`, its first title's page a moment later.
+    pub fn test_mylist(self: &Rc<Self>, open_first: bool) {
+        self.navigate(Route::MyList);
+        if open_first {
+            let this = Rc::downgrade(self);
+            slint::Timer::single_shot(Duration::from_secs(4), move || {
+                if let Some(this) = this.upgrade()
+                    && let Some(c) = this.state.borrow().grid_model.row_data(0)
+                {
+                    let id = c.id.to_string();
+                    let this = this.clone();
+                    slint::Timer::single_shot(Duration::ZERO, move || {
+                        this.navigate(Route::Detail(id));
+                    });
+                }
+            });
+        }
+    }
+
     pub fn test_home(self: &Rc<Self>) {
         let item = |id: &str, kind: ItemKind, title: &str, at: i64| Item {
             id: id.into(),
@@ -3711,10 +3950,13 @@ impl App {
         });
         on!(on_play, |a, id, from_start| a.play(id.into(), from_start));
         on!(on_toggle_played, |a, id| a.toggle_played(id.into()));
+        on!(on_toggle_watchlist, |a, id| a.toggle_watchlist(id.into()));
+        on!(on_play_trailer, |a, id| a.play_trailer(id.into()));
         on!(on_select_season, |a, id| a.select_season(id.into()));
         on!(on_search, |a, text| a.search(text.into()));
         on!(on_go, |a, page| a.navigate(match page {
             Page::Search => Route::Search,
+            Page::Mylist => Route::MyList,
             Page::Settings => Route::Settings,
             Page::Add => Route::Add,
             Page::Downloads => Route::Downloads,

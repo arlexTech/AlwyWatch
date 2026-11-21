@@ -52,6 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok("settings") => app.test_settings(),
         Ok("home") => app.test_home(),
         Ok("seerrtitle") => app.test_seerr_title(),
+        Ok(step @ ("mylist" | "mylist-first")) => app.test_mylist(step == "mylist-first"),
+        Ok("detail") => app.test_detail(),
         Ok(step @ ("receive" | "send")) => app.test_transfer(step),
         Ok(tab @ ("recommended" | "browse" | "collections" | "categories")) => {
             app.test_home();

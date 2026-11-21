@@ -301,10 +301,19 @@ fun LeavingSoonScreen() {
                 )
             }
         }
-        list.error?.let {
+        list.error?.let { msg ->
+            // Unreachable server: say which, and that the list shown is the last one it sent.
+            val text =
+                if (msg.startsWith("network unavailable")) {
+                    val at = runCatching { core.keepConnection()?.baseUrl }.getOrNull()
+                    "Can't reach your AlwyWatch server" + (at?.let { " ($it)" } ?: "") +
+                        (if (all.isNotEmpty()) ". This is the last list it sent." else ".")
+                } else {
+                    msg
+                }
             item {
                 be.alwyapps.watch.ui
-                    .ErrorBanner(it) { list.reload() }
+                    .ErrorBanner(text) { list.reload() }
             }
         }
         items(shown, key = { it.key }) { item ->

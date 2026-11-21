@@ -591,7 +591,7 @@ fun ErrorBanner(
                 .clip(RoundedCornerShape(50))
                 .background(Danger),
         )
-        Text(message, Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+        Text(message, Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 4)
         ActionButton("Retry", onRetry)
     }
 }
