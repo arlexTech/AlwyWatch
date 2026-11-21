@@ -296,8 +296,7 @@ impl Rooms {
         let request_id = format!("{:016x}", random_u64());
         if room.members.values().any(|m| m.user_key == user_key) {
             let member_id = room.add_member(name, user_key)?;
-            room.state.seq += 1;
-            room.changed.notify_waiters();
+            room.bump("");
             return Ok(TogetherKnockState {
                 request_id,
                 status: KnockStatus::Accepted,
@@ -331,8 +330,7 @@ impl Rooms {
             },
         );
         // Wakes the host.
-        room.state.seq += 1;
-        room.changed.notify_waiters();
+        room.bump("");
         Ok(room.knock_view(&request_id).expect("just added"))
     }
 
@@ -425,8 +423,7 @@ impl Rooms {
             None => return Err(TogetherError::NotFound),
         }
         room.requests.remove(request);
-        room.state.seq += 1;
-        room.changed.notify_waiters();
+        room.bump("");
         Ok(())
     }
 
@@ -462,8 +459,7 @@ impl Rooms {
             };
         }
         // One change for everyone; the new member's copy of the room is that same state.
-        room.state.seq += 1;
-        room.changed.notify_waiters();
+        room.bump("");
         let state = room.view();
         if let (Some(r), Some(member_id)) = (room.requests.get_mut(request), member_id) {
             r.joined = Some(TogetherJoined {
@@ -524,8 +520,7 @@ impl Rooms {
             let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
             room.check(member, user_key)?;
             if room.expire_members() {
-                room.state.seq += 1;
-                room.changed.notify_waiters();
+                room.bump("");
             }
             if room.state.seq > after {
                 return Ok(room.view());
@@ -559,8 +554,7 @@ impl Rooms {
             room.empty_since = Some(Instant::now());
         }
         room.fix_host();
-        room.state.seq += 1;
-        room.changed.notify_waiters();
+        room.bump("");
         Ok(())
     }
 }
@@ -631,6 +625,37 @@ mod tests {
         assert!(s.playing);
         assert_eq!(s.position_ms, 6_000);
         assert_eq!(s.by, a.member_id);
+    }
+
+    /// Someone leaving is the server's change, not the last member who played or paused: their
+    /// players would take it for their own echo and miss it.
+    #[tokio::test]
+    async fn leaving_is_nobodys_change() {
+        let rooms = Rooms::default();
+        let a = create(&rooms);
+        let code = a.state.code.clone();
+        let b = let_in(&rooms, &a, "Bo", "jf:bo");
+        let upd = TogetherUpdate {
+            member_id: a.member_id.clone(),
+            playing: true,
+            position_ms: 6_000,
+            media: None,
+        };
+        let after = rooms.update(&code, upd, "plex:ana").unwrap();
+        assert_eq!(after.by, a.member_id);
+        rooms.leave(&code, &b.member_id, "jf:bo").unwrap();
+        let s = rooms
+            .wait_for(
+                &code,
+                &a.member_id,
+                "plex:ana",
+                after.seq,
+                Duration::from_millis(30),
+            )
+            .await
+            .unwrap();
+        assert_eq!(s.members.len(), 1);
+        assert_eq!(s.by, "");
     }
 
     #[tokio::test]
