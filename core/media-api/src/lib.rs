@@ -17,89 +17,116 @@ use std::future::Future;
 pub use model::*;
 pub use net::{Error, Result};
 
+/// `Send` on native (the core runs requests on a multi-threaded runtime); nothing in a browser,
+/// where futures are single-threaded (fetch promises are never `Send`).
+#[cfg(not(target_arch = "wasm32"))]
+pub trait MaybeSend: Send {}
+#[cfg(not(target_arch = "wasm32"))]
+impl<T: Send> MaybeSend for T {}
+#[cfg(target_arch = "wasm32")]
+pub trait MaybeSend {}
+#[cfg(target_arch = "wasm32")]
+impl<T> MaybeSend for T {}
+
 /// The read and playback surface every supported server implements.
 pub trait MediaServer: Send + Sync {
     fn session(&self) -> &Session;
 
-    fn libraries(&self) -> impl Future<Output = Result<Vec<MediaLibrary>>> + Send;
-    fn items(&self, query: &ItemQuery) -> impl Future<Output = Result<Page>> + Send;
-    fn item(&self, id: &str) -> impl Future<Output = Result<Item>> + Send;
-    fn seasons(&self, series_id: &str) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn libraries(&self) -> impl Future<Output = Result<Vec<MediaLibrary>>> + MaybeSend;
+    fn items(&self, query: &ItemQuery) -> impl Future<Output = Result<Page>> + MaybeSend;
+    fn item(&self, id: &str) -> impl Future<Output = Result<Item>> + MaybeSend;
+    fn seasons(&self, series_id: &str) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     fn episodes(
         &self,
         series_id: &str,
         season_id: &str,
-    ) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    ) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     /// Partially watched items, most recent first.
-    fn resume(&self, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn resume(&self, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     /// Next unwatched episode of series in progress.
-    fn next_up(&self, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn next_up(&self, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     fn latest(
         &self,
         library_id: &str,
         limit: u32,
-    ) -> impl Future<Output = Result<Vec<Item>>> + Send;
-    fn search(&self, query: &str, limit: u32) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    ) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
+    fn search(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     /// When each of these shows last had an episode watched to the end (unix seconds); shows
     /// never finished an episode of are left out. Orders "continue watching".
     fn shows_last_watched(
         &self,
         series_ids: &[String],
-    ) -> impl Future<Output = Result<std::collections::HashMap<String, i64>>> + Send;
+    ) -> impl Future<Output = Result<std::collections::HashMap<String, i64>>> + MaybeSend;
     /// Takes an item out of "continue watching" on the server. Returns false when the server
     /// has no such thing for it (the caller then hides it locally).
     fn remove_from_continue_watching(
         &self,
         item_id: &str,
-    ) -> impl Future<Output = Result<bool>> + Send;
+    ) -> impl Future<Output = Result<bool>> + MaybeSend;
     /// Genres present in a library.
-    fn genres(&self, library_id: &str) -> impl Future<Output = Result<Vec<Genre>>> + Send;
+    fn genres(&self, library_id: &str) -> impl Future<Output = Result<Vec<Genre>>> + MaybeSend;
     /// Collections (Jellyfin box sets, Plex collections) of a library.
-    fn collections(&self, library_id: &str) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn collections(&self, library_id: &str) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     /// Playback sources, original file first. Transcoding is only offered as a fallback.
     fn playback_info(
         &self,
         item_id: &str,
         profile: &DeviceProfile,
-    ) -> impl Future<Output = Result<PlaybackInfo>> + Send;
+    ) -> impl Future<Output = Result<PlaybackInfo>> + MaybeSend;
     /// Skippable intro/credits spans, by start time. Empty when the server has not detected any.
-    fn segments(&self, item_id: &str) -> impl Future<Output = Result<Vec<Segment>>> + Send;
-    fn report_progress(&self, report: &ProgressReport) -> impl Future<Output = Result<()>> + Send;
+    fn segments(&self, item_id: &str) -> impl Future<Output = Result<Vec<Segment>>> + MaybeSend;
+    fn report_progress(
+        &self,
+        report: &ProgressReport,
+    ) -> impl Future<Output = Result<()>> + MaybeSend;
     /// Trailers of a movie or show (server extras first, then web ones).
-    fn trailers(&self, item_id: &str) -> impl Future<Output = Result<Vec<Trailer>>> + Send;
+    fn trailers(&self, item_id: &str) -> impl Future<Output = Result<Vec<Trailer>>> + MaybeSend;
     /// The show's theme song (Plex theme, Jellyfin theme songs), if the server has one.
-    fn theme_song(&self, item_id: &str)
-    -> impl Future<Output = Result<Option<HttpRequest>>> + Send;
+    fn theme_song(
+        &self,
+        item_id: &str,
+    ) -> impl Future<Output = Result<Option<HttpRequest>>> + MaybeSend;
     /// Cast first (in billing order), then directors and writers.
-    fn people(&self, item_id: &str) -> impl Future<Output = Result<Vec<Person>>> + Send;
+    fn people(&self, item_id: &str) -> impl Future<Output = Result<Vec<Person>>> + MaybeSend;
     /// Titles of the user's watchlist that this server has: Jellyfin favorites; Plex's
     /// plex.tv watchlist (needs the plex.tv account token), matched to this server's library.
     fn watchlist(
         &self,
         plex_tv_token: Option<&str>,
-    ) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    ) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     fn set_watchlisted(
         &self,
         item_id: &str,
         on: bool,
         plex_tv_token: Option<&str>,
-    ) -> impl Future<Output = Result<()>> + Send;
-    fn set_played(&self, item_id: &str, played: bool) -> impl Future<Output = Result<()>> + Send;
+    ) -> impl Future<Output = Result<()>> + MaybeSend;
+    fn set_played(
+        &self,
+        item_id: &str,
+        played: bool,
+    ) -> impl Future<Output = Result<()>> + MaybeSend;
     /// Every movie and episode the user watched or started, with user data and external ids
     /// (episodes with their show's id and season/episode numbers). For moving history.
-    fn watch_history(&self) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn watch_history(&self) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     /// Sets watched, resume position (and the last played date where the server allows it).
     fn set_watch_state(
         &self,
         item_id: &str,
         state: &WatchState,
-    ) -> impl Future<Output = Result<()>> + Send;
+    ) -> impl Future<Output = Result<()>> + MaybeSend;
     /// The original file (never a transcode), so downloads can be resumed.
-    fn download_source(&self, item_id: &str)
-    -> impl Future<Output = Result<DownloadSource>> + Send;
+    fn download_source(
+        &self,
+        item_id: &str,
+    ) -> impl Future<Output = Result<DownloadSource>> + MaybeSend;
     /// Every movie or series with its external ids (light items, no user data). Used to map
     /// Maintainerr items (Plex ratingKey + tmdb/tvdb) to this server; callers cache it.
-    fn provider_index(&self, kind: ItemKind) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    fn provider_index(&self, kind: ItemKind)
+    -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     /// A sized image request. Pure: no network.
     fn image_request(&self, item_id: &str, image: &ImageRef, max_width: u32) -> HttpRequest;
 }

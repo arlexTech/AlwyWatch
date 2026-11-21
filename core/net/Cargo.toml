@@ -10,10 +10,13 @@ publish.workspace = true
 
 [dependencies]
 reqwest = { workspace = true }
-rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+# Native only: in a browser (wasm32) the browser does TLS through fetch().
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rustls = { workspace = true }
 
 [lints]
 workspace = true

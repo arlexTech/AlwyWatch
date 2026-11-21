@@ -20,5 +20,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 uniffi = { workspace = true, optional = true }
 
+# Browser: ring (transfer crypto) takes its randomness from crypto.getRandomValues().
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+ring = { version = "0.17", features = ["wasm32_unknown_unknown_js"] }
+
 [lints]
 workspace = true

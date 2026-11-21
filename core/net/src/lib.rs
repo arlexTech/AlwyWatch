@@ -7,7 +7,9 @@
 //! * Tokens travel in headers only. Request URLs never contain secrets, so errors (which include
 //!   the URL) are safe to log.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::Once;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 pub use reqwest;
@@ -87,9 +89,15 @@ pub fn status_error(status: StatusCode) -> Error {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 static TLS_INIT: Once = Once::new();
 
+/// Browser: TLS is the browser's (fetch); nothing to set up.
+#[cfg(target_arch = "wasm32")]
+pub fn init_tls() {}
+
 /// Installs the ring crypto provider for rustls once per process.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn init_tls() {
     TLS_INIT.call_once(|| {
         // Err means another provider is already installed, which is fine.
@@ -124,7 +132,7 @@ fn tls(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
 fn tls(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     builder
 }
@@ -157,7 +165,19 @@ fn android_roots() -> rustls::RootCertStore {
     roots
 }
 
+/// Browser: fetch() has no connect/read timeouts or pool settings to tune.
+#[cfg(target_arch = "wasm32")]
+pub fn api_client(_user_agent: &str) -> Result<reqwest::Client> {
+    reqwest::Client::builder().build().map_err(Error::from)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn transfer_client(user_agent: &str) -> Result<reqwest::Client> {
+    api_client(user_agent)
+}
+
 /// Builds the shared client for API calls (short timeouts, gzip handled by servers' defaults).
+#[cfg(not(target_arch = "wasm32"))]
 pub fn api_client(user_agent: &str) -> Result<reqwest::Client> {
     init_tls();
     tls(reqwest::Client::builder())
@@ -170,6 +190,7 @@ pub fn api_client(user_agent: &str) -> Result<reqwest::Client> {
 }
 
 /// Builds a client for large transfers: no read deadline beyond stalls, longer pool life.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn transfer_client(user_agent: &str) -> Result<reqwest::Client> {
     init_tls();
     tls(reqwest::Client::builder())
