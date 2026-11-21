@@ -174,6 +174,29 @@ object ItemsChanged {
     }
 }
 
+/**
+ * For what a long press on OK opens: the OK still held (its repeats and its release) would
+ * click whatever takes the focus. Ignored until OK is pressed again.
+ */
+@Composable
+fun Modifier.ignoreHeldOk(): Modifier {
+    var armed by remember { mutableStateOf(false) }
+    return onPreviewKeyEvent { e ->
+        val ok =
+            e.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                e.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                e.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+        when {
+            !ok || armed -> false
+            e.type == KeyEventType.KeyDown && e.nativeKeyEvent.repeatCount == 0 -> {
+                armed = true
+                false
+            }
+            else -> true
+        }
+    }
+}
+
 /** Long-press menu of a movie, show or episode: watched state, show/season, download. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -204,7 +227,7 @@ fun ItemMenu(
                 )
             },
     ) {
-        Column(Modifier.padding(bottom = 24.dp).navigationBarsPadding()) {
+        Column(Modifier.ignoreHeldOk().padding(bottom = 24.dp).navigationBarsPadding()) {
             Text(
                 if (item.kind == ItemKind.EPISODE) "${item.seriesTitle ?: ""} · ${item.subtitle()}" else item.title,
                 Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
