@@ -1,8 +1,10 @@
 # Deploying alwywatch-server
 
 `alwywatch-server` is the optional backend for the "keep" feature: it lists what Maintainerr will
-delete, stores per-user keep requests and applies them to Maintainerr. It is one static binary in
-a `scratch` image (≈10 MB) with a SQLite database in `/data`.
+delete, stores per-user keep requests and applies them to Maintainerr. It also bridges Seerr,
+hosts watch together rooms and device transfers, and serves the [web app](web.md) at `/`. It is
+one static binary in a `scratch` image with a SQLite database in `/data` and the web app in
+`/web` (`ALWYWATCH_WEB`).
 
 Nothing here is applied automatically. These are the steps for the owner of the server.
 
@@ -19,6 +21,11 @@ Nothing here is applied automatically. These are the steps for the owner of the 
 | `WEBHOOK_SECRET` | optional: lets Tautulli/Jellyfin wake the "watched" check immediately | any long random string |
 | `MAINTAINERR_API_KEY` | only if Maintainerr's API key is turned on | Maintainerr → Settings |
 | `SEERR_API_KEY` | optional Seerr bridge: Seerr for users of the other media server type | Seerr → Settings → General → API Key |
+
+Other settings: `ALWYWATCH_CONFIG` (default `/data/config.toml`), `ALWYWATCH_DATA` (`/data`),
+`ALWYWATCH_LISTEN` (`0.0.0.0:8080`), `ALWYWATCH_WEB` (`/web`), `JELLYFIN_API_KEY_<server id>` for
+one key per Jellyfin server, and `ALWYWATCH_DRY_RUN=1` (or `dry_run = true`): reads everything,
+writes nothing to Maintainerr or Seerr, votes go to `keep-dryrun.sqlite`.
 
 Without the Jellyfin/Tautulli keys everything works except automatic release of "keep until I
 watched it" (those then behave like "keep forever" until the user removes them). Without
@@ -61,7 +68,7 @@ Fill `config.toml` with the real ids:
 ```sh
 # on the build machine (repository root)
 docker build -f server/Dockerfile -t alwywatch-server .
-docker save alwywatch-server | ssh serv docker load
+docker save alwywatch-server | ssh <server> docker load
 # on the server
 cd ~/docker/alwywatch && docker compose up -d && docker logs -f alwywatch-server
 ```
@@ -71,7 +78,8 @@ to a Maintainerr major version it was not built for.
 
 ## 4. Caddy
 
-Public (remote Plex users must reach it), no `localonly`:
+Public (remote users and the web app must reach it), no `localonly`. Long polls (watch together)
+need ~40 s requests; Caddy's defaults allow that.
 
 ```caddy
 # alwywatch keep service

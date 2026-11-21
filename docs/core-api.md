@@ -3,6 +3,22 @@
 The one object UIs talk to: `AlwyWatch` (Kotlin through UniFFI, Rust directly on desktop). The
 Rust doc comments in `core/alwywatch-core/src/app.rs` are the reference; this page is the map.
 
+## Crates
+
+| Crate | Role | Used by |
+|---|---|---|
+| `net` | Shared `reqwest` client (rustls + OS trust store on native; the browser's `fetch` on wasm32), URL helpers, `Error` | everything |
+| `media-api` | `MediaServer` trait, `JellyfinClient`, `PlexClient`, sign-in flows (`JellyfinAuth`, `PlexAuth`), models | core, server, web |
+| `seerr` | Seerr client, direct (cookie) or bridged through the AlwyWatch server | core, web |
+| `maintainerr` | Maintainerr read/write client | server only |
+| `keep-service` | `/v1` protocol types and `KeepClient`; watch together and transfer crypto | core, server, web |
+| `downloads` | Resumable download manager (`Range`/`If-Range`, `.part` files, offsets in SQLite) | core |
+| `store` | SQLite cache and settings, disk image cache | core |
+| `alwywatch-core` | The `AlwyWatch` facade below, exported through UniFFI | Android (Kotlin), desktop (Rust) |
+
+The web app links `media-api`, `seerr`, `keep-service` and `net` directly, without
+`alwywatch-core`, `store` or `downloads` (see [web.md](web.md)).
+
 ## Conventions
 
 * **Cache-first pairs.** `cached_x(...)` is synchronous: it reads SQLite and returns
@@ -21,10 +37,13 @@ Rust doc comments in `core/alwywatch-core/src/app.rs` are the reference; this pa
 
 | Function | Notes |
 |---|---|
-| `AlwyWatch::new(CoreConfig)` | `data_dir`, `cache_dir`, `client` (device info), `image_cache_mb`, `downloads_dir`. No network. |
+| `AlwyWatch::new(CoreConfig)` | `data_dir`, `cache_dir`, `client` (device info), `image_cache_mb`, `downloads_dir`, `profile` (device profile this core runs for; None = the original one), `downloads_db` (shared by a device's profiles). No network. |
 | `accounts()`, `activate_account(id, token)`, `is_active(id)`, `remove_account(id)` | Several Jellyfin/Plex accounts side by side |
 | `jellyfin_server_info(url)`, `jellyfin_sign_in(url, user, pass)`, `jellyfin_quick_connect_start/poll` | Returns `SignedIn{account, token}` |
 | `plex_create_pin(strong)`, `plex_check_pin(id)`, `plex_servers(account_token)`, `plex_connect(account_token, server, preferred_url)` | plex.tv PIN flow; `SignedIn.plex_account_token` is what Seerr and the keep service accept |
+| `plex_home_users(account_token)`, `plex_switch_user(account_token, uuid, pin)` | Plex Home "who's watching"; the switch returns the token to use instead of the account token |
+| `set_plex_account_token(account, token)` | The plex.tv token of a Plex account, for its watchlist |
+| `ping(account)` | Light authenticated call with a short timeout; sends queued progress on success |
 | `normalize_server_url(input)`, `core_version()` | Free functions |
 
 ## Library and playback
@@ -34,25 +53,141 @@ Rust doc comments in `core/alwywatch-core/src/app.rs` are the reference; this pa
 | `cached_home` / `refresh_home(account, force)` | Rails: continue watching, next up, latest per library. Partial failures keep the other rails |
 | `cached_items` / `refresh_items(account, ItemQuery)` | Paged library grids |
 | `cached_item` / `refresh_item`, `cached_seasons` / `refresh_seasons`, `cached_episodes` / `refresh_episodes` | Details |
-| `search(account, query, limit)`, `set_played(...)` | |
+| `cached_genres` / `refresh_genres`, `cached_collections` / `refresh_collections` | Library "Categories" and "Collections" tabs |
+| `cached_watchlist` / `refresh_watchlist`, `is_watchlisted`, `set_watchlisted` | Jellyfin favorites, Plex's plex.tv watchlist |
+| `people`, `cached_people`, `trailers`, `theme_song` | Title page extras |
+| `adjacent_episodes(account, item)` | Previous and next episode across seasons; works offline from cache |
+| `search(account, query, limit)`, `set_played(...)`, `remove_from_continue_watching(...)` | |
+| `merge_homes(homes)`, `same_as(item)` | Free functions: several servers' homes as one; the cross-server identity of a title |
 | `cached_image` / `image(...)`, `cached_remote_image` / `remote_image(url)` | Disk-cached files (size-capped LRU), by width bucket; return a local path |
-| `playback_info(account, item, DeviceProfile)`, `prefetch_playback_info(...)` | Direct play first; the device profile comes from the platform's decoders |
+| `playback_info(account, item, DeviceProfile)`, `prefetch_playback_info(...)` | Sources, original first; kept two minutes so a prefetch makes play instant. See [Playback](#playback-direct-play-and-conversion) |
+| `segments(account, item)`, `playback_prompt(segments, position, duration, has_next)` | Skippable spans; what to offer now ("Skip intro", "Next episode", credits countdown). Pure, so every player behaves the same |
 | `report_progress(account, ProgressReport)`, `flush_pending_progress()` | Offline reports are queued and sent when the network returns |
+
+## `MediaServer` trait (`core/media-api`)
+
+What every server client implements; `AnyServer` dispatches statically to `JellyfinClient` or
+`PlexClient` (`AnyServer::from_session(session, client, http)` rebuilds one from a stored
+session). Sign-in is not on the trait: `JellyfinAuth` (password, Quick Connect) and `PlexAuth`
+(PIN, resources, Plex Home). Futures are `Send` on native and not in the browser (`MaybeSend`).
+
+| Method | Returns |
+|---|---|
+| `session()` | The signed-in `Session` (kind, base URL, server and user ids, token) |
+| `libraries()` | Libraries (`Movies`, `Shows`, `Other`) |
+| `items(ItemQuery)` | A page of a library: sort, genre, collection, unwatched filter |
+| `item(id)` | One item with user data, images and provider ids |
+| `seasons(series)`, `episodes(series, season)` | Children of a show |
+| `resume(limit)` | Partly watched items, most recent first |
+| `next_up(limit)` | Next unwatched episode of shows in progress |
+| `latest(library, limit)` | Recently added |
+| `search(query, limit)` | Movies, shows and episodes |
+| `shows_last_watched(series_ids)` | When each show last had an episode finished (orders "continue watching") |
+| `remove_from_continue_watching(id)` | `false` when the server has no such thing (the caller hides it locally) |
+| `genres(library)`, `collections(library)` | Library tabs |
+| `playback_info(id, DeviceProfile)` | Sources, original file first; each with a direct request and an optional conversion |
+| `segments(id)` | Skippable spans (see below) |
+| `report_progress(ProgressReport)` | Start, progress, pause, stop |
+| `trailers(id)`, `theme_song(id)`, `people(id)` | Title page extras |
+| `watchlist(plex_tv_token)`, `set_watchlisted(id, on, plex_tv_token)` | Jellyfin favorites; Plex's plex.tv watchlist (needs the plex.tv token; without it the list is empty and adding fails with `Unauthorized`) |
+| `set_played(id, played)` | Watched toggle |
+| `watch_history()`, `set_watch_state(id, WatchState)` | History copy and sync |
+| `download_source(id)` | The original file, never a transcode |
+| `provider_index(kind)` | Every movie or show with external ids (maps Maintainerr items) |
+| `image_request(id, ImageRef, max_width)` | A sized image request; no network |
+
+Models that matter (`media_api::model`): `Item` (kind, ids, `ProviderIds` tmdb/imdb/tvdb,
+`UserData`, `ImageRef`s with BlurHash), `MediaSource` (`streams: [MediaStream]`, `direct` and
+`transcode: Option` as `HttpRequest`, `supports_direct_play`), `MediaStream` (codec, language,
+bit depth, size, `HdrKind`, Dolby Vision profile, forced/default/external), `DeviceProfile`,
+`Segment`, `ProgressReport`, `WatchState`, `DownloadSource`. An `HttpRequest` carries auth in
+headers, never in the URL, so URLs are safe to log (the web app is the exception, see
+[web.md](web.md)).
+
+## Playback: direct play and conversion
+
+Each platform builds a `DeviceProfile` (containers, video codecs, `video_10bit_codecs`, audio
+and subtitle codecs, max width/height, HDR kinds) and passes it to `playback_info`.
+
+* **Android** (`player/DeviceProfiles.kt`): video codecs from `MediaCodecList`; HEVC, VP9 and AV1
+  count only when a **hardware** decoder exists (the software ones are too slow on TV sticks), so
+  without the chip the server converts. 10-bit support from the decoder's profile levels; HDR
+  kinds from the display (Dolby Vision only with a DV decoder). Audio includes AC3, E-AC3, DTS and
+  TrueHD (bundled FFmpeg decoder or passthrough). The player decides with `canDirectPlay`
+  (container, video codec, bit depth, size, one playable audio track), plays `direct` when it
+  passes, `transcode` otherwise, and switches to `transcode` at the same position when the
+  decoder fails on the original.
+* **Desktop**: a fixed broad profile (mpv/FFmpeg decode nearly everything, 10-bit included) and
+  always the original file.
+* **Web**: the profile is asked to the browser; see [web.md](web.md#playback).
+
+Per server:
+
+* **Jellyfin**: the profile becomes a Jellyfin `DeviceProfile` (direct play for what the device
+  decodes; 8-bit limits and max size as codec conditions; HLS/TS transcoding profile, HEVC first
+  only if the device decodes 10-bit HEVC; text subtitles also as external files). Jellyfin
+  decides: `supports_direct_play` and the transcoding URL come from its answer, direct-playable
+  sources first.
+* **Plex**: Plex does not decide for the client. `supports_direct_play` is always `true` and the
+  platform checks the codecs itself. Every source also gets a conversion URL (`transcode_url` in
+  `plex.rs`): `/video/:/transcode/universal/start.m3u8` with `directStream=1`. Plex refuses
+  unknown clients with 400 unless the request describes the client, so it names the `Generic`
+  profile and adds `X-Plex-Client-Profile-Extra`: an HLS/MPEG-TS target with H.264 (plus HEVC
+  when the profile lists `ts` and `hevc`) and AAC (plus AC3/E-AC3/MP3 when listed), the max
+  width/height, and an 8-bit limit for each codec not in `video_10bit_codecs`. Streams the device
+  plays are copied, the others converted. The same session name is used in progress reports, so
+  Plex ties them together and stops converting when playback stops.
+
+## Skippable segments
+
+`segments(id)` returns `Segment { kind: Intro|Credits|Recap|Preview|Commercial, start_ms, end_ms }`.
+
+* **Jellyfin**: `GET /MediaSegments/{id}` (Jellyfin 10.10+, filled by a segment provider such as
+  the Intro Skipper plugin). When that is empty or fails: the file's chapters, when named like an
+  intro, credits, recap or preview (English and French names, whole words; implausibly long
+  spans dropped).
+* **Plex**: the item's markers (`includeMarkers=1`): `intro`, `credits`, `commercial`.
+
+`playback_prompt` turns segments and the position into what the player shows; "Next episode"
+replaces "Skip credits" when there is a next episode, and is offered 40 s before the end when no
+credits are marked.
+
+## UniFFI layer
+
+`alwywatch-core` uses UniFFI proc-macros only (no UDL): records and enums of the other crates
+derive `uniffi::Record`/`Enum` behind their `uniffi` feature, and `AlwyWatch` is a
+`uniffi::Object`. Kotlin bindings are generated by `tools/uniffi-bindgen` in library mode from
+the host debug build (release builds strip the metadata); Gradle runs it and `cargo ndk` (see
+[build.md](build.md)). Async methods become Kotlin `suspend` functions running on the core's own
+tokio runtime. On Android, `NativeTls.init(context)` (JNI, `android.rs`) must run once before any
+network call so rustls can use Android's trust store. The desktop app links the crate as plain
+Rust.
 
 ## Downloads (phone/tablet, desktop)
 
-`download_item(account, item)`, `downloads()`, `pause_download(id)`, `resume_download(id)`,
-`remove_download(id)`, `downloaded_file(account, item)`, `has_pending_downloads()`,
-`run_downloads()` (called by the platform's background worker; resumes with HTTP `Range` /
-`If-Range`, survives network loss, process death and full disks).
+`download_item(account, item)`, `download_season(...)`, `download_series(...)`, `downloads()`,
+`pause_download(id)`, `resume_download(id)`, `remove_download(id)`, `downloaded_file(account, item)`,
+`has_pending_downloads()`, `run_downloads()` (called by the platform's background worker; resumes
+with HTTP `Range` / `If-Range`, survives network loss, process death and full disks).
+
+Housekeeping: each download has a `DeleteRule` (`Never`, `AfterDays`, `WhenWatched`,
+`DaysAfterWatched`; `set_download_rule`, `default_delete_rule` / `set_default_delete_rule`).
+`set_auto_download(account, series, title, count, rule)` keeps the next `count` unwatched episodes of a
+show downloaded; `sync_downloads()` applies the rules and tops those shows up. Downloads always
+fetch the original file (`MediaServer::download_source`), never a transcode. With device profiles,
+`profile()` names the current one and `release_profile_downloads(profile)` hands a removed
+profile's downloads back.
 
 ## Seerr
 
 Direct: `seerr_info(url)`, `seerr_sign_in_plex/jellyfin/local`, `seerr_quick_connect_start/poll`
 (platform stores the returned cookie), `seerr_activate(cookie)`.
-Through the AlwyWatch server (any media server type): `seerr_connect_bridge()`; nothing to store.
+Through the AlwyWatch server (any media server type): `seerr_connect_bridge()` (the keep
+account), or `seerr_connect_bridge_as(account, token)` / `seerr_activate_bridge(token)` for
+another account.
 Then: `seerr_connection()`, `seerr_active()`, `seerr_sign_out()`, `seerr_search(query)`,
-`seerr_seasons(tmdb)`, `seerr_request(type, tmdb, seasons)`, `seerr_cancel(id)`,
+`seerr_title(type, tmdb)` (details, cast, saga), `seerr_collection(id)`, `seerr_seasons(tmdb)`,
+`seerr_request(type, tmdb, seasons)`, `seerr_cancel(id)`,
 `cached_seerr_requests` / `refresh_seerr_requests(force)`.
 
 ## Keep service (AlwyWatch server)
@@ -62,13 +197,35 @@ Protocol: [keep-protocol.md](keep-protocol.md).
 | Function | Notes |
 |---|---|
 | `keep_servers(url)` | Public allow-list, to offer servers without typing URLs |
-| `keep_set_preset(url)`, `keep_onboard(account, token)` | Add-server flow: the picked AlwyWatch server is connected right after sign-in, with Seerr through it |
+| `keep_set_preset(url)`, `keep_clear_preset()`, `keep_onboard(account, token)` | Add-server flow: the picked AlwyWatch server is connected right after sign-in, with Seerr through it |
 | `keep_connect(url, account, token)`, `keep_activate(token)`, `keep_connection()`, `keep_active()`, `keep_disconnect()` | `token`: Jellyfin token or plex.tv account token |
 | `keep_me()` | Rights, admin flag |
 | `cached_leaving_soon` / `refresh_leaving_soon(force)`, `keep_triage(limit)` | Most urgent first; triage = not voted yet |
 | `keep_vote(key, VoteRequest)`, `keep_unvote(key)` | Patch the cached list in place |
 | `keep_due_reminders(now)` | "Keep until watched" reminders due now (local notifications) |
 | `keep_admin_users()`, `keep_admin_set_rights(user, Rights)`, `keep_admin_countdown(collection, stagger_days)` | Admins only |
+| `keep_admin_forever()` | Who keeps what forever, shared and alone |
+| `keep_admin_seerr_users()`, `keep_admin_link_seerr(user, seerr_user_id)` | Link a user's requests to an existing Seerr user (None: automatic) |
+
+## Watch together
+
+`together_create(account, item, position_ms, playing)`, `together_rooms()`, `together_knock(code)`,
+`together_knock_wait(code, request)`, `together_knock_cancel(code, request)`,
+`together_answer(code, request, member, accept)`, `together_update(...)`, `together_wait(code,
+member, after)`, `together_leave(code, member)`: thin wrappers over the
+[protocol](keep-protocol.md#watch-together). `together_find(account_ids, media)` finds the room's
+title on the first of these accounts that has it (by TMDB/IMDb/TVDB id, season and episode).
+
+## Device transfer and setup copy
+
+| Function | Notes |
+|---|---|
+| `transfer_start(url, device)` | New device: registers a one-time key; returns `TransferCode { code, check, handle, ... }`. No sign-in |
+| `transfer_receive(url, handle)` | New device: the opened bundle once approved, `None` while waiting |
+| `transfer_peer(code)`, `transfer_send(code, bundle)` | Signed-in device: the asking device and its check number, then send the sealed bundle |
+| `export_config(setting_keys)`, `import_config(json)` | The bundle: accounts, AlwyWatch server and Seerr connections, chosen settings. Tokens are added and stored by the platform |
+
+Protocol and crypto: [keep-protocol.md](keep-protocol.md#device-transfer).
 
 ## Watch history copy
 

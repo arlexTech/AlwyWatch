@@ -15,6 +15,13 @@ jobs:
       - uses: actions/checkout@v4
       - run: scripts/ci.sh rust
 
+  web:
+    runs-on: alwywatch-host
+    needs: rust
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/ci.sh web
+
   android:
     runs-on: alwywatch-host
     needs: rust

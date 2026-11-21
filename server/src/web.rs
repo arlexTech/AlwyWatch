@@ -40,7 +40,8 @@ pub async fn serve(uri: Uri, headers: HeaderMap) -> Response {
 async fn serve_from(dir: &Path, uri: &Uri, headers: &HeaderMap) -> Response {
     let path = uri.path();
     if path == "/v1" || path.starts_with("/v1/") {
-        return not_found();
+        // The API answers in JSON, for unknown routes too.
+        return crate::api::Error(StatusCode::NOT_FOUND, "not found".into()).into_response();
     }
     let rel = path.trim_start_matches('/');
     // No way out of the folder, no hidden files.

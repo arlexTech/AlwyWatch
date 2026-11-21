@@ -1,6 +1,8 @@
 # AlwyWatch v1 implementation plan
 
-Status: **draft, waiting for approval** (2026-11-19).
+Status: original plan of 2026-11-19, kept as a record. Where the code differs, the code and the
+other docs win (for example: server conversion is a fallback on every platform, and the web app
+became a full client, see §12 and [web.md](web.md)).
 Source of truth for goals: `CLAUDE.md`. This document records what the real environment looks like, the design decisions that follow from it, and the order of work.
 
 ---
@@ -219,3 +221,7 @@ already exist. Proposed instead: a small web companion served by `alwywatch-serv
 hostname: leaving soon + swipe triage, keep requests, Seerr search/requests, admin page, and a
 "Play" link that opens Jellyfin Web or Plex Web. Same sign-in (Jellyfin/Plex account), a few
 hundred KB, no extra hosting.
+
+**What was built instead (2026-11-21):** a full web client in Rust (Leptos, wasm) served by
+`alwywatch-server`, with its own player: direct play when the browser can, the server's HLS
+conversion otherwise. See [web.md](web.md).

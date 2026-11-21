@@ -62,7 +62,7 @@ pub fn router(state: Shared) -> Router {
         .with_state(state)
 }
 
-pub struct Error(StatusCode, String);
+pub struct Error(pub StatusCode, pub String);
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {

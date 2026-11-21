@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Runs the same checks as .forgejo/workflows/ci.yml locally.
-# Usage: scripts/ci.sh [rust|android|windows|server|bench|all]   (default: all; bench is opt-in)
+# Usage: scripts/ci.sh [rust|web|android|windows|server|bench|all]   (default: all; bench is opt-in)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 what="${1:-all}"
@@ -10,6 +10,20 @@ rust() {
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo test --workspace --locked
+}
+
+# Web app: clippy for the browser target (the rust job only checks it on the host), its tests,
+# then web/build.sh. wasm-bindgen-cli must equal the version pinned in web/Cargo.toml.
+web() {
+    local want
+    want=$(sed -n 's/^wasm-bindgen = "=\(.*\)"/\1/p' web/Cargo.toml)
+    rustup target add wasm32-unknown-unknown
+    if [[ "$(wasm-bindgen --version 2>/dev/null)" != "wasm-bindgen $want" ]]; then
+        cargo install --locked wasm-bindgen-cli --version "$want"
+    fi
+    cargo clippy -p alwywatch-web --target wasm32-unknown-unknown --locked -- -D warnings
+    cargo test -p alwywatch-web --locked
+    web/build.sh
 }
 
 android() {
@@ -40,10 +54,11 @@ server() {
 
 case "$what" in
     rust) rust ;;
+    web) web ;;
     android) android ;;
     windows) windows ;;
     server) server ;;
     bench) bench ;;
-    all) rust; android; windows; server ;;
+    all) rust; web; android; windows; server ;;
     *) echo "unknown target: $what" >&2; exit 2 ;;
 esac

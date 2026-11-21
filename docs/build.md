@@ -8,12 +8,14 @@
 | Android | JDK 21, Android SDK (compileSdk 37), NDK `29.0.14206865`, `cargo install cargo-ndk`, Rust targets `aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
 | Desktop (Linux) | Wayland or X11 dev libs (`libxkbcommon`, `fontconfig`); **libmpv** at run time (package `mpv`/`libmpv2`) |
 | Desktop (Windows, cross from Linux) | `cargo install cargo-xwin`, target `x86_64-pc-windows-msvc`, `makensis` (NSIS) and `7z` for the installer |
-| Server image | Docker |
+| Web | Rust target `wasm32-unknown-unknown`, `wasm-bindgen-cli` at the exact version pinned in `web/Cargo.toml` (`wasm-bindgen = "=…"`); optional `wasm-opt` (Binaryen) |
+| Server image | Docker (builds the web app too) |
 
 ## Checks (same as CI)
 
 ```sh
-scripts/ci.sh rust      # fmt --check, clippy -D warnings, tests
+scripts/ci.sh rust      # fmt --check, clippy -D warnings, tests (whole workspace: core, server, desktop, web on the host)
+scripts/ci.sh web       # web: clippy for wasm32, tests, web/build.sh
 scripts/ci.sh android   # ktlint + release APKs
 scripts/ci.sh windows   # cross-build alwywatch.exe
 scripts/ci.sh server    # Docker image
@@ -67,12 +69,24 @@ cargo build --release -p alwywatch-desktop     # target/release/alwywatch
 scripts/package.sh linux                       # dist/AlwyWatch-<v>-x86_64.AppImage
 scripts/package.sh windows                     # dist/AlwyWatch-<v>-setup.exe (bundles libmpv)
 ```
+`desktop/packaging/install.sh` installs a release build for the current user only
+(`~/.local/bin/alwywatch`, icon and app menu entry; libmpv from the system).
+
 The AppImage contains only AlwyWatch and uses the system libmpv, so the distribution's
 VA-API/VDPAU drivers do hardware decoding. The Windows installer is per-user (no admin) and
 bundles a pinned, checksum-verified `libmpv-2.dll` (override with `MPV_DLL=...`).
 
 Headless mode (CI, screenshots, timing): `ALWYWATCH_SCREENSHOT=out.png
 [ALWYWATCH_SCREENSHOT_AFTER_MS=3000] alwywatch`; `ALWYWATCH_TIMING=1` prints the first-frame time.
+
+## Web
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install --locked wasm-bindgen-cli --version <the pin in web/Cargo.toml>
+web/build.sh                                   # web/dist, served by alwywatch-server at /
+```
+See [web.md](web.md).
 
 ## Server
 

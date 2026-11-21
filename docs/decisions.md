@@ -12,7 +12,8 @@ then **small APK** (see CLAUDE.md). This file states why each one is here and wh
 | Desktop: Slint + libmpv (pure Rust) | ~25 MB idle RSS, first frame in ~25 ms, one binary | Compose Desktop (JVM: 200+ MB, slow start), Tauri/Electron (web engine RAM) |
 | mpv in its own window on desktop | Embedding needs per-platform GL interop; a separate window keeps HW decoding and passthrough exactly as mpv does them | Rendering mpv into a Slint texture (copies frames, breaks HDR passthrough) |
 | Cache-first SWR everywhere | Every screen renders from SQLite immediately and refreshes in the background | Network-first with spinners |
-| Direct play only, no server transcode | Owner's choice; quality and server load. Missing codecs are decoded on device (FFmpeg extension) | Transcode fallback by default (still possible: HLS module kept for the rare case) |
+| Direct play first, server conversion only as fallback | Owner's choice; quality and server load. Missing audio codecs are decoded on device (FFmpeg extension). The server converts only what the device cannot decode (on Android: HEVC/VP9/AV1 without a hardware decoder, or a decoder failure; on the web: what the browser cannot play) | Transcoding by default |
+| Web app in Rust (Leptos, wasm) served by the backend | Reuses the media, Seerr and keep clients as-is; no separate hosting; same-origin calls to the backend need no CORS | A separate JS/TS web client (second implementation of every client) |
 | Backend optional; every connection optional | The app is a general Plex/Jellyfin/Seerr client; the backend only adds "leaving soon"/keep and the Seerr bridge | Mandatory AlwyWatch accounts |
 | Keep resolution: forever > until watched > longest extension | Several people can keep the same item; one person removing theirs never deletes it for others | Last write wins |
 | Seerr bridge in the backend | Seerr serves one media server type; the bridge acts as each user via Seerr's own `X-API-User`, so Jellyfin users get requests without a second Seerr | Second Seerr instance (two queues, two Radarr/Sonarr configs) |
@@ -45,6 +46,9 @@ then **small APK** (see CLAUDE.md). This file states why each one is here and wh
 | `image` (jpeg/png/webp only) | desktop | Decode posters into Slint images, downscaled to the card size | AVIF/TIFF/etc. disabled |
 | `libloading` | desktop | Load libmpv at runtime: the binary starts without mpv installed and says so instead of failing to launch | No link-time mpv dependency |
 | `windows-sys` (Cryptography) | desktop (Windows) | DPAPI for token storage | Windows only. `keyring` rejected: pulls D-Bus/Secret Service on Linux; Linux uses a 0600 file in the user's data dir |
+| `leptos` 0.8 (csr), `leptos_router` | web | Fine-grained reactive UI rendered in the browser; real URLs | No server functions |
+| `wasm-bindgen` (pinned `=`), `wasm-bindgen-futures`, `js-sys`, `web-sys` | web | Browser APIs from Rust; the pin must equal the installed `wasm-bindgen-cli` | Only the `web-sys` features used |
+| `ring` | keep-service, server | X25519, HKDF, ChaCha20-Poly1305 for device transfer; already in the tree through rustls | Browser random source on wasm32 |
 | `wiremock`, `tempfile`, `tower` | tests only | Mock HTTP servers, temp dirs, router `oneshot` in server tests | Dev-dependencies |
 
 ## Android libraries
@@ -72,6 +76,12 @@ Compose loader with BlurHash placeholders: no second HTTP stack and cache), **Hi
 Rust), **tv-material** (see above), **Navigation-Compose** (a 60-line back-stack navigator with
 saved scroll state).
 
+## Web assets
+
+| Asset | Why | Notes |
+|---|---|---|
+| hls.js light 1.6.15 (Apache-2.0), vendored in `web/static/vendor` | HLS conversion in browsers without native HLS (all but Safari) | Loaded only when a conversion plays, from the same site |
+
 ## Build tooling
 
 | Tool | Why |
@@ -81,3 +91,4 @@ saved scroll state).
 | ktlint Gradle plugin | Kotlin style (CLAUDE.md) |
 | `androidx.baselineprofile` plugin | Generates and packages the Baseline Profile |
 | NSIS (Windows), appimagetool (Linux) | Installer formats the owner asked for (no Flatpak) |
+| `wasm-bindgen-cli`, optional `wasm-opt` | Web app: JS glue for the wasm module; size optimisation |
