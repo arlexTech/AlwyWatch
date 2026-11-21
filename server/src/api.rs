@@ -333,9 +333,14 @@ async fn transfer_poll(State(s): State<Shared>, Path(handle): Path<String>) -> R
 /// Signed in: only users of a served media server can approve transfers.
 async fn transfer_peer(
     State(s): State<Shared>,
-    Caller(_): Caller,
+    Caller(id): Caller,
     Path(code): Path<String>,
 ) -> Result<Json<keep_service::transfer::TransferPeer>, Error> {
+    // Every send starts by looking the code up here: a handful of tries per user is plenty,
+    // and stops someone from guessing (and spoiling) another person's pending transfer.
+    if !s.limits.transfer_codes.allow(&id.user_key) {
+        return Err(too_many());
+    }
     s.transfers.peer(&code).map(Json).map_err(transfer_error)
 }
 
@@ -345,6 +350,9 @@ async fn transfer_send(
     Path(code): Path<String>,
     Json(sealed): Json<keep_service::transfer::TransferSealed>,
 ) -> Result<StatusCode, Error> {
+    if !s.limits.transfer_codes.allow(&id.user_key) {
+        return Err(too_many());
+    }
     s.transfers.send(&code, sealed).map_err(transfer_error)?;
     eprintln!("[transfer] {} sent a device transfer", id.user_key);
     Ok(StatusCode::NO_CONTENT)
