@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +71,7 @@ import be.alwyapps.watch.ui.fadeEdges
 import be.alwyapps.watch.ui.logo
 import be.alwyapps.watch.ui.rememberSwr
 import be.alwyapps.watch.ui.subtitle
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /** Restores a list's scroll position across cold starts (stored in the core settings). */
@@ -631,23 +633,54 @@ private fun TvHome(
         val all = h?.let { it.continueWatching + it.latest.flatMap { r -> r.items } }.orEmpty()
         mutableStateOf(all.firstOrNull { remembered?.endsWith("|${it.id}") == true && it.backdrop() != null } ?: featured.firstOrNull())
     }
+    // The hero follows the focused card once focus rests: rapid ←/→ through a row costs no
+    // artwork decode or cross-fade per card (on a Chromecast that dropped to a few fps).
+    // A flow, not state read here: a focus move doesn't recompose the home at all.
+    val focused = remember { kotlinx.coroutines.flow.MutableStateFlow<Item?>(null) }
+    LaunchedEffect(focused) {
+        focused.collectLatest { f ->
+            if (f != null) {
+                kotlinx.coroutines.delay(300)
+                hero = f
+            }
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize().ambientGlow(hero?.ambient())) {
         val screenH = maxHeight
         // Artwork on the right two thirds, fading into the background on the left and bottom.
-        Crossfade(hero, Modifier.align(Alignment.TopEnd).fillMaxWidth().height(screenH * 0.78f), animationSpec = tween(350), label = "hero") { item ->
+        // Own drawing layers (here, the hero text and the rows): a moving row redraws itself,
+        // not the whole screen with the glow and the artwork.
+        Crossfade(
+            hero,
+            Modifier
+                .align(Alignment.TopEnd)
+                .fillMaxWidth()
+                .height(screenH * 0.78f)
+                .graphicsLayer(),
+            animationSpec = tween(350),
+            label = "hero",
+        ) { item ->
             if (item != null) {
                 // Faded to transparent (not darkened) so it melts into the ambient glow.
+                // 1280 px is plenty for artwork faded into the background (2560 before: four
+                // times the pixels, and it pushed posters out of the memory cache).
                 RemoteImage(
                     item.id,
                     item.backdrop(),
-                    1280.dp,
+                    640.dp,
                     Modifier.fillMaxSize().fadeEdges(bottomFrom = 0.4f, leftTo = 0.6f),
                     background = Color.Transparent,
                 )
             }
         }
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().height(screenH * 0.46f).padding(start = d.gutter, top = 36.dp, end = d.gutter)) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(screenH * 0.46f)
+                    .graphicsLayer()
+                    .padding(start = d.gutter, top = 36.dp, end = d.gutter),
+            ) {
                 Crossfade(hero, animationSpec = tween(250), label = "heroText") { item ->
                     if (item != null) {
                         Column(Modifier.fillMaxWidth(0.48f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -662,12 +695,12 @@ private fun TvHome(
             }
             // Focused row pinned just below the hero (room for its title).
             be.alwyapps.watch.ui.TvScrollSpec(leading = 58.dp) {
-                LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                LazyColumn(Modifier.fillMaxWidth().weight(1f).graphicsLayer()) {
                     error?.let { msg -> item(key = "error") { ErrorBanner(msg, reload) } }
                     if (h == null) {
                         items(2) { SkeletonRail() }
                     } else {
-                        item(key = "rails") { Column { Rails(h, { hero = it }) } }
+                        item(key = "rails") { Column { Rails(h, { focused.value = it }) } }
                     }
                     item { Spacer(Modifier.height(400.dp)) }
                 }

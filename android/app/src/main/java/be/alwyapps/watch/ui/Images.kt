@@ -35,7 +35,7 @@ import kotlin.math.pow
  * this decodes them at the displayed size into hardware bitmaps and keeps a small memory LRU.
  */
 object Images {
-    private val widths = intArrayOf(160, 240, 320, 480, 720, 1080, 1920)
+    private val widths = intArrayOf(160, 240, 320, 480, 720, 1080, 1280, 1920)
 
     fun bucket(px: Int): Int = widths.firstOrNull { it >= px } ?: widths.last()
 
@@ -68,8 +68,11 @@ object Images {
         val k = key(account, ref, px)
         memory.get(k)?.let { return it }
         val w = bucket(px).toUInt()
+        // The disk cache lookup is a core call (SQLite + file check): never on the main thread.
         val path =
-            core.cachedImage(account, itemId, ref, w) ?: runCatching { core.image(account, itemId, ref, w) }.getOrNull() ?: return null
+            withContext(decoder) { core.cachedImage(account, itemId, ref, w) }
+                ?: runCatching { core.image(account, itemId, ref, w) }.getOrNull()
+                ?: return null
         return withContext(decoder) {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(path, bounds)
@@ -142,7 +145,13 @@ fun RemoteImage(
     var bitmap by remember(ref?.path, px) {
         mutableStateOf(ref?.let { Images.cachedInMemory(Images.key(account, it, px)) })
     }
-    val placeholder = remember(ref?.blurhash) { ref?.blurhash?.let { BlurHash.decode(it, 24, 36) } }
+    // Placeholder only while the image isn't in memory, decoded off the main thread and cached
+    // (it was computed on the UI thread for every card that scrolled in).
+    val hash = ref?.blurhash.takeIf { bitmap == null }
+    var placeholder by remember(hash) { mutableStateOf(hash?.let { BlurHash.cached(it) }) }
+    if (hash != null && placeholder == null) {
+        LaunchedEffect(hash) { placeholder = BlurHash.decodeAsync(hash) }
+    }
     if (ref != null && bitmap == null) {
         LaunchedEffect(ref.path, px) { bitmap = Images.load(core, account, itemId, ref, px) }
     }
@@ -180,6 +189,16 @@ object BlurHash {
         val s = if (x <= 0.0031308f) x * 12.92f else 1.055f * x.pow(1 / 2.4f) - 0.055f
         return (s * 255 + 0.5f).toInt().coerceIn(0, 255)
     }
+
+    private val decoded = LruCache<String, ImageBitmap>(200)
+
+    fun cached(hash: String): ImageBitmap? = decoded.get(hash)
+
+    /** Decoded off the main thread (small: it is scaled up blurred anyway), then cached. */
+    suspend fun decodeAsync(hash: String): ImageBitmap? =
+        decoded.get(hash) ?: withContext(Dispatchers.Default) {
+            decode(hash, 16, 24)?.also { decoded.put(hash, it) }
+        }
 
     /** The image's average color (the hash's DC term): free ambient color for any artwork. */
     fun averageColor(hash: String?): androidx.compose.ui.graphics.Color? {

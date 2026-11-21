@@ -40,7 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -142,7 +141,9 @@ fun FocusCard(
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
-            }.then(if (focused && d.isTv && glow) Modifier.shadow(24.dp, shape, ambientColor = Color.White, spotColor = Color.White) else Modifier)
+            }
+            // TV focus: scale and a white border. (A 24 dp white shadow, redrawn on every frame of
+            // the scale animation, was too much for Chromecast-class GPUs.)
             .clip(shape)
             .then(if (focused && d.isTv) Modifier.border(2.5.dp, Color.White, shape) else Modifier)
             // Long press (touch, or holding OK on a remote): the item's menu.
@@ -485,6 +486,8 @@ fun Rail(
         LaunchedEffect(head) { if (rowState.firstVisibleItemIndex != 0) rowState.scrollToItem(0) }
         TvScrollSpec(leading = d.gutter) {
             LazyRow(
+                // Its own layer: scrolling this row doesn't redraw the rows around it.
+                Modifier.graphicsLayer(),
                 state = rowState,
                 contentPadding = PaddingValues(horizontal = d.gutter, vertical = if (d.isTv) 14.dp else 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
