@@ -24,6 +24,8 @@ struct Env {
     tautulli: MockServer,
     seerr: MockServer,
     state: Shared,
+    /// Data dir (custom avatars), removed with the environment.
+    _data: tempfile::TempDir,
 }
 
 async fn env() -> Env {
@@ -31,6 +33,10 @@ async fn env() -> Env {
 }
 
 async fn env_with(dry_run: bool) -> Env {
+    env_at(Db::open_in_memory().unwrap(), dry_run).await
+}
+
+async fn env_at(db: Db, dry_run: bool) -> Env {
     let seerr = MockServer::start().await;
     let (maint, jf, plextv, tautulli) = (
         MockServer::start().await,
@@ -67,9 +73,11 @@ async fn env_with(dry_run: bool) -> Env {
     let mut config = Config::parse(&toml).unwrap();
     config.secrets = Secrets::for_tests("jf-admin-key", "taut-key");
     config.dry_run = dry_run;
+    let data = tempfile::tempdir().unwrap();
+    config.data_dir = data.path().to_owned();
     let state = Arc::new(State::new(
         config,
-        Db::open_in_memory().unwrap(),
+        db,
         net::api_client("t").unwrap(),
         &plextv.uri(),
     ));
@@ -80,6 +88,7 @@ async fn env_with(dry_run: bool) -> Env {
         tautulli,
         seerr,
         state,
+        _data: data,
     };
     e.mount_maintainerr().await;
     e.mount_users().await;
@@ -218,6 +227,38 @@ impl Env {
             status,
             serde_json::from_slice(&bytes).unwrap_or(Value::Null),
         )
+    }
+}
+
+impl Env {
+    /// A raw body (pictures); `token` None: not signed in. Returns the headers too.
+    async fn call_raw(
+        &self,
+        method: &str,
+        uri: &str,
+        token: Option<&str>,
+        content_type: &str,
+        body: Vec<u8>,
+    ) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+        let mut req = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("content-type", content_type);
+        if let Some(t) = token {
+            req = req
+                .header(SERVER_HEADER, "jfsrv")
+                .header("authorization", format!("Bearer {t}"));
+        }
+        let res = crate::api::router(self.state.clone())
+            .oneshot(req.body(Body::from(body)).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let bytes = axum::body::to_bytes(res.into_body(), 1 << 21)
+            .await
+            .unwrap();
+        (status, headers, bytes.to_vec())
     }
 }
 
@@ -943,131 +984,472 @@ async fn admin_links_a_user_to_an_existing_seerr_user_without_creating_one() {
     );
 }
 
-#[tokio::test]
-async fn watch_together_between_a_jellyfin_and_a_plex_user() {
-    let e = env().await;
-    let movie = json!({"kind": "movie", "title": "Arrival", "year": 2016, "tmdb": "329865",
+fn arrival() -> Value {
+    json!({"kind": "movie", "title": "Arrival", "year": 2016, "tmdb": "329865",
         "imdb": null, "tvdb": null, "series_title": null, "series_tmdb": null,
-        "series_tvdb": null, "season": null, "episode": null});
-    let (s, a) = e
-        .call(
-            "POST",
-            "/v1/together",
-            "jfsrv",
-            "jf-bob",
-            Some(json!({"media": movie, "position_ms": 60000, "playing": false})),
+        "series_tvdb": null, "season": null, "episode": null})
+}
+
+const BOB: &str = "jellyfin:jfsrv:jb";
+const ALICE: &str = "jellyfin:jfsrv:ja";
+const FRIEND: &str = "plex:plexsrv:2";
+
+impl Env {
+    /// Signs these users in once, so the server knows them (people list, invitations).
+    async fn sign_in(&self, who: &[(&str, &str)]) {
+        for (server, token) in who {
+            assert_eq!(
+                self.call("GET", "/v1/me", server, token, None).await.0,
+                StatusCode::OK
+            );
+        }
+    }
+
+    /// Bob opens a lobby: (code, his member id).
+    async fn bob_lobby(&self) -> (String, String) {
+        let (s, a) = self
+            .call(
+                "POST",
+                "/v1/together",
+                "jfsrv",
+                "jf-bob",
+                Some(json!({"media": arrival()})),
+            )
+            .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(a["state"]["started"], false);
+        assert_eq!(a["state"]["playing"], false);
+        (
+            a["state"]["code"].as_str().unwrap().to_owned(),
+            a["member_id"].as_str().unwrap().to_owned(),
         )
+    }
+}
+
+#[tokio::test]
+async fn watch_together_rooms_are_private_and_joined_by_invitation() {
+    let e = Arc::new(env().await);
+    e.sign_in(&[("plexsrv", "px-friend"), ("jfsrv", "jf-alice")])
+        .await;
+    let (code, bob) = e.bob_lobby().await;
+    assert_eq!(code.len(), 6);
+    // Bob sees his lobby; nobody else sees anything, and a guessed code is "not found".
+    let (_, mine) = e.call("GET", "/v1/together", "jfsrv", "jf-bob", None).await;
+    assert_eq!(mine["rooms"][0]["code"], code.as_str());
+    assert_eq!(mine["rooms"][0]["hosting"], true);
+    let (s, theirs) = e
+        .call("GET", "/v1/together", "plexsrv", "px-friend", None)
         .await;
     assert_eq!(s, StatusCode::OK);
-    let code = a["state"]["code"].as_str().unwrap().to_owned();
-    assert_eq!(code.len(), 6);
-    // Only users of a served server see rooms or get in.
+    assert_eq!(theirs["rooms"], json!([]));
+    let version = theirs["version"].as_u64().unwrap();
+    for (method, uri, body) in [
+        ("POST", format!("/v1/together/{code}/join"), None),
+        (
+            "GET",
+            format!("/v1/together/{code}/wait?after=0&member={bob}"),
+            None,
+        ),
+        (
+            "PUT",
+            format!("/v1/together/{code}"),
+            Some(
+                json!({"member_id": bob, "playing": true, "position_ms": 0, "media": null, "started": true}),
+            ),
+        ),
+        (
+            "POST",
+            format!("/v1/together/{code}/invites"),
+            Some(json!({"member_id": bob, "user_keys": [ALICE]})),
+        ),
+        ("DELETE", format!("/v1/together/{code}/invites/me"), None),
+        ("DELETE", format!("/v1/together/{code}/members/{bob}"), None),
+    ] {
+        assert_eq!(
+            e.call(method, &uri, "plexsrv", "px-friend", body).await.0,
+            StatusCode::NOT_FOUND,
+            "{method} {uri}"
+        );
+    }
+    // Users of no served server get nothing at all.
     assert_eq!(
         e.call("GET", "/v1/together", "plexsrv", "px-stranger", None)
             .await
             .0,
         StatusCode::UNAUTHORIZED
     );
-    let (s, rooms) = e
-        .call("GET", "/v1/together", "plexsrv", "px-friend", None)
-        .await;
-    assert_eq!(s, StatusCode::OK);
-    assert_eq!(rooms[0]["code"], code.as_str());
-    assert_eq!(rooms[0]["mine"], false);
-    let knock = format!("/v1/together/{code}/knock");
-    assert_eq!(
-        e.call("POST", &knock, "plexsrv", "px-stranger", None)
+
+    // The friend's list long poll wakes when Bob invites them.
+    let poll = {
+        let e = e.clone();
+        tokio::spawn(async move {
+            e.call(
+                "GET",
+                &format!("/v1/together/wait?after={version}"),
+                "plexsrv",
+                "px-friend",
+                None,
+            )
             .await
-            .0,
-        StatusCode::UNAUTHORIZED
-    );
-    // The friend asks, Bob (host) accepts, the friend collects the seat.
-    let (s, k) = e.call("POST", &knock, "plexsrv", "px-friend", None).await;
-    assert_eq!(s, StatusCode::OK);
-    assert_eq!(k["status"], "waiting");
-    let req = k["request_id"].as_str().unwrap().to_owned();
-    let (s, _) = e
-        .call(
-            "POST",
-            &format!("/v1/together/{code}/requests/{req}"),
-            "plexsrv",
-            "px-friend",
-            Some(json!({"member_id": a["member_id"], "accept": true})),
-        )
-        .await;
-    assert_eq!(s, StatusCode::FORBIDDEN, "only the host answers");
+        })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let (s, st) = e
         .call(
             "POST",
-            &format!("/v1/together/{code}/requests/{req}"),
+            &format!("/v1/together/{code}/invites"),
             "jfsrv",
             "jf-bob",
-            Some(json!({"member_id": a["member_id"], "accept": true})),
+            Some(json!({"member_id": bob, "user_keys": [FRIEND]})),
         )
         .await;
     assert_eq!(s, StatusCode::OK);
-    assert_eq!(st["members"].as_array().unwrap().len(), 2);
-    let (s, k) = e
+    assert_eq!(st["invited"][0]["user_key"], FRIEND);
+    assert_eq!(st["invited"][0]["name"], "User 2");
+    let (s, list) = tokio::time::timeout(std::time::Duration::from_secs(5), poll)
+        .await
+        .expect("woken by the invitation")
+        .unwrap();
+    assert_eq!(s, StatusCode::OK);
+    assert_ne!(list["version"].as_u64().unwrap(), version);
+    let room = &list["rooms"][0];
+    assert_eq!(
+        (
+            &room["code"],
+            &room["invited"],
+            &room["mine"],
+            &room["host"]
+        ),
+        (&json!(code), &json!(true), &json!(false), &json!("bob"))
+    );
+
+    // Joining needs no approval.
+    let (s, f) = e
         .call(
-            "GET",
-            &format!("/v1/together/{code}/knock/{req}/wait"),
+            "POST",
+            &format!("/v1/together/{code}/join"),
             "plexsrv",
             "px-friend",
             None,
         )
         .await;
     assert_eq!(s, StatusCode::OK);
-    assert_eq!(k["status"], "accepted");
-    let b = k["joined"].clone();
-    assert_eq!(b["state"]["members"].as_array().unwrap().len(), 2);
-    assert_eq!(b["state"]["media"]["tmdb"], "329865");
-    // Bob plays: the friend's wait returns it at once.
-    let (s, _) = e
+    let friend = f["member_id"].as_str().unwrap().to_owned();
+    assert_eq!(f["state"]["members"].as_array().unwrap().len(), 2);
+    assert_eq!(f["state"]["invited"], json!([]));
+    assert_eq!(f["state"]["started"], false);
+    // Alice still sees nothing.
+    let (_, alice) = e
+        .call("GET", "/v1/together", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(alice["rooms"], json!([]));
+
+    // Lobby: the friend neither starts nor moves it.
+    let put = format!("/v1/together/{code}");
+    for started in [true, false] {
+        assert_eq!(
+            e.call(
+                "PUT",
+                &put,
+                "plexsrv",
+                "px-friend",
+                Some(json!({"member_id": friend, "playing": true, "position_ms": 9, "media": null, "started": started})),
+            )
+            .await
+            .0,
+            StatusCode::FORBIDDEN
+        );
+    }
+    // Bob's other device joins without an invitation.
+    let (s, b2) = e
         .call(
-            "PUT",
-            &format!("/v1/together/{code}"),
+            "POST",
+            &format!("/v1/together/{code}/join"),
             "jfsrv",
             "jf-bob",
-            Some(json!({"member_id": a["member_id"], "playing": true, "position_ms": 61000, "media": null})),
+            None,
         )
         .await;
     assert_eq!(s, StatusCode::OK);
-    let wait = format!(
-        "/v1/together/{code}/wait?after={}&member={}",
-        b["state"]["seq"],
-        b["member_id"].as_str().unwrap()
+    assert_eq!(b2["state"]["members"].as_array().unwrap().len(), 3);
+    // The host starts (from his second seat); the friend's wait returns it.
+    let seq = f["state"]["seq"].clone();
+    let (s, st) = e
+        .call(
+            "PUT",
+            &put,
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"member_id": b2["member_id"], "playing": true, "position_ms": 1000, "media": null, "started": true})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        (&st["started"], &st["playing"]),
+        (&json!(true), &json!(true))
     );
+    let wait = format!("/v1/together/{code}/wait?after={seq}&member={friend}");
     let (s, st) = e.call("GET", &wait, "plexsrv", "px-friend", None).await;
     assert_eq!(s, StatusCode::OK);
-    assert_eq!(st["playing"], true);
-    assert_eq!(st["by"], a["member_id"]);
+    assert_eq!(st["started"], true);
+    assert_eq!(st["by"], b2["member_id"]);
+    // Started: anyone plays; "started": false does not go back.
+    let (s, st) = e
+        .call(
+            "PUT",
+            &put,
+            "plexsrv",
+            "px-friend",
+            Some(json!({"member_id": friend, "playing": false, "position_ms": 2000, "media": null, "started": false})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        (&st["started"], &st["playing"]),
+        (&json!(true), &json!(false))
+    );
     // Nobody moves someone else's seat.
     assert_eq!(
         e.call(
             "PUT",
-            &format!("/v1/together/{code}"),
+            &put,
             "plexsrv",
             "px-friend",
-            Some(json!({"member_id": a["member_id"], "playing": false, "position_ms": 0, "media": null})),
+            Some(json!({"member_id": bob, "playing": true, "position_ms": 0, "media": null})),
         )
         .await
         .0,
         StatusCode::FORBIDDEN
     );
-    let leave = format!(
-        "/v1/together/{code}/members/{}",
-        b["member_id"].as_str().unwrap()
-    );
+
+    // Alice: invited then declines; invited again then withdrawn.
+    let invites = format!("/v1/together/{code}/invites");
+    let invite_alice = json!({"member_id": bob, "user_keys": [ALICE]});
+    e.call(
+        "POST",
+        &invites,
+        "jfsrv",
+        "jf-bob",
+        Some(invite_alice.clone()),
+    )
+    .await;
+    let (_, alice) = e
+        .call("GET", "/v1/together", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(alice["rooms"][0]["invited"], true);
+    assert_eq!(alice["rooms"][0]["started"], true);
     assert_eq!(
-        e.call("DELETE", &leave, "plexsrv", "px-friend", None)
+        e.call(
+            "DELETE",
+            &format!("{invites}/me"),
+            "jfsrv",
+            "jf-alice",
+            None
+        )
+        .await
+        .0,
+        StatusCode::NO_CONTENT
+    );
+    let (_, alice) = e
+        .call("GET", "/v1/together", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(alice["rooms"], json!([]));
+    e.call("POST", &invites, "jfsrv", "jf-bob", Some(invite_alice))
+        .await;
+    // Only the host withdraws.
+    let withdraw = format!("{invites}/{ALICE}?member={friend}");
+    assert_eq!(
+        e.call("DELETE", &withdraw, "plexsrv", "px-friend", None)
             .await
             .0,
+        StatusCode::FORBIDDEN
+    );
+    let (s, st) = e
+        .call(
+            "DELETE",
+            &format!("{invites}/{ALICE}?member={bob}"),
+            "jfsrv",
+            "jf-bob",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(st["invited"], json!([]));
+    assert_eq!(
+        e.call(
+            "POST",
+            &format!("/v1/together/{code}/join"),
+            "jfsrv",
+            "jf-alice",
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    // Unknown users cannot be invited; too many at once is refused.
+    assert_eq!(
+        e.call(
+            "POST",
+            &invites,
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"member_id": bob, "user_keys": ["jellyfin:jfsrv:nobody"]}))
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    let many: Vec<String> = (0..21).map(|i| format!("x{i}")).collect();
+    assert_eq!(
+        e.call(
+            "POST",
+            &invites,
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"member_id": bob, "user_keys": many}))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+
+    // The friend leaves: their wait is 404, the room is gone from their list.
+    assert_eq!(
+        e.call(
+            "DELETE",
+            &format!("/v1/together/{code}/members/{friend}"),
+            "plexsrv",
+            "px-friend",
+            None
+        )
+        .await
+        .0,
         StatusCode::NO_CONTENT
     );
     assert_eq!(
         e.call("GET", &wait, "plexsrv", "px-friend", None).await.0,
         StatusCode::NOT_FOUND
     );
+    let (_, list) = e
+        .call("GET", "/v1/together", "plexsrv", "px-friend", None)
+        .await;
+    assert_eq!(list["rooms"], json!([]));
+}
+
+#[tokio::test]
+async fn knocking_is_gone() {
+    let e = env().await;
+    let (code, bob) = e.bob_lobby().await;
+    for (method, uri) in [
+        ("POST", format!("/v1/together/{code}/knock")),
+        ("GET", format!("/v1/together/{code}/knock/abc/wait")),
+        ("DELETE", format!("/v1/together/{code}/knock/abc")),
+        ("POST", format!("/v1/together/{code}/requests/abc")),
+    ] {
+        let body = (method == "POST").then(|| json!({"member_id": bob, "accept": true}));
+        assert_eq!(
+            e.call(method, &uri, "jfsrv", "jf-bob", body).await.0,
+            StatusCode::NOT_FOUND,
+            "{method} {uri}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn people_list_puts_recent_partners_first_and_survives_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("keep.sqlite");
+    {
+        let e = env_at(Db::open(&db_path).unwrap(), false).await;
+        e.sign_in(&[
+            ("plexsrv", "px-friend"),
+            ("jfsrv", "jf-alice"),
+            ("plexsrv", "px-owner"),
+        ])
+        .await;
+        // Nobody watched with Bob yet: everyone but him, by name (case-insensitive).
+        let (s, people) = e
+            .call("GET", "/v1/together/people", "jfsrv", "jf-bob", None)
+            .await;
+        assert_eq!(s, StatusCode::OK);
+        let names: Vec<&str> = people
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["alice", "User 1", "User 2"]);
+        assert_eq!(people[0]["user_key"], ALICE);
+        assert_eq!(people[0]["server_name"], "HomeJelly");
+        assert_eq!(people[0]["last_together_at"], Value::Null);
+        // Bob watches with the friend: invited, joined, started (2 users in it).
+        let (code, bob) = e.bob_lobby().await;
+        e.call(
+            "POST",
+            &format!("/v1/together/{code}/invites"),
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"member_id": bob, "user_keys": [FRIEND, ALICE]})),
+        )
+        .await;
+        e.call(
+            "POST",
+            &format!("/v1/together/{code}/join"),
+            "plexsrv",
+            "px-friend",
+            None,
+        )
+        .await;
+        let (_, people) = e
+            .call("GET", "/v1/together/people", "jfsrv", "jf-bob", None)
+            .await;
+        assert_eq!(
+            people[2]["last_together_at"],
+            Value::Null,
+            "a lobby is not watching together"
+        );
+        let (s, _) = e
+            .call(
+                "PUT",
+                &format!("/v1/together/{code}"),
+                "jfsrv",
+                "jf-bob",
+                Some(json!({"member_id": bob, "playing": true, "position_ms": 0, "media": null, "started": true})),
+            )
+            .await;
+        assert_eq!(s, StatusCode::OK);
+    }
+    // Rooms are gone with the old process; the history stays.
+    let e = env_at(Db::open(&db_path).unwrap(), false).await;
+    let (_, people) = e
+        .call("GET", "/v1/together/people", "jfsrv", "jf-bob", None)
+        .await;
+    let order: Vec<&str> = people
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["user_key"].as_str().unwrap())
+        .collect();
+    assert_eq!(order, [FRIEND, ALICE, "plex:plexsrv:1"]);
+    assert!(people[0]["last_together_at"].as_i64().unwrap() > 0);
+    // Seen from the friend's side too; Alice (only invited) met nobody.
+    let (_, people) = e
+        .call("GET", "/v1/together/people", "plexsrv", "px-friend", None)
+        .await;
+    assert_eq!(people[0]["user_key"], BOB);
+    let (_, people) = e
+        .call("GET", "/v1/together/people", "jfsrv", "jf-alice", None)
+        .await;
+    assert!(
+        people
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["last_together_at"].is_null())
+    );
+    let (_, rooms) = e.call("GET", "/v1/together", "jfsrv", "jf-bob", None).await;
+    assert_eq!(rooms["rooms"], json!([]));
 }
 
 #[tokio::test]
@@ -1136,37 +1518,31 @@ async fn wrong_tokens_and_room_codes_get_a_pause() {
         StatusCode::TOO_MANY_REQUESTS
     );
 
-    // Join requests: thirty per user in ten minutes, then a pause; other users are not affected.
+    // Invitations: sixty per user in ten minutes, then a pause.
     let e = env().await;
-    for n in 0..30 {
-        let code = format!("/v1/together/{:06}/knock", 900_000 + n);
+    e.sign_in(&[("plexsrv", "px-friend")]).await;
+    let (code, bob) = e.bob_lobby().await;
+    let invite = format!("/v1/together/{code}/invites");
+    let body = json!({"member_id": bob, "user_keys": [FRIEND]});
+    for _ in 0..60 {
         assert_eq!(
-            e.call("POST", &code, "jfsrv", "jf-alice", None).await.0,
-            StatusCode::NOT_FOUND
+            e.call("POST", &invite, "jfsrv", "jf-bob", Some(body.clone()))
+                .await
+                .0,
+            StatusCode::OK
         );
     }
     assert_eq!(
-        e.call(
-            "POST",
-            "/v1/together/123456/knock",
-            "jfsrv",
-            "jf-alice",
-            None
-        )
-        .await
-        .0,
+        e.call("POST", &invite, "jfsrv", "jf-bob", Some(body.clone()))
+            .await
+            .0,
         StatusCode::TOO_MANY_REQUESTS
     );
+    // Other users are not affected (and, not in the room, it does not exist for them).
     assert_eq!(
-        e.call(
-            "POST",
-            "/v1/together/123456/knock",
-            "plexsrv",
-            "px-friend",
-            None
-        )
-        .await
-        .0,
+        e.call("POST", &invite, "jfsrv", "jf-alice", Some(body))
+            .await
+            .0,
         StatusCode::NOT_FOUND
     );
 }
@@ -1240,4 +1616,344 @@ async fn admin_sees_who_keeps_what_forever_and_the_overlaps() {
     );
     assert_eq!(st["items"][0]["key"], "100");
     assert_eq!(st["items"][0]["keepers"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn display_names_are_chosen_validated_and_shown_to_others() {
+    let e = env().await;
+    e.sign_in(&[("jfsrv", "jf-alice"), ("plexsrv", "px-friend")])
+        .await;
+    let (s, me) = e
+        .call(
+            "PUT",
+            "/v1/me/name",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"name": "  Bobby   the Builder "})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(me["name"], "Bobby the Builder");
+    assert_eq!(me["media_name"], "bob");
+    assert_eq!(me["name_is_custom"], true);
+    for bad in ["   ", "two\nlines", "tab\there", &"x".repeat(33)] {
+        let (s, err) = e
+            .call(
+                "PUT",
+                "/v1/me/name",
+                "jfsrv",
+                "jf-bob",
+                Some(json!({ "name": bad })),
+            )
+            .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{bad:?}");
+        assert!(err["error"].as_str().unwrap().starts_with("the name"));
+    }
+    // A later sign-in (the media server says "bob" again) keeps the chosen name.
+    let (_, me) = e.call("GET", "/v1/me", "jfsrv", "jf-bob", None).await;
+    assert_eq!(me["name"], "Bobby the Builder");
+    // Others see it: people list, room members, admin users (with the media-server name).
+    let (_, people) = e
+        .call("GET", "/v1/together/people", "plexsrv", "px-friend", None)
+        .await;
+    let bob = people
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["user_key"] == BOB)
+        .unwrap();
+    assert_eq!(
+        (&bob["name"], &bob["media_name"]),
+        (&json!("Bobby the Builder"), &json!("bob"))
+    );
+    let (_, room) = e
+        .call(
+            "POST",
+            "/v1/together",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"media": arrival()})),
+        )
+        .await;
+    assert_eq!(room["state"]["members"][0]["name"], "Bobby the Builder");
+    let (_, users) = e
+        .call("GET", "/v1/admin/users", "jfsrv", "jf-alice", None)
+        .await;
+    let bob = users
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|u| u["user_key"] == BOB)
+        .unwrap();
+    assert_eq!(
+        (&bob["name"], &bob["media_name"]),
+        (&json!("Bobby the Builder"), &json!("bob"))
+    );
+    // Reset.
+    let (s, me) = e
+        .call("DELETE", "/v1/me/name", "jfsrv", "jf-bob", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        (&me["name"], &me["name_is_custom"]),
+        (&json!("bob"), &json!(false))
+    );
+}
+
+const JPEG: &[u8] = &[
+    0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1,
+];
+const PNG: &[u8] = &[
+    0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D,
+];
+const WEBP: &[u8] = b"RIFF\x24\0\0\0WEBPVP8 ";
+
+#[tokio::test]
+async fn avatars_presets_uploads_and_who_sees_them() {
+    let e = env().await;
+    e.sign_in(&[("jfsrv", "jf-alice"), ("plexsrv", "px-friend")])
+        .await;
+    // Built-in.
+    let (s, me) = e
+        .call(
+            "PUT",
+            "/v1/me/avatar",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"preset": "p03"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        me["avatar"],
+        json!({"preset": "p03", "custom_version": null})
+    );
+    assert_eq!(
+        e.call(
+            "PUT",
+            "/v1/me/avatar",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"preset": "p99"}))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    // Custom pictures of each type come back byte-identical, with safe headers.
+    let url = format!("/v1/users/{}/avatar", BOB.replace(':', "%3A"));
+    let mut last = 0;
+    for (ct, bytes) in [
+        ("image/jpeg", JPEG),
+        ("image/png", PNG),
+        ("image/webp", WEBP),
+    ] {
+        let (s, _, me) = e
+            .call_raw("PUT", "/v1/me/avatar", Some("jf-bob"), ct, bytes.to_vec())
+            .await;
+        assert_eq!(s, StatusCode::OK, "{ct}");
+        let me: Value = serde_json::from_slice(&me).unwrap();
+        assert_eq!(me["avatar"]["preset"], Value::Null);
+        let v = me["avatar"]["custom_version"].as_u64().unwrap();
+        assert!(v > last, "the version bumps on every change");
+        last = v;
+        // Another user fetches it.
+        let (s, h, got) = e
+            .call_raw("GET", &format!("{url}?v={v}"), Some("jf-alice"), "", vec![])
+            .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(got, bytes);
+        assert_eq!(h["content-type"], ct);
+        assert_eq!(h["cache-control"], "private, max-age=31536000, immutable");
+        assert_eq!(h["x-content-type-options"], "nosniff");
+        assert_eq!(h["content-security-policy"], "default-src 'none'");
+    }
+    // Not signed in: nothing.
+    assert_eq!(
+        e.call_raw("GET", &url, None, "", vec![]).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    // Lies about the type, other types, too big.
+    for (ct, bytes, want) in [
+        ("image/png", JPEG.to_vec(), StatusCode::BAD_REQUEST),
+        (
+            "image/webp",
+            b"RIFF\0\0\0\0WAVEfmt ".to_vec(),
+            StatusCode::BAD_REQUEST,
+        ),
+        ("image/gif", b"GIF89a....".to_vec(), StatusCode::BAD_REQUEST),
+        ("text/html", b"<script>".to_vec(), StatusCode::BAD_REQUEST),
+        (
+            "image/jpeg",
+            [JPEG, &vec![0u8; 512 * 1024]].concat(),
+            StatusCode::PAYLOAD_TOO_LARGE,
+        ),
+    ] {
+        assert_eq!(
+            e.call_raw("PUT", "/v1/me/avatar", Some("jf-bob"), ct, bytes)
+                .await
+                .0,
+            want,
+            "{ct}"
+        );
+    }
+    // The last good picture is still there; it shows next to Bob's name for others.
+    let (_, people) = e
+        .call("GET", "/v1/together/people", "plexsrv", "px-friend", None)
+        .await;
+    let bob = people
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["user_key"] == BOB)
+        .unwrap();
+    assert_eq!(bob["avatar"]["custom_version"], json!(last));
+    let (_, room) = e
+        .call(
+            "POST",
+            "/v1/together",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"media": arrival()})),
+        )
+        .await;
+    assert_eq!(
+        room["state"]["members"][0]["avatar"]["custom_version"],
+        json!(last)
+    );
+    let (_, list) = e.call("GET", "/v1/together", "jfsrv", "jf-bob", None).await;
+    assert_eq!(
+        list["rooms"][0]["host_avatar"]["custom_version"],
+        json!(last)
+    );
+    let (_, users) = e
+        .call("GET", "/v1/admin/users", "jfsrv", "jf-alice", None)
+        .await;
+    assert!(
+        users
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|u| u["user_key"] == BOB && u["avatar"]["custom_version"] == json!(last))
+    );
+    // Removed: back to the default, the picture is gone.
+    let (s, me) = e
+        .call("DELETE", "/v1/me/avatar", "jfsrv", "jf-bob", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        me["avatar"],
+        json!({"preset": null, "custom_version": null})
+    );
+    assert_eq!(
+        e.call_raw("GET", &url, Some("jf-alice"), "", vec![])
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn profile_changes_are_rate_limited() {
+    let e = env().await;
+    for _ in 0..20 {
+        assert_eq!(
+            e.call(
+                "PUT",
+                "/v1/me/avatar",
+                "jfsrv",
+                "jf-bob",
+                Some(json!({"preset": "p01"}))
+            )
+            .await
+            .0,
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        e.call_raw(
+            "PUT",
+            "/v1/me/avatar",
+            Some("jf-bob"),
+            "image/jpeg",
+            JPEG.to_vec()
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        e.call(
+            "PUT",
+            "/v1/me/name",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"name": "B"}))
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    // Someone else is not affected.
+    assert_eq!(
+        e.call(
+            "PUT",
+            "/v1/me/name",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"name": "Al"}))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn the_welcome_step_is_once_per_account() {
+    let e = env().await;
+    let (_, me) = e.call("GET", "/v1/me", "jfsrv", "jf-bob", None).await;
+    assert_eq!(me["profile_set"], false);
+    // A name or an avatar alone does not end it.
+    e.call(
+        "PUT",
+        "/v1/me/name",
+        "jfsrv",
+        "jf-bob",
+        Some(json!({"name": "Bobby"})),
+    )
+    .await;
+    let (_, me) = e
+        .call(
+            "PUT",
+            "/v1/me/avatar",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"preset": "p02"})),
+        )
+        .await;
+    assert_eq!(me["profile_set"], false);
+    for _ in 0..2 {
+        let (s, me) = e
+            .call("POST", "/v1/me/profile-done", "jfsrv", "jf-bob", None)
+            .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(me["profile_set"], true);
+    }
+    // Bob's TV (another token of the same Jellyfin user) does not ask again.
+    Mock::given(path("/Users/Me"))
+        .and(header_regex("authorization", "Token=\"jf-bob-tv\"$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"Id": "jb", "Name": "bob", "Policy": {"IsAdministrator": false}}),
+        ))
+        .with_priority(1)
+        .mount(&e.jf)
+        .await;
+    let (s, me) = e.call("GET", "/v1/me", "jfsrv", "jf-bob-tv", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(me["profile_set"], true);
+    assert_eq!(me["name"], "Bobby");
+    // Others start without it.
+    let (_, me) = e.call("GET", "/v1/me", "jfsrv", "jf-alice", None).await;
+    assert_eq!(me["profile_set"], false);
 }

@@ -199,7 +199,7 @@ Protocol: [keep-protocol.md](keep-protocol.md).
 | `keep_servers(url)` | Public allow-list, to offer servers without typing URLs |
 | `keep_set_preset(url)`, `keep_clear_preset()`, `keep_onboard(account, token)` | Add-server flow: the picked AlwyWatch server is connected right after sign-in, with Seerr through it |
 | `keep_connect(url, account, token)`, `keep_activate(token)`, `keep_connection()`, `keep_active()`, `keep_disconnect()` | `token`: Jellyfin token or plex.tv account token |
-| `keep_me()` | Rights, admin flag |
+| `keep_me()` | Rights, admin flag, display name, avatar, `profile_set` |
 | `cached_leaving_soon` / `refresh_leaving_soon(force)`, `keep_triage(limit)` | Most urgent first; triage = not voted yet |
 | `keep_vote(key, VoteRequest)`, `keep_unvote(key)` | Patch the cached list in place |
 | `keep_due_reminders(now)` | "Keep until watched" reminders due now (local notifications) |
@@ -209,12 +209,31 @@ Protocol: [keep-protocol.md](keep-protocol.md).
 
 ## Watch together
 
-`together_create(account, item, position_ms, playing)`, `together_rooms()`, `together_knock(code)`,
-`together_knock_wait(code, request)`, `together_knock_cancel(code, request)`,
-`together_answer(code, request, member, accept)`, `together_update(...)`, `together_wait(code,
-member, after)`, `together_leave(code, member)`: thin wrappers over the
-[protocol](keep-protocol.md#watch-together). `together_find(account_ids, media)` finds the room's
-title on the first of these accounts that has it (by TMDB/IMDb/TVDB id, season and episode).
+Private rooms that start as a lobby, with invitations ([protocol](keep-protocol.md#watch-together),
+app flows: [together-apps.md](together-apps.md)):
+
+| Function | Notes |
+|---|---|
+| `together_create(account, item) -> TogetherJoined` | A lobby with this title, the caller its host (nothing plays) |
+| `together_rooms() -> TogetherRooms`, `together_rooms_wait(after_version) -> TogetherRooms` | My rooms and invitations; the wait is the invitation channel (~25 s long poll) |
+| `together_people() -> [TogetherPerson]` | Who can be invited: recent partners first, then by name |
+| `together_invite(code, member, user_keys) -> TogetherState`, `together_uninvite(code, member, user_key)` | Host only |
+| `together_join(code) -> TogetherJoined`, `together_decline(code)` | Invited user (or my other device for join) |
+| `together_start(code, member, position_ms) -> TogetherState` | Host: starts the lobby, playing |
+| `together_update(code, member, playing, position_ms, account?, item?)` | Play/pause/seek/new title (lobby: host only, title) |
+| `together_wait(code, member, after_seq)`, `together_leave(code, member)` | Long poll + heartbeat; leave for good |
+| `together_find(account_ids, media) -> TogetherMatch?` | The room's title on the first account that has it (TMDB/IMDb/TVDB, season, episode) |
+| `together_position(state, received_at_ms, now_ms)`, `together_is_host(state, member)` | Pure helpers |
+
+## AlwyWatch profile
+
+| Function | Notes |
+|---|---|
+| `keep_set_display_name(name)`, `keep_reset_display_name()` | → `Me`; check first with `display_name_problem(name)` |
+| `keep_set_avatar_preset(id)`, `keep_upload_avatar(bytes, content_type)`, `keep_remove_avatar()` | → `Me` |
+| `keep_avatar_request(user_key, version) -> HttpRequest` | URL + sign-in headers of a custom avatar; cache by (user_key, version) |
+| `keep_mark_profile_set()` | → `Me`; ends the one-time welcome step for the account |
+| `avatar_presets()`, `avatar_default_color(name)`, `avatar_initial(name)` | Draw built-in and default avatars ([table](keep-protocol.md#built-in-avatars)) |
 
 ## Device transfer and setup copy
 

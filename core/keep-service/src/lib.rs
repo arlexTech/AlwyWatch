@@ -9,8 +9,11 @@
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!();
 
+pub mod profile;
 pub mod together;
 pub mod transfer;
+
+pub use profile::{Avatar, AvatarChoice, AvatarPreset, DisplayNameRequest};
 
 use net::Result;
 use net::reqwest::{Client, Method, RequestBuilder};
@@ -159,7 +162,20 @@ impl Default for Rights {
 record! {
     pub struct Me {
         pub user_key: String,
+        /// The name shown to others: the chosen display name, else the media-server name.
         pub name: String,
+        /// The name from the media server (offer "Reset to <media_name>" when `name_is_custom`).
+        #[serde(default)]
+        pub media_name: String,
+        /// A display name was chosen (`PUT /v1/me/name`).
+        #[serde(default)]
+        pub name_is_custom: bool,
+        #[serde(default)]
+        pub avatar: Avatar,
+        /// The one-time welcome step (name + avatar) was done or skipped on some device: while
+        /// false, apps offer it (see `docs/profile-apps.md`).
+        #[serde(default)]
+        pub profile_set: bool,
         pub server_id: String,
         pub is_admin: bool,
         pub rights: Rights,
@@ -170,7 +186,13 @@ record! {
 record! {
     pub struct AdminUser {
         pub user_key: String,
+        /// Display name (chosen, else the media-server name).
         pub name: String,
+        /// The media-server name (names are not unique: show it next to `name`).
+        #[serde(default)]
+        pub media_name: String,
+        #[serde(default)]
+        pub avatar: Avatar,
         pub server_id: String,
         pub is_admin: bool,
         pub rights: Rights,
@@ -207,7 +229,13 @@ record! {
 record! {
     pub struct ForeverPerson {
         pub user_key: String,
+        /// Display name (chosen, else the media-server name).
         pub name: String,
+        /// The media-server name, shown next to `name`.
+        #[serde(default)]
+        pub media_name: String,
+        #[serde(default)]
+        pub avatar: Avatar,
         pub count: u32,
         /// Also kept forever by someone else.
         pub shared: u32,
@@ -371,7 +399,8 @@ impl KeepClient {
         Ok(())
     }
 
-    /// Watch together: opens a room (the caller is its first member).
+    /// Watch together: opens a lobby with this title (the caller is its host; nothing plays
+    /// until [`KeepClient::together_start`]).
     pub async fn together_create(
         &self,
         create: &together::TogetherCreate,
@@ -379,74 +408,81 @@ impl KeepClient {
         net::send_json(self.req(Method::POST, "/together").json(create)).await
     }
 
-    /// Watch together: the rooms open on this server.
-    pub async fn together_rooms(&self) -> Result<Vec<together::TogetherRoom>> {
+    /// Watch together: my rooms and the rooms I am invited to (nobody sees other rooms).
+    pub async fn together_rooms(&self) -> Result<together::TogetherRooms> {
         net::send_json(self.req(Method::GET, "/together")).await
     }
 
-    /// Asks the room's host to join.
-    pub async fn together_knock(&self, code: &str) -> Result<together::TogetherKnockState> {
-        net::send_json(self.req(
-            Method::POST,
-            &format!("/together/{}/knock", net::percent_encode(code)),
-        ))
-        .await
-    }
-
-    /// The request once the host answered, or after about 25 s (a long poll).
-    pub async fn together_knock_wait(
-        &self,
-        code: &str,
-        request: &str,
-    ) -> Result<together::TogetherKnockState> {
+    /// My rooms and invitations once their `version` differs from `after`, or after about 25 s
+    /// (a long poll: call it in a loop with the last `version` to learn about invitations).
+    pub async fn together_rooms_wait(&self, after: u64) -> Result<together::TogetherRooms> {
         net::send_json(
-            self.req(
-                Method::GET,
-                &format!(
-                    "/together/{}/knock/{}/wait",
-                    net::percent_encode(code),
-                    net::percent_encode(request)
-                ),
-            )
-            .timeout(std::time::Duration::from_secs(together::WAIT_SECS + 15)),
+            self.req(Method::GET, &format!("/together/wait?after={after}"))
+                .timeout(std::time::Duration::from_secs(together::WAIT_SECS + 15)),
         )
         .await
     }
 
-    pub async fn together_knock_cancel(&self, code: &str, request: &str) -> Result<()> {
-        net::send(self.req(
+    /// Everyone I can invite: recent watch-together partners first, then by name.
+    pub async fn together_people(&self) -> Result<Vec<together::TogetherPerson>> {
+        net::send_json(self.req(Method::GET, "/together/people")).await
+    }
+
+    /// The host invites people to the room.
+    pub async fn together_invite(
+        &self,
+        code: &str,
+        invite: &together::TogetherInvite,
+    ) -> Result<together::TogetherState> {
+        net::send_json(
+            self.req(
+                Method::POST,
+                &format!("/together/{}/invites", net::percent_encode(code)),
+            )
+            .json(invite),
+        )
+        .await
+    }
+
+    /// The host withdraws an invitation (`member` is one of the host's member ids).
+    pub async fn together_uninvite(
+        &self,
+        code: &str,
+        member: &str,
+        user_key: &str,
+    ) -> Result<together::TogetherState> {
+        net::send_json(self.req(
             Method::DELETE,
             &format!(
-                "/together/{}/knock/{}",
+                "/together/{}/invites/{}?member={}",
                 net::percent_encode(code),
-                net::percent_encode(request)
+                net::percent_encode(user_key),
+                net::percent_encode(member)
             ),
+        ))
+        .await
+    }
+
+    /// An invited user says "not now": the invitation goes away.
+    pub async fn together_decline(&self, code: &str) -> Result<()> {
+        net::send(self.req(
+            Method::DELETE,
+            &format!("/together/{}/invites/me", net::percent_encode(code)),
         ))
         .await?;
         Ok(())
     }
 
-    /// The host accepts or declines a join request.
-    pub async fn together_answer(
-        &self,
-        code: &str,
-        request: &str,
-        answer: &together::TogetherAnswer,
-    ) -> Result<together::TogetherState> {
-        net::send_json(
-            self.req(
-                Method::POST,
-                &format!(
-                    "/together/{}/requests/{}",
-                    net::percent_encode(code),
-                    net::percent_encode(request)
-                ),
-            )
-            .json(answer),
-        )
+    /// Takes a seat in a room I am invited to (or already in on another device).
+    pub async fn together_join(&self, code: &str) -> Result<together::TogetherJoined> {
+        net::send_json(self.req(
+            Method::POST,
+            &format!("/together/{}/join", net::percent_encode(code)),
+        ))
         .await
     }
 
+    /// Play/pause/seek, a new title, or (host, `started: true`) the start of a lobby.
     pub async fn together_update(
         &self,
         code: &str,
@@ -462,8 +498,28 @@ impl KeepClient {
         .await
     }
 
+    /// The host starts the lobby: playing from `position_ms` for everyone.
+    pub async fn together_start(
+        &self,
+        code: &str,
+        member: &str,
+        position_ms: u64,
+    ) -> Result<together::TogetherState> {
+        self.together_update(
+            code,
+            &together::TogetherUpdate {
+                member_id: member.to_owned(),
+                playing: true,
+                position_ms,
+                media: None,
+                started: true,
+            },
+        )
+        .await
+    }
+
     /// The room once it changed past `after`, or after about 25 s (a long poll: give the
-    /// request a longer timeout).
+    /// request a longer timeout). It is also the member's heartbeat.
     pub async fn together_wait(
         &self,
         code: &str,
@@ -484,6 +540,8 @@ impl KeepClient {
         .await
     }
 
+    /// Leaves the room for good (rejoining needs a new invitation unless another of my
+    /// devices is still in it).
     pub async fn together_leave(&self, code: &str, member: &str) -> Result<()> {
         net::send(self.req(
             Method::DELETE,
@@ -530,6 +588,67 @@ impl KeepClient {
     ) -> Result<()> {
         net::send(self.req(Method::PUT, "/me/settings").json(values)).await?;
         Ok(())
+    }
+
+    /// Chooses my display name (validated by the server like
+    /// [`profile::clean_display_name`]); returns my updated profile.
+    pub async fn set_display_name(&self, name: &str) -> Result<Me> {
+        net::send_json(self.req(Method::PUT, "/me/name").json(&DisplayNameRequest {
+            name: name.to_owned(),
+        }))
+        .await
+    }
+
+    /// Ends the one-time welcome step for this account (Continue or Skip); idempotent.
+    pub async fn mark_profile_set(&self) -> Result<Me> {
+        net::send_json(self.req(Method::POST, "/me/profile-done")).await
+    }
+
+    /// Back to my media-server name.
+    pub async fn reset_display_name(&self) -> Result<Me> {
+        net::send_json(self.req(Method::DELETE, "/me/name")).await
+    }
+
+    /// Chooses a built-in avatar (an id of [`profile::avatar_presets`]).
+    pub async fn set_avatar_preset(&self, preset: &str) -> Result<Me> {
+        net::send_json(self.req(Method::PUT, "/me/avatar").json(&AvatarChoice {
+            preset: preset.to_owned(),
+        }))
+        .await
+    }
+
+    /// Uploads my custom avatar: a square picture (512×512 at most, 512 KiB at most) of
+    /// `content_type` `image/jpeg`, `image/png` or `image/webp`.
+    pub async fn upload_avatar(&self, bytes: Vec<u8>, content_type: &str) -> Result<Me> {
+        net::send_json(
+            self.req(Method::PUT, "/me/avatar")
+                .header("Content-Type", content_type)
+                .body(bytes),
+        )
+        .await
+    }
+
+    /// Back to the default avatar (my initial on a colour).
+    pub async fn remove_avatar(&self) -> Result<Me> {
+        net::send_json(self.req(Method::DELETE, "/me/avatar")).await
+    }
+
+    /// URL of a user's custom avatar (`Avatar::custom_version`); fetch it with
+    /// [`KeepClient::auth_headers`] (it is not public).
+    pub fn avatar_url(&self, user_key: &str, version: u32) -> String {
+        format!(
+            "{}/v1/users/{}/avatar?v={version}",
+            self.base,
+            net::percent_encode(user_key)
+        )
+    }
+
+    /// The headers every signed-in call sends (name, value): for fetching avatars.
+    pub fn auth_headers(&self) -> Vec<(String, String)> {
+        vec![
+            ("Authorization".into(), format!("Bearer {}", self.token)),
+            (SERVER_HEADER.into(), self.server_id.clone()),
+        ]
     }
 
     pub async fn leaving_soon(&self) -> Result<Vec<LeavingItem>> {

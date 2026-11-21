@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
-use keep_service::{AdminUser, MyVote, Rights, VoteCounts, VoteKind};
+use keep_service::{AdminUser, Avatar, MyVote, Rights, VoteCounts, VoteKind};
 use rusqlite::{Connection, OptionalExtension, params};
 
 pub fn now() -> i64 {
@@ -19,7 +19,9 @@ PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;
 CREATE TABLE IF NOT EXISTS users (
     user_key TEXT PRIMARY KEY, name TEXT NOT NULL, server_id TEXT NOT NULL,
-    is_admin INTEGER NOT NULL DEFAULT 0, last_seen INTEGER NOT NULL
+    is_admin INTEGER NOT NULL DEFAULT 0, last_seen INTEGER NOT NULL,
+    custom_name TEXT, avatar_preset TEXT, avatar_type TEXT,
+    avatar_version INTEGER NOT NULL DEFAULT 0, profile_set INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS rights (
     user_key TEXT PRIMARY KEY, can_keep_forever INTEGER NOT NULL,
@@ -47,11 +49,73 @@ CREATE TABLE IF NOT EXISTS settings (
     user_key TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
     PRIMARY KEY (user_key, key)
 );
+CREATE TABLE IF NOT EXISTS together_pairs (
+    a TEXT NOT NULL, b TEXT NOT NULL, last_at INTEGER NOT NULL,
+    PRIMARY KEY (a, b)
+);
 CREATE TABLE IF NOT EXISTS log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, actor TEXT NOT NULL,
     action TEXT NOT NULL, detail TEXT NOT NULL
 );
 ";
+
+/// Columns added after the first release (older databases get them on open).
+const ADDED_COLUMNS: [(&str, &str, &str); 5] = [
+    ("users", "custom_name", "TEXT"),
+    ("users", "avatar_preset", "TEXT"),
+    ("users", "avatar_type", "TEXT"),
+    ("users", "avatar_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("users", "profile_set", "INTEGER NOT NULL DEFAULT 0"),
+];
+
+fn migrate(c: &Connection) -> rusqlite::Result<()> {
+    for (table, column, ty) in ADDED_COLUMNS {
+        let has: bool = c.query_row(
+            &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+            [column],
+            |r| r.get::<_, i64>(0).map(|n| n > 0),
+        )?;
+        if !has {
+            c.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {ty}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Display name (chosen, else the media-server one) and avatar, as SQL over `users u`.
+const PROFILE_COLS: &str =
+    "COALESCE(u.custom_name, u.name), u.name, u.avatar_preset, u.avatar_type, u.avatar_version,
+     u.custom_name IS NOT NULL, u.profile_set";
+
+/// A user's public profile (`PROFILE_COLS`).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Profile {
+    pub name: String,
+    pub media_name: String,
+    pub name_is_custom: bool,
+    pub avatar: Avatar,
+    /// The one-time welcome step was done (or skipped).
+    pub profile_set: bool,
+}
+
+/// Reads `PROFILE_COLS` starting at column `at`.
+fn row_profile(r: &rusqlite::Row<'_>, at: usize) -> rusqlite::Result<Profile> {
+    let name: String = r.get(at)?;
+    let media_name: String = r.get(at + 1)?;
+    let preset: Option<String> = r.get(at + 2)?;
+    let custom: Option<String> = r.get(at + 3)?;
+    let version: u32 = r.get(at + 4)?;
+    Ok(Profile {
+        name_is_custom: r.get(at + 5)?,
+        profile_set: r.get(at + 6)?,
+        name,
+        media_name,
+        avatar: Avatar {
+            preset: if custom.is_some() { None } else { preset },
+            custom_version: custom.map(|_| version),
+        },
+    })
+}
 
 fn kind_str(k: VoteKind) -> &'static str {
     match k {
@@ -139,6 +203,7 @@ impl Db {
         }
         let c = Connection::open(path)?;
         c.execute_batch(SCHEMA)?;
+        migrate(&c)?;
         Ok(Self(Mutex::new(c)))
     }
 
@@ -146,6 +211,7 @@ impl Db {
     pub fn open_in_memory() -> rusqlite::Result<Self> {
         let c = Connection::open_in_memory()?;
         c.execute_batch(SCHEMA)?;
+        migrate(&c)?;
         Ok(Self(Mutex::new(c)))
     }
 
@@ -186,19 +252,78 @@ impl Db {
 
     // ----- users and rights -----------------------------------------------------------------
 
+    /// Notes a sign-in (`name` is the media-server name; a chosen display name stays) and
+    /// returns the user's profile.
     pub fn touch_user(
         &self,
         user_key: &str,
         name: &str,
         server_id: &str,
         is_admin: bool,
-    ) -> rusqlite::Result<()> {
+    ) -> rusqlite::Result<Profile> {
         self.c().execute(
             "INSERT INTO users(user_key, name, server_id, is_admin, last_seen) VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(user_key) DO UPDATE SET name = excluded.name, is_admin = excluded.is_admin, last_seen = excluded.last_seen",
             params![user_key, name, server_id, is_admin, now()],
         )?;
+        Ok(self.profile(user_key)?.unwrap_or_default())
+    }
+
+    pub fn profile(&self, user_key: &str) -> rusqlite::Result<Option<Profile>> {
+        self.c()
+            .query_row(
+                &format!("SELECT {PROFILE_COLS} FROM users u WHERE u.user_key = ?1"),
+                [user_key],
+                |r| row_profile(r, 0),
+            )
+            .optional()
+    }
+
+    /// The one-time profile step is done (idempotent).
+    pub fn mark_profile_set(&self, user_key: &str) -> rusqlite::Result<()> {
+        self.c().execute(
+            "UPDATE users SET profile_set = 1 WHERE user_key = ?1",
+            [user_key],
+        )?;
         Ok(())
+    }
+
+    /// Sets (Some) or clears (None) the chosen display name.
+    pub fn set_custom_name(&self, user_key: &str, name: Option<&str>) -> rusqlite::Result<()> {
+        self.c().execute(
+            "UPDATE users SET custom_name = ?2 WHERE user_key = ?1",
+            params![user_key, name],
+        )?;
+        Ok(())
+    }
+
+    /// A built-in avatar (Some), a custom picture of this type (`custom`), or the default
+    /// (both None). Every change bumps the version.
+    pub fn set_avatar(
+        &self,
+        user_key: &str,
+        preset: Option<&str>,
+        custom: Option<&str>,
+    ) -> rusqlite::Result<()> {
+        self.c().execute(
+            "UPDATE users SET avatar_preset = ?2, avatar_type = ?3, avatar_version = avatar_version + 1
+             WHERE user_key = ?1",
+            params![user_key, preset, custom],
+        )?;
+        Ok(())
+    }
+
+    /// The custom avatar's content type and version, if any.
+    pub fn avatar_custom(&self, user_key: &str) -> rusqlite::Result<Option<(String, u32)>> {
+        Ok(self
+            .c()
+            .query_row(
+                "SELECT avatar_type, avatar_version FROM users WHERE user_key = ?1",
+                [user_key],
+                |r| Ok((r.get::<_, Option<String>>(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .and_then(|(t, v)| t.map(|t| (t, v))))
     }
 
     pub fn rights(&self, user_key: &str) -> rusqlite::Result<Rights> {
@@ -272,24 +397,33 @@ impl Db {
     }
 
     pub fn users(&self) -> rusqlite::Result<Vec<AdminUser>> {
-        let rows: Vec<(String, String, String, bool, i64)> = {
+        let rows: Vec<(String, String, bool, i64, Profile)> = {
             let c = self.c();
-            let mut st = c.prepare(
-                "SELECT user_key, name, server_id, is_admin, last_seen FROM users ORDER BY name",
-            )?;
+            let mut st = c.prepare(&format!(
+                "SELECT u.user_key, u.server_id, u.is_admin, u.last_seen, {PROFILE_COLS} FROM users u
+                 ORDER BY COALESCE(u.custom_name, u.name)"
+            ))?;
             st.query_map([], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    row_profile(r, 4)?,
+                ))
             })?
             .collect::<rusqlite::Result<_>>()?
         };
         rows.into_iter()
-            .map(|(k, name, server_id, is_admin, last_seen)| {
+            .map(|(k, server_id, is_admin, last_seen, p)| {
                 Ok(AdminUser {
                     rights: self.rights(&k)?,
                     forever_count: self.forever_count(&k)?,
                     seerr_user_id: self.seerr_link(&k)?,
                     user_key: k,
-                    name,
+                    name: p.name,
+                    media_name: p.media_name,
+                    avatar: p.avatar,
                     server_id,
                     is_admin,
                     last_seen,
@@ -328,6 +462,55 @@ impl Db {
             )
             .optional()?
             .is_some())
+    }
+
+    /// A known user's profile and server (to invite them).
+    pub fn user_profile(&self, user_key: &str) -> rusqlite::Result<Option<(Profile, String)>> {
+        self.c()
+            .query_row(
+                &format!("SELECT {PROFILE_COLS}, u.server_id FROM users u WHERE u.user_key = ?1"),
+                [user_key],
+                |r| Ok((row_profile(r, 0)?, r.get(7)?)),
+            )
+            .optional()
+    }
+
+    // ----- watch together history -----------------------------------------------------------
+
+    /// Notes that these pairs of users (each `(a, b)` with `a < b`) were just in a started
+    /// room together.
+    pub fn record_together(&self, pairs: &[(String, String)], at: i64) -> rusqlite::Result<()> {
+        let mut c = self.c();
+        let tx = c.transaction()?;
+        for (a, b) in pairs {
+            let (a, b) = if a <= b { (a, b) } else { (b, a) };
+            tx.execute(
+                "INSERT INTO together_pairs(a, b, last_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(a, b) DO UPDATE SET last_at = MAX(last_at, excluded.last_at)",
+                params![a, b, at],
+            )?;
+        }
+        tx.commit()
+    }
+
+    /// Everyone but `user_key`, with when they last watched together with `user_key`:
+    /// `(user_key, server_id, last_together_at, profile)`, unordered.
+    #[allow(clippy::type_complexity)]
+    pub fn together_people(
+        &self,
+        user_key: &str,
+    ) -> rusqlite::Result<Vec<(String, String, Option<i64>, Profile)>> {
+        let c = self.c();
+        let mut st = c.prepare(&format!(
+            "SELECT u.user_key, u.server_id, p.last_at, {PROFILE_COLS} FROM users u
+             LEFT JOIN together_pairs p
+               ON (p.a = ?1 AND p.b = u.user_key) OR (p.b = ?1 AND p.a = u.user_key)
+             WHERE u.user_key != ?1"
+        ))?;
+        st.query_map([user_key], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, row_profile(r, 3)?))
+        })?
+        .collect()
     }
 
     // ----- items ----------------------------------------------------------------------------
@@ -605,6 +788,32 @@ mod tests {
         ];
         let d = Desired::from_votes(forever.iter(), now);
         assert!(d.forever && d.until_watched && d.needs_exclusion());
+    }
+
+    #[test]
+    fn older_databases_get_the_profile_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.sqlite");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE users (user_key TEXT PRIMARY KEY, name TEXT NOT NULL, server_id TEXT NOT NULL,
+                 is_admin INTEGER NOT NULL DEFAULT 0, last_seen INTEGER NOT NULL);
+                 INSERT INTO users VALUES ('u', 'Ann', 's', 0, 1);",
+            )
+            .unwrap();
+        let db = Db::open(&path).unwrap();
+        let p = db.profile("u").unwrap().unwrap();
+        assert_eq!(
+            (p.name.as_str(), p.name_is_custom, p.profile_set),
+            ("Ann", false, false)
+        );
+        db.set_custom_name("u", Some("Annie")).unwrap();
+        // A sign-in with the media server's name keeps the chosen one.
+        let p = db.touch_user("u", "Ann", "s", false).unwrap();
+        assert_eq!((p.name.as_str(), p.media_name.as_str()), ("Annie", "Ann"));
+        drop(db);
+        assert!(Db::open(&path).is_ok(), "opening again is a no-op");
     }
 
     #[test]

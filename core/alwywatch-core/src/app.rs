@@ -2664,6 +2664,63 @@ impl AlwyWatch {
             .collect()
     }
 
+    // ----- my AlwyWatch profile: display name, avatar, welcome step ---------------------------
+
+    /// Chooses the display name others see (trimmed, inner spaces collapsed, 1 to 32
+    /// characters; check it first with [`display_name_problem`]). Returns my updated `Me`.
+    pub async fn keep_set_display_name(&self, name: String) -> Result<Me> {
+        self.run(|c| async move { Ok(c.keep()?.set_display_name(&name).await?) })
+            .await
+    }
+
+    /// Back to my media-server name (`Me::media_name`).
+    pub async fn keep_reset_display_name(&self) -> Result<Me> {
+        self.run(|c| async move { Ok(c.keep()?.reset_display_name().await?) })
+            .await
+    }
+
+    /// Chooses a built-in avatar (an id from [`avatar_presets`]).
+    pub async fn keep_set_avatar_preset(&self, preset: String) -> Result<Me> {
+        self.run(|c| async move { Ok(c.keep()?.set_avatar_preset(&preset).await?) })
+            .await
+    }
+
+    /// Uploads my custom avatar: the cropped square, at most 512×512 (never upscaled) and
+    /// 512 KiB, `content_type` "image/jpeg" (preferred, quality ~0.88), "image/png" or
+    /// "image/webp".
+    pub async fn keep_upload_avatar(&self, bytes: Vec<u8>, content_type: String) -> Result<Me> {
+        self.run(|c| async move { Ok(c.keep()?.upload_avatar(bytes, &content_type).await?) })
+            .await
+    }
+
+    /// Back to the default avatar (initial on a colour).
+    pub async fn keep_remove_avatar(&self) -> Result<Me> {
+        self.run(|c| async move { Ok(c.keep()?.remove_avatar().await?) })
+            .await
+    }
+
+    /// The request that fetches a user's custom avatar (`Avatar::custom_version` as
+    /// `version`): URL plus the sign-in headers (the picture is not public). Cache the picture
+    /// by (user_key, version): a new version means a new picture.
+    pub fn keep_avatar_request(&self, user_key: String, version: u32) -> Result<HttpRequest> {
+        let k = self.core.keep()?;
+        Ok(HttpRequest {
+            url: k.avatar_url(&user_key, version),
+            headers: k
+                .auth_headers()
+                .into_iter()
+                .map(|(name, value)| Header { name, value })
+                .collect(),
+        })
+    }
+
+    /// Ends the one-time welcome step for this account on every device (both Continue and
+    /// Skip call it). Idempotent.
+    pub async fn keep_mark_profile_set(&self) -> Result<Me> {
+        self.run(|c| async move { Ok(c.keep()?.mark_profile_set().await?) })
+            .await
+    }
+
     pub async fn keep_admin_users(&self) -> Result<Vec<AdminUser>> {
         self.run(|c| async move { Ok(c.keep()?.admin_users().await?) })
             .await
@@ -2972,6 +3029,38 @@ pub fn together_position(state: TogetherState, received_at_ms: i64, now_ms: i64)
     state.position_at(state.now_ms + (now_ms - received_at_ms).max(0))
 }
 
+/// The built-in avatars, in display order (draw: a disc of `background`, `shape` in
+/// `foreground`; geometry in docs/keep-protocol.md).
+#[uniffi::export]
+pub fn avatar_presets() -> Vec<AvatarPreset> {
+    keep_service::profile::avatar_presets()
+}
+
+/// Background (`#RRGGBB`) of someone's default avatar, from their display name.
+#[uniffi::export]
+pub fn avatar_default_color(name: String) -> String {
+    keep_service::profile::default_avatar_color(&name)
+}
+
+/// Letter of someone's default avatar (white on [`avatar_default_color`]).
+#[uniffi::export]
+pub fn avatar_initial(name: String) -> String {
+    keep_service::profile::avatar_initial(&name)
+}
+
+/// What is wrong with a display name, in plain words (None: fine to send).
+#[uniffi::export]
+pub fn display_name_problem(name: String) -> Option<String> {
+    keep_service::profile::clean_display_name(&name).err()
+}
+
+/// Whether `member_id` has the host's rights in this room (any seat of the host's user):
+/// show "Invite" and "Start watching", else "Waiting for <host> to start".
+#[uniffi::export]
+pub fn together_is_host(state: TogetherState, member_id: String) -> bool {
+    state.is_host(&member_id)
+}
+
 impl Core {
     /// A title as every server can find it (an episode carries its show's ids).
     async fn together_media(&self, account_id: &str, item_id: &str) -> Result<TogetherMedia> {
@@ -3058,72 +3147,111 @@ impl Core {
 
 #[uniffi::export]
 impl AlwyWatch {
-    /// Opens a watch together room on the AlwyWatch server with this item.
+    /// "Watch together" on a title: opens a private lobby with this item on the AlwyWatch
+    /// server, the caller its host. Nothing plays until [`AlwyWatch::together_start`]: open the
+    /// Room screen, not the player.
     pub async fn together_create(
         &self,
         account_id: String,
         item_id: String,
-        position_ms: u64,
-        playing: bool,
     ) -> Result<TogetherJoined> {
         self.run(|c| async move {
             let media = c.together_media(&account_id, &item_id).await?;
-            Ok(c.keep()?
-                .together_create(&TogetherCreate {
-                    media,
-                    position_ms,
-                    playing,
-                })
-                .await?)
+            Ok(c.keep()?.together_create(&TogetherCreate { media }).await?)
         })
         .await
     }
 
-    /// The watch together rooms open on the AlwyWatch server (everyone signed in sees them).
-    pub async fn together_rooms(&self) -> Result<Vec<TogetherRoom>> {
+    /// My rooms and the rooms I am invited to (`invited == true`: offer Join / Not now), with
+    /// the list's `version` for [`AlwyWatch::together_rooms_wait`]. Nobody sees other rooms.
+    pub async fn together_rooms(&self) -> Result<TogetherRooms> {
         self.run(|c| async move { Ok(c.keep()?.together_rooms().await?) })
             .await
     }
 
-    /// Asks a room's host to let you in (your own other devices get in at once).
-    pub async fn together_knock(&self, code: String) -> Result<TogetherKnockState> {
-        self.run(|c| async move { Ok(c.keep()?.together_knock(&code).await?) })
+    /// The same list once its `version` differs from `after`, or after about 25 s. Call it in a
+    /// loop (passing the last `version`, 0 the first time) while the app is in the foreground:
+    /// this is how invitations arrive.
+    pub async fn together_rooms_wait(&self, after: u64) -> Result<TogetherRooms> {
+        self.run(|c| async move { Ok(c.keep()?.together_rooms_wait(after).await?) })
             .await
     }
 
-    /// The request once the host answered, or after about 25 s (call it in a loop: it also
-    /// tells the server you are still waiting).
-    pub async fn together_knock_wait(
-        &self,
-        code: String,
-        request_id: String,
-    ) -> Result<TogetherKnockState> {
-        self.run(|c| async move { Ok(c.keep()?.together_knock_wait(&code, &request_id).await?) })
+    /// Everyone the host can invite (all users of this AlwyWatch server but me): people I last
+    /// watched with first, then by name.
+    pub async fn together_people(&self) -> Result<Vec<TogetherPerson>> {
+        self.run(|c| async move { Ok(c.keep()?.together_people().await?) })
             .await
     }
 
-    pub async fn together_knock_cancel(&self, code: String, request_id: String) -> Result<()> {
-        self.run(|c| async move { Ok(c.keep()?.together_knock_cancel(&code, &request_id).await?) })
-            .await
-    }
-
-    /// The host lets someone in (`accept`) or not.
-    pub async fn together_answer(
+    /// The host invites people (`TogetherPerson::user_key`, 1 to 20 at once); `member_id` is
+    /// the host's seat. Returns the room (its `invited` list).
+    pub async fn together_invite(
         &self,
         code: String,
         member_id: String,
-        request_id: String,
-        accept: bool,
+        user_keys: Vec<String>,
     ) -> Result<TogetherState> {
         self.run(|c| async move {
             Ok(c.keep()?
-                .together_answer(&code, &request_id, &TogetherAnswer { member_id, accept })
+                .together_invite(
+                    &code,
+                    &TogetherInvite {
+                        member_id,
+                        user_keys,
+                    },
+                )
                 .await?)
         })
         .await
     }
 
-    /// Sends play/pause/seek; with `item` (account, item), a new title for everyone.
+    /// The host withdraws an invitation.
+    pub async fn together_uninvite(
+        &self,
+        code: String,
+        member_id: String,
+        user_key: String,
+    ) -> Result<TogetherState> {
+        self.run(|c| async move {
+            Ok(c.keep()?
+                .together_uninvite(&code, &member_id, &user_key)
+                .await?)
+        })
+        .await
+    }
+
+    /// Joins a room I am invited to (or already in on another device): my seat and the room.
+    /// Open the Room screen when `state.started` is false, the player in sync otherwise.
+    pub async fn together_join(&self, code: String) -> Result<TogetherJoined> {
+        self.run(|c| async move { Ok(c.keep()?.together_join(&code).await?) })
+            .await
+    }
+
+    /// "Not now" on an invitation: it goes away (the host sees it).
+    pub async fn together_decline(&self, code: String) -> Result<()> {
+        self.run(|c| async move { Ok(c.keep()?.together_decline(&code).await?) })
+            .await
+    }
+
+    /// The host starts the lobby: playing from `position_ms` for everyone (members' `wait`
+    /// returns `started == true`: open the player).
+    pub async fn together_start(
+        &self,
+        code: String,
+        member_id: String,
+        position_ms: u64,
+    ) -> Result<TogetherState> {
+        self.run(|c| async move {
+            Ok(c.keep()?
+                .together_start(&code, &member_id, position_ms)
+                .await?)
+        })
+        .await
+    }
+
+    /// Sends play/pause/seek; with `item` (account, item), a new title for everyone. In a
+    /// lobby only the host may call it (to change the title; nothing plays before the start).
     pub async fn together_update(
         &self,
         code: String,
@@ -3146,6 +3274,7 @@ impl AlwyWatch {
                         playing,
                         position_ms,
                         media,
+                        started: false,
                     },
                 )
                 .await?)
@@ -3153,7 +3282,8 @@ impl AlwyWatch {
         .await
     }
 
-    /// The room after `after` changed, or after about 25 s (call it in a loop).
+    /// The room after `after` changed, or after about 25 s. Call it in a loop while in the room
+    /// (lobby included): it is the seat's heartbeat (a seat silent for a minute is dropped).
     pub async fn together_wait(
         &self,
         code: String,
@@ -3164,6 +3294,8 @@ impl AlwyWatch {
             .await
     }
 
+    /// Leaves the room for good (coming back needs a new invitation, unless another of my
+    /// devices is still in it). The host leaving hands the room to the longest member.
     pub async fn together_leave(&self, code: String, member_id: String) -> Result<()> {
         self.run(|c| async move { Ok(c.keep()?.together_leave(&code, &member_id).await?) })
             .await
@@ -3224,10 +3356,11 @@ mod together_tests {
                 season: None,
                 episode: None,
             },
+            started: true,
             playing: true,
             position_ms: 60_000,
             host: String::new(),
-            requests: vec![],
+            invited: vec![],
             at_ms: 1_000_000,
             now_ms: 1_000_500,
             by: String::new(),

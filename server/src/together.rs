@@ -1,65 +1,79 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Watch together rooms (see `keep_service::together`), in memory only.
+//!
+//! A room is private: only its members (by user, on any device) and the people its host invited
+//! know it exists; for everyone else every call answers `NotFound`, exactly like an unknown
+//! code. It starts as a lobby (nothing plays, only the host changes it) until the host starts it.
 
 use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use keep_service::Avatar;
 use keep_service::together::{
-    KnockStatus, TogetherCreate, TogetherJoined, TogetherKnockState, TogetherMedia, TogetherMember,
-    TogetherRoom, TogetherState, TogetherUpdate, WAIT_SECS,
+    TogetherCreate, TogetherInvitee, TogetherJoined, TogetherMedia, TogetherMember, TogetherRoom,
+    TogetherRooms, TogetherState, TogetherUpdate, WAIT_SECS,
 };
 use tokio::sync::Notify;
 
 use crate::transfer::random_u64;
 
-/// A member who has not polled for this long has left.
+/// A member who has not polled for this long is dropped (they may join again).
 const MEMBER_TTL: Duration = Duration::from_secs(60);
-/// An empty room is kept this long (someone rejoining after a network change).
+/// An empty room is kept this long, for someone dropped by a network change to join again.
 const EMPTY_TTL: Duration = Duration::from_secs(300);
 const ROOM_TTL: Duration = Duration::from_secs(12 * 3600);
 const MAX_ROOMS: usize = 200;
-const MAX_MEMBERS: usize = 20;
-/// Join requests waiting in one room at most.
-const MAX_REQUESTS: usize = 10;
+/// Seats plus pending invitations in one room at most.
+pub const MAX_PEOPLE: usize = 20;
+
+/// Pairs of users (ordered) who just watched together, for the people list's history.
+pub type Met = Vec<(String, String)>;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TogetherError {
+    /// Unknown or closed room, or one the caller may not know about.
     NotFound,
     Busy,
     Full,
-    /// Not the caller's member id (or not the host, for answering requests).
+    /// A member of the room doing what they may not (someone else's seat, host-only change).
     Forbidden,
 }
 
 struct Member {
     name: String,
     user_key: String,
+    avatar: Avatar,
     seen: Instant,
     since: Instant,
 }
 
-/// Someone asking to join, until they collect the answer (or stop polling).
-struct Request {
+/// Someone allowed in: invited by the host, or a member (so a member dropped by a network
+/// change can join again). Leaving on purpose removes it.
+struct Guest {
     name: String,
-    user_key: String,
-    seen: Instant,
-    status: KnockStatus,
-    joined: Option<TogetherJoined>,
+    avatar: Avatar,
+    /// Was a member at some point (may join the room even while it is empty).
+    joined_before: bool,
 }
 
 struct Room {
     state: TogetherState,
     members: HashMap<String, Member>,
-    requests: HashMap<String, Request>,
+    /// By user key.
+    guests: HashMap<String, Guest>,
     created: Instant,
     empty_since: Option<Instant>,
     changed: Arc<Notify>,
+    /// Shared by every room: wakes the room lists' long polls.
+    lists: Arc<Notify>,
 }
 
 #[derive(Default)]
 pub struct Rooms {
     rooms: Mutex<HashMap<String, Room>>,
+    lists: Arc<Notify>,
 }
 
 fn now_ms() -> i64 {
@@ -86,20 +100,59 @@ fn clean_media(mut m: TogetherMedia) -> TogetherMedia {
     m
 }
 
+pub fn clean_name(name: &str) -> String {
+    name.chars().filter(|c| !c.is_control()).take(60).collect()
+}
+
+fn pair(a: &str, b: &str) -> (String, String) {
+    if a < b {
+        (a.to_owned(), b.to_owned())
+    } else {
+        (b.to_owned(), a.to_owned())
+    }
+}
+
 impl Room {
-    /// Drops members who stopped polling; true when someone left.
+    fn has_user(&self, user_key: &str) -> bool {
+        self.members.values().any(|m| m.user_key == user_key)
+    }
+
+    /// Invited (or dropped) users who are not in the room.
+    fn pending(&self) -> impl Iterator<Item = (&String, &Guest)> {
+        self.guests.iter().filter(|(k, _)| !self.has_user(k))
+    }
+
+    fn people(&self) -> usize {
+        self.members.len() + self.pending().count()
+    }
+
+    /// Shown in the caller's list: they are in it, or invited to a room someone is in.
+    fn visible_to(&self, user_key: &str) -> bool {
+        self.has_user(user_key) || (!self.members.is_empty() && self.guests.contains_key(user_key))
+    }
+
+    fn host_user(&self) -> Option<&str> {
+        self.members
+            .get(&self.state.host)
+            .map(|m| m.user_key.as_str())
+    }
+
+    fn is_host_user(&self, user_key: &str) -> bool {
+        self.host_user() == Some(user_key)
+    }
+
+    /// Drops members who stopped polling; true when someone was dropped.
     fn expire_members(&mut self) -> bool {
-        let before = (self.members.len(), self.requests.len());
+        let before = self.members.len();
         self.members.retain(|_, m| m.seen.elapsed() < MEMBER_TTL);
-        self.requests.retain(|_, r| r.seen.elapsed() < MEMBER_TTL);
         if self.members.is_empty() && self.empty_since.is_none() {
             self.empty_since = Some(Instant::now());
         }
         self.fix_host();
-        (self.members.len(), self.requests.len()) != before
+        self.members.len() != before
     }
 
-    /// The host left: the longest member takes over.
+    /// The host left: the longest-present member takes over.
     fn fix_host(&mut self) {
         if !self.members.contains_key(&self.state.host) {
             self.state.host = self
@@ -118,12 +171,11 @@ impl Room {
             .unwrap_or_default()
     }
 
-    fn knock_view(&self, id: &str) -> Option<TogetherKnockState> {
-        self.requests.get(id).map(|r| TogetherKnockState {
-            request_id: id.to_owned(),
-            status: r.status,
-            joined: r.joined.clone(),
-        })
+    fn host_avatar(&self) -> Avatar {
+        self.members
+            .get(&self.state.host)
+            .map(|m| m.avatar.clone())
+            .unwrap_or_default()
     }
 
     fn view(&mut self) -> TogetherState {
@@ -133,84 +185,199 @@ impl Room {
             .map(|(id, m)| TogetherMember {
                 id: id.clone(),
                 name: m.name.clone(),
+                user_key: m.user_key.clone(),
+                avatar: m.avatar.clone(),
             })
             .collect();
-        members.sort_by(|a, b| a.name.cmp(&b.name));
+        members.sort_by(|a, b| (&a.name, &a.id).cmp(&(&b.name, &b.id)));
         self.state.members = members;
-        let mut requests: Vec<TogetherMember> = self
-            .requests
-            .iter()
-            .filter(|(_, r)| r.status == KnockStatus::Waiting)
-            .map(|(id, r)| TogetherMember {
-                id: id.clone(),
-                name: r.name.clone(),
+        let mut invited: Vec<TogetherInvitee> = self
+            .pending()
+            .map(|(k, g)| TogetherInvitee {
+                user_key: k.clone(),
+                name: g.name.clone(),
+                avatar: g.avatar.clone(),
             })
             .collect();
-        requests.sort_by(|a, b| a.name.cmp(&b.name));
-        self.state.requests = requests;
+        invited.sort_by(|a, b| (&a.name, &a.user_key).cmp(&(&b.name, &b.user_key)));
+        self.state.invited = invited;
         self.state.now_ms = now_ms();
         self.state.clone()
+    }
+
+    /// The room as `user_key`'s list shows it.
+    fn entry(&mut self, user_key: &str) -> TogetherRoom {
+        let mut members: Vec<String> = self.members.values().map(|m| m.name.clone()).collect();
+        members.sort();
+        let mine = self.has_user(user_key);
+        let hosting = self.is_host_user(user_key);
+        let host = self.host_name();
+        let host_avatar = self.host_avatar();
+        let s = self.view();
+        TogetherRoom {
+            code: s.code,
+            host,
+            host_avatar,
+            media: s.media,
+            members,
+            started: s.started,
+            playing: s.playing,
+            position_ms: s.position_ms,
+            at_ms: s.at_ms,
+            now_ms: s.now_ms,
+            mine,
+            hosting,
+            invited: !mine,
+        }
     }
 
     fn bump(&mut self, by: &str) {
         self.state.seq += 1;
         self.state.by = by.to_owned();
         self.changed.notify_waiters();
+        self.lists.notify_waiters();
     }
 
-    fn add_member(&mut self, name: &str, user_key: &str) -> Result<String, TogetherError> {
-        if self.members.len() >= MAX_MEMBERS {
-            return Err(TogetherError::Full);
-        }
+    fn add_member(&mut self, name: &str, user_key: &str, avatar: &Avatar) -> String {
         let id = format!("{:016x}", random_u64());
+        let name = clean_name(name);
         self.members.insert(
             id.clone(),
             Member {
-                name: name.chars().filter(|c| !c.is_control()).take(60).collect(),
+                name: name.clone(),
                 user_key: user_key.to_owned(),
+                avatar: avatar.clone(),
                 seen: Instant::now(),
                 since: Instant::now(),
             },
         );
+        let g = self.guests.entry(user_key.to_owned()).or_insert(Guest {
+            name: String::new(),
+            avatar: Avatar::default(),
+            joined_before: true,
+        });
+        g.name = name;
+        g.avatar = avatar.clone();
+        g.joined_before = true;
         self.empty_since = None;
         self.fix_host();
-        Ok(id)
+        id
     }
 
+    /// The caller's own seat (and notes they are there). Someone not in the room gets
+    /// `NotFound`, as if it did not exist; a member using another user's seat, `Forbidden`.
     fn check(&mut self, member: &str, user_key: &str) -> Result<(), TogetherError> {
-        match self.members.get_mut(member) {
-            Some(m) if m.user_key == user_key => {
-                m.seen = Instant::now();
-                Ok(())
-            }
-            Some(_) => Err(TogetherError::Forbidden),
-            None => Err(TogetherError::NotFound),
+        if let Some(m) = self.members.get_mut(member)
+            && m.user_key == user_key
+        {
+            m.seen = Instant::now();
+            return Ok(());
         }
+        if self.has_user(user_key) {
+            Err(TogetherError::Forbidden)
+        } else {
+            Err(TogetherError::NotFound)
+        }
+    }
+
+    /// `check`, and the seat must be the host user's.
+    fn check_host(&mut self, member: &str, user_key: &str) -> Result<(), TogetherError> {
+        self.check(member, user_key)?;
+        if self.is_host_user(user_key) {
+            Ok(())
+        } else {
+            Err(TogetherError::Forbidden)
+        }
+    }
+
+    fn users(&self) -> Vec<&str> {
+        let mut u: Vec<&str> = self.members.values().map(|m| m.user_key.as_str()).collect();
+        u.sort_unstable();
+        u.dedup();
+        u
+    }
+
+    /// Every pair of distinct users in the room.
+    fn all_pairs(&self) -> Met {
+        let u = self.users();
+        let mut out = Vec::new();
+        for (i, a) in u.iter().enumerate() {
+            for b in &u[i + 1..] {
+                out.push(pair(a, b));
+            }
+        }
+        out
+    }
+
+    /// `user_key` with every other user in the room.
+    fn pairs_with(&self, user_key: &str) -> Met {
+        self.users()
+            .into_iter()
+            .filter(|u| *u != user_key)
+            .map(|u| pair(u, user_key))
+            .collect()
+    }
+
+    /// What the caller's list shows of this room, for the list's `version`.
+    fn fingerprint(&self, user_key: &str, h: &mut DefaultHasher) {
+        self.state.code.hash(h);
+        self.state.started.hash(h);
+        self.has_user(user_key).hash(h);
+        self.is_host_user(user_key).hash(h);
+        self.host_name().hash(h);
+        let m = &self.state.media;
+        (&m.title, &m.series_title, m.season, m.episode).hash(h);
+        let mut names: Vec<&str> = self.members.values().map(|m| m.name.as_str()).collect();
+        names.sort_unstable();
+        names.hash(h);
     }
 }
 
 impl Rooms {
-    fn purge(map: &mut HashMap<String, Room>) {
+    /// Drops silent members and dead rooms (waking whoever should know).
+    fn purge(&self, map: &mut HashMap<String, Room>) {
         for r in map.values_mut() {
-            r.expire_members();
+            if r.expire_members() {
+                r.bump("");
+            }
         }
+        let before = map.len();
         map.retain(|_, r| {
-            r.created.elapsed() < ROOM_TTL && r.empty_since.is_none_or(|t| t.elapsed() < EMPTY_TTL)
+            r.created.elapsed() < ROOM_TTL
+                && (!r.members.is_empty()
+                    || (r.empty_since.is_none_or(|t| t.elapsed() < EMPTY_TTL)
+                        && r.guests.values().any(|g| g.joined_before)))
         });
+        if map.len() != before {
+            self.lists.notify_waiters();
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Room>> {
         self.rooms.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Runs `f` on a live room (after a purge).
+    fn with<T>(
+        &self,
+        code: &str,
+        f: impl FnOnce(&mut Room) -> Result<T, TogetherError>,
+    ) -> Result<T, TogetherError> {
+        let mut map = self.lock();
+        self.purge(&mut map);
+        f(map.get_mut(code).ok_or(TogetherError::NotFound)?)
+    }
+
+    /// A new lobby, the caller its host.
     pub fn create(
         &self,
         c: TogetherCreate,
         name: &str,
         user_key: &str,
+        avatar: &Avatar,
     ) -> Result<TogetherJoined, TogetherError> {
         let mut map = self.lock();
-        Self::purge(&mut map);
+        self.purge(&mut map);
         if map.len() >= MAX_ROOMS {
             return Err(TogetherError::Busy);
         }
@@ -225,268 +392,222 @@ impl Rooms {
                 code: code.clone(),
                 seq: 1,
                 media: clean_media(c.media),
-                playing: c.playing,
-                position_ms: c.position_ms,
+                started: false,
+                playing: false,
+                position_ms: 0,
                 at_ms: now_ms(),
                 now_ms: 0,
                 by: String::new(),
                 members: vec![],
                 host: String::new(),
-                requests: vec![],
+                invited: vec![],
             },
             members: HashMap::new(),
-            requests: HashMap::new(),
+            guests: HashMap::new(),
             created: Instant::now(),
             empty_since: None,
             changed: Arc::new(Notify::new()),
+            lists: self.lists.clone(),
         };
-        let member_id = room.add_member(name, user_key)?;
+        let member_id = room.add_member(name, user_key, avatar);
         room.state.by = member_id.clone();
         let state = room.view();
         map.insert(code, room);
+        self.lists.notify_waiters();
         Ok(TogetherJoined { member_id, state })
     }
 
-    /// The open rooms (with someone in them), newest first.
-    pub fn list(&self, user_key: &str) -> Vec<TogetherRoom> {
+    /// The caller's rooms and invitations: invitations first, newest first within each.
+    pub fn list(&self, user_key: &str) -> TogetherRooms {
         let mut map = self.lock();
-        Self::purge(&mut map);
-        let mut rooms: Vec<(Instant, TogetherRoom)> = map
+        self.purge(&mut map);
+        let mut rooms: Vec<(bool, Instant, &mut Room)> = map
             .values_mut()
-            .filter(|r| !r.members.is_empty())
-            .map(|r| {
-                let mut members: Vec<String> = r.members.values().map(|m| m.name.clone()).collect();
-                members.sort();
-                let mine = r.members.values().any(|m| m.user_key == user_key);
-                let host = r.host_name();
-                let s = r.view();
-                (
-                    r.created,
-                    TogetherRoom {
-                        code: s.code,
-                        host,
-                        media: s.media,
-                        members,
-                        playing: s.playing,
-                        position_ms: s.position_ms,
-                        at_ms: s.at_ms,
-                        now_ms: s.now_ms,
-                        mine,
-                    },
-                )
-            })
+            .filter(|r| r.visible_to(user_key))
+            .map(|r| (r.has_user(user_key), r.created, r))
             .collect();
-        rooms.sort_by_key(|r| std::cmp::Reverse(r.0));
-        rooms.into_iter().map(|(_, r)| r).collect()
+        rooms.sort_by_key(|(mine, created, _)| (*mine, std::cmp::Reverse(*created)));
+        let mut h = DefaultHasher::new();
+        rooms.len().hash(&mut h);
+        for (_, _, r) in &rooms {
+            r.fingerprint(user_key, &mut h);
+        }
+        TogetherRooms {
+            // Below 2^53 (exact in JavaScript numbers), never 0 (a client's "nothing yet").
+            version: (h.finish() & ((1 << 53) - 1)).max(1),
+            rooms: rooms
+                .into_iter()
+                .map(|(_, _, r)| r.entry(user_key))
+                .collect(),
+        }
     }
 
-    /// Asks to join. Someone already in the room (another of their devices) gets a seat at once.
-    pub fn knock(
-        &self,
-        code: &str,
-        name: &str,
-        user_key: &str,
-    ) -> Result<TogetherKnockState, TogetherError> {
-        let mut map = self.lock();
-        Self::purge(&mut map);
-        let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
-        if room.members.is_empty() {
-            return Err(TogetherError::NotFound);
-        }
-        let request_id = format!("{:016x}", random_u64());
-        if room.members.values().any(|m| m.user_key == user_key) {
-            let member_id = room.add_member(name, user_key)?;
-            room.bump("");
-            return Ok(TogetherKnockState {
-                request_id,
-                status: KnockStatus::Accepted,
-                joined: Some(TogetherJoined {
-                    member_id,
-                    state: room.view(),
-                }),
-            });
-        }
-        // The same person asking again (a second press) keeps their place.
-        if let Some((id, r)) = room
-            .requests
-            .iter_mut()
-            .find(|(_, r)| r.user_key == user_key && r.status == KnockStatus::Waiting)
-        {
-            r.seen = Instant::now();
-            let id = id.clone();
-            return Ok(room.knock_view(&id).expect("just found"));
-        }
-        if room.requests.len() >= MAX_REQUESTS || room.members.len() >= MAX_MEMBERS {
-            return Err(TogetherError::Full);
-        }
-        room.requests.insert(
-            request_id.clone(),
-            Request {
-                name: name.chars().filter(|c| !c.is_control()).take(60).collect(),
-                user_key: user_key.to_owned(),
-                seen: Instant::now(),
-                status: KnockStatus::Waiting,
-                joined: None,
-            },
-        );
-        // Wakes the host.
-        room.bump("");
-        Ok(room.knock_view(&request_id).expect("just added"))
-    }
-
-    /// The request once answered, or after `WAIT_SECS`. An answer is handed over once.
-    pub async fn knock_wait(
-        &self,
-        code: &str,
-        request: &str,
-        user_key: &str,
-    ) -> Result<TogetherKnockState, TogetherError> {
-        self.knock_wait_for(code, request, user_key, Duration::from_secs(WAIT_SECS))
+    /// The caller's list once its version differs from `after`, or after `WAIT_SECS`.
+    pub async fn list_wait(&self, user_key: &str, after: u64) -> TogetherRooms {
+        self.list_wait_for(user_key, after, Duration::from_secs(WAIT_SECS))
             .await
     }
 
-    async fn knock_wait_for(
-        &self,
-        code: &str,
-        request: &str,
-        user_key: &str,
-        timeout: Duration,
-    ) -> Result<TogetherKnockState, TogetherError> {
-        if let Some(v) = self.take_answer(code, request, user_key)? {
-            return Ok(v);
-        }
-        let changed = self
-            .lock()
-            .get(code)
-            .ok_or(TogetherError::NotFound)?
-            .changed
-            .clone();
-        let notified = changed.notified();
+    async fn list_wait_for(&self, user_key: &str, after: u64, timeout: Duration) -> TogetherRooms {
+        let notified = self.lists.notified();
         tokio::pin!(notified);
+        // Registered before looking, so a change in between is not missed.
         notified.as_mut().enable();
         let deadline = tokio::time::Instant::now() + timeout;
         loop {
-            if let Some(v) = self.take_answer(code, request, user_key)? {
-                return Ok(v);
+            let list = self.list(user_key);
+            if list.version != after {
+                return list;
             }
             if tokio::time::timeout_at(deadline, notified.as_mut())
                 .await
                 .is_err()
             {
-                let mut map = self.lock();
-                let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
-                return room.knock_view(request).ok_or(TogetherError::NotFound);
+                return self.list(user_key);
             }
-            // Woken by some change in the room: register again before re-checking.
-            notified.set(changed.notified());
+            notified.set(self.lists.notified());
             notified.as_mut().enable();
         }
     }
 
-    /// The answer, once there is one (handed over once); notes the asker is still there.
-    fn take_answer(
+    /// The host invites people; already invited or present ones are left as they are. All or
+    /// nothing when the room would get too full.
+    pub fn invite(
         &self,
         code: &str,
-        request: &str,
+        member: &str,
         user_key: &str,
-    ) -> Result<Option<TogetherKnockState>, TogetherError> {
-        let mut map = self.lock();
-        let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
-        let r = room
-            .requests
-            .get_mut(request)
-            .ok_or(TogetherError::NotFound)?;
-        if r.user_key != user_key {
-            return Err(TogetherError::Forbidden);
-        }
-        r.seen = Instant::now();
-        if r.status == KnockStatus::Waiting {
-            return Ok(None);
-        }
-        let view = room.knock_view(request);
-        room.requests.remove(request);
-        Ok(view)
-    }
-
-    /// The asker gives up.
-    pub fn knock_cancel(
-        &self,
-        code: &str,
-        request: &str,
-        user_key: &str,
-    ) -> Result<(), TogetherError> {
-        let mut map = self.lock();
-        let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
-        match room.requests.get(request) {
-            Some(r) if r.user_key == user_key => {}
-            Some(_) => return Err(TogetherError::Forbidden),
-            None => return Err(TogetherError::NotFound),
-        }
-        room.requests.remove(request);
-        room.bump("");
-        Ok(())
-    }
-
-    /// The host lets someone in, or not.
-    pub fn answer(
-        &self,
-        code: &str,
-        request: &str,
-        host: &str,
-        accept: bool,
-        user_key: &str,
+        people: &[TogetherInvitee],
     ) -> Result<TogetherState, TogetherError> {
-        let mut map = self.lock();
-        let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
-        room.check(host, user_key)?;
-        if room.state.host != host {
-            return Err(TogetherError::Forbidden);
-        }
-        let (name, asker) = match room.requests.get(request) {
-            Some(r) if r.status == KnockStatus::Waiting => (r.name.clone(), r.user_key.clone()),
-            _ => return Err(TogetherError::NotFound),
-        };
-        let member_id = if accept {
-            Some(room.add_member(&name, &asker)?)
-        } else {
-            None
-        };
-        if let Some(r) = room.requests.get_mut(request) {
-            r.status = if accept {
-                KnockStatus::Accepted
-            } else {
-                KnockStatus::Declined
-            };
-        }
-        // One change for everyone; the new member's copy of the room is that same state.
-        room.bump("");
-        let state = room.view();
-        if let (Some(r), Some(member_id)) = (room.requests.get_mut(request), member_id) {
-            r.joined = Some(TogetherJoined {
-                member_id,
-                state: state.clone(),
-            });
-        }
-        Ok(state)
+        self.with(code, |room| {
+            room.check_host(member, user_key)?;
+            let mut new: Vec<&TogetherInvitee> = people
+                .iter()
+                .filter(|p| !room.has_user(&p.user_key) && !room.guests.contains_key(&p.user_key))
+                .collect();
+            new.sort_by(|a, b| a.user_key.cmp(&b.user_key));
+            new.dedup_by(|a, b| a.user_key == b.user_key);
+            if new.is_empty() {
+                return Ok(room.view());
+            }
+            if room.people() + new.len() > MAX_PEOPLE {
+                return Err(TogetherError::Full);
+            }
+            for p in new {
+                room.guests.insert(
+                    p.user_key.clone(),
+                    Guest {
+                        name: clean_name(&p.name),
+                        avatar: p.avatar.clone(),
+                        joined_before: false,
+                    },
+                );
+            }
+            room.bump("");
+            Ok(room.view())
+        })
     }
 
+    /// The host withdraws an invitation (nobody is removed from the room: someone in it just
+    /// cannot come back after leaving or being dropped).
+    pub fn uninvite(
+        &self,
+        code: &str,
+        member: &str,
+        user_key: &str,
+        target: &str,
+    ) -> Result<TogetherState, TogetherError> {
+        self.with(code, |room| {
+            room.check_host(member, user_key)?;
+            if room.guests.remove(target).is_some() {
+                room.bump("");
+            }
+            Ok(room.view())
+        })
+    }
+
+    /// An invited user says no.
+    pub fn decline(&self, code: &str, user_key: &str) -> Result<(), TogetherError> {
+        self.with(code, |room| {
+            if room.has_user(user_key) || room.guests.remove(user_key).is_none() {
+                return Err(TogetherError::NotFound);
+            }
+            room.bump("");
+            Ok(())
+        })
+    }
+
+    /// A seat for an invited user, or another device of a member (no approval step). Anyone
+    /// else: `NotFound`.
+    pub fn join(
+        &self,
+        code: &str,
+        name: &str,
+        user_key: &str,
+        avatar: &Avatar,
+    ) -> Result<(TogetherJoined, Met), TogetherError> {
+        self.with(code, |room| {
+            let member = room.has_user(user_key);
+            let allowed = member
+                || room
+                    .guests
+                    .get(user_key)
+                    .is_some_and(|g| !room.members.is_empty() || g.joined_before);
+            if !allowed {
+                return Err(TogetherError::NotFound);
+            }
+            // A pending invitation already holds its place; another device takes one more.
+            if member && room.people() >= MAX_PEOPLE {
+                return Err(TogetherError::Full);
+            }
+            let member_id = room.add_member(name, user_key, avatar);
+            let met = if room.state.started {
+                room.pairs_with(user_key)
+            } else {
+                vec![]
+            };
+            room.bump("");
+            Ok((
+                TogetherJoined {
+                    member_id,
+                    state: room.view(),
+                },
+                met,
+            ))
+        })
+    }
+
+    /// Play/pause/seek/title. In a lobby only the host changes it (and nothing plays) until
+    /// they send `started`.
     pub fn update(
         &self,
         code: &str,
         u: TogetherUpdate,
         user_key: &str,
-    ) -> Result<TogetherState, TogetherError> {
+    ) -> Result<(TogetherState, Met), TogetherError> {
         let mut map = self.lock();
         let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
         room.check(&u.member_id, user_key)?;
-        room.state.playing = u.playing;
+        let mut met = vec![];
+        if !room.state.started {
+            if !room.is_host_user(user_key) {
+                return Err(TogetherError::Forbidden);
+            }
+            room.state.started = u.started;
+            room.state.playing = u.started && u.playing;
+            if u.started {
+                met = room.all_pairs();
+            }
+        } else {
+            room.state.playing = u.playing;
+        }
         room.state.position_ms = u.position_ms;
         room.state.at_ms = now_ms();
         if let Some(m) = u.media {
             room.state.media = clean_media(m);
         }
         room.bump(&u.member_id);
-        Ok(room.view())
+        Ok((room.view(), met))
     }
 
     /// The room once `seq` passed `after`, or after `WAIT_SECS` (also the member's heartbeat).
@@ -545,16 +666,21 @@ impl Rooms {
         Ok(room.view())
     }
 
+    /// Leaves on purpose: the user's last seat going also ends their right to come back.
     pub fn leave(&self, code: &str, member: &str, user_key: &str) -> Result<(), TogetherError> {
         let mut map = self.lock();
         let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
         room.check(member, user_key)?;
         room.members.remove(member);
+        if !room.has_user(user_key) {
+            room.guests.remove(user_key);
+        }
         if room.members.is_empty() {
             room.empty_since = Some(Instant::now());
         }
         room.fix_host();
         room.bump("");
+        self.purge(&mut map);
         Ok(())
     }
 }
@@ -583,13 +709,57 @@ mod tests {
         r.create(
             TogetherCreate {
                 media: media("Monsters"),
-                position_ms: 5_000,
-                playing: false,
             },
             "Ana",
             "plex:ana",
+            &Avatar::default(),
         )
         .unwrap()
+    }
+
+    fn inv(key: &str, name: &str) -> TogetherInvitee {
+        TogetherInvitee {
+            user_key: key.into(),
+            name: name.into(),
+            avatar: Avatar::default(),
+        }
+    }
+
+    fn upd(member: &str, playing: bool, position_ms: u64, started: bool) -> TogetherUpdate {
+        TogetherUpdate {
+            member_id: member.into(),
+            playing,
+            position_ms,
+            media: None,
+            started,
+        }
+    }
+
+    /// Ana (host) invites; the invitee joins.
+    fn invite_in(rooms: &Rooms, host: &TogetherJoined, name: &str, key: &str) -> TogetherJoined {
+        let code = &host.state.code;
+        rooms
+            .invite(code, &host.member_id, "plex:ana", &[inv(key, name)])
+            .unwrap();
+        rooms.join(code, name, key, &Avatar::default()).unwrap().0
+    }
+
+    #[test]
+    fn a_new_room_is_a_lobby_seen_only_by_its_host() {
+        let rooms = Rooms::default();
+        let a = create(&rooms);
+        assert!(!a.state.started && !a.state.playing);
+        assert_eq!(a.state.host, a.member_id);
+        let mine = rooms.list("plex:ana");
+        assert_eq!(mine.rooms.len(), 1);
+        assert!(mine.rooms[0].mine && mine.rooms[0].hosting && !mine.rooms[0].invited);
+        assert!(rooms.list("jf:bo").rooms.is_empty());
+        assert_eq!(
+            rooms
+                .join(&a.state.code, "Bo", "jf:bo", &Avatar::default())
+                .map(|_| ()),
+            Err(TogetherError::NotFound)
+        );
     }
 
     #[tokio::test]
@@ -597,7 +767,10 @@ mod tests {
         let rooms = Arc::new(Rooms::default());
         let a = create(&rooms);
         let code = a.state.code.clone();
-        let b = let_in(&rooms, &a, "Bo", "jf:bo");
+        rooms
+            .update(&code, upd(&a.member_id, true, 0, true), "plex:ana")
+            .unwrap();
+        let b = invite_in(&rooms, &a, "Bo", "jf:bo");
         assert_eq!(b.state.members.len(), 2);
         let seq = b.state.seq;
         let waiter = {
@@ -606,16 +779,7 @@ mod tests {
         };
         tokio::time::sleep(Duration::from_millis(50)).await;
         rooms
-            .update(
-                &code,
-                TogetherUpdate {
-                    member_id: a.member_id.clone(),
-                    playing: true,
-                    position_ms: 6_000,
-                    media: None,
-                },
-                "plex:ana",
-            )
+            .update(&code, upd(&a.member_id, true, 6_000, false), "plex:ana")
             .unwrap();
         let s = tokio::time::timeout(Duration::from_secs(2), waiter)
             .await
@@ -634,14 +798,10 @@ mod tests {
         let rooms = Rooms::default();
         let a = create(&rooms);
         let code = a.state.code.clone();
-        let b = let_in(&rooms, &a, "Bo", "jf:bo");
-        let upd = TogetherUpdate {
-            member_id: a.member_id.clone(),
-            playing: true,
-            position_ms: 6_000,
-            media: None,
-        };
-        let after = rooms.update(&code, upd, "plex:ana").unwrap();
+        let b = invite_in(&rooms, &a, "Bo", "jf:bo");
+        let (after, _) = rooms
+            .update(&code, upd(&a.member_id, true, 6_000, true), "plex:ana")
+            .unwrap();
         assert_eq!(after.by, a.member_id);
         rooms.leave(&code, &b.member_id, "jf:bo").unwrap();
         let s = rooms
@@ -656,6 +816,14 @@ mod tests {
             .unwrap();
         assert_eq!(s.members.len(), 1);
         assert_eq!(s.by, "");
+        // Left on purpose: no way back without a new invitation.
+        assert!(s.invited.is_empty());
+        assert_eq!(
+            rooms
+                .join(&code, "Bo", "jf:bo", &Avatar::default())
+                .map(|_| ()),
+            Err(TogetherError::NotFound)
+        );
     }
 
     #[tokio::test]
@@ -676,167 +844,262 @@ mod tests {
     }
 
     #[test]
-    fn only_the_member_moves_their_own_seat() {
+    fn strangers_get_not_found_members_get_forbidden() {
         let rooms = Rooms::default();
         let a = create(&rooms);
-        let upd = TogetherUpdate {
-            member_id: a.member_id.clone(),
-            playing: true,
-            position_ms: 0,
-            media: None,
-        };
+        let code = &a.state.code;
+        let b = invite_in(&rooms, &a, "Bo", "jf:bo");
+        let mv = upd(&a.member_id, true, 0, false);
         assert_eq!(
-            rooms.update(&a.state.code, upd.clone(), "jf:someone-else"),
+            rooms.update(code, mv.clone(), "jf:stranger").map(|_| ()),
+            Err(TogetherError::NotFound)
+        );
+        assert_eq!(
+            rooms.update(code, mv.clone(), "jf:bo").map(|_| ()),
             Err(TogetherError::Forbidden)
         );
         assert_eq!(
-            rooms.update("000000x", upd, "plex:ana"),
+            rooms.update("000000x", mv, "plex:ana").map(|_| ()),
             Err(TogetherError::NotFound)
         );
-        rooms
-            .leave(&a.state.code, &a.member_id, "plex:ana")
-            .unwrap();
-        // Empty: no host to ask any more.
-        assert_eq!(
-            rooms.knock(&a.state.code, "Bo", "jf:bo").map(|_| ()),
-            Err(TogetherError::NotFound)
-        );
-    }
-
-    /// Bo asks, Ana (host) accepts: Bo's seat.
-    fn let_in(rooms: &Rooms, host: &TogetherJoined, name: &str, key: &str) -> TogetherJoined {
-        let code = &host.state.code;
-        let k = rooms.knock(code, name, key).unwrap();
-        assert_eq!(k.status, KnockStatus::Waiting);
-        rooms
-            .answer(code, &k.request_id, &host.member_id, true, "plex:ana")
-            .unwrap();
-        let done = rooms
-            .take_answer(code, &k.request_id, key)
-            .unwrap()
-            .unwrap();
-        assert_eq!(done.status, KnockStatus::Accepted);
-        done.joined.unwrap()
-    }
-
-    #[tokio::test]
-    async fn a_knock_wakes_the_host_and_waits_for_the_answer() {
-        let rooms = Arc::new(Rooms::default());
-        let a = create(&rooms);
-        let code = a.state.code.clone();
-        assert_eq!(a.state.host, a.member_id);
-        let host_wait = {
-            let (rooms, code, id, seq) = (
-                rooms.clone(),
-                code.clone(),
-                a.member_id.clone(),
-                a.state.seq,
-            );
-            tokio::spawn(async move { rooms.wait(&code, &id, "plex:ana", seq).await })
-        };
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        let k = rooms.knock(&code, "Bo", "jf:bo").unwrap();
-        let s = tokio::time::timeout(Duration::from_secs(2), host_wait)
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
-        assert_eq!(s.requests.len(), 1);
-        assert_eq!(s.requests[0].name, "Bo");
-        // Asking again keeps the same request.
-        assert_eq!(
-            rooms.knock(&code, "Bo", "jf:bo").unwrap().request_id,
-            k.request_id
-        );
-        let asker = {
-            let (rooms, code, id) = (rooms.clone(), code.clone(), k.request_id.clone());
-            tokio::spawn(async move { rooms.knock_wait(&code, &id, "jf:bo").await })
-        };
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        // Only the host answers.
-        assert_eq!(
-            rooms.answer(&code, &k.request_id, &a.member_id, true, "jf:bo"),
-            Err(TogetherError::Forbidden)
-        );
-        let s = rooms
-            .answer(&code, &k.request_id, &a.member_id, true, "plex:ana")
-            .unwrap();
-        assert_eq!(s.members.len(), 2);
-        assert!(s.requests.is_empty());
-        let got = tokio::time::timeout(Duration::from_secs(2), asker)
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
-        assert_eq!(got.status, KnockStatus::Accepted);
-        assert_eq!(got.joined.unwrap().state.members.len(), 2);
-        // Handed over once.
         assert_eq!(
             rooms
-                .knock_wait(&code, &k.request_id, "jf:bo")
-                .await
+                .invite(code, &b.member_id, "jf:bo", &[inv("jf:cy", "Cy")])
+                .map(|_| ()),
+            Err(TogetherError::Forbidden),
+            "only the host invites"
+        );
+        assert_eq!(
+            rooms
+                .invite(code, &b.member_id, "jf:cy", &[inv("jf:cy", "Cy")])
                 .map(|_| ()),
             Err(TogetherError::NotFound)
         );
     }
 
-    #[tokio::test]
-    async fn declined_and_cancelled_requests() {
+    #[test]
+    fn lobby_belongs_to_the_host_until_started_and_never_goes_back() {
         let rooms = Rooms::default();
         let a = create(&rooms);
         let code = &a.state.code;
-        let k = rooms.knock(code, "Bo", "jf:bo").unwrap();
-        rooms
-            .answer(code, &k.request_id, &a.member_id, false, "plex:ana")
-            .unwrap();
-        let got = rooms
-            .knock_wait_for(code, &k.request_id, "jf:bo", Duration::from_millis(30))
-            .await
-            .unwrap();
-        assert_eq!(got.status, KnockStatus::Declined);
-        assert!(got.joined.is_none());
-        let k = rooms.knock(code, "Cy", "jf:cy").unwrap();
+        let b = invite_in(&rooms, &a, "Bo", "jf:bo");
+        assert!(!b.state.started);
+        // Bo can neither start nor move the lobby.
         assert_eq!(
-            rooms.knock_cancel(code, &k.request_id, "jf:bo"),
+            rooms
+                .update(code, upd(&b.member_id, true, 5, true), "jf:bo")
+                .map(|_| ()),
             Err(TogetherError::Forbidden)
         );
-        rooms.knock_cancel(code, &k.request_id, "jf:cy").unwrap();
+        // The host changes the title; nothing plays before the start.
+        let mut retitle = upd(&a.member_id, true, 1_000, false);
+        retitle.media = Some(media("Up"));
+        let (s, met) = rooms.update(code, retitle, "plex:ana").unwrap();
+        assert!(!s.started && !s.playing);
+        assert_eq!(s.media.title, "Up");
+        assert!(met.is_empty());
+        // Start: both users met.
+        let (s, met) = rooms
+            .update(code, upd(&a.member_id, true, 2_000, true), "plex:ana")
+            .unwrap();
+        assert!(s.started && s.playing);
+        assert_eq!(met, vec![("jf:bo".to_owned(), "plex:ana".to_owned())]);
+        // Started: anyone plays; `started: false` does not go back.
+        let (s, _) = rooms
+            .update(code, upd(&b.member_id, false, 3_000, false), "jf:bo")
+            .unwrap();
+        assert!(s.started && !s.playing);
+        assert_eq!(s.by, b.member_id);
+    }
+
+    #[test]
+    fn invitations_join_decline_withdraw_and_own_devices() {
+        let rooms = Rooms::default();
+        let a = create(&rooms);
+        let code = &a.state.code;
         let s = rooms
-            .wait_for(code, &a.member_id, "plex:ana", 0, Duration::from_millis(10))
-            .await
+            .invite(
+                code,
+                &a.member_id,
+                "plex:ana",
+                &[
+                    inv("jf:bo", "Bo"),
+                    inv("jf:cy", "Cy"),
+                    inv("plex:ana", "Ana"),
+                ],
+            )
             .unwrap();
-        assert!(s.requests.is_empty());
-    }
-
-    #[test]
-    fn own_devices_get_in_and_rooms_are_listed() {
-        let rooms = Rooms::default();
-        let a = create(&rooms);
-        let k = rooms.knock(&a.state.code, "Ana", "plex:ana").unwrap();
-        assert_eq!(k.status, KnockStatus::Accepted);
-        assert_eq!(k.joined.unwrap().state.members.len(), 2);
+        let names: Vec<&str> = s.invited.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, ["Bo", "Cy"], "inviting oneself does nothing");
         let listed = rooms.list("jf:bo");
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].host, "Ana");
-        assert_eq!(listed[0].media.title, "Monsters");
-        assert!(!listed[0].mine);
-        assert!(rooms.list("plex:ana")[0].mine);
+        assert_eq!(listed.rooms.len(), 1);
+        assert!(listed.rooms[0].invited && !listed.rooms[0].mine);
+        assert_eq!(listed.rooms[0].host, "Ana");
+        // Cy declines, then cannot join; Bo joins and leaves the invited list.
+        rooms.decline(code, "jf:cy").unwrap();
+        assert!(rooms.list("jf:cy").rooms.is_empty());
+        assert_eq!(rooms.decline(code, "jf:cy"), Err(TogetherError::NotFound));
+        assert_eq!(
+            rooms
+                .join(code, "Cy", "jf:cy", &Avatar::default())
+                .map(|_| ()),
+            Err(TogetherError::NotFound)
+        );
+        let (b, met) = rooms.join(code, "Bo", "jf:bo", &Avatar::default()).unwrap();
+        assert!(met.is_empty(), "not started yet");
+        assert!(b.state.invited.is_empty());
+        assert_eq!(b.state.members.len(), 2);
+        assert!(rooms.list("jf:bo").rooms[0].mine);
+        // Ana's second device gets in without an invitation and has the host's rights.
+        let (a2, _) = rooms
+            .join(code, "Ana", "plex:ana", &Avatar::default())
+            .unwrap();
+        assert!(a2.state.is_host(&a2.member_id));
+        let s = rooms
+            .invite(code, &a2.member_id, "plex:ana", &[inv("jf:dee", "Dee")])
+            .unwrap();
+        assert_eq!(s.invited.len(), 1);
+        let s = rooms
+            .uninvite(code, &a2.member_id, "plex:ana", "jf:dee")
+            .unwrap();
+        assert!(s.invited.is_empty());
+        assert!(rooms.list("jf:dee").rooms.is_empty());
     }
 
     #[test]
-    fn the_longest_member_takes_over_as_host() {
+    fn rooms_are_capped_at_twenty_people() {
         let rooms = Rooms::default();
         let a = create(&rooms);
-        let b = let_in(&rooms, &a, "Bo", "jf:bo");
-        rooms
-            .leave(&a.state.code, &a.member_id, "plex:ana")
-            .unwrap();
-        let k = rooms.knock(&a.state.code, "Cy", "jf:cy").unwrap();
-        assert!(
+        let code = &a.state.code;
+        let many: Vec<TogetherInvitee> = (0..19)
+            .map(|i| inv(&format!("jf:{i}"), &format!("P{i}")))
+            .collect();
+        rooms.invite(code, &a.member_id, "plex:ana", &many).unwrap();
+        assert_eq!(
             rooms
-                .answer(&a.state.code, &k.request_id, &b.member_id, true, "jf:bo")
-                .is_ok()
+                .invite(code, &a.member_id, "plex:ana", &[inv("jf:x", "X")])
+                .map(|_| ()),
+            Err(TogetherError::Full)
         );
-        assert_eq!(rooms.list("x")[0].host, "Bo");
+        // An invitee's seat replaces their invitation; another own device would be one too many.
+        rooms.join(code, "P0", "jf:0", &Avatar::default()).unwrap();
+        assert_eq!(
+            rooms
+                .join(code, "Ana", "plex:ana", &Avatar::default())
+                .map(|_| ()),
+            Err(TogetherError::Full)
+        );
+    }
+
+    #[test]
+    fn the_longest_member_takes_over_and_invitations_stay() {
+        let rooms = Rooms::default();
+        let a = create(&rooms);
+        let code = &a.state.code;
+        let b = invite_in(&rooms, &a, "Bo", "jf:bo");
+        rooms
+            .invite(code, &a.member_id, "plex:ana", &[inv("jf:cy", "Cy")])
+            .unwrap();
+        rooms.leave(code, &a.member_id, "plex:ana").unwrap();
+        let l = rooms.list("jf:bo");
+        assert_eq!(l.rooms[0].host, "Bo");
+        assert!(l.rooms[0].hosting);
+        assert!(
+            rooms.list("jf:cy").rooms[0].invited,
+            "invitation still valid"
+        );
+        // Bo, now host, may start the lobby.
+        let (s, _) = rooms
+            .update(code, upd(&b.member_id, true, 0, true), "jf:bo")
+            .unwrap();
+        assert!(s.started);
+        let (_, met) = rooms.join(code, "Cy", "jf:cy", &Avatar::default()).unwrap();
+        assert_eq!(met, vec![("jf:bo".to_owned(), "jf:cy".to_owned())]);
+    }
+
+    #[test]
+    fn an_empty_lobby_closes_when_nobody_can_come_back() {
+        let rooms = Rooms::default();
+        let a = create(&rooms);
+        let code = a.state.code.clone();
+        rooms
+            .invite(&code, &a.member_id, "plex:ana", &[inv("jf:bo", "Bo")])
+            .unwrap();
+        rooms.leave(&code, &a.member_id, "plex:ana").unwrap();
+        assert!(rooms.list("jf:bo").rooms.is_empty());
+        assert_eq!(
+            rooms
+                .join(&code, "Bo", "jf:bo", &Avatar::default())
+                .map(|_| ()),
+            Err(TogetherError::NotFound)
+        );
+        assert!(rooms.lock().is_empty());
+    }
+
+    #[test]
+    fn a_dropped_member_may_join_an_empty_room_again() {
+        let rooms = Rooms::default();
+        let a = create(&rooms);
+        let code = a.state.code.clone();
+        // Silent for longer than the heartbeat allows.
+        rooms
+            .lock()
+            .get_mut(&code)
+            .unwrap()
+            .members
+            .values_mut()
+            .for_each(|m| m.seen -= MEMBER_TTL);
+        assert!(
+            rooms.list("plex:ana").rooms.is_empty(),
+            "empty rooms are not listed"
+        );
+        let (again, _) = rooms
+            .join(&code, "Ana", "plex:ana", &Avatar::default())
+            .unwrap();
+        assert_eq!(again.state.host, again.member_id);
+    }
+
+    #[tokio::test]
+    async fn an_invitation_wakes_the_invitees_list() {
+        let rooms = Arc::new(Rooms::default());
+        let a = create(&rooms);
+        let before = rooms.list("jf:bo");
+        assert!(before.rooms.is_empty());
+        // Unchanged: the long poll times out with the same version.
+        let same = rooms
+            .list_wait_for("jf:bo", before.version, Duration::from_millis(30))
+            .await;
+        assert_eq!(same.version, before.version);
+        let waiter = {
+            let rooms = rooms.clone();
+            tokio::spawn(async move { rooms.list_wait("jf:bo", before.version).await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        // Playback in some other room does not answer it; the invitation does.
+        rooms
+            .update(
+                &a.state.code,
+                upd(&a.member_id, false, 9, false),
+                "plex:ana",
+            )
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!waiter.is_finished());
+        rooms
+            .invite(
+                &a.state.code,
+                &a.member_id,
+                "plex:ana",
+                &[inv("jf:bo", "Bo")],
+            )
+            .unwrap();
+        let got = tokio::time::timeout(Duration::from_secs(2), waiter)
+            .await
+            .expect("woken")
+            .unwrap();
+        assert_ne!(got.version, before.version);
+        assert!(got.rooms[0].invited);
+        // A version that is not the current one answers at once.
+        assert_eq!(rooms.list_wait("jf:bo", 0).await.version, got.version);
     }
 }

@@ -201,7 +201,8 @@ impl Bridge {
             }
             None => {
                 let password = random_password();
-                let body = json!({ "email": email, "username": id.name, "password": password });
+                let body =
+                    json!({ "email": email, "username": id.media_name, "password": password });
                 let u: SeerrUserDto =
                     net::send_json(self.req(Method::POST, "user", None).json(&body))
                         .await
@@ -242,7 +243,7 @@ impl Bridge {
                             .ok();
                     return Ok(SeerrBridgeInfo {
                         seerr_user_id: u.id,
-                        user_name: u.display_name.unwrap_or_else(|| id.name.clone()),
+                        user_name: u.display_name.unwrap_or_else(|| id.media_name.clone()),
                         public_url: self.public_url.clone(),
                         cache_images: public.is_some_and(|p| p.cache_images),
                     });

@@ -28,12 +28,12 @@ pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
 pub use error::{CoreError, Result};
 pub use history::{HistoryChange, HistoryCopyResult, HistoryPlan, HistoryProgress};
 pub use keep_service::together::{
-    KnockStatus, TogetherAnswer, TogetherCreate, TogetherJoined, TogetherKnockState, TogetherMedia,
-    TogetherMember, TogetherRoom, TogetherState, TogetherUpdate,
+    TogetherCreate, TogetherInvite, TogetherInvitee, TogetherJoined, TogetherMedia, TogetherMember,
+    TogetherPerson, TogetherRoom, TogetherRooms, TogetherState, TogetherUpdate,
 };
 pub use keep_service::{
-    AdminUser, CountdownResult, LeavingItem, Me, MyVote, Protection, Rights, ServerEntry,
-    ServerType, VoteCounts, VoteKind, VoteRequest,
+    AdminUser, Avatar, AvatarPreset, CountdownResult, LeavingItem, Me, MyVote, Protection, Rights,
+    ServerEntry, ServerType, VoteCounts, VoteKind, VoteRequest,
 };
 pub use media_api::jellyfin::QuickConnectCode;
 pub use media_api::model::*;

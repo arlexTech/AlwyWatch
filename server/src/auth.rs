@@ -21,7 +21,13 @@ const TTL: Duration = Duration::from_secs(600);
 pub struct Identity {
     pub user_key: String,
     pub user_id: String,
+    /// The name shown to others: the user's chosen display name, else `media_name` (filled in
+    /// per request by `api::Caller`).
     pub name: String,
+    /// The name from the media server.
+    pub media_name: String,
+    /// Filled in per request by `api::Caller`.
+    pub avatar: keep_service::Avatar,
     pub server_id: String,
     pub kind: ServerType,
     pub is_admin: bool,
@@ -100,7 +106,9 @@ impl Auth {
         Ok(Identity {
             user_key: format!("jellyfin:{}:{}", server.id, me.id),
             user_id: me.id,
+            media_name: me.name.clone(),
             name: me.name,
+            avatar: Default::default(),
             server_id: server.id.clone(),
             kind: ServerType::Jellyfin,
             is_admin: me.policy.is_some_and(|p| p.is_administrator),
@@ -140,14 +148,17 @@ impl Auth {
             .iter()
             .find(|r| r.client_identifier == server.id)
             .ok_or(AuthError::Denied)?;
+        let name = if user.title.is_empty() {
+            user.username
+        } else {
+            user.title
+        };
         Ok(Identity {
             user_key: format!("plex:{}:{}", server.id, user.id),
             user_id: user.id.to_string(),
-            name: if user.title.is_empty() {
-                user.username
-            } else {
-                user.title
-            },
+            media_name: name.clone(),
+            name,
+            avatar: Default::default(),
             server_id: server.id.clone(),
             kind: ServerType::Plex,
             is_admin: res.owned,

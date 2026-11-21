@@ -48,8 +48,10 @@ pub struct Limits {
     pub transfer_starts: crate::limit::Limiter,
     /// Transfer codes tried, per user: nobody guesses someone else's six digits.
     pub transfer_codes: crate::limit::Limiter,
-    /// Requests to join a room, per user (no pestering a host).
-    pub together_knocks: crate::limit::Limiter,
+    /// Invitations sent, per user (no spamming people with rooms).
+    pub together_invites: crate::limit::Limiter,
+    /// Display name and avatar changes, per user.
+    pub profile_changes: crate::limit::Limiter,
     /// Rooms opened, per user.
     pub together_creates: crate::limit::Limiter,
 }
@@ -63,8 +65,9 @@ impl Default for Limits {
             failed_auth: Limiter::new(20, min(10)),
             transfer_starts: Limiter::new(10, min(10)),
             transfer_codes: Limiter::new(10, min(10)),
-            together_knocks: Limiter::new(30, min(10)),
+            together_invites: Limiter::new(60, min(10)),
             together_creates: Limiter::new(20, min(60)),
+            profile_changes: Limiter::new(20, min(10)),
         }
     }
 }
@@ -777,11 +780,18 @@ pub fn spawn_jobs(state: Shared) {
 /// Admin stats: who keeps what forever, and how much of it someone else keeps too.
 pub fn forever_stats(
     votes: &[crate::db::ForeverVote],
-    names: &std::collections::HashMap<String, String>,
+    names: &std::collections::HashMap<String, (String, String, keep_service::Avatar)>,
 ) -> keep_service::ForeverStats {
     use keep_service::{ForeverOverlap, ForeverPerson, ForeverStats, ForeverTitle};
     use std::collections::{BTreeMap, BTreeSet, HashMap};
-    let name = |k: &str| names.get(k).cloned().unwrap_or_else(|| k.to_owned());
+    let name = |k: &str| {
+        names
+            .get(k)
+            .map(|n| n.0.clone())
+            .unwrap_or_else(|| k.to_owned())
+    };
+    let media_name = |k: &str| names.get(k).map(|n| n.1.clone()).unwrap_or_default();
+    let avatar = |k: &str| names.get(k).map(|n| n.2.clone()).unwrap_or_default();
     // Title -> keepers, and person -> titles.
     let mut by_item: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     let mut by_user: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
@@ -816,6 +826,8 @@ pub fn forever_stats(
             ForeverPerson {
                 user_key: user.to_owned(),
                 name: name(user),
+                media_name: media_name(user),
+                avatar: avatar(user),
                 count,
                 shared,
                 alone: count - shared,

@@ -23,6 +23,10 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/servers", get(servers))
         .route("/v1/me", get(me))
         .route("/v1/me/settings", get(my_settings).put(set_my_settings))
+        .route("/v1/me/name", put(set_my_name).delete(reset_my_name))
+        .route("/v1/me/profile-done", post(profile_done))
+        .route("/v1/me/avatar", put(set_my_avatar).delete(remove_my_avatar))
+        .route("/v1/users/{user}/avatar", get(user_avatar))
         .route("/v1/leaving-soon", get(leaving_soon))
         .route("/v1/triage", get(triage))
         .route("/v1/votes/{key}", put(vote).delete(unvote))
@@ -39,17 +43,15 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/seerr/api/v1/{*path}", any(seerr_forward))
         .route("/v1/hooks/{source}/{secret}", post(hook))
         .route("/v1/together", get(together_rooms).post(together_create))
+        .route("/v1/together/wait", get(together_rooms_wait))
+        .route("/v1/together/people", get(together_people))
         .route("/v1/together/{code}", put(together_update))
-        .route("/v1/together/{code}/knock", post(together_knock))
+        .route("/v1/together/{code}/invites", post(together_invite))
         .route(
-            "/v1/together/{code}/knock/{id}/wait",
-            get(together_knock_wait),
+            "/v1/together/{code}/invites/{user}",
+            axum::routing::delete(together_uninvite),
         )
-        .route(
-            "/v1/together/{code}/knock/{id}",
-            axum::routing::delete(together_knock_cancel),
-        )
-        .route("/v1/together/{code}/requests/{id}", post(together_answer))
+        .route("/v1/together/{code}/join", post(together_join))
         .route("/v1/together/{code}/wait", get(together_wait))
         .route(
             "/v1/together/{code}/members/{member}",
@@ -138,9 +140,15 @@ impl FromRequestParts<Shared> for Caller {
                     Error(StatusCode::BAD_GATEWAY, "media server unreachable".into())
                 }
             })?;
-        let _ = state
+        let mut id = id;
+        // The media server's name is stored as such; others see the chosen one if any.
+        if let Ok(p) = state
             .db
-            .touch_user(&id.user_key, &id.name, &id.server_id, id.is_admin);
+            .touch_user(&id.user_key, &id.media_name, &id.server_id, id.is_admin)
+        {
+            id.name = p.name;
+            id.avatar = p.avatar;
+        }
         Ok(Caller(id))
     }
 }
@@ -173,7 +181,10 @@ fn together_error(e: crate::together::TogetherError) -> Error {
             "too many rooms open, try again later".into(),
         ),
         E::Full => Error(StatusCode::CONFLICT, "this room is full".into()),
-        E::Forbidden => Error(StatusCode::FORBIDDEN, "not allowed in this room".into()),
+        E::Forbidden => Error(
+            StatusCode::FORBIDDEN,
+            "only the host can do this, or not your seat".into(),
+        ),
     }
 }
 
@@ -186,7 +197,7 @@ async fn together_create(
         return Err(too_many());
     }
     s.rooms
-        .create(c, &id.name, &id.user_key)
+        .create(c, &id.name, &id.user_key, &id.avatar)
         .map(Json)
         .map_err(together_error)
 }
@@ -194,57 +205,145 @@ async fn together_create(
 async fn together_rooms(
     State(s): State<Shared>,
     Caller(id): Caller,
-) -> Json<Vec<keep_service::together::TogetherRoom>> {
+) -> Json<keep_service::together::TogetherRooms> {
     Json(s.rooms.list(&id.user_key))
 }
 
-async fn together_knock(
+#[derive(Deserialize)]
+struct ListWaitQuery {
+    #[serde(default)]
+    after: u64,
+}
+
+async fn together_rooms_wait(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Query(q): Query<ListWaitQuery>,
+) -> Json<keep_service::together::TogetherRooms> {
+    Json(s.rooms.list_wait(&id.user_key, q.after).await)
+}
+
+/// Everyone who signed in to this AlwyWatch server (on a server still served), but the caller:
+/// recent watch-together partners first, then by name.
+async fn together_people(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+) -> Result<Json<Vec<keep_service::together::TogetherPerson>>, Error> {
+    let mut people: Vec<keep_service::together::TogetherPerson> =
+        s.db.together_people(&id.user_key)
+            .map_err(internal)?
+            .into_iter()
+            .filter_map(|(user_key, server_id, last, p)| {
+                let server = s.config.server(&server_id)?;
+                Some(keep_service::together::TogetherPerson {
+                    user_key,
+                    name: crate::together::clean_name(&p.name),
+                    media_name: crate::together::clean_name(&p.media_name),
+                    avatar: p.avatar,
+                    server_name: server.name.clone(),
+                    last_together_at: last,
+                })
+            })
+            .collect();
+    people.sort_by(|a, b| {
+        let key = |p: &keep_service::together::TogetherPerson| {
+            // None sorts below any time, so Reverse puts the never-met last.
+            (
+                std::cmp::Reverse(p.last_together_at),
+                p.name.to_lowercase(),
+                p.user_key.clone(),
+            )
+        };
+        key(a).cmp(&key(b))
+    });
+    Ok(Json(people))
+}
+
+/// Users invited at once at most.
+const MAX_INVITES_AT_ONCE: usize = 20;
+
+async fn together_invite(
     State(s): State<Shared>,
     Caller(id): Caller,
     Path(code): Path<String>,
-) -> Result<Json<keep_service::together::TogetherKnockState>, Error> {
-    if !s.limits.together_knocks.allow(&id.user_key) {
-        return Err(too_many());
+    Json(inv): Json<keep_service::together::TogetherInvite>,
+) -> Result<Json<keep_service::together::TogetherState>, Error> {
+    if inv.user_keys.is_empty() || inv.user_keys.len() > MAX_INVITES_AT_ONCE {
+        return Err(Error(
+            StatusCode::BAD_REQUEST,
+            format!("invite 1 to {MAX_INVITES_AT_ONCE} people at a time"),
+        ));
+    }
+    for _ in &inv.user_keys {
+        if !s.limits.together_invites.allow(&id.user_key) {
+            return Err(too_many());
+        }
+    }
+    let mut people = Vec::with_capacity(inv.user_keys.len());
+    for key in &inv.user_keys {
+        match s.db.user_profile(key).map_err(internal)? {
+            Some((p, server)) if s.config.server(&server).is_some() => {
+                people.push(keep_service::together::TogetherInvitee {
+                    user_key: key.clone(),
+                    name: p.name,
+                    avatar: p.avatar,
+                })
+            }
+            _ => return Err(Error(StatusCode::NOT_FOUND, "unknown user".into())),
+        }
     }
     s.rooms
-        .knock(&code, &id.name, &id.user_key)
+        .invite(&code, &inv.member_id, &id.user_key, &people)
         .map(Json)
         .map_err(together_error)
 }
 
-async fn together_knock_wait(
+#[derive(Deserialize)]
+struct MemberQuery {
+    member: Option<String>,
+}
+
+/// `user` = "me": the caller declines their invitation (204). Otherwise the host withdraws
+/// that user's invitation (`?member=` one of the host's member ids) and gets the room back.
+async fn together_uninvite(
     State(s): State<Shared>,
     Caller(id): Caller,
-    Path((code, req)): Path<(String, String)>,
-) -> Result<Json<keep_service::together::TogetherKnockState>, Error> {
+    Path((code, user)): Path<(String, String)>,
+    Query(q): Query<MemberQuery>,
+) -> Result<Response, Error> {
+    if user == "me" {
+        s.rooms
+            .decline(&code, &id.user_key)
+            .map_err(together_error)?;
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    }
+    let member = q.member.unwrap_or_default();
     s.rooms
-        .knock_wait(&code, &req, &id.user_key)
-        .await
-        .map(Json)
+        .uninvite(&code, &member, &id.user_key, &user)
+        .map(|st| Json(st).into_response())
         .map_err(together_error)
 }
 
-async fn together_knock_cancel(
+/// Notes who just watched together (the people list's order); never fails the call.
+fn record_met(s: &Shared, met: &crate::together::Met) {
+    if !met.is_empty()
+        && let Err(e) = s.db.record_together(met, crate::db::now())
+    {
+        eprintln!("[together] could not record history: {e}");
+    }
+}
+
+async fn together_join(
     State(s): State<Shared>,
     Caller(id): Caller,
-    Path((code, req)): Path<(String, String)>,
-) -> Result<StatusCode, Error> {
-    s.rooms
-        .knock_cancel(&code, &req, &id.user_key)
+    Path(code): Path<String>,
+) -> Result<Json<keep_service::together::TogetherJoined>, Error> {
+    let (joined, met) = s
+        .rooms
+        .join(&code, &id.name, &id.user_key, &id.avatar)
         .map_err(together_error)?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-async fn together_answer(
-    State(s): State<Shared>,
-    Caller(id): Caller,
-    Path((code, req)): Path<(String, String)>,
-    Json(a): Json<keep_service::together::TogetherAnswer>,
-) -> Result<Json<keep_service::together::TogetherState>, Error> {
-    s.rooms
-        .answer(&code, &req, &a.member_id, a.accept, &id.user_key)
-        .map(Json)
-        .map_err(together_error)
+    record_met(&s, &met);
+    Ok(Json(joined))
 }
 
 async fn together_update(
@@ -253,10 +352,12 @@ async fn together_update(
     Path(code): Path<String>,
     Json(u): Json<keep_service::together::TogetherUpdate>,
 ) -> Result<Json<keep_service::together::TogetherState>, Error> {
-    s.rooms
+    let (state, met) = s
+        .rooms
         .update(&code, u, &id.user_key)
-        .map(Json)
-        .map_err(together_error)
+        .map_err(together_error)?;
+    record_met(&s, &met);
+    Ok(Json(state))
 }
 
 #[derive(Deserialize)]
@@ -374,14 +475,180 @@ async fn servers(State(s): State<Shared>) -> Json<Vec<ServerEntry>> {
 }
 
 async fn me(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<Me>, Error> {
-    Ok(Json(Me {
+    me_of(&s, id).map(Json)
+}
+
+/// The caller's `Me`, read again from the database (after a profile change).
+fn me_of(s: &Shared, id: Identity) -> Result<Me, Error> {
+    let p =
+        s.db.profile(&id.user_key)
+            .map_err(internal)?
+            .unwrap_or_default();
+    Ok(Me {
         rights: s.rights_of(&id),
         forever_count: s.db.forever_count(&id.user_key).map_err(internal)?,
+        name: if p.name.is_empty() { id.name } else { p.name },
+        media_name: id.media_name,
+        name_is_custom: p.name_is_custom,
+        avatar: p.avatar,
+        profile_set: p.profile_set,
         user_key: id.user_key,
-        name: id.name,
         server_id: id.server_id,
         is_admin: id.is_admin,
-    }))
+    })
+}
+
+// ----- profile: display name and avatar ---------------------------------------------------------
+
+async fn set_my_name(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Json(r): Json<keep_service::DisplayNameRequest>,
+) -> Result<Json<Me>, Error> {
+    let name = keep_service::profile::clean_display_name(&r.name)
+        .map_err(|m| Error(StatusCode::BAD_REQUEST, m))?;
+    if !s.limits.profile_changes.allow(&id.user_key) {
+        return Err(too_many());
+    }
+    s.db.set_custom_name(&id.user_key, Some(&name))
+        .map_err(internal)?;
+    me_of(&s, id).map(Json)
+}
+
+/// The one-time welcome step (name + avatar) was done or skipped, for this account on every
+/// device. Idempotent; names and avatars set on their own do not count.
+async fn profile_done(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<Me>, Error> {
+    s.db.mark_profile_set(&id.user_key).map_err(internal)?;
+    me_of(&s, id).map(Json)
+}
+
+async fn reset_my_name(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<Me>, Error> {
+    if !s.limits.profile_changes.allow(&id.user_key) {
+        return Err(too_many());
+    }
+    s.db.set_custom_name(&id.user_key, None).map_err(internal)?;
+    me_of(&s, id).map(Json)
+}
+
+/// Where a user's custom avatar lives: under the data dir, named by a hash of the user key
+/// (no user text in paths).
+fn avatar_path(s: &Shared, user_key: &str) -> std::path::PathBuf {
+    let d = ring::digest::digest(&ring::digest::SHA256, user_key.as_bytes());
+    let name: String = d.as_ref().iter().map(|b| format!("{b:02x}")).collect();
+    s.config.data_dir.join("avatars").join(name)
+}
+
+async fn forget_avatar_file(s: &Shared, user_key: &str) {
+    let _ = tokio::fs::remove_file(avatar_path(s, user_key)).await;
+}
+
+/// JSON `{preset}` picks a built-in avatar; a raw JPEG/PNG/WebP body uploads a custom one.
+async fn set_my_avatar(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    headers: HeaderMap,
+    body: axum::body::Body,
+) -> Result<Json<Me>, Error> {
+    let bad = |m: &str| Error(StatusCode::BAD_REQUEST, m.into());
+    let ct = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let picture = keep_service::profile::AVATAR_TYPES.contains(&ct.as_str());
+    if ct != "application/json" && !picture {
+        return Err(bad(
+            "send a JPEG, PNG or WebP picture, or a built-in avatar",
+        ));
+    }
+    if !s.limits.profile_changes.allow(&id.user_key) {
+        return Err(too_many());
+    }
+    if !picture {
+        let bytes = axum::body::to_bytes(body, 4096)
+            .await
+            .map_err(|_| bad("invalid request"))?;
+        let choice: keep_service::AvatarChoice =
+            serde_json::from_slice(&bytes).map_err(|_| bad("invalid request"))?;
+        if !keep_service::profile::is_avatar_preset(&choice.preset) {
+            return Err(bad("unknown built-in avatar"));
+        }
+        s.db.set_avatar(&id.user_key, Some(&choice.preset), None)
+            .map_err(internal)?;
+        forget_avatar_file(&s, &id.user_key).await;
+        return me_of(&s, id).map(Json);
+    }
+    // Read at most the limit: a bigger body is cut off, not buffered.
+    let bytes = axum::body::to_bytes(body, keep_service::profile::AVATAR_MAX_BYTES)
+        .await
+        .map_err(|_| {
+            Error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "the picture is too large (512 KiB at most)".into(),
+            )
+        })?;
+    if !keep_service::profile::avatar_bytes_match(&ct, &bytes) {
+        return Err(bad("this file is not the picture type it claims to be"));
+    }
+    let path = avatar_path(&s, &id.user_key);
+    let tmp = path.with_extension("part");
+    let write = async {
+        tokio::fs::create_dir_all(path.parent().expect("has a parent")).await?;
+        tokio::fs::write(&tmp, &bytes).await?;
+        tokio::fs::rename(&tmp, &path).await
+    };
+    write.await.map_err(internal)?;
+    s.db.set_avatar(&id.user_key, None, Some(&ct))
+        .map_err(internal)?;
+    me_of(&s, id).map(Json)
+}
+
+async fn remove_my_avatar(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<Me>, Error> {
+    if !s.limits.profile_changes.allow(&id.user_key) {
+        return Err(too_many());
+    }
+    s.db.set_avatar(&id.user_key, None, None)
+        .map_err(internal)?;
+    forget_avatar_file(&s, &id.user_key).await;
+    me_of(&s, id).map(Json)
+}
+
+/// A user's custom avatar, to signed-in users. The version is in the URL, so it is cached for
+/// good; the bytes only ever go out as the type they were checked to be.
+async fn user_avatar(
+    State(s): State<Shared>,
+    Caller(_): Caller,
+    Path(user): Path<String>,
+) -> Result<Response, Error> {
+    let none = || Error(StatusCode::NOT_FOUND, "no picture".into());
+    let (ct, _) =
+        s.db.avatar_custom(&user)
+            .map_err(internal)?
+            .ok_or_else(none)?;
+    if !keep_service::profile::AVATAR_TYPES.contains(&ct.as_str()) {
+        return Err(none());
+    }
+    let bytes = tokio::fs::read(avatar_path(&s, &user))
+        .await
+        .map_err(|_| none())?;
+    use axum::http::header;
+    Ok((
+        [
+            (header::CONTENT_TYPE, ct),
+            (
+                header::CACHE_CONTROL,
+                "private, max-age=31536000, immutable".into(),
+            ),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff".into()),
+            (header::CONTENT_SECURITY_POLICY, "default-src 'none'".into()),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 /// Limits of the settings a user stores (they are small: languages, choices per title).
@@ -491,7 +758,7 @@ async fn admin_forever(
         s.db.users()
             .map_err(internal)?
             .into_iter()
-            .map(|u| (u.user_key, u.name))
+            .map(|u| (u.user_key, (u.name, u.media_name, u.avatar)))
             .collect();
     let votes = s.db.forever_votes().map_err(internal)?;
     Ok(Json(crate::keep::forever_stats(&votes, &names)))
