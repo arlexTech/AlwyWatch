@@ -28,6 +28,8 @@ pub struct PlayRequest {
     pub auto_next: bool,
     /// Watching together: the room's play/pause/seek come in, ours go out.
     pub together: Option<TogetherLink>,
+    /// Short messages shown on the video whatever plays (an invitation arrived).
+    pub notes: Option<mpsc::Receiver<String>>,
 }
 
 /// From the app to a player in a watch together room.
@@ -36,8 +38,6 @@ pub enum ToPlayer {
     Sync { playing: bool, position_ms: u64 },
     /// A short message on the video ("Sam paused").
     Note(String),
-    /// Someone asks the host to join: (request id, name); None when nobody waits.
-    Request(Option<(String, String)>),
     /// Close the player (the room moved to a title found elsewhere).
     Quit,
 }
@@ -46,8 +46,6 @@ pub enum ToPlayer {
 pub enum FromPlayer {
     /// The viewer played, paused or moved.
     User { playing: bool, position_ms: u64 },
-    /// The host answered a join request.
-    Answer { request_id: String, accept: bool },
 }
 
 pub struct TogetherLink {
@@ -169,9 +167,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         "s script-message alwy skip\nS script-message alwy skip\n\
          > script-message alwy next\nNEXT script-message alwy next\n\
          < script-message alwy previous\nPREV script-message alwy previous\n\
-         c script-message alwy cancel\n\
-         y script-message alwy yes\nY script-message alwy yes\n\
-         n script-message alwy no\nN script-message alwy no",
+         c script-message alwy cancel",
         "force",
     ])?;
     m.command(&["enable-section", "alwywatch"])?;
@@ -208,7 +204,6 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
     // Watching together: changes we make for the room are not the viewer's to send back.
     let together = req.together.as_ref();
     let mut quiet_until = Instant::now() + Duration::from_secs(3);
-    let mut request: Option<(String, String)> = None;
     let mut started = false;
     let mut note: Option<(String, Instant)> = None;
     let send_user = |m: &Mpv| {
@@ -243,11 +238,15 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                         }
                     }
                     ToPlayer::Note(t) => note = Some((t, Instant::now())),
-                    ToPlayer::Request(r) => request = r,
                     ToPlayer::Quit => {
                         let _ = m.command(&["quit"]);
                     }
                 }
+            }
+        }
+        if let Some(rx) = &req.notes {
+            while let Ok(t) = rx.try_recv() {
+                note = Some((t, Instant::now()));
             }
         }
         let reason = event.reason;
@@ -314,14 +313,6 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                     }
                     Some("next") if req.has_next => go = Some(Go::Next),
                     Some("previous") if req.has_previous => go = Some(Go::Previous),
-                    Some(answer @ ("yes" | "no")) => {
-                        if let (Some(t), Some((id, _))) = (together, request.take()) {
-                            t.send.as_ref()(FromPlayer::Answer {
-                                request_id: id,
-                                accept: answer == "yes",
-                            });
-                        }
-                    }
                     Some("cancel") => {
                         cancelled = true;
                         countdown = None;
@@ -382,14 +373,9 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
             last = Instant::now();
             report(snapshot(PlaybackEvent::Progress, false));
         }
-        // Watching together: who asks to join (until answered), then short notes.
-        if let Some((_, name)) = &request {
-            let t = format!("{name} wants to watch with you   ·   Y let them in   ·   N not now");
-            let _ = m.command(&["show-text", &t, "900"]);
-            continue;
-        }
+        // Short notes: the room ("Sam paused"), an invitation (longer, to be read).
         if let Some((t, at)) = &note {
-            if at.elapsed() < Duration::from_secs(4) {
+            if at.elapsed() < Duration::from_secs(6) {
                 let _ = m.command(&["show-text", t, "900"]);
                 continue;
             }

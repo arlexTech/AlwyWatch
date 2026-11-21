@@ -16,6 +16,7 @@ use slint::{
 
 use crate::platform::{self, Tokens};
 use crate::profiles::ProfileStore;
+mod account;
 mod history;
 mod profiles;
 mod together;
@@ -52,6 +53,8 @@ enum Route {
     Settings,
     Add,
     Together,
+    /// The watch together room I'm in.
+    Room,
     Profiles,
     HistoryCopy,
 }
@@ -115,11 +118,17 @@ struct State {
     /// Leaving soon posters, loaded around the visible rows only: (url, requested).
     leaving_posters: Vec<(Option<String>, bool)>,
     leaving_model: Option<Rc<VecModel<LeavingRow>>>,
-    /// Watch together: the room a player follows, the rooms last listed, the join in progress.
+    /// Watch together: the room I'm in (lobby or playing), my rooms and invitations.
     together: Option<together::Room>,
-    rooms_seen: Vec<TogetherRoom>,
-    join_gen: u64,
-    knock: Option<(String, String)>,
+    lists: together::Lists,
+    /// My AlwyWatch profile, the welcome step's draft and the cropper.
+    me: account::MeState,
+    /// Kept forever (admin), redrawn when avatars arrive.
+    forever: Option<keep_service::ForeverStats>,
+    /// "Mark unwatched" waiting for its confirmation: (season or series id, its label).
+    mark_pending: Option<String>,
+    /// Short messages for the open player (an invitation arrived).
+    player_notes: Option<std::sync::mpsc::Sender<String>>,
     admin_users: Vec<AdminUser>,
     armed: Option<(String, i32)>,
     poll_gen: u64,
@@ -139,7 +148,6 @@ thread_local! {
 pub struct App {
     downloads_timer: slint::Timer,
     runner_timer: slint::Timer,
-    together_timer: slint::Timer,
     history_timer: slint::Timer,
     core: Arc<AlwyWatch>,
     ui: Weak<AppWindow>,
@@ -147,6 +155,8 @@ pub struct App {
     profiles: ProfileStore,
     state: RefCell<State>,
     images: RefCell<HashMap<String, Image>>,
+    /// Custom avatars by (user, version); None while loading or after a failure.
+    faces: RefCell<HashMap<(String, u32), Option<Image>>>,
 }
 
 fn sstr(s: impl AsRef<str>) -> SharedString {
@@ -225,7 +235,6 @@ impl App {
         let app = Rc::new(Self {
             downloads_timer: slint::Timer::default(),
             runner_timer: slint::Timer::default(),
-            together_timer: slint::Timer::default(),
             history_timer: slint::Timer::default(),
             core,
             ui: ui.as_weak(),
@@ -257,9 +266,11 @@ impl App {
                 leaving_posters: vec![],
                 leaving_model: None,
                 together: None,
-                rooms_seen: vec![],
-                join_gen: 0,
-                knock: None,
+                lists: Default::default(),
+                me: Default::default(),
+                forever: None,
+                player_notes: None,
+                mark_pending: None,
                 admin_users: vec![],
                 armed: None,
                 poll_gen: 0,
@@ -268,6 +279,7 @@ impl App {
                 history: Default::default(),
             }),
             images: RefCell::new(HashMap::new()),
+            faces: RefCell::new(HashMap::new()),
         });
         APP.with(|a| *a.borrow_mut() = Rc::downgrade(&app));
         ui.set_grid(ModelRc::from(app.state.borrow().grid_model.clone()));
@@ -308,6 +320,9 @@ impl App {
         if gate {
             app.show_gate();
         }
+        // Invitations arrive through the rooms' long poll; the welcome step once per account.
+        app.start_rooms_poll();
+        app.check_welcome();
         app
     }
 
@@ -663,14 +678,19 @@ impl App {
     }
 
     fn render_admin(&self) {
-        let rows: Vec<AdminRow> = self
-            .state
-            .borrow()
-            .admin_users
+        let users = self.state.borrow().admin_users.clone();
+        let rows: Vec<AdminRow> = users
             .iter()
             .map(|u| AdminRow {
                 key: sstr(&u.user_key),
-                name: sstr(&u.name),
+                name: sstr(person_label(
+                    &u.name,
+                    &u.media_name,
+                    users
+                        .iter()
+                        .any(|o| o.user_key != u.user_key && o.name.eq_ignore_ascii_case(&u.name)),
+                )),
+                avatar: self.person_avatar(&u.user_key, &u.name, &u.avatar),
                 detail: sstr(format!(
                     "{}{} kept forever",
                     if u.is_admin { "admin · " } else { "" },
@@ -725,75 +745,94 @@ impl App {
         slint::spawn_local(async move {
             let r = core.keep_admin_forever().await;
             let Some(t) = this.upgrade() else { return };
-            let ui = t.ui();
-            let s = match r {
-                Ok(s) => s,
-                Err(e) => return ui.set_forever_summary(sstr(e.to_string())),
-            };
-            if s.people.is_empty() {
-                ui.set_forever_summary("Nobody keeps anything forever yet.".into());
-            } else {
-                ui.set_forever_summary(sstr(format!(
-                    "{} titles · {} kept by several people · {} by one person",
-                    s.titles,
-                    s.shared,
-                    s.titles.saturating_sub(s.shared)
-                )));
+            match r {
+                Ok(s) => {
+                    t.state.borrow_mut().forever = Some(s);
+                    t.render_forever();
+                }
+                Err(e) => t.ui().set_forever_summary(sstr(e.to_string())),
             }
-            let names: HashMap<&str, &str> = s
-                .people
-                .iter()
-                .map(|p| (p.user_key.as_str(), p.name.as_str()))
-                .collect();
-            let people: Vec<ForeverRow> = s
-                .people
-                .iter()
-                .map(|p| {
-                    let overlaps = p
-                        .overlaps
-                        .iter()
-                        .take(3)
-                        .map(|o| format!("{} ({})", o.name, o.both))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    ForeverRow {
-                        title: sstr(format!("{}  ·  {}", p.name, p.count)),
-                        detail: sstr(format!(
-                            "{} shared · {} only them{}",
-                            p.shared,
-                            p.alone,
-                            if overlaps.is_empty() {
-                                String::new()
-                            } else {
-                                format!(" · most with {overlaps}")
-                            }
-                        )),
-                        shared: p.shared as f32 / p.count.max(1) as f32,
-                    }
-                })
-                .collect();
-            let titles: Vec<ForeverRow> = s
-                .items
-                .iter()
-                .map(|i| ForeverRow {
-                    title: sstr(match i.year {
-                        Some(y) => format!("{} ({y})", i.title),
-                        None => i.title.clone(),
-                    }),
-                    detail: sstr(
-                        i.keepers
-                            .iter()
-                            .map(|k| names.get(k.as_str()).copied().unwrap_or(k))
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                    ),
-                    shared: -1.0,
-                })
-                .collect();
-            ui.set_forever_people(ModelRc::new(VecModel::from(people)));
-            ui.set_forever_titles(ModelRc::new(VecModel::from(titles)));
         })
         .ok();
+    }
+
+    fn render_forever(&self) {
+        let Some(s) = self.state.borrow().forever.clone() else {
+            return;
+        };
+        let ui = self.ui();
+        if s.people.is_empty() {
+            ui.set_forever_summary("Nobody keeps anything forever yet.".into());
+        } else {
+            ui.set_forever_summary(sstr(format!(
+                "{} titles · {} kept by several people · {} by one person",
+                s.titles,
+                s.shared,
+                s.titles.saturating_sub(s.shared)
+            )));
+        }
+        let names: HashMap<&str, &str> = s
+            .people
+            .iter()
+            .map(|p| (p.user_key.as_str(), p.name.as_str()))
+            .collect();
+        let people: Vec<ForeverRow> = s
+            .people
+            .iter()
+            .map(|p| {
+                let overlaps = p
+                    .overlaps
+                    .iter()
+                    .take(3)
+                    .map(|o| format!("{} ({})", o.name, o.both))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let twin = s
+                    .people
+                    .iter()
+                    .any(|o| o.user_key != p.user_key && o.name.eq_ignore_ascii_case(&p.name));
+                ForeverRow {
+                    title: sstr(format!(
+                        "{}  ·  {}",
+                        person_label(&p.name, &p.media_name, twin),
+                        p.count
+                    )),
+                    detail: sstr(format!(
+                        "{} shared · {} only them{}",
+                        p.shared,
+                        p.alone,
+                        if overlaps.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" · most with {overlaps}")
+                        }
+                    )),
+                    shared: p.shared as f32 / p.count.max(1) as f32,
+                    avatar: self.person_avatar(&p.user_key, &p.name, &p.avatar),
+                }
+            })
+            .collect();
+        let titles: Vec<ForeverRow> = s
+            .items
+            .iter()
+            .map(|i| ForeverRow {
+                title: sstr(match i.year {
+                    Some(y) => format!("{} ({y})", i.title),
+                    None => i.title.clone(),
+                }),
+                detail: sstr(
+                    i.keepers
+                        .iter()
+                        .map(|k| names.get(k.as_str()).copied().unwrap_or(k))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ),
+                shared: -1.0,
+                avatar: Default::default(),
+            })
+            .collect();
+        ui.set_forever_people(ModelRc::new(VecModel::from(people)));
+        ui.set_forever_titles(ModelRc::new(VecModel::from(titles)));
     }
 
     fn admin_rights(self: &Rc<Self>, user: String, field: String) {
@@ -1004,6 +1043,12 @@ impl App {
                     t.ui().set_keep_choices(ModelRc::default());
                     t.refresh_keep_settings();
                     t.refresh_settings();
+                    // Another account may mean another person: their profile, their rooms.
+                    t.forget_me();
+                    t.load_me();
+                    t.check_welcome();
+                    t.stop_rooms_poll();
+                    t.start_rooms_poll();
                     // Seerr through the same server when not set up yet (optional there).
                     if t.core.seerr_connection().is_none() {
                         t.seerr_bridge(true);
@@ -1774,6 +1819,15 @@ impl App {
                 ui.set_page(Page::Together);
                 self.load_together();
             }
+            Route::Room => {
+                if self.in_room() {
+                    ui.set_page(Page::Room);
+                    self.render_room();
+                } else {
+                    ui.set_page(Page::Together);
+                    self.load_together();
+                }
+            }
             Route::Triage => {
                 ui.set_page(Page::Triage);
                 self.load_triage();
@@ -1805,6 +1859,7 @@ impl App {
                 self.refresh_keep_settings();
                 self.refresh_settings();
                 self.render_profiles();
+                self.load_me();
             }
             Route::Profiles => {
                 ui.set_page(Page::Profiles);
@@ -2975,10 +3030,14 @@ impl App {
                 auto_skip_intro,
                 auto_next,
                 together: None,
+                notes: None,
             };
             let mut req = req;
-            if together == TogetherPlay::Create {
-                App::create_room(&this, &core, account.clone(), id.clone(), start_ms).await;
+            // Short messages for this player (an invitation arrived meanwhile).
+            let (notes_tx, notes_rx) = std::sync::mpsc::channel();
+            req.notes = Some(notes_rx);
+            if let Some(t) = this.upgrade() {
+                t.state.borrow_mut().player_notes = Some(notes_tx);
             }
             if together != TogetherPlay::Alone {
                 req.together = this.upgrade().and_then(|t| t.player_link());
@@ -3017,14 +3076,17 @@ impl App {
                             if let Some(r) = current {
                                 t.show(r);
                             }
-                            // Said on the page the viewer is back on (after `show` cleared it).
+                            t.state.borrow_mut().player_notes = None;
+                            let in_room = t.in_room();
+                            t.room_player_gone();
+                            // Said on the page the viewer is back on (after `show` cleared it);
+                            // in a room, on the room's page (the room stays).
                             if let Some(e) = error {
-                                t.ui().set_error(sstr(e));
-                                t.leave_room(None, true);
+                                t.player_failed(e);
                                 return;
                             }
                             // Watching together: the room's new title, else ours (the room
-                            // follows), else the room is left with the player.
+                            // follows), else back to the room's page.
                             if let Some((a, i, start)) = t.take_switch() {
                                 t.play_with(
                                     a,
@@ -3042,7 +3104,8 @@ impl App {
                             };
                             match then {
                                 Some((n, from_start)) => t.play_for(acct, n, from_start),
-                                None => t.leave_room(None, true),
+                                None if in_room => t.room_player_closed(None),
+                                None => {}
                             }
                         }
                     });
@@ -3050,8 +3113,9 @@ impl App {
             });
             match (result, this.upgrade()) {
                 (Err(e), Some(t)) => {
-                    t.ui().set_error(sstr(e));
-                    t.leave_room(None, true);
+                    t.state.borrow_mut().player_notes = None;
+                    t.room_player_gone();
+                    t.player_failed(e);
                 }
                 (Ok(()), Some(t)) if linked => t.player_started(account, id, together, start_ms),
                 _ => {}
@@ -3260,6 +3324,120 @@ impl App {
         .ok();
     }
 
+    /// "Mark as" on a show's page: every episode of the selected season (`kind` "season") or
+    /// of the show ("show"). Unwatched forgets progress, so it is asked first.
+    fn mark_many(self: &Rc<Self>, kind: String, played: bool) {
+        let (series, season) = {
+            let st = self.state.borrow();
+            (st.series.clone(), st.season.clone())
+        };
+        let Some(series) = series else { return };
+        let Some(account) = self.account_of(&series) else {
+            return;
+        };
+        let target = if kind == "season" {
+            match season {
+                Some(s) => s,
+                None => return,
+            }
+        } else {
+            series.clone()
+        };
+        if played {
+            self.mark_now(target, true);
+            return;
+        }
+        // "Mark all 10 episodes of Silo Season 1 unwatched?"
+        let show = self.ui().get_detail().title.to_string();
+        let seasons = self
+            .core
+            .cached_seasons(account, series.clone())
+            .ok()
+            .flatten()
+            .map(|r| r.items)
+            .unwrap_or_default();
+        let (count, what) = if target == series {
+            let n: Option<u32> = seasons.iter().map(|s| s.child_count).sum();
+            (n, show)
+        } else {
+            let season = seasons.iter().find(|s| s.id == target);
+            let n = season
+                .and_then(|s| s.child_count)
+                .or_else(|| Some(self.state.borrow().episodes_model.row_count() as u32))
+                .filter(|&n| n > 0);
+            (
+                n,
+                format!(
+                    "{show} {}",
+                    season.map(|s| s.title.clone()).unwrap_or_default()
+                ),
+            )
+        };
+        self.state.borrow_mut().mark_pending = Some(target);
+        self.ui().set_mark_confirm(sstr(format!(
+            "Mark all {}episodes of {} unwatched? This forgets where you stopped.",
+            count.map(|n| format!("{n} ")).unwrap_or_default(),
+            what.trim()
+        )));
+    }
+
+    fn mark_confirmed(self: &Rc<Self>, ok: bool) {
+        let target = self.state.borrow_mut().mark_pending.take();
+        self.ui().set_mark_confirm(SharedString::new());
+        if let (true, Some(t)) = (ok, target) {
+            self.mark_now(t, false);
+        }
+    }
+
+    /// The same path as the single-title mark (`set_played` on a season or series id marks
+    /// every episode under it), then the page redrawn: show, season marks, episodes.
+    fn mark_now(self: &Rc<Self>, target: String, played: bool) {
+        let Some(series) = self.state.borrow().series.clone() else {
+            return;
+        };
+        let Some(account) = self.account_of(&series) else {
+            return;
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.set_played(account.clone(), target, played).await;
+            let Some(t) = this.upgrade() else { return };
+            if let Err(e) = r {
+                t.set_error(Some(e));
+                return;
+            }
+            let item = core
+                .refresh_item(account.clone(), series.clone(), true)
+                .await;
+            let seasons = core
+                .refresh_seasons(account.clone(), series.clone(), true)
+                .await;
+            let season = t.state.borrow().season.clone();
+            if let Some(s) = &season {
+                let _ = core
+                    .refresh_episodes(account.clone(), series.clone(), s.clone(), true)
+                    .await;
+            }
+            let Some(t) = this.upgrade() else { return };
+            if t.state.borrow().series.as_deref() != Some(&series) {
+                return;
+            }
+            if let Ok(i) = item {
+                t.render_detail(&i.item);
+            }
+            if let Ok(r) = seasons {
+                t.own(&r.items, &account);
+                t.render_seasons(&r.items);
+            }
+            // Episodes again, from the fresh cache (marks and progress bars).
+            if let Some(s) = season {
+                t.state.borrow_mut().season = None;
+                t.select_season(s);
+            }
+        })
+        .ok();
+    }
+
     // ----- search ---------------------------------------------------------------------------
 
     fn search(self: &Rc<Self>, text: String) {
@@ -3384,6 +3562,8 @@ impl App {
                 {
                     t.refresh_keep_settings();
                     t.refresh_seerr_settings();
+                    t.check_welcome();
+                    t.start_rooms_poll();
                 }
             })
             .ok();
@@ -4176,6 +4356,10 @@ impl App {
         });
         on!(on_play, |a, id, from_start| a.play(id.into(), from_start));
         on!(on_toggle_played, |a, id| a.toggle_played(id.into()));
+        on!(on_mark_many, |a, kind, played| a
+            .mark_many(kind.into(), played));
+        on!(on_mark_confirm_ok, |a| a.mark_confirmed(true));
+        on!(on_mark_confirm_cancel, |a| a.mark_confirmed(false));
         on!(on_toggle_watchlist, |a, id| a.toggle_watchlist(id.into()));
         on!(on_play_trailer, |a, id| a.play_trailer(id.into()));
         on!(on_select_season, |a, id| a.select_season(id.into()));
@@ -4235,7 +4419,10 @@ impl App {
             a.keep_sync_as(url, id.into());
         });
         on!(on_keep_disconnect, |a| {
+            a.leave_room(None, true);
             let _ = a.core.keep_disconnect();
+            a.stop_rooms_poll();
+            a.forget_me();
             a.ui().set_keep_choices(ModelRc::default());
             a.refresh_keep_settings();
             a.refresh_settings();
@@ -4246,11 +4433,41 @@ impl App {
             .keep_vote(key.into(), choice.into()));
         on!(on_watch_together, |a, id| {
             if let Some(account) = a.account_of(&id) {
-                a.play_with(account, id.into(), None, TogetherPlay::Create);
+                a.watch_together(account, id.into());
             }
         });
-        on!(on_together_join, |a, code| a.together_join(code.into()));
-        on!(on_together_cancel, |a| a.together_cancel());
+        on!(on_together_open, |a, code| a.together_open(code.into()));
+        on!(on_together_decline, |a, code| a
+            .together_decline(code.into()));
+        on!(on_room_start, |a| a.room_start());
+        on!(on_room_play, |a| a.open_room_player());
+        on!(on_room_leave, |a| a.room_leave());
+        on!(on_room_invite, |a| a.room_invite());
+        on!(on_room_uninvite, |a, key| a.room_uninvite(key.into()));
+        on!(on_picker_toggle, |a, key| a.picker_toggle(key.into()));
+        on!(on_picker_filter, |a, text| a.picker_filter(text.into()));
+        on!(on_picker_send, |a| a.picker_send());
+        on!(on_picker_cancel, |a| a.picker_cancel());
+        on!(on_invite_join, |a| a.invite_join());
+        on!(on_invite_decline, |a| a.invite_decline());
+        on!(on_invite_dismiss, |a| a.invite_dismiss());
+        on!(on_account_dialog_open, |a, kind| a
+            .account_dialog_open(kind.into()));
+        on!(on_account_name_edited, |a, text| a
+            .account_name_edited(text.into()));
+        on!(on_account_name_save, |a| a.account_name_save());
+        on!(on_account_name_reset, |a| a.account_name_reset());
+        on!(on_account_preset, |a, id| a.account_preset(id.into()));
+        on!(on_account_upload, |a| a.account_upload());
+        on!(on_account_remove_avatar, |a| a.account_remove_avatar());
+        on!(on_account_dialog_close, |a| a.account_dialog_close());
+        on!(on_welcome_continue, |a| a.welcome_continue());
+        on!(on_welcome_skip, |a| a.welcome_skip());
+        on!(on_crop_drag, |a, dx, dy| a.crop_drag(dx, dy));
+        on!(on_crop_zoom_by, |a, steps| a.crop_zoom_by(steps));
+        on!(on_crop_set_zoom, |a, z| a.crop_set_zoom(z));
+        on!(on_crop_save, |a| a.crop_save());
+        on!(on_crop_cancel, |a| a.crop_cancel());
         on!(on_leaving_scrolled, |a, first| a.leaving_scrolled(first));
         on!(on_triage_vote, |a, choice| a.triage_vote(choice.into()));
         on!(on_admin_rights, |a, user, field| a
@@ -4397,6 +4614,16 @@ async fn async_sleep(d: Duration) {
     let _ = rx.await;
 }
 
+/// A name for admin lists: the media-server name next to the display name when they differ or
+/// when someone else has the same display name.
+fn person_label(name: &str, media_name: &str, twin: bool) -> String {
+    if !media_name.is_empty() && (twin || !media_name.eq_ignore_ascii_case(name)) {
+        format!("{name} ({media_name})")
+    } else {
+        name.to_owned()
+    }
+}
+
 /// "9:12" or "1:02:03".
 fn clock(ms: u64) -> String {
     let s = ms / 1000;
@@ -4410,6 +4637,14 @@ fn clock(ms: u64) -> String {
 
 #[cfg(test)]
 mod clock_tests {
+    #[test]
+    fn admin_labels_tell_people_apart() {
+        assert_eq!(super::person_label("Sam", "samuel", false), "Sam (samuel)");
+        assert_eq!(super::person_label("Sam", "sam", false), "Sam");
+        assert_eq!(super::person_label("Sam", "sam", true), "Sam (sam)");
+        assert_eq!(super::person_label("Sam", "", true), "Sam");
+    }
+
     #[test]
     fn formats_like_the_android_player() {
         assert_eq!(super::clock(552_000), "9:12");

@@ -1,29 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Watch together on the desktop: the rooms open on the AlwyWatch server, asking a host to join,
-//! and the room a player follows (same protocol as Android, see docs/keep-protocol.md).
+//! Watch together on the desktop (docs/together-apps.md): private rooms that start as a lobby,
+//! people invited from a list (recent partners first), invitations announced anywhere in the
+//! app, and the room a player follows (same protocol as Android, docs/keep-protocol.md).
 //!
-//! The player (mpv, own thread) gets the room's play/pause/seek through a channel and sends
-//! back what the viewer does; the host answers join requests on the video with Y or N.
+//! "Watch together" on a title creates the lobby and opens the Room page, never the player. The
+//! room's `wait` loop runs from then on (lobby and player alike: it is the seat's heartbeat) and
+//! opens the player when the host starts. The player (mpv, own thread) gets the room's
+//! play/pause/seek through a channel and sends back what the viewer does. A second long poll,
+//! on my rooms and invitations, runs while an AlwyWatch server is linked.
 
 use std::sync::mpsc;
 
 use super::*;
-use crate::TogetherRow;
 use crate::player::{FromPlayer, ToPlayer, TogetherLink};
+use crate::{PersonRow, TogetherRow};
 
 /// How a player starts with regard to watch together.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum TogetherPlay {
     Alone,
-    /// Open a room with this title ("Watch together" on its page).
-    Create,
     /// In the current room; `announce`: this title was chosen here (next episode), tell the room.
     Room {
         announce: bool,
     },
 }
 
-/// The room this app follows (one at a time).
+/// The room this app is in (one at a time).
 pub(super) struct Room {
     code: String,
     member: String,
@@ -31,12 +33,38 @@ pub(super) struct Room {
     state: Option<TogetherState>,
     received_ms: i64,
     to_player: Option<mpsc::Sender<ToPlayer>>,
-    /// Join requests answered here (until the server's next state drops them).
-    answered: HashSet<String>,
     /// Our updates on their way: room answers in between are older than them.
     sending: u32,
     /// The room moved to this title (account, item): play it once the current player closes.
     switch_to: Option<(String, String)>,
+    /// A player of the room is open.
+    player_open: bool,
+    /// The player already opened by itself at the start (after that: "Back to the video").
+    opened: bool,
+    /// A `join` was already tried after a 404 (a dropped seat may come back).
+    rejoined: bool,
+    /// Bumped to stop this room's loop (a new room).
+    generation: u64,
+}
+
+/// My rooms and invitations, and the people to invite.
+#[derive(Default)]
+pub(super) struct Lists {
+    rooms: Option<TogetherRooms>,
+    /// Bumped to stop the list's long poll.
+    generation: u64,
+    room_gen: u64,
+    /// Invitations already announced, and rooms left or declined here (never announced again).
+    shown: HashSet<String>,
+    gone: HashSet<String>,
+    /// The invitation on the banner.
+    banner: Option<String>,
+    /// Posters from my servers, by title.
+    posters: HashMap<String, Image>,
+    posters_wanted: HashSet<String>,
+    people: Vec<TogetherPerson>,
+    picked: Vec<String>,
+    filter: String,
 }
 
 /// Local clock in ms, only compared with itself (to move the room's position on).
@@ -48,268 +76,611 @@ fn mono_ms() -> i64 {
 }
 
 /// "Silo S2 · E7" or the movie title.
-fn media_title(m: &TogetherMedia) -> String {
+pub(super) fn media_title(m: &TogetherMedia) -> String {
     match (&m.series_title, m.season, m.episode) {
         (Some(s), Some(se), Some(ep)) => format!("{s} S{se} · E{ep}"),
         _ => m.title.clone(),
     }
 }
 
-impl App {
-    // ----- the rooms list ----------------------------------------------------------------
+/// Same title, whatever the room (poster cache key).
+fn media_key(m: &TogetherMedia) -> String {
+    format!(
+        "{}|{}|{:?}|{:?}|{:?}|{:?}|{:?}",
+        m.kind, m.title, m.tmdb, m.imdb, m.tvdb, m.season, m.episode
+    )
+}
 
-    /// Lists the open rooms; refreshed every 15 s while the page is shown.
+/// One person in the room: their seats grouped (a user on two devices appears twice).
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct Seat {
+    pub user_key: String,
+    pub name: String,
+    pub avatar: Avatar,
+    pub devices: usize,
+    pub host: bool,
+    /// One of the seats is this device's.
+    pub me: bool,
+}
+
+/// Members grouped by user, in the room's order (by name), the host's user marked.
+pub(super) fn group_members(s: &TogetherState, my_member: &str) -> Vec<Seat> {
+    let mut out: Vec<Seat> = Vec::new();
+    for m in &s.members {
+        let host = m.id == s.host;
+        let me = m.id == my_member;
+        match out.iter_mut().find(|p| p.user_key == m.user_key) {
+            Some(p) => {
+                p.devices += 1;
+                p.host |= host;
+                p.me |= me;
+            }
+            None => out.push(Seat {
+                user_key: m.user_key.clone(),
+                name: m.name.clone(),
+                avatar: m.avatar.clone(),
+                devices: 1,
+                host,
+                me,
+            }),
+        }
+    }
+    out
+}
+
+/// "Host · you · 2 devices".
+fn seat_detail(p: &Seat) -> String {
+    let mut parts = Vec::new();
+    if p.host {
+        parts.push("Host".to_owned());
+    }
+    if p.me {
+        parts.push("You".to_owned());
+    }
+    if p.devices > 1 {
+        parts.push(format!("{} devices", p.devices));
+    }
+    parts.join(" · ")
+}
+
+/// A row of the people list.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct Pick {
+    pub user_key: String,
+    pub name: String,
+    pub detail: String,
+    pub header: &'static str,
+    pub avatar: Avatar,
+}
+
+/// The people to invite, in the server's order (recent partners, then everyone by name), without
+/// `hide` (already in the room or invited) and filtered by name. A second line tells people
+/// apart: their media-server name when it differs, their server when two names are equal.
+pub(super) fn people_rows(
+    people: &[TogetherPerson],
+    hide: &HashSet<String>,
+    filter: &str,
+) -> Vec<Pick> {
+    let filter = filter.trim().to_lowercase();
+    let same = |a: &str, b: &str| a.to_lowercase() == b.to_lowercase();
+    let mut out = Vec::new();
+    let (mut recent, mut others) = (false, false);
+    for p in people {
+        if hide.contains(&p.user_key) {
+            continue;
+        }
+        if !filter.is_empty()
+            && !p.name.to_lowercase().contains(&filter)
+            && !p.media_name.to_lowercase().contains(&filter)
+        {
+            continue;
+        }
+        let twin = people
+            .iter()
+            .any(|o| o.user_key != p.user_key && same(&o.name, &p.name));
+        let mut detail = Vec::new();
+        if !p.media_name.is_empty() && !same(&p.media_name, &p.name) {
+            detail.push(p.media_name.clone());
+        }
+        if twin {
+            if !p.server_name.is_empty() {
+                detail.push(p.server_name.clone());
+            } else if detail.is_empty() && !p.media_name.is_empty() {
+                detail.push(p.media_name.clone());
+            }
+        }
+        let header = if p.last_together_at.is_some() {
+            if recent {
+                ""
+            } else {
+                recent = true;
+                "RECENT"
+            }
+        } else if others || !recent {
+            others = true;
+            ""
+        } else {
+            others = true;
+            "EVERYONE"
+        };
+        out.push(Pick {
+            user_key: p.user_key.clone(),
+            name: p.name.clone(),
+            detail: detail.join(" · "),
+            header,
+            avatar: p.avatar.clone(),
+        });
+    }
+    out
+}
+
+/// "3 watching: Alex, Sam, Kim".
+fn watching_note(s: &TogetherState) -> String {
+    let people = group_members(s, "");
+    let names: Vec<&str> = people.iter().map(|p| p.name.as_str()).collect();
+    format!("{} watching: {}", people.len(), names.join(", "))
+}
+
+/// A failed room call in plain words.
+pub(super) fn room_error(e: &CoreError) -> String {
+    match e {
+        CoreError::Server { status: 409 } => "The room is full (20 people at most).".into(),
+        CoreError::Server { status: 429 } => {
+            "Too many rooms or invitations at once: try again in a few minutes.".into()
+        }
+        CoreError::Server { status: 403 } => "Only the room's host can do that.".into(),
+        CoreError::Server { status: 503 } => {
+            "Your AlwyWatch server has too many rooms open right now.".into()
+        }
+        CoreError::NotFound => "This room is gone.".into(),
+        CoreError::Network { .. } => "Can't reach your AlwyWatch server right now.".into(),
+        CoreError::Invalid { .. } => {
+            "Your AlwyWatch server answered something unexpected: it may need an update.".into()
+        }
+        e => e.to_string(),
+    }
+}
+
+impl App {
+    // ----- my rooms and invitations ---------------------------------------------------------
+
+    /// The Together page: the list as last seen (instantly), then fresh from the server.
     pub(super) fn load_together(self: &Rc<Self>) {
+        if self.state.borrow().lists.rooms.is_none() {
+            let cached = self
+                .core
+                .get_setting(ROOMS_KEY.into())
+                .ok()
+                .flatten()
+                .and_then(|s| serde_json::from_str::<TogetherRooms>(&s).ok());
+            self.state.borrow_mut().lists.rooms = cached;
+        }
+        self.render_rooms_list();
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             let r = core.together_rooms().await;
             let Some(t) = this.upgrade() else { return };
             match r {
-                Ok(rooms) => t.render_rooms(rooms),
-                Err(_) => {
-                    t.ui()
-                        .set_together_status("Can't reach your AlwyWatch server right now.".into());
+                Ok(rooms) => t.set_rooms(rooms),
+                Err(e) => {
+                    if t.state.borrow().lists.rooms.is_none() {
+                        t.ui().set_together_status(sstr(format!(
+                            "Can't load your rooms: {}",
+                            room_error(&e)
+                        )));
+                    }
                 }
             }
         })
         .ok();
-        let w = Rc::downgrade(self);
-        self.together_timer.start(
-            slint::TimerMode::Repeated,
-            Duration::from_secs(15),
-            move || {
-                if let Some(t) = w.upgrade() {
-                    if t.ui().get_page() == Page::Together {
-                        t.load_together();
-                    } else {
-                        t.together_timer.stop();
-                    }
-                }
-            },
-        );
     }
 
-    fn render_rooms(self: &Rc<Self>, rooms: Vec<TogetherRoom>) {
-        let ui = self.ui();
-        ui.set_together_status(sstr(if rooms.is_empty() {
-            "Nobody is watching together right now. To start, open a movie or an episode and \
-             choose Watch together: people on your AlwyWatch server will see it here."
-        } else {
-            ""
-        }));
-        let model = Rc::new(VecModel::from(
-            rooms
-                .iter()
-                .map(|r| {
-                    let others = r.members.len().saturating_sub(1);
-                    let at = clock(together_position_of_room(r));
-                    TogetherRow {
-                        code: sstr(&r.code),
-                        title: sstr(media_title(&r.media)),
-                        people: sstr(match others {
-                            0 => r.host.clone(),
-                            1 => format!("{} and 1 other", r.host),
-                            n => format!("{} and {n} others", r.host),
-                        }),
-                        status: sstr(format!(
-                            "{} · {at}{}",
-                            if r.playing { "Playing" } else { "Paused" },
-                            if r.mine {
-                                " · you're in it on another device"
-                            } else {
-                                ""
-                            }
-                        )),
-                        poster: Image::default(),
-                        mine: r.mine,
-                    }
-                })
-                .collect::<Vec<_>>(),
-        ));
-        ui.set_together_rooms(ModelRc::from(model.clone()));
-        self.state.borrow_mut().rooms_seen = rooms.clone();
-        // Posters from the viewer's own servers.
-        let accounts = self.home_accounts();
-        for (row, r) in rooms.into_iter().enumerate() {
-            let (core, this, m, accounts) = (
-                self.core.clone(),
-                Rc::downgrade(self),
-                Rc::downgrade(&model),
-                accounts.clone(),
-            );
-            slint::spawn_local(async move {
-                let Ok(Some(found)) = core.together_find(accounts, r.media).await else {
-                    return;
-                };
-                let item = match core.cached_item(found.account_id.clone(), found.item_id.clone()) {
-                    Ok(Some(i)) => i.item,
-                    _ => match core
-                        .refresh_item(found.account_id.clone(), found.item_id.clone(), false)
-                        .await
-                    {
-                        Ok(i) => i.item,
-                        Err(_) => return,
-                    },
-                };
-                let Some(t) = this.upgrade() else { return };
-                t.state
-                    .borrow_mut()
-                    .owners
-                    .insert(item.id.clone(), found.account_id);
-                t.load_image(&item, ImageKind::Primary, POSTER_PX, move |_, img| {
-                    if let Some(m) = m.upgrade()
-                        && let Some(mut row_data) = m.row_data(row)
-                    {
-                        row_data.poster = img;
-                        m.set_row_data(row, row_data);
-                    }
-                });
-            })
-            .ok();
-        }
-    }
-
-    // ----- joining -------------------------------------------------------------------------
-
-    /// Finds the room's title on our servers, asks its host, and plays once let in.
-    pub(super) fn together_join(self: &Rc<Self>, code: String) {
-        let Some(room) = self
-            .state
-            .borrow()
-            .rooms_seen
-            .iter()
-            .find(|r| r.code == code)
-            .cloned()
-        else {
-            return;
-        };
-        let join = {
+    /// Runs the list's long poll while an AlwyWatch server is linked: invitations arrive
+    /// through it.
+    pub(super) fn start_rooms_poll(self: &Rc<Self>) {
+        let generation = {
             let mut st = self.state.borrow_mut();
-            st.join_gen += 1;
-            st.join_gen
+            st.lists.generation += 1;
+            st.lists.generation
         };
-        let ui = self.ui();
-        ui.set_join_title(sstr(media_title(&room.media)));
-        ui.set_join_message("Finding it on your servers…".into());
-        ui.set_join_done(false);
-        let accounts = self.home_accounts();
+        if !self.core.keep_active() {
+            return;
+        }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        let live = move |this: &std::rc::Weak<App>| {
+            this.upgrade()
+                .filter(|t| t.state.borrow().lists.generation == generation && t.core.keep_active())
+        };
         slint::spawn_local(async move {
-            let live = |this: &std::rc::Weak<App>| {
-                this.upgrade().filter(|t| t.state.borrow().join_gen == join)
-            };
-            let say = |t: &Rc<App>, msg: String, done: bool| {
-                t.ui().set_join_message(sstr(msg));
-                t.ui().set_join_done(done);
-            };
-            let found = core.together_find(accounts, room.media.clone()).await;
-            let Some(t) = live(&this) else { return };
-            let found = match found {
-                Ok(Some(f)) => f,
-                Ok(None) => {
-                    return say(
-                        &t,
-                        format!("{} isn't on your servers.", media_title(&room.media)),
-                        true,
-                    );
-                }
-                Err(e) => return say(&t, e.to_string(), true),
-            };
-            say(&t, format!("Asking {} to let you in…", room.host), false);
-            drop(t);
-            let mut knock = match core.together_knock(code.clone()).await {
-                Ok(k) => k,
-                Err(e) => {
-                    if let Some(t) = live(&this) {
-                        say(&t, e.to_string(), true);
-                    }
-                    return;
-                }
-            };
-            if let Some(t) = live(&this) {
-                t.state.borrow_mut().knock = Some((code.clone(), knock.request_id.clone()));
-            }
-            let mut failures = 0;
-            let joined = loop {
+            let (mut version, mut failures) = (0u64, 0u32);
+            loop {
                 if live(&this).is_none() {
                     return;
                 }
-                match knock.status {
-                    KnockStatus::Accepted => break knock.joined.take(),
-                    KnockStatus::Declined => {
-                        if let Some(t) = live(&this) {
-                            t.state.borrow_mut().knock = None;
-                            say(
-                                &t,
-                                format!("{} can't let you in right now.", room.host),
-                                true,
-                            );
-                        }
-                        return;
-                    }
-                    KnockStatus::Waiting => {}
-                }
-                match core
-                    .together_knock_wait(code.clone(), knock.request_id.clone())
-                    .await
-                {
-                    Ok(k) => {
+                let asked = mono_ms();
+                let r = core.together_rooms_wait(version).await;
+                let Some(t) = live(&this) else { return };
+                match r {
+                    Ok(list) => {
                         failures = 0;
-                        knock = k;
-                    }
-                    Err(e) => {
-                        failures += 1;
-                        if failures > 3 || e == CoreError::NotFound {
-                            if let Some(t) = live(&this) {
-                                t.state.borrow_mut().knock = None;
-                                say(&t, "The room closed meanwhile.".into(), true);
-                            }
-                            return;
+                        let same = list.version == version;
+                        version = list.version;
+                        t.set_rooms(list);
+                        drop(t);
+                        // Never spin on a server that answers at once without news.
+                        if same && mono_ms() - asked < 1000 {
+                            async_sleep(Duration::from_secs(2)).await;
                         }
-                        async_sleep(Duration::from_secs(2)).await;
+                    }
+                    Err(_) => {
+                        failures += 1;
+                        drop(t);
+                        let secs = (2u64 << failures.min(6)).min(120);
+                        async_sleep(Duration::from_secs(secs)).await;
                     }
                 }
-            };
-            let Some(t) = live(&this) else { return };
-            t.state.borrow_mut().knock = None;
-            let Some(j) = joined else {
-                return say(&t, "The room closed meanwhile.".into(), true);
-            };
-            t.ui().set_join_message(SharedString::new());
-            let start = together_position(j.state.clone(), mono_ms(), mono_ms());
-            t.enter_room(j);
-            t.play_with(
-                found.account_id,
-                found.item_id,
-                Some(start),
-                TogetherPlay::Room { announce: false },
-            );
+            }
         })
         .ok();
     }
 
-    /// Closes the join dialog; a request still waiting is withdrawn.
-    pub(super) fn together_cancel(self: &Rc<Self>) {
-        let knock = {
+    /// Stops the list's long poll and forgets the rooms (AlwyWatch server unlinked).
+    pub(super) fn stop_rooms_poll(&self) {
+        {
             let mut st = self.state.borrow_mut();
-            st.join_gen += 1;
-            st.knock.take()
+            st.lists.generation += 1;
+            st.lists.rooms = None;
+            st.lists.banner = None;
+            st.lists.people.clear();
+        }
+        let _ = self.core.set_setting(ROOMS_KEY.into(), String::new());
+        self.render_banner();
+    }
+
+    /// A new list: remembered, shown, and new invitations announced.
+    fn set_rooms(self: &Rc<Self>, list: TogetherRooms) {
+        let fresh = {
+            let mut st = self.state.borrow_mut();
+            let lists = &mut st.lists;
+            let invited: Vec<&TogetherRoom> = list.rooms.iter().filter(|r| r.invited).collect();
+            let fresh = invited
+                .iter()
+                .find(|r| !lists.shown.contains(&r.code) && !lists.gone.contains(&r.code))
+                .map(|r| (*r).clone());
+            lists.shown.extend(invited.iter().map(|r| r.code.clone()));
+            if lists
+                .banner
+                .as_ref()
+                .is_some_and(|b| !invited.iter().any(|r| &r.code == b))
+            {
+                lists.banner = None;
+            }
+            if let Some(r) = &fresh {
+                lists.banner = Some(r.code.clone());
+            }
+            if let Ok(json) = serde_json::to_string(&list) {
+                let _ = self.core.set_setting(ROOMS_KEY.into(), json);
+            }
+            lists.rooms = Some(list);
+            fresh
         };
-        self.ui().set_join_message(SharedString::new());
-        if let Some((code, request)) = knock {
-            let core = self.core.clone();
-            core.runtime().spawn({
-                let core = core.clone();
-                async move {
-                    let _ = core.together_knock_cancel(code, request).await;
-                }
-            });
+        if let Some(r) = fresh {
+            self.notify_player(format!(
+                "{} invites you to watch {} · answer in AlwyWatch",
+                r.host,
+                media_title(&r.media)
+            ));
+        }
+        self.render_banner();
+        if self.ui().get_page() == Page::Together {
+            self.render_rooms_list();
         }
     }
 
-    // ----- the room a player follows -------------------------------------------------------
+    pub(super) fn render_rooms_list(self: &Rc<Self>) {
+        let ui = self.ui();
+        let rooms: Vec<TogetherRoom> = {
+            let st = self.state.borrow();
+            let gone = &st.lists.gone;
+            match &st.lists.rooms {
+                Some(l) => l
+                    .rooms
+                    .iter()
+                    .filter(|r| !(r.invited && gone.contains(&r.code)))
+                    .cloned()
+                    .collect(),
+                None => vec![],
+            }
+        };
+        ui.set_together_status(sstr(if rooms.is_empty() {
+            "No rooms yet. Open a movie or an episode and choose Watch together, then invite \
+             people."
+        } else {
+            ""
+        }));
+        let here = self
+            .state
+            .borrow()
+            .together
+            .as_ref()
+            .map(|r| r.code.clone());
+        let rows: Vec<TogetherRow> = rooms
+            .iter()
+            .map(|r| {
+                let poster = self
+                    .state
+                    .borrow()
+                    .lists
+                    .posters
+                    .get(&media_key(&r.media))
+                    .cloned()
+                    .unwrap_or_default();
+                let others = r.members.len().saturating_sub(1);
+                TogetherRow {
+                    code: sstr(&r.code),
+                    title: sstr(media_title(&r.media)),
+                    people: sstr(if r.invited {
+                        format!("{} invites you", r.host)
+                    } else {
+                        match others {
+                            0 => r.host.clone(),
+                            1 => format!("{} and 1 other", r.host),
+                            n => format!("{} and {n} others", r.host),
+                        }
+                    }),
+                    status: sstr(
+                        match (r.started, r.playing) {
+                            (false, _) => "Lobby: not started yet".to_owned(),
+                            (true, true) => format!("Watching · {}", clock(room_position(r))),
+                            (true, false) => format!("Paused at {}", clock(room_position(r))),
+                        } + if !r.invited && here.as_deref() != Some(r.code.as_str()) {
+                            " · open on another device"
+                        } else {
+                            ""
+                        },
+                    ),
+                    poster,
+                    mine: r.mine,
+                    invited: r.invited,
+                    host_avatar: self.person_avatar(&r.host_user_key, &r.host, &r.host_avatar),
+                }
+            })
+            .collect();
+        ui.set_together_rooms(ModelRc::new(VecModel::from(rows)));
+        for r in rooms {
+            self.want_poster(&r.media);
+        }
+    }
+
+    /// Looks the title up on my servers once, for its poster.
+    fn want_poster(self: &Rc<Self>, media: &TogetherMedia) {
+        let key = media_key(media);
+        if !self
+            .state
+            .borrow_mut()
+            .lists
+            .posters_wanted
+            .insert(key.clone())
+        {
+            return;
+        }
+        let accounts = self.home_accounts();
+        let (core, this, media) = (self.core.clone(), Rc::downgrade(self), media.clone());
+        slint::spawn_local(async move {
+            let Ok(Some(found)) = core.together_find(accounts, media).await else {
+                return;
+            };
+            let item = match core.cached_item(found.account_id.clone(), found.item_id.clone()) {
+                Ok(Some(i)) => i.item,
+                _ => match core
+                    .refresh_item(found.account_id.clone(), found.item_id.clone(), false)
+                    .await
+                {
+                    Ok(i) => i.item,
+                    Err(_) => return,
+                },
+            };
+            let Some(t) = this.upgrade() else { return };
+            t.state
+                .borrow_mut()
+                .owners
+                .insert(item.id.clone(), found.account_id);
+            t.load_image(&item, ImageKind::SeriesPrimary, POSTER_PX, move |t, img| {
+                t.state.borrow_mut().lists.posters.insert(key.clone(), img);
+                match t.ui().get_page() {
+                    Page::Together => t.render_rooms_list(),
+                    Page::Room => t.render_room(),
+                    _ => {}
+                }
+            });
+        })
+        .ok();
+    }
+
+    pub(super) fn render_banner(&self) {
+        let ui = self.ui();
+        let room = {
+            let st = self.state.borrow();
+            st.lists.banner.as_ref().and_then(|code| {
+                st.lists
+                    .rooms
+                    .as_ref()?
+                    .rooms
+                    .iter()
+                    .find(|r| &r.code == code)
+                    .cloned()
+            })
+        };
+        match room {
+            Some(r) => {
+                ui.set_invite_text(sstr(format!(
+                    "{} invites you to watch {}",
+                    r.host,
+                    media_title(&r.media)
+                )));
+                ui.set_invite_avatar(self.person_avatar(&r.host_user_key, &r.host, &r.host_avatar));
+                ui.set_invite_code(sstr(&r.code));
+            }
+            None => ui.set_invite_code(SharedString::new()),
+        }
+    }
+
+    pub(super) fn invite_join(self: &Rc<Self>) {
+        let code = self.state.borrow_mut().lists.banner.take();
+        self.render_banner();
+        if let Some(code) = code {
+            self.together_open(code);
+        }
+    }
+
+    pub(super) fn invite_decline(self: &Rc<Self>) {
+        let code = self.state.borrow_mut().lists.banner.take();
+        self.render_banner();
+        if let Some(code) = code {
+            self.together_decline(code);
+        }
+    }
+
+    /// The banner goes; the invitation stays on the Together page.
+    pub(super) fn invite_dismiss(&self) {
+        self.state.borrow_mut().lists.banner = None;
+        self.render_banner();
+    }
+
+    /// "Not now" on an invitation.
+    pub(super) fn together_decline(self: &Rc<Self>, code: String) {
+        self.state.borrow_mut().lists.gone.insert(code.clone());
+        if self.ui().get_page() == Page::Together {
+            self.render_rooms_list();
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.together_decline(code).await;
+            if let (Err(e), Some(t)) = (r, this.upgrade())
+                && e != CoreError::NotFound
+            {
+                t.ui()
+                    .set_error(sstr(format!("Couldn't decline: {}", room_error(&e))));
+            }
+        })
+        .ok();
+    }
+
+    /// A room of the Together page (or the banner's): mine here → its page; otherwise join it
+    /// (an invitation, or my room on another device).
+    pub(super) fn together_open(self: &Rc<Self>, code: String) {
+        let here = self
+            .state
+            .borrow()
+            .together
+            .as_ref()
+            .map(|r| r.code.clone());
+        match here {
+            Some(c) if c == code => self.navigate(Route::Room),
+            Some(_) => {
+                self.navigate(Route::Room);
+                self.ui().set_room_message(
+                    "You're in this room. Leave it first to join another one.".into(),
+                );
+            }
+            None => self.join_room(code),
+        }
+    }
+
+    fn join_room(self: &Rc<Self>, code: String) {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.together_join(code.clone()).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(j) => {
+                    t.state.borrow_mut().lists.gone.remove(&code);
+                    let started = j.state.started;
+                    t.enter_room(j);
+                    t.navigate(Route::Room);
+                    // A started room: straight to the player, in sync.
+                    if started {
+                        if let Some(r) = t.state.borrow_mut().together.as_mut() {
+                            r.opened = true;
+                        }
+                        t.open_room_player();
+                    }
+                }
+                Err(e) => t
+                    .ui()
+                    .set_error(sstr(format!("Couldn't join: {}", room_error(&e)))),
+            }
+        })
+        .ok();
+    }
+
+    // ----- the room -------------------------------------------------------------------------
+
+    /// "Watch together" on a title: a new lobby with it, then its page. In my own lobby, the
+    /// host changes the title instead.
+    pub(super) fn watch_together(self: &Rc<Self>, account: String, id: String) {
+        let current = {
+            let st = self.state.borrow();
+            st.together.as_ref().map(|r| {
+                let host = r
+                    .state
+                    .as_ref()
+                    .is_some_and(|s| together_is_host(s.clone(), r.member.clone()));
+                let started = r.state.as_ref().is_some_and(|s| s.started);
+                (r.code.clone(), r.member.clone(), host && !started)
+            })
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        match current {
+            Some((code, member, true)) => {
+                slint::spawn_local(async move {
+                    let r = core
+                        .together_update(code, member, false, 0, Some(account), Some(id))
+                        .await;
+                    let Some(t) = this.upgrade() else { return };
+                    t.navigate(Route::Room);
+                    match r {
+                        Ok(s) => {
+                            t.accept_room(s);
+                            t.render_room();
+                        }
+                        Err(e) => t.ui().set_room_message(sstr(room_error(&e))),
+                    }
+                })
+                .ok();
+            }
+            Some(_) => {
+                self.navigate(Route::Room);
+                self.ui().set_room_message(
+                    "You're already in a room. Leave it first to start another one.".into(),
+                );
+            }
+            None => {
+                slint::spawn_local(async move {
+                    let r = core.together_create(account, id).await;
+                    let Some(t) = this.upgrade() else { return };
+                    match r {
+                        Ok(j) => {
+                            t.enter_room(j);
+                            t.navigate(Route::Room);
+                        }
+                        Err(e) => t.ui().set_error(sstr(format!(
+                            "Watch together unavailable: {}",
+                            room_error(&e)
+                        ))),
+                    }
+                })
+                .ok();
+            }
+        }
+    }
 
     fn enter_room(self: &Rc<Self>, j: TogetherJoined) {
+        let generation = {
+            let mut st = self.state.borrow_mut();
+            st.lists.room_gen += 1;
+            st.lists.room_gen
+        };
         self.state.borrow_mut().together = Some(Room {
             code: j.state.code.clone(),
             member: j.member_id,
@@ -317,10 +688,14 @@ impl App {
             state: None,
             received_ms: 0,
             to_player: None,
-            answered: HashSet::new(),
             sending: 0,
             switch_to: None,
+            player_open: false,
+            opened: j.state.started,
+            rejoined: false,
+            generation,
         });
+        self.ui().set_room_message(SharedString::new());
         self.accept_room(j.state);
         self.follow_room();
     }
@@ -329,23 +704,378 @@ impl App {
         self.state.borrow().together.is_some()
     }
 
-    /// Opens a room for a title about to play here.
-    pub(super) async fn create_room(
-        this: &std::rc::Weak<App>,
-        core: &Arc<AlwyWatch>,
-        account: String,
-        id: String,
-        start_ms: u64,
-    ) {
-        let r = core.together_create(account, id, start_ms, true).await;
-        let Some(t) = this.upgrade() else { return };
-        match r {
-            Ok(j) => t.enter_room(j),
-            Err(e) => t
-                .ui()
-                .set_error(sstr(format!("Watch together unavailable: {e}"))),
+    pub(super) fn render_room(self: &Rc<Self>) {
+        let ui = self.ui();
+        if ui.get_page() != Page::Room {
+            return;
+        }
+        let Some((s, member)) = self
+            .state
+            .borrow()
+            .together
+            .as_ref()
+            .and_then(|r| Some((r.state.clone()?, r.member.clone())))
+        else {
+            return;
+        };
+        let host = together_is_host(s.clone(), member.clone());
+        let host_name = s
+            .members
+            .iter()
+            .find(|m| m.id == s.host)
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| "the host".into());
+        let received = self
+            .state
+            .borrow()
+            .together
+            .as_ref()
+            .map_or(0, |r| r.received_ms);
+        ui.set_room_title(sstr(media_title(&s.media)));
+        ui.set_room_status(sstr(match (s.started, s.playing) {
+            (false, _) if host => {
+                "Lobby: invite people, then start when everyone is here.".to_owned()
+            }
+            (false, _) => "Lobby: nothing plays until the host starts.".to_owned(),
+            (true, playing) => format!(
+                "{} {}",
+                if playing { "Watching ·" } else { "Paused at" },
+                clock(together_position(s.clone(), received, mono_ms()))
+            ),
+        }));
+        ui.set_room_is_host(host);
+        ui.set_room_started(s.started);
+        ui.set_room_host_name(sstr(host_name));
+        let members: Vec<PersonRow> = group_members(&s, &member)
+            .iter()
+            .map(|p| PersonRow {
+                key: sstr(&p.user_key),
+                name: sstr(&p.name),
+                detail: sstr(seat_detail(p)),
+                avatar: self.person_avatar(&p.user_key, &p.name, &p.avatar),
+                header: SharedString::new(),
+                selected: false,
+            })
+            .collect();
+        let invited: Vec<PersonRow> = s
+            .invited
+            .iter()
+            .map(|p| PersonRow {
+                key: sstr(&p.user_key),
+                name: sstr(&p.name),
+                detail: "Invited".into(),
+                avatar: self.person_avatar(&p.user_key, &p.name, &p.avatar),
+                header: SharedString::new(),
+                selected: false,
+            })
+            .collect();
+        ui.set_room_members(ModelRc::new(VecModel::from(members)));
+        ui.set_room_invited(ModelRc::new(VecModel::from(invited)));
+        let poster = self
+            .state
+            .borrow()
+            .lists
+            .posters
+            .get(&media_key(&s.media))
+            .cloned();
+        ui.set_room_poster(poster.unwrap_or_default());
+        self.want_poster(&s.media);
+    }
+
+    /// The host starts: playing from the beginning for everyone, the player opens here.
+    pub(super) fn room_start(self: &Rc<Self>) {
+        let Some((code, member)) = self.room_seat() else {
+            return;
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.together_start(code, member, 0).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(s) => {
+                    t.accept_room(s);
+                    t.render_room();
+                    let first = t
+                        .state
+                        .borrow_mut()
+                        .together
+                        .as_mut()
+                        .is_some_and(|r| !std::mem::replace(&mut r.opened, true));
+                    if first {
+                        t.open_room_player();
+                    }
+                }
+                Err(e) => t.ui().set_room_message(sstr(room_error(&e))),
+            }
+        })
+        .ok();
+    }
+
+    fn room_seat(&self) -> Option<(String, String)> {
+        let st = self.state.borrow();
+        st.together
+            .as_ref()
+            .map(|r| (r.code.clone(), r.member.clone()))
+    }
+
+    /// Plays the room's title from my servers, where the room is now.
+    pub(super) fn open_room_player(self: &Rc<Self>) {
+        let Some(s) = self.room_state() else { return };
+        if self
+            .state
+            .borrow()
+            .together
+            .as_ref()
+            .is_some_and(|r| r.player_open)
+        {
+            return;
+        }
+        let accounts = self.home_accounts();
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let found = core.together_find(accounts, s.media.clone()).await;
+            let Some(t) = this.upgrade() else { return };
+            match found {
+                Ok(Some(f)) => {
+                    let start = {
+                        let st = t.state.borrow();
+                        let Some(r) = st.together.as_ref() else {
+                            return;
+                        };
+                        r.state.as_ref().map_or(0, |s| {
+                            together_position(s.clone(), r.received_ms, mono_ms())
+                        })
+                    };
+                    t.play_with(
+                        f.account_id,
+                        f.item_id,
+                        Some(start),
+                        TogetherPlay::Room { announce: false },
+                    );
+                }
+                Ok(None) => t.ui().set_room_message(sstr(format!(
+                    "{} isn't on your servers, so it can't play here.",
+                    media_title(&s.media)
+                ))),
+                Err(e) => t.ui().set_room_message(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    /// Leaves the room for good (the Leave button).
+    pub(super) fn room_leave(self: &Rc<Self>) {
+        if let Some(code) = self.room_seat().map(|(c, _)| c) {
+            self.state.borrow_mut().lists.gone.insert(code);
+        }
+        self.to_player(ToPlayer::Quit);
+        self.leave_room(None, true);
+        self.drop_room_route();
+        self.navigate(Route::Together);
+    }
+
+    /// The room page is no more: forget it in the history.
+    fn drop_room_route(&self) {
+        self.state
+            .borrow_mut()
+            .stack
+            .retain(|r| !matches!(r, Route::Room));
+    }
+
+    /// The room is gone (closed on the server): said once, then back to where it makes sense.
+    fn room_closed(self: &Rc<Self>) {
+        self.leave_room(Some("The watch together room closed"), false);
+        if self.ui().get_page() == Page::Room {
+            self.drop_room_route();
+            self.navigate(Route::Together);
+        }
+        self.ui()
+            .set_error("The watch together room closed.".into());
+    }
+
+    /// The room's player is closed (another may follow at once: next episode, new title).
+    pub(super) fn room_player_gone(&self) {
+        if let Some(r) = self.state.borrow_mut().together.as_mut() {
+            r.player_open = false;
+            r.to_player = None;
         }
     }
+
+    /// A message on the open player, whatever it plays.
+    pub(super) fn notify_player(&self, text: String) {
+        if let Some(tx) = self.state.borrow().player_notes.as_ref() {
+            let _ = tx.send(text);
+        }
+    }
+
+    /// A player of the room closed: back to the room's page (still in the room; Leave is
+    /// there). An error from the player is said there.
+    pub(super) fn room_player_closed(self: &Rc<Self>, error: Option<String>) {
+        if let Some(r) = self.state.borrow_mut().together.as_mut() {
+            r.player_open = false;
+            r.to_player = None;
+        } else {
+            return;
+        }
+        self.navigate(Route::Room);
+        if let Some(e) = error {
+            self.ui().set_room_message(sstr(e));
+        }
+    }
+
+    // ----- inviting -------------------------------------------------------------------------
+
+    pub(super) fn room_invite(self: &Rc<Self>) {
+        {
+            let mut st = self.state.borrow_mut();
+            st.lists.picked.clear();
+            st.lists.filter.clear();
+        }
+        let ui = self.ui();
+        ui.set_picker_filter_text(SharedString::new());
+        let empty = self.state.borrow().lists.people.is_empty();
+        ui.set_picker_message(if empty {
+            "Loading…".into()
+        } else {
+            SharedString::new()
+        });
+        ui.set_room_picker(true);
+        self.render_picker();
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.together_people().await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(people) => {
+                    t.state.borrow_mut().lists.people = people;
+                    t.ui().set_picker_message(SharedString::new());
+                    t.render_picker();
+                }
+                Err(e) => t
+                    .ui()
+                    .set_picker_message(sstr(format!("Can't load the people: {}", room_error(&e)))),
+            }
+        })
+        .ok();
+    }
+
+    pub(super) fn render_picker(&self) {
+        let ui = self.ui();
+        if !ui.get_room_picker() {
+            return;
+        }
+        let rows = {
+            let st = self.state.borrow();
+            let mut hide = HashSet::new();
+            if let Some(s) = st.together.as_ref().and_then(|r| r.state.as_ref()) {
+                hide.extend(s.members.iter().map(|m| m.user_key.clone()));
+                hide.extend(s.invited.iter().map(|m| m.user_key.clone()));
+            }
+            let rows = people_rows(&st.lists.people, &hide, &st.lists.filter);
+            let picked = &st.lists.picked;
+            rows.into_iter()
+                .map(|p| (picked.contains(&p.user_key), p))
+                .collect::<Vec<_>>()
+        };
+        let loaded = !self.state.borrow().lists.people.is_empty();
+        if loaded && rows.is_empty() {
+            ui.set_picker_message(if self.state.borrow().lists.filter.is_empty() {
+                "Everyone is already in the room or invited.".into()
+            } else {
+                "Nobody by that name.".into()
+            });
+        } else if loaded {
+            ui.set_picker_message(SharedString::new());
+        }
+        let model: Vec<PersonRow> = rows
+            .iter()
+            .map(|(selected, p)| PersonRow {
+                key: sstr(&p.user_key),
+                name: sstr(&p.name),
+                detail: sstr(&p.detail),
+                avatar: self.person_avatar(&p.user_key, &p.name, &p.avatar),
+                header: sstr(p.header),
+                selected: *selected,
+            })
+            .collect();
+        ui.set_picker_people(ModelRc::new(VecModel::from(model)));
+        ui.set_picker_count(self.state.borrow().lists.picked.len() as i32);
+    }
+
+    pub(super) fn picker_toggle(&self, key: String) {
+        {
+            let mut st = self.state.borrow_mut();
+            let picked = &mut st.lists.picked;
+            match picked.iter().position(|k| *k == key) {
+                Some(i) => {
+                    picked.remove(i);
+                }
+                None => picked.push(key),
+            }
+        }
+        self.render_picker();
+    }
+
+    pub(super) fn picker_filter(&self, text: String) {
+        self.state.borrow_mut().lists.filter = text;
+        self.render_picker();
+    }
+
+    pub(super) fn picker_send(self: &Rc<Self>) {
+        let keys = self.state.borrow().lists.picked.clone();
+        let ui = self.ui();
+        if keys.is_empty() {
+            ui.set_picker_message("Choose people first.".into());
+            return;
+        }
+        if keys.len() > 20 {
+            ui.set_picker_message("20 people at most at once.".into());
+            return;
+        }
+        let Some((code, member)) = self.room_seat() else {
+            return;
+        };
+        ui.set_picker_message("Sending…".into());
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.together_invite(code, member, keys).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(s) => {
+                    t.accept_room(s);
+                    t.ui().set_room_picker(false);
+                    t.render_room();
+                }
+                Err(e) => t.ui().set_picker_message(sstr(room_error(&e))),
+            }
+        })
+        .ok();
+    }
+
+    pub(super) fn picker_cancel(&self) {
+        self.ui().set_room_picker(false);
+    }
+
+    pub(super) fn room_uninvite(self: &Rc<Self>, user_key: String) {
+        let Some((code, member)) = self.room_seat() else {
+            return;
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.together_uninvite(code, member, user_key).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(s) => {
+                    t.accept_room(s);
+                    t.render_room();
+                }
+                Err(e) => t.ui().set_room_message(sstr(room_error(&e))),
+            }
+        })
+        .ok();
+    }
+
+    // ----- the room a player follows -------------------------------------------------------
 
     /// The channel a new player in the room listens to (replaces the previous player's).
     pub(super) fn player_link(self: &Rc<Self>) -> Option<TogetherLink> {
@@ -353,6 +1083,7 @@ impl App {
         let mut st = self.state.borrow_mut();
         let room = st.together.as_mut()?;
         room.to_player = Some(tx);
+        room.player_open = true;
         Some(TogetherLink {
             rx,
             send: Box::new(|ev| {
@@ -365,8 +1096,8 @@ impl App {
         })
     }
 
-    /// Right after a player started in the room: say the room is open, tell the room about our
-    /// new title, or follow the room.
+    /// Right after a player started in the room: tell the room about our new title, or follow
+    /// the room; then who is watching.
     pub(super) fn player_started(
         self: &Rc<Self>,
         account: String,
@@ -374,20 +1105,23 @@ impl App {
         play: TogetherPlay,
         start_ms: u64,
     ) {
-        match play {
-            TogetherPlay::Create => self.to_player(ToPlayer::Note(
-                "Watch together is open: friends can join from Together".into(),
-            )),
-            TogetherPlay::Room { announce: true } => {
-                self.send_room(true, start_ms, Some((account, id)))
-            }
-            _ => {
-                if let Some(s) = self.room_state() {
-                    self.sync_player(&s);
-                }
-            }
+        if play == (TogetherPlay::Room { announce: true }) {
+            self.send_room(true, start_ms, Some((account, id)));
+        } else if let Some(s) = self.room_state() {
+            self.sync_player(&s);
         }
-        self.show_request();
+        if let Some(s) = self.room_state() {
+            self.to_player(ToPlayer::Note(watching_note(&s)));
+        }
+    }
+
+    /// The player could not start: the room stays, its page says why.
+    pub(super) fn player_failed(self: &Rc<Self>, error: String) {
+        if self.in_room() {
+            self.room_player_closed(Some(error));
+        } else {
+            self.ui().set_error(sstr(error));
+        }
     }
 
     fn to_player(&self, msg: ToPlayer) {
@@ -419,27 +1153,6 @@ impl App {
         room.received_ms = mono_ms();
     }
 
-    /// The host sees the first join request not answered yet; others see none.
-    fn show_request(&self) {
-        let req = {
-            let st = self.state.borrow();
-            let Some(room) = st.together.as_ref() else {
-                return;
-            };
-            room.state.as_ref().and_then(|s| {
-                (s.host == room.member)
-                    .then(|| {
-                        s.requests
-                            .iter()
-                            .find(|r| !room.answered.contains(&r.id))
-                            .map(|r| (r.id.clone(), r.name.clone()))
-                    })
-                    .flatten()
-            })
-        };
-        self.to_player(ToPlayer::Request(req));
-    }
-
     fn sync_player(&self, s: &TogetherState) {
         let received = self
             .state
@@ -453,43 +1166,74 @@ impl App {
         });
     }
 
-    /// Long-polls the room and applies what the others do.
+    /// Long-polls the room (the seat's heartbeat, lobby and player alike) and applies what
+    /// the others do.
     fn follow_room(self: &Rc<Self>) {
-        let Some(code) = self
+        let Some((code, generation)) = self
             .state
             .borrow()
             .together
             .as_ref()
-            .map(|r| r.code.clone())
+            .map(|r| (r.code.clone(), r.generation))
         else {
             return;
         };
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        let mine = move |t: &Rc<App>| {
+            t.state
+                .borrow()
+                .together
+                .as_ref()
+                .is_some_and(|r| r.generation == generation)
+        };
         slint::spawn_local(async move {
             let mut failures = 0u64;
             loop {
-                let Some((member, seq)) = this.upgrade().and_then(|t| {
+                let Some((member, seq)) = this.upgrade().filter(|t| mine(t)).and_then(|t| {
                     let st = t.state.borrow();
-                    st.together
-                        .as_ref()
-                        .filter(|r| r.code == code)
-                        .map(|r| (r.member.clone(), r.seq))
+                    st.together.as_ref().map(|r| (r.member.clone(), r.seq))
                 }) else {
                     return;
                 };
                 let r = core.together_wait(code.clone(), member, seq).await;
-                let Some(t) = this.upgrade() else { return };
-                if t.state.borrow().together.as_ref().map(|r| &r.code) != Some(&code) {
+                let Some(t) = this.upgrade().filter(|t| mine(t)) else {
                     return;
-                }
+                };
                 match r {
                     Ok(s) => {
                         failures = 0;
                         t.on_room_state(s);
                     }
                     Err(CoreError::NotFound) => {
-                        t.leave_room(Some("The watch together room closed"), false);
-                        return;
+                        // A dropped seat may come back once; 404 again: the room is gone.
+                        let tried = t
+                            .state
+                            .borrow_mut()
+                            .together
+                            .as_mut()
+                            .is_none_or(|r| std::mem::replace(&mut r.rejoined, true));
+                        if tried {
+                            t.room_closed();
+                            return;
+                        }
+                        drop(t);
+                        let j = core.together_join(code.clone()).await;
+                        let Some(t) = this.upgrade().filter(|t| mine(t)) else {
+                            return;
+                        };
+                        match j {
+                            Ok(j) => {
+                                if let Some(r) = t.state.borrow_mut().together.as_mut() {
+                                    r.member = j.member_id.clone();
+                                    r.rejoined = false;
+                                }
+                                t.on_room_state(j.state);
+                            }
+                            Err(_) => {
+                                t.room_closed();
+                                return;
+                            }
+                        }
                     }
                     Err(_) => {
                         failures += 1;
@@ -503,16 +1247,31 @@ impl App {
     }
 
     fn on_room_state(self: &Rc<Self>, s: TogetherState) {
-        let (before, member, sending) = {
+        let (before, member, sending, player_open, opened) = {
             let st = self.state.borrow();
             let Some(r) = st.together.as_ref() else {
                 return;
             };
-            (r.state.clone(), r.member.clone(), r.sending)
+            (
+                r.state.clone(),
+                r.member.clone(),
+                r.sending,
+                r.player_open,
+                r.opened,
+            )
         };
         self.accept_room(s.clone());
-        self.show_request();
-        if s.by == member || sending > 0 {
+        self.render_room();
+        self.render_picker();
+        // The host started: everyone's player opens (once; then "Back to the video").
+        if s.started && !opened && !player_open {
+            if let Some(r) = self.state.borrow_mut().together.as_mut() {
+                r.opened = true;
+            }
+            self.open_room_player();
+            return;
+        }
+        if !player_open || s.by == member || sending > 0 {
             return;
         }
         if let Some(b) = &before
@@ -552,9 +1311,13 @@ impl App {
                     .map(|m| m.name.as_str())
                     .collect();
                 if !joined.is_empty() {
-                    Some(format!("{} joined", joined.join(", ")))
+                    Some(format!(
+                        "{} joined · {}",
+                        joined.join(", "),
+                        watching_note(&s)
+                    ))
                 } else if !left.is_empty() {
-                    Some(format!("{} left", left.join(", ")))
+                    Some(format!("{} left · {}", left.join(", "), watching_note(&s)))
                 } else {
                     None
                 }
@@ -612,37 +1375,6 @@ impl App {
                 playing,
                 position_ms,
             } => self.send_room(playing, position_ms, None),
-            FromPlayer::Answer { request_id, accept } => {
-                let (code, member, name) = {
-                    let mut st = self.state.borrow_mut();
-                    let Some(r) = st.together.as_mut() else {
-                        return;
-                    };
-                    r.answered.insert(request_id.clone());
-                    let name = r
-                        .state
-                        .as_ref()
-                        .and_then(|s| s.requests.iter().find(|q| q.id == request_id))
-                        .map(|q| q.name.clone());
-                    (r.code.clone(), r.member.clone(), name)
-                };
-                self.show_request();
-                let (core, this) = (self.core.clone(), Rc::downgrade(self));
-                slint::spawn_local(async move {
-                    // Gone meanwhile (they cancelled): nothing to do.
-                    if let Ok(s) = core.together_answer(code, member, request_id, accept).await
-                        && let Some(t) = this.upgrade()
-                    {
-                        // The answer already holds the new member: no later change says so.
-                        if let (true, Some(n)) = (accept, name) {
-                            t.to_player(ToPlayer::Note(format!("{n} joined")));
-                        }
-                        t.accept_room(s);
-                        t.show_request();
-                    }
-                })
-                .ok();
-            }
         }
     }
 
@@ -678,7 +1410,7 @@ impl App {
         .ok();
     }
 
-    /// Leaves the room (the player closed, or the room is gone).
+    /// Leaves the room (Leave, or the room is gone).
     pub(super) fn leave_room(self: &Rc<Self>, note: Option<&str>, tell_server: bool) {
         let Some(room) = self.state.borrow_mut().together.take() else {
             return;
@@ -686,6 +1418,7 @@ impl App {
         if let (Some(n), Some(tx)) = (note, room.to_player.as_ref()) {
             let _ = tx.send(ToPlayer::Note(n.to_owned()));
         }
+        self.ui().set_room_picker(false);
         if tell_server {
             let core = self.core.clone();
             core.runtime().spawn({
@@ -698,11 +1431,272 @@ impl App {
     }
 }
 
+/// Test hooks (headless screenshots, `ALWYWATCH_TEST_PAGE`): pages with made-up rooms and
+/// people, nothing sent anywhere.
+impl App {
+    fn test_media(series: bool) -> TogetherMedia {
+        TogetherMedia {
+            kind: if series { "episode" } else { "movie" }.into(),
+            title: if series { "The Signal" } else { "Heat" }.into(),
+            year: Some(1995),
+            tmdb: None,
+            imdb: None,
+            tvdb: None,
+            series_title: series.then(|| "Silo".into()),
+            series_tmdb: None,
+            series_tvdb: None,
+            season: series.then_some(2),
+            episode: series.then_some(7),
+        }
+    }
+
+    /// `room` (the host's lobby), `room-guest` (waiting for the host), `room-picker`.
+    pub fn test_room(self: &Rc<Self>, step: &str) {
+        let preset = |p: &str| Avatar {
+            preset: Some(p.into()),
+            custom_version: None,
+        };
+        let member = |id: &str, name: &str, user: &str, avatar: Avatar| TogetherMember {
+            id: id.into(),
+            name: name.into(),
+            user_key: user.into(),
+            avatar,
+        };
+        let me = if step == "room-guest" { "s1" } else { "a1" };
+        let state = TogetherState {
+            code: "000000".into(),
+            seq: 3,
+            media: Self::test_media(true),
+            started: false,
+            playing: false,
+            position_ms: 0,
+            at_ms: 0,
+            now_ms: 0,
+            by: String::new(),
+            members: vec![
+                member("a1", "Alex", "t:alex", preset("p05")),
+                member("a2", "Alex", "t:alex", preset("p05")),
+                member("s1", "Sam", "t:sam", Avatar::default()),
+            ],
+            host: "a1".into(),
+            invited: vec![TogetherInvitee {
+                user_key: "t:kim".into(),
+                name: "Kim".into(),
+                avatar: preset("p08"),
+            }],
+        };
+        self.state.borrow_mut().together = Some(Room {
+            code: state.code.clone(),
+            member: me.into(),
+            seq: state.seq,
+            state: Some(state),
+            received_ms: mono_ms(),
+            to_player: None,
+            sending: 0,
+            switch_to: None,
+            player_open: false,
+            opened: false,
+            rejoined: false,
+            generation: u64::MAX,
+        });
+        self.navigate(Route::Room);
+        if step == "room-picker" {
+            let person =
+                |key: &str, name: &str, media: &str, server: &str, at, avatar| TogetherPerson {
+                    user_key: key.into(),
+                    name: name.into(),
+                    media_name: media.into(),
+                    avatar,
+                    server_name: server.into(),
+                    last_together_at: at,
+                };
+            self.state.borrow_mut().lists.people = vec![
+                person("t:jo", "Jo", "jo", "Plex", Some(2), preset("p12")),
+                person("t:sam", "Sam", "sam", "Plex", Some(1), Avatar::default()),
+                person("t:max", "Max", "maxime", "Plex", None, preset("p02")),
+                person("t:sam2", "Sam", "samuel", "Jellyfin", None, preset("p09")),
+                person("t:zoe", "Zoe", "zoe", "Jellyfin", None, Avatar::default()),
+            ];
+            self.state.borrow_mut().lists.picked = vec!["t:max".into()];
+            let ui = self.ui();
+            ui.set_picker_filter_text(SharedString::new());
+            ui.set_room_picker(true);
+            self.render_picker();
+        }
+    }
+
+    /// The Together page with an invitation (and its banner) and one of my rooms.
+    pub fn test_invitation(self: &Rc<Self>) {
+        let room =
+            |code: &str, host: &str, invited: bool, started: bool, series: bool| TogetherRoom {
+                code: code.into(),
+                host: host.into(),
+                host_avatar: Avatar {
+                    preset: invited.then(|| "p03".into()),
+                    custom_version: None,
+                },
+                host_user_key: format!("t:{host}"),
+                media: Self::test_media(series),
+                members: vec![host.into(), "Kim".into()],
+                started,
+                playing: started,
+                position_ms: 754_000,
+                at_ms: 0,
+                now_ms: 0,
+                mine: !invited,
+                hosting: false,
+                invited,
+            };
+        let list = TogetherRooms {
+            version: 1,
+            rooms: vec![
+                room("111111", "Sam", true, false, false),
+                room("222222", "Jo", false, true, true),
+            ],
+        };
+        {
+            let mut st = self.state.borrow_mut();
+            st.lists.rooms = Some(list);
+            st.lists.banner = Some("111111".into());
+        }
+        self.navigate(Route::Together);
+        self.render_banner();
+    }
+}
+
+/// Where the rooms list is cached (rendered instantly on the Together page).
+pub(super) const ROOMS_KEY: &str = "together.rooms";
+
 /// Where a listed room is now (its position moved on while playing).
-fn together_position_of_room(r: &TogetherRoom) -> u64 {
+fn room_position(r: &TogetherRoom) -> u64 {
     if r.playing {
         r.position_ms + (r.now_ms - r.at_ms).max(0) as u64
     } else {
         r.position_ms
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn member(id: &str, name: &str, user: &str) -> TogetherMember {
+        TogetherMember {
+            id: id.into(),
+            name: name.into(),
+            user_key: user.into(),
+            avatar: Avatar::default(),
+        }
+    }
+
+    fn state(members: Vec<TogetherMember>, host: &str) -> TogetherState {
+        TogetherState {
+            code: "123456".into(),
+            seq: 1,
+            media: TogetherMedia {
+                kind: "movie".into(),
+                title: "Heat".into(),
+                year: Some(1995),
+                tmdb: Some("949".into()),
+                imdb: None,
+                tvdb: None,
+                series_title: None,
+                series_tmdb: None,
+                series_tvdb: None,
+                season: None,
+                episode: None,
+            },
+            started: false,
+            playing: false,
+            position_ms: 0,
+            at_ms: 0,
+            now_ms: 0,
+            by: String::new(),
+            members,
+            host: host.into(),
+            invited: vec![],
+        }
+    }
+
+    #[test]
+    fn members_are_grouped_by_user() {
+        let s = state(
+            vec![
+                member("a1", "Alex", "u:alex"),
+                member("a2", "Alex", "u:alex"),
+                member("s1", "Sam", "u:sam"),
+            ],
+            "a2",
+        );
+        let g = group_members(&s, "s1");
+        assert_eq!(g.len(), 2);
+        assert_eq!(
+            (g[0].name.as_str(), g[0].devices, g[0].host, g[0].me),
+            ("Alex", 2, true, false)
+        );
+        assert_eq!(
+            (g[1].name.as_str(), g[1].devices, g[1].host, g[1].me),
+            ("Sam", 1, false, true)
+        );
+        assert_eq!(seat_detail(&g[0]), "Host · 2 devices");
+        assert_eq!(seat_detail(&g[1]), "You");
+        assert_eq!(watching_note(&s), "2 watching: Alex, Sam");
+    }
+
+    fn person(key: &str, name: &str, media: &str, server: &str, at: Option<i64>) -> TogetherPerson {
+        TogetherPerson {
+            user_key: key.into(),
+            name: name.into(),
+            media_name: media.into(),
+            avatar: Avatar::default(),
+            server_name: server.into(),
+            last_together_at: at,
+        }
+    }
+
+    #[test]
+    fn people_keep_the_order_with_headers_and_labels() {
+        let people = vec![
+            person("k1", "Kim", "kim", "Plex", Some(200)),
+            person("s1", "Sam", "sam", "Plex", Some(100)),
+            person("a1", "Alex", "alexandre", "Plex", None),
+            person("s2", "Sam", "samuel", "Jellyfin", None),
+            person("z1", "Zoe", "Zoe", "Plex", None),
+        ];
+        let rows = people_rows(&people, &HashSet::new(), "");
+        let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["Kim", "Sam", "Alex", "Sam", "Zoe"]);
+        let headers: Vec<&str> = rows.iter().map(|r| r.header).collect();
+        assert_eq!(headers, ["RECENT", "", "EVERYONE", "", ""]);
+        // Same display name twice: the server tells them apart.
+        assert_eq!(rows[1].detail, "Plex");
+        assert_eq!(rows[3].detail, "samuel · Jellyfin");
+        // Media-server name shown when it differs (case aside).
+        assert_eq!(rows[2].detail, "alexandre");
+        assert_eq!(rows[0].detail, "");
+        assert_eq!(rows[4].detail, "");
+    }
+
+    #[test]
+    fn people_hide_room_members_and_filter() {
+        let people = vec![
+            person("k1", "Kim", "", "Plex", Some(200)),
+            person("a1", "Alex", "", "Plex", None),
+            person("b1", "Bob", "alexis", "Plex", None),
+        ];
+        let hide: HashSet<String> = ["k1".to_owned()].into();
+        let rows = people_rows(&people, &hide, "");
+        // No recent partner left: no headers at all.
+        assert_eq!(rows.iter().map(|r| r.header).collect::<Vec<_>>(), ["", ""]);
+        let rows = people_rows(&people, &HashSet::new(), " ALEX");
+        let keys: Vec<&str> = rows.iter().map(|r| r.user_key.as_str()).collect();
+        assert_eq!(keys, ["a1", "b1"], "by display or media-server name");
+    }
+
+    #[test]
+    fn plain_errors() {
+        assert!(room_error(&CoreError::Server { status: 409 }).contains("full"));
+        assert!(room_error(&CoreError::Server { status: 429 }).contains("few minutes"));
+        assert_eq!(room_error(&CoreError::NotFound), "This room is gone.");
     }
 }

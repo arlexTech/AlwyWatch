@@ -3,6 +3,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod app;
+mod avatars;
 mod headless;
 mod mpv;
 mod platform;
@@ -152,6 +153,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok("seerrtitle") => app.test_seerr_title(),
         Ok(step @ ("mylist" | "mylist-first")) => app.test_mylist(step == "mylist-first"),
         Ok("detail") => app.test_detail(),
+        Ok(step @ ("room" | "room-guest" | "room-picker")) => app.test_room(step),
+        Ok("invitation") => app.test_invitation(),
+        Ok(step @ ("welcome" | "avatars" | "account" | "crop")) => app.test_account(step),
         Ok(step @ ("receive" | "send")) => app.test_transfer(step),
         Ok(tab @ ("recommended" | "browse" | "collections" | "categories")) => {
             app.test_home();

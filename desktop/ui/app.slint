@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // AlwyWatch desktop UI. Same design language as the Android app: Manrope, near-black with
 // translucent surfaces, artwork-led pages, white pill for the main action.
-import { ListView, ScrollView } from "std-widgets.slint";
+import { ListView, ScrollView, Slider } from "std-widgets.slint";
 import "fonts/Manrope.ttf";
 
 export struct Card {
@@ -111,6 +111,34 @@ export struct LeavingRow {
     voted: bool,
 }
 
+/// How to draw an AlwyWatch user: a picture (built-in avatar or uploaded), else the initial on a
+/// colour.
+export struct PersonAvatar {
+    initial: string,
+    color: color,
+    picture: image,
+    has-picture: bool,
+}
+
+/// A person in a list (room members and invited people, the people to invite).
+export struct PersonRow {
+    key: string,
+    name: string,
+    /// Second line ("Host · 2 devices", the server's name when two names are equal).
+    detail: string,
+    avatar: PersonAvatar,
+    /// Shown above this row ("Recent", "Everyone").
+    header: string,
+    selected: bool,
+}
+
+/// An avatar to choose (Change avatar, welcome step); id "default" is the initial on a colour.
+export struct PresetRow {
+    id: string,
+    avatar: PersonAvatar,
+    selected: bool,
+}
+
 export struct TogetherRow {
     code: string,
     title: string,
@@ -118,6 +146,9 @@ export struct TogetherRow {
     status: string,
     poster: image,
     mine: bool,
+    /// An invitation (Join / Not now) rather than one of my rooms.
+    invited: bool,
+    host-avatar: PersonAvatar,
 }
 
 export struct ForeverRow {
@@ -125,11 +156,13 @@ export struct ForeverRow {
     detail: string,
     // Share of this person's titles that someone else keeps too (0..1); -1 for titles.
     shared: float,
+    avatar: PersonAvatar,
 }
 
 export struct AdminRow {
     key: string,
     name: string,
+    avatar: PersonAvatar,
     detail: string,
     forever: string,
     max-forever: string,
@@ -156,7 +189,7 @@ export struct AccountChoice {
     selected: bool,
 }
 
-export enum Page { add, home, library, detail, search, mylist, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin, together, profiles, historycopy }
+export enum Page { add, home, library, detail, search, mylist, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin, together, room, profiles, historycopy }
 
 export global Palette {
     out property <color> bg: #09090c;
@@ -522,6 +555,63 @@ component Avatar inherits Rectangle {
     Text { text: root.initial; color: #000; font-size: root.size * 0.42; font-weight: 800; }
 }
 
+// An AlwyWatch user (not to be confused with this computer's profiles above): their picture, else
+// their initial in white on their colour.
+component UserAvatar inherits Rectangle {
+    in property <PersonAvatar> avatar;
+    in property <length> size: 40px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    clip: true;
+    background: root.avatar.has-picture ? transparent : root.avatar.color;
+    if !root.avatar.has-picture : Text {
+        text: root.avatar.initial;
+        color: #ffffff;
+        font-size: root.size * 0.44;
+        font-weight: 800;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    if root.avatar.has-picture : Image { source: root.avatar.picture; width: parent.width; height: parent.height; image-fit: cover; }
+}
+
+// Avatar, name and a second line.
+component PersonLine inherits HorizontalLayout {
+    in property <PersonRow> person;
+    in property <length> size: 40px;
+    spacing: 12px;
+    UserAvatar { avatar: root.person.avatar; size: root.size; y: (parent.height - self.height) / 2; }
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        Text { text: root.person.name; color: Palette.text; font-weight: 700; overflow: elide; }
+        if root.person.detail != "" : Text { text: root.person.detail; color: Palette.muted; font-size: 12px; overflow: elide; }
+    }
+}
+
+// A grid of avatars to choose from (7 per row), the chosen one ringed.
+component AvatarGrid inherits Rectangle {
+    in property <[PresetRow]> presets;
+    property <int> cols: 7;
+    property <length> step: 74px;
+    callback picked(string);
+    width: root.cols * root.step;
+    height: ceil(root.presets.length / root.cols) * root.step;
+    for p[i] in root.presets : Focusable {
+        x: mod(i, root.cols) * root.step;
+        y: floor(i / root.cols) * root.step;
+        width: root.step - 6px;
+        height: root.step - 6px;
+        border-radius: (root.step - 6px) / 2;
+        background: transparent;
+        border-width: self.active ? 3px : (p.selected ? 3px : 0px);
+        border-color: self.active ? #ffffff : Palette.accent;
+        clicked => { root.picked(p.id); }
+        UserAvatar { avatar: p.avatar; size: parent.width - 12px; }
+    }
+}
+
 // "Who's watching?": the whole tile (avatar and name) is the target.
 component ProfileTile inherits Focusable {
     in property <ProfileRow> profile;
@@ -685,10 +775,56 @@ export component AppWindow inherits Window {
     in property <[LeavingRow]> leaving;
     in property <[TogetherRow]> together-rooms;
     in property <string> together-status;
-    // Join dialog: shown while join-message is set; join-done swaps Cancel for Close.
-    in property <string> join-title;
-    in property <string> join-message;
-    in property <bool> join-done;
+    // Watch together room (lobby, and the room behind the player).
+    in property <string> room-title;
+    in property <string> room-status;
+    in property <image> room-poster;
+    in property <[PersonRow]> room-members;
+    in property <[PersonRow]> room-invited;
+    in property <bool> room-is-host;
+    in property <bool> room-started;
+    in property <string> room-host-name;
+    in property <string> room-message;
+    // People to invite (over the room page).
+    in property <bool> room-picker;
+    in property <[PersonRow]> picker-people;
+    in property <int> picker-count;
+    in property <string> picker-message;
+    in-out property <string> picker-filter-text;
+    // An invitation that just arrived (banner over any page): its room code, text and host.
+    in property <string> invite-code;
+    in property <string> invite-text;
+    in property <PersonAvatar> invite-avatar;
+    // My AlwyWatch account: how others see me.
+    in property <bool> me-loaded;
+    in property <PersonAvatar> me-avatar;
+    in property <string> me-name;
+    in property <string> me-detail;
+    in property <bool> me-name-custom;
+    in property <string> me-media-name;
+    in property <bool> me-has-avatar;
+    in property <string> me-message;
+    // Account dialogs: "" | name | avatar | welcome.
+    in property <string> account-dialog;
+    in-out property <string> account-name-input;
+    in property <string> account-name-problem;
+    in property <[PresetRow]> account-presets;
+    in property <string> account-message;
+    in property <bool> account-busy;
+    in property <PersonAvatar> welcome-avatar;
+    // Cropper of an uploaded picture: the picture's place under the round frame (viewport
+    // 360 px, frame 300 px).
+    in property <bool> crop-open;
+    in property <image> crop-mask;
+    in property <image> crop-image;
+    in property <length> crop-x;
+    in property <length> crop-y;
+    in property <length> crop-w;
+    in property <length> crop-h;
+    in-out property <float> crop-zoom: 1;
+    in property <float> crop-zoom-max: 4;
+    in property <bool> crop-busy;
+    in property <string> crop-message;
     in-out property <string> leaving-open;
     in property <LeavingRow> triage-card;
     in property <int> triage-left;
@@ -712,6 +848,12 @@ export component AppWindow inherits Window {
     callback toggle-watchlist(string);
     callback play-trailer(string);
     callback select-season(string);
+    /// Every episode of the selected season ("season") or of the show ("show"), watched or not.
+    callback mark-many(string, bool);
+    /// "Mark … unwatched?" asked first: its question, "" when closed.
+    in property <string> mark-confirm;
+    callback mark-confirm-ok();
+    callback mark-confirm-cancel();
     callback search(string);
     callback go(Page);
     callback add-choose(string);
@@ -755,9 +897,36 @@ export component AppWindow inherits Window {
     callback keep-choose();
     callback keep-disconnect();
     callback keep-vote(string, string); // key, choice
-    callback watch-together(string); // item: play it in a new room
-    callback together-join(string); // room code
-    callback together-cancel();
+    callback watch-together(string); // item: a new room (lobby) with it
+    callback together-open(string); // room code: join an invitation, or open my room
+    callback together-decline(string); // room code: "Not now"
+    callback room-start();
+    callback room-play(); // started room, player closed: back to the video
+    callback room-leave();
+    callback room-invite();
+    callback room-uninvite(string); // user key
+    callback picker-toggle(string); // user key
+    callback picker-filter(string);
+    callback picker-send();
+    callback picker-cancel();
+    callback invite-join();
+    callback invite-decline();
+    callback invite-dismiss();
+    callback account-dialog-open(string); // name | avatar
+    callback account-name-edited(string);
+    callback account-name-save();
+    callback account-name-reset();
+    callback account-preset(string); // preset id, or "default"
+    callback account-upload();
+    callback account-remove-avatar();
+    callback account-dialog-close();
+    callback welcome-continue();
+    callback welcome-skip();
+    callback crop-drag(float, float); // screen pixels
+    callback crop-zoom-by(float); // wheel steps
+    callback crop-set-zoom(float);
+    callback crop-save();
+    callback crop-cancel();
     callback leaving-scrolled(int); // first visible row, to load the posters around it
     callback triage-vote(string);       // choice
     callback admin-rights(string, string); // user key, field
@@ -801,6 +970,12 @@ export component AppWindow inherits Window {
         visible: !root.profile-gate;
         key-pressed(e) => {
             if (e.text == Key.Escape && root.profile-dialog != "") { root.profile-cancel(); return accept; }
+            if (e.text == Key.Escape && root.crop-open) { root.crop-cancel(); return accept; }
+            if (e.text == Key.Escape && root.mark-confirm != "") { root.mark-confirm-cancel(); return accept; }
+            if (e.text == Key.Escape && root.account-dialog == "welcome") { root.welcome-skip(); return accept; }
+            if (e.text == Key.Escape && root.account-dialog != "") { root.account-dialog-close(); return accept; }
+            if (e.text == Key.Escape && root.room-picker) { root.picker-cancel(); return accept; }
+            if (e.text == Key.Escape && root.invite-code != "") { root.invite-dismiss(); return accept; }
             if (e.text == Key.Escape || (e.text == Key.Backspace && !e.modifiers.control)) {
                 if (root.can-go-back) { root.back(); return accept; }
             }
@@ -846,7 +1021,7 @@ export component AppWindow inherits Window {
                     if root.keep-active : NavItem {
                         label: "Together";
                         icon: @image-url("icons/group.svg");
-                        selected: root.page == Page.together;
+                        selected: root.page == Page.together || root.page == Page.room;
                         clicked => { root.go(Page.together); }
                     }
                     if root.seerr-active : NavItem { label: "Requests"; icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
@@ -1123,6 +1298,16 @@ export component AppWindow inherits Window {
                                         primary: s.selected;
                                         clicked => { root.select-season(s.id); }
                                     }
+                                }
+                                // Whole season or show at once (every episode under it).
+                                if root.detail.is-series : HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: start;
+                                    Text { text: "Mark as"; color: Palette.subtle; font-size: 13px; vertical-alignment: center; }
+                                    if root.seasons.length > 0 : Button { label: "Season watched"; clicked => { root.mark-many("season", true); } }
+                                    if root.seasons.length > 0 : Button { label: "Season unwatched"; clicked => { root.mark-many("season", false); } }
+                                    Button { label: "All episodes watched"; clicked => { root.mark-many("show", true); } }
+                                    Button { label: "All episodes unwatched"; clicked => { root.mark-many("show", false); } }
                                 }
                                 for ep in root.episodes : Focusable {
                                     height: 112px;
@@ -1583,13 +1768,13 @@ export component AppWindow inherits Window {
                             padding-top: 28px;
                             spacing: 10px;
                             alignment: start;
-                            PageTitle { title: "Together"; subtitle: "What people on your AlwyWatch server are watching together. Join one: its host lets you in."; }
+                            PageTitle { title: "Together"; subtitle: "Your rooms and your invitations. Rooms are private: only the people invited see them."; }
                             if root.together-status != "" : Text { text: root.together-status; color: Palette.muted; font-size: 16px; wrap: word-wrap; }
                             for room in root.together-rooms : Focusable {
                                 height: 128px;
                                 background: self.active ? Palette.surface-high : Palette.surface;
                                 border-radius: 18px;
-                                clicked => { root.together-join(room.code); }
+                                clicked => { root.together-open(room.code); }
                                 HorizontalLayout {
                                     padding: 10px;
                                     spacing: 16px;
@@ -1603,17 +1788,106 @@ export component AppWindow inherits Window {
                                     VerticalLayout {
                                         alignment: center;
                                         spacing: 4px;
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            alignment: start;
+                                            UserAvatar { avatar: room.host-avatar; size: 24px; }
+                                            Text { text: room.people; color: room.invited ? Palette.accent : Palette.muted; font-size: 14px; font-weight: room.invited ? 700 : 400; vertical-alignment: center; overflow: elide; }
+                                        }
                                         Text { text: room.title; color: Palette.text; font-size: 18px; font-weight: 700; overflow: elide; }
-                                        Text { text: room.people; color: Palette.muted; font-size: 14px; overflow: elide; }
                                         Text { text: room.status; color: Palette.subtle; font-size: 13px; overflow: elide; }
                                     }
                                     Rectangle { horizontal-stretch: 1; }
                                     Button {
-                                        label: "Join";
+                                        label: room.invited ? "Join" : "Open";
                                         primary: true;
                                         y: (parent.height - self.height) / 2;
-                                        clicked => { root.together-join(room.code); }
+                                        clicked => { root.together-open(room.code); }
                                     }
+                                    if room.invited : Button {
+                                        label: "Not now";
+                                        y: (parent.height - self.height) / 2;
+                                        clicked => { root.together-decline(room.code); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // A watch together room: the lobby before the start, the room behind the
+                    // player after it.
+                    if root.page == Page.room : ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 22px;
+                            alignment: start;
+                            HorizontalLayout {
+                                spacing: 24px;
+                                Rectangle {
+                                    width: 120px;
+                                    height: 180px;
+                                    border-radius: 14px;
+                                    clip: true;
+                                    background: Palette.surface;
+                                    Image { source: root.room-poster; width: parent.width; height: parent.height; image-fit: cover; }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 8px;
+                                    Text { text: "WATCH TOGETHER"; color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+                                    Text { text: root.room-title; color: Palette.text; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; wrap: word-wrap; }
+                                    Text { text: root.room-status; color: Palette.muted; font-size: 15px; wrap: word-wrap; }
+                                    Rectangle { height: 4px; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        alignment: start;
+                                        if root.room-is-host && !root.room-started : Button {
+                                            label: "Start watching";
+                                            primary: true;
+                                            autofocus: true;
+                                            has-icon: true;
+                                            icon: @image-url("icons/play_arrow_fill1.svg");
+                                            clicked => { root.room-start(); }
+                                        }
+                                        if root.room-started : Button {
+                                            label: "Back to the video";
+                                            primary: true;
+                                            has-icon: true;
+                                            icon: @image-url("icons/play_arrow_fill1.svg");
+                                            clicked => { root.room-play(); }
+                                        }
+                                        if root.room-is-host : Button {
+                                            label: "Invite";
+                                            has-icon: true;
+                                            icon: @image-url("icons/add.svg");
+                                            clicked => { root.room-invite(); }
+                                        }
+                                        Button { label: "Leave"; clicked => { root.room-leave(); } }
+                                    }
+                                    if !root.room-is-host && !root.room-started : Text {
+                                        text: "Waiting for " + root.room-host-name + " to start";
+                                        color: Palette.accent;
+                                        font-weight: 700;
+                                    }
+                                }
+                            }
+                            if root.room-message != "" : Text { text: root.room-message; color: Palette.danger; wrap: word-wrap; }
+                            Group {
+                                title: "IN THE ROOM";
+                                for m in root.room-members : PersonLine { person: m; }
+                            }
+                            Group {
+                                title: "INVITED";
+                                if root.room-invited.length == 0 : Text {
+                                    text: root.room-is-host ? "Nobody yet. Invite people: they join directly, no code needed." : "Nobody is waiting to join.";
+                                    color: Palette.muted;
+                                    wrap: word-wrap;
+                                }
+                                for p in root.room-invited : HorizontalLayout {
+                                    spacing: 10px;
+                                    PersonLine { person: p; }
+                                    if root.room-is-host : Button { label: "Remove"; y: (parent.height - self.height) / 2; clicked => { root.room-uninvite(p.key); } }
                                 }
                             }
                         }
@@ -1695,7 +1969,11 @@ export component AppWindow inherits Window {
                                 title: "PEOPLE";
                                 for u in root.admin-users : VerticalLayout {
                                     spacing: 6px;
-                                    Text { text: u.name + "  ·  " + u.detail; color: Palette.text; font-weight: 700; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        UserAvatar { avatar: u.avatar; size: 32px; }
+                                        Text { text: u.name + "  ·  " + u.detail; color: Palette.text; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                    }
                                     HorizontalLayout {
                                         spacing: 8px;
                                         alignment: start;
@@ -1710,7 +1988,11 @@ export component AppWindow inherits Window {
                                 Text { text: root.forever-summary; color: Palette.muted; wrap: word-wrap; }
                                 for p in root.forever-people : VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: p.title; color: Palette.text; font-weight: 700; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        UserAvatar { avatar: p.avatar; size: 28px; }
+                                        Text { text: p.title; color: Palette.text; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                    }
                                     Text { text: p.detail; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                                     Rectangle {
                                         height: 6px;
@@ -1872,6 +2154,22 @@ export component AppWindow inherits Window {
                                     Button { label: "Profiles"; has-icon: true; icon: @image-url("icons/person.svg"); y: (parent.height - self.height) / 2; clicked => { root.go(Page.profiles); } }
                                 }
                             }
+                            if root.keep-active : Group {
+                                title: "ALWYWATCH ACCOUNT";
+                                HorizontalLayout {
+                                    spacing: 14px;
+                                    UserAvatar { avatar: root.me-avatar; size: 56px; y: (parent.height - self.height) / 2; }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text { text: root.me-loaded ? root.me-name : "…"; color: Palette.text; font-size: 17px; font-weight: 700; overflow: elide; }
+                                        Text { text: root.me-detail; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                    }
+                                    if root.me-loaded : Button { label: "Edit name"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("name"); } }
+                                    if root.me-loaded : Button { label: "Change avatar"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("avatar"); } }
+                                }
+                                if root.me-message != "" : Text { text: root.me-message; color: Palette.danger; wrap: word-wrap; }
+                            }
                             Group {
                                 title: "ALWYWATCH SERVER";
                                 if root.keep-active : HorizontalLayout {
@@ -2000,28 +2298,322 @@ export component AppWindow inherits Window {
             }
         }
     }
-    // Asking to join a watch together room: over everything until let in, declined or closed.
-    if root.join-message != "" : Rectangle {
+    // Inviting people to the room: recent partners first, multi-select, one call.
+    if root.room-picker : Rectangle {
         width: root.width;
         height: root.height;
         background: #000000b0;
         TouchArea { }
-        Rectangle {
-            width: min(480px, root.width - 48px);
-            height: jd.preferred-height;
-            border-radius: 22px;
-            background: Palette.surface-high;
-            jd := VerticalLayout {
-                padding: 28px;
-                spacing: 14px;
-                Text { text: root.join-title; color: Palette.text; font-size: 22px; font-weight: 800; wrap: word-wrap; }
-                Text { text: root.join-message; color: Palette.muted; font-size: 15px; wrap: word-wrap; }
-                HorizontalLayout {
-                    alignment: end;
-                    Button {
-                        label: root.join-done ? "Close" : "Cancel";
-                        primary: root.join-done;
-                        clicked => { root.together-cancel(); }
+        FocusScope {
+            key-pressed(e) => {
+                if (e.text == Key.Escape) { root.picker-cancel(); return accept; }
+                if (e.text == Key.DownArrow) { root.move-focus(true); return accept; }
+                if (e.text == Key.UpArrow) { root.move-focus(false); return accept; }
+                return reject;
+            }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: min(560px, root.width - 48px);
+                height: min(680px, root.height - 48px);
+                border-radius: 22px;
+                background: #1d1d24;
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 12px;
+                    Text { text: "Invite people"; color: Palette.text; font-size: 22px; font-weight: 800; }
+                    Text { text: "They get an invitation and join directly."; color: Palette.muted; wrap: word-wrap; }
+                    Field {
+                        text <=> root.picker-filter-text;
+                        autofocus: true;
+                        placeholder: "Search by name";
+                        edited(t) => { root.picker-filter(t); }
+                    }
+                    if root.picker-message != "" : Text { text: root.picker-message; color: Palette.muted; wrap: word-wrap; }
+                    psv := ScrollView {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            spacing: 2px;
+                            for p in root.picker-people : VerticalLayout {
+                                spacing: 2px;
+                                if p.header != "" : Text { text: p.header; color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; height: 28px; vertical-alignment: bottom; }
+                                prow := Focusable {
+                                    height: 56px;
+                                    border-radius: 12px;
+                                    background: self.active ? Palette.surface : (p.selected ? #ffb2241f : transparent);
+                                    clicked => { root.picker-toggle(p.key); }
+                                    focused => {
+                                        if (parent.y + self.y + psv.content-y < 0) { psv.content-y = -(parent.y + self.y); }
+                                        if (parent.y + self.y + self.height + psv.content-y > psv.visible-height) { psv.content-y = psv.visible-height - parent.y - self.y - self.height; }
+                                    }
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        padding-right: 12px;
+                                        spacing: 10px;
+                                        PersonLine { person: p; }
+                                        Rectangle {
+                                            width: 24px;
+                                            height: 24px;
+                                            y: (parent.height - self.height) / 2;
+                                            border-radius: 12px;
+                                            border-width: 2px;
+                                            border-color: p.selected ? Palette.accent : Palette.subtle;
+                                            background: p.selected ? Palette.accent : transparent;
+                                            if p.selected : Icon { source: @image-url("icons/check.svg"); tint: #000; width: 16px; height: 16px; }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 10px;
+                        Button { label: "Cancel"; clicked => { root.picker-cancel(); } }
+                        Button {
+                            label: root.picker-count == 0 ? "Send invitations" : root.picker-count == 1 ? "Send 1 invitation" : "Send " + root.picker-count + " invitations";
+                            primary: root.picker-count > 0;
+                            clicked => { root.picker-send(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // My name and avatar: edit the name, change the avatar, and the one-time welcome step.
+    if root.account-dialog != "" : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #000000b0;
+        TouchArea { }
+        FocusScope {
+            init => { if root.account-dialog == "avatar" { self.focus(); } }
+            key-pressed(e) => {
+                if (e.text == Key.Escape) {
+                    if (root.account-dialog == "welcome") { root.welcome-skip(); } else { root.account-dialog-close(); }
+                    return accept;
+                }
+                if (e.text == Key.RightArrow || e.text == Key.DownArrow) { root.move-focus(true); return accept; }
+                if (e.text == Key.LeftArrow || e.text == Key.UpArrow) { root.move-focus(false); return accept; }
+                return reject;
+            }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: min(600px, root.width - 48px);
+                height: ad.preferred-height;
+                border-radius: 22px;
+                background: #1d1d24;
+                ad := VerticalLayout {
+                    padding: 28px;
+                    spacing: 14px;
+                    Text {
+                        text: root.account-dialog == "welcome" ? "Welcome! This is how others see you"
+                            : root.account-dialog == "name" ? "Your name" : "Your avatar";
+                        color: Palette.text;
+                        font-size: 22px;
+                        font-weight: 800;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: root.account-dialog == "welcome" ? "People you watch with see this name and avatar. You can change them later in Settings."
+                            : root.account-dialog == "name" ? "Shown to the people you watch with, instead of your name on " + root.me-media-name + "."
+                            : "Pick one, or use a picture of your own.";
+                        color: Palette.muted;
+                        wrap: word-wrap;
+                    }
+                    if root.account-dialog == "welcome" : HorizontalLayout {
+                        spacing: 16px;
+                        UserAvatar { avatar: root.welcome-avatar; size: 72px; }
+                        Field {
+                            y: (parent.height - self.height) / 2;
+                            text <=> root.account-name-input;
+                            autofocus: true;
+                            placeholder: "Your name";
+                            edited(t) => { root.account-name-edited(t); }
+                            accepted => { root.welcome-continue(); }
+                        }
+                    }
+                    if root.account-dialog == "name" : Field {
+                        text <=> root.account-name-input;
+                        autofocus: true;
+                        placeholder: "Your name";
+                        edited(t) => { root.account-name-edited(t); }
+                        accepted => { root.account-name-save(); }
+                    }
+                    if root.account-dialog != "avatar" && root.account-name-problem != "" : Text { text: root.account-name-problem; color: Palette.danger; wrap: word-wrap; }
+                    if root.account-dialog != "name" : HorizontalLayout {
+                        alignment: center;
+                        AvatarGrid { presets: root.account-presets; picked(id) => { root.account-preset(id); } }
+                    }
+                    if root.account-dialog != "name" : HorizontalLayout {
+                        alignment: start;
+                        spacing: 10px;
+                        Button { label: "Upload a picture"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.account-upload(); } }
+                        if root.account-dialog == "avatar" && root.me-has-avatar : Button { label: "Remove"; clicked => { root.account-remove-avatar(); } }
+                    }
+                    if root.account-message != "" : Text { text: root.account-message; color: Palette.danger; wrap: word-wrap; }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 10px;
+                        if root.account-dialog == "name" && root.me-name-custom : Button { label: "Reset to " + root.me-media-name; clicked => { root.account-name-reset(); } }
+                        if root.account-dialog == "name" : Button { label: "Cancel"; clicked => { root.account-dialog-close(); } }
+                        if root.account-dialog == "name" : Button { label: root.account-busy ? "Saving…" : "Save"; primary: true; clicked => { root.account-name-save(); } }
+                        if root.account-dialog == "avatar" : Button { label: "Done"; primary: true; clicked => { root.account-dialog-close(); } }
+                        if root.account-dialog == "welcome" : Button { label: "Skip"; clicked => { root.welcome-skip(); } }
+                        if root.account-dialog == "welcome" : Button { label: root.account-busy ? "Saving…" : "Continue"; primary: true; clicked => { root.welcome-continue(); } }
+                    }
+                }
+            }
+        }
+    }
+    // Cropping an uploaded picture: move and zoom it under the round frame.
+    if root.crop-open : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #000000c8;
+        TouchArea { }
+        FocusScope {
+            init => { self.focus(); }
+            key-pressed(e) => {
+                if (e.text == Key.Escape) { root.crop-cancel(); return accept; }
+                if (e.text == Key.LeftArrow) { root.crop-drag(-12, 0); return accept; }
+                if (e.text == Key.RightArrow) { root.crop-drag(12, 0); return accept; }
+                if (e.text == Key.UpArrow) { root.crop-drag(0, -12); return accept; }
+                if (e.text == Key.DownArrow) { root.crop-drag(0, 12); return accept; }
+                if (e.text == "+" || e.text == "=") { root.crop-zoom-by(1); return accept; }
+                if (e.text == "-") { root.crop-zoom-by(-1); return accept; }
+                if (e.text == Key.Return) { root.crop-save(); return accept; }
+                return reject;
+            }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: min(440px, root.width - 32px);
+                height: cd.preferred-height;
+                border-radius: 22px;
+                background: #1d1d24;
+                cd := VerticalLayout {
+                    padding: 28px;
+                    spacing: 14px;
+                    Text { text: "Move and zoom"; color: Palette.text; font-size: 22px; font-weight: 800; }
+                    HorizontalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 360px;
+                            height: 360px;
+                            clip: true;
+                            background: #000;
+                            Image { source: root.crop-image; x: root.crop-x; y: root.crop-y; width: root.crop-w; height: root.crop-h; image-fit: fill; }
+                            // Dims what stays outside the round frame, then draws the frame.
+                            Image { source: root.crop-mask; width: 360px; height: 360px; }
+                            Rectangle {
+                                x: 30px;
+                                y: 30px;
+                                width: 300px;
+                                height: 300px;
+                                border-radius: 150px;
+                                border-width: 2px;
+                                border-color: #ffffff;
+                            }
+                            TouchArea {
+                                property <length> lx;
+                                property <length> ly;
+                                mouse-cursor: move;
+                                pointer-event(e) => {
+                                    if (e.kind == PointerEventKind.down) {
+                                        self.lx = self.mouse-x;
+                                        self.ly = self.mouse-y;
+                                    }
+                                }
+                                moved => {
+                                    if (self.pressed) {
+                                        root.crop-drag((self.mouse-x - self.lx) / 1px, (self.mouse-y - self.ly) / 1px);
+                                        self.lx = self.mouse-x;
+                                        self.ly = self.mouse-y;
+                                    }
+                                }
+                                scroll-event(e) => {
+                                    if (e.delta-y > 0) { root.crop-zoom-by(1); } else if (e.delta-y < 0) { root.crop-zoom-by(-1); }
+                                    return accept;
+                                }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        Text { text: "Zoom"; color: Palette.muted; vertical-alignment: center; }
+                        Slider {
+                            horizontal-stretch: 1;
+                            minimum: 1;
+                            maximum: root.crop-zoom-max;
+                            value <=> root.crop-zoom;
+                            changed(v) => { root.crop-set-zoom(v); }
+                        }
+                    }
+                    Text { text: "Drag or use the arrow keys to move · wheel, slider or + and − to zoom"; color: Palette.subtle; font-size: 12px; wrap: word-wrap; }
+                    if root.crop-message != "" : Text { text: root.crop-message; color: Palette.danger; wrap: word-wrap; }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 10px;
+                        Button { label: "Cancel"; clicked => { root.crop-cancel(); } }
+                        Button { label: root.crop-busy ? "Saving…" : "Save"; primary: true; clicked => { root.crop-save(); } }
+                    }
+                }
+            }
+        }
+    }
+    // An invitation just arrived: a banner over whatever page is open (not blocking).
+    if root.invite-code != "" : Rectangle {
+        x: (root.width - self.width) / 2;
+        y: 16px;
+        width: min(680px, root.width - 32px);
+        height: 76px;
+        border-radius: 20px;
+        background: #1d1d24;
+        border-width: 1px;
+        border-color: Palette.accent;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #000000a0;
+        HorizontalLayout {
+            padding: 14px;
+            spacing: 12px;
+            UserAvatar { avatar: root.invite-avatar; size: 44px; y: (parent.height - self.height) / 2; }
+            Text { text: root.invite-text; color: Palette.text; font-weight: 700; vertical-alignment: center; wrap: word-wrap; horizontal-stretch: 1; overflow: elide; }
+            Button { label: "Join"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.invite-join(); } }
+            Button { label: "Not now"; y: (parent.height - self.height) / 2; clicked => { root.invite-decline(); } }
+            IconButton { icon: @image-url("icons/close.svg"); y: (parent.height - self.height) / 2; clicked => { root.invite-dismiss(); } }
+        }
+    }
+    // Marking a season or a show unwatched forgets progress: asked first (Cancel focused).
+    if root.mark-confirm != "" : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #000000b0;
+        TouchArea { }
+        FocusScope {
+            key-pressed(e) => {
+                if (e.text == Key.Escape) { root.mark-confirm-cancel(); return accept; }
+                if (e.text == Key.RightArrow || e.text == Key.DownArrow) { root.move-focus(true); return accept; }
+                if (e.text == Key.LeftArrow || e.text == Key.UpArrow) { root.move-focus(false); return accept; }
+                return reject;
+            }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: min(480px, root.width - 48px);
+                height: md.preferred-height;
+                border-radius: 22px;
+                background: #1d1d24;
+                md := VerticalLayout {
+                    padding: 28px;
+                    spacing: 14px;
+                    Text { text: root.mark-confirm; color: Palette.text; font-size: 18px; font-weight: 700; wrap: word-wrap; }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 10px;
+                        Button { label: "Cancel"; autofocus: true; clicked => { root.mark-confirm-cancel(); } }
+                        Button { label: "Mark unwatched"; clicked => { root.mark-confirm-ok(); } }
                     }
                 }
             }

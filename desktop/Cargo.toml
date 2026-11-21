@@ -15,8 +15,20 @@ path = "src/main.rs"
 [dependencies]
 alwywatch-core = { workspace = true }
 slint = { workspace = true, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software"] }
-# Decodes cached posters off the UI thread (same crate and version Slint uses internally).
+# Decodes cached posters off the UI thread (same crate and version Slint uses internally); also
+# crops custom avatars (EXIF orientation, resize) and encodes them as JPEG (the `jpeg` feature
+# has both the decoder and the encoder).
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+# The admin "kept forever" stats type (`ForeverStats`), kept to redraw it when avatars arrive;
+# a workspace crate the core already compiles in (no size cost).
+keep-service = { workspace = true }
+# Fetches custom avatars with the AlwyWatch sign-in headers (the core's shared HTTP setup, already
+# compiled in: no size cost).
+net = { workspace = true }
+# The native "choose a picture" dialog for custom avatars. 0.17 (0.18 needs Rust 1.92): on Linux
+# the xdg-desktop-portal backend talks D-Bus through libdbus loaded at runtime (no GTK, no zbus;
+# zenity as fallback), on Windows the system dialog through windows-sys (already in the tree).
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 # Loads libmpv at runtime, so the app runs (and browses) without it.
 libloading = "0.8"
 # The device-transfer envelope (same JSON as Android); already compiled in through the core.
