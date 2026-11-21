@@ -214,3 +214,8 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
   .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
   .chip { flex: none; }
 }
+/* Rows scroll sideways: a slim, quiet scrollbar instead of the system's. */
+.rail-row { scrollbar-width: thin; scrollbar-color: #ffffff2e transparent; }
+.rail-row::-webkit-scrollbar { height: 6px; }
+.rail-row::-webkit-scrollbar-thumb { background: #ffffff2e; border-radius: 3px; }
+.rail-row::-webkit-scrollbar-track, .rail-row::-webkit-scrollbar-button { background: transparent; display: none; }

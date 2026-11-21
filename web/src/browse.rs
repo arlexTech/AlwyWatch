@@ -113,10 +113,18 @@ async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
         libs.extend(p.libs);
     }
     resume.sort_by_key(|(_, i)| std::cmp::Reverse(i.user.last_played_at.unwrap_or(0)));
-    let mut rails: Rails = vec![
-        ("Continue watching".into(), dedupe(resume), true),
-        ("Next up".into(), dedupe(next), true),
-    ];
+    // One row, like the apps: what is in progress, then the next episode of the shows that
+    // have nothing in progress (the servers' "next up" repeats the in-progress ones).
+    let mut watching = dedupe(resume);
+    let started: HashSet<String> = watching
+        .iter()
+        .flat_map(|(_, i)| [Some(i.id.clone()), i.series_id.clone()])
+        .flatten()
+        .collect();
+    watching.extend(dedupe(next).into_iter().filter(|(_, i)| {
+        !started.contains(&i.id) && i.series_id.as_ref().is_none_or(|s| !started.contains(s))
+    }));
+    let mut rails: Rails = vec![("Continue watching".into(), watching, true)];
     rails.extend(latest);
     Some((rails, libs))
 }

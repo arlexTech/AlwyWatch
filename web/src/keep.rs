@@ -51,6 +51,8 @@ pub fn Leaving() -> impl IntoView {
     let items = RwSignal::new(state::load::<Vec<LeavingItem>>(state::LEAVING));
     let error = RwSignal::new(None::<String>);
     let filter = RwSignal::new("all");
+    // A long list (a thousand titles is common): a first screenful, more on request.
+    let limit = RwSignal::new(60usize);
     spawn_local(async move {
         let Some(k) = state::ctx().keep_client() else {
             return error.set(Some(NO_KEEP.into()));
@@ -98,8 +100,16 @@ pub fn Leaving() -> impl IntoView {
             <p class="muted">"Nothing is leaving. Nothing to do."</p>
         })}
         <div class="leaving">
-            {move || shown().into_iter().map(|i| view! { <LeavingRow item=i items=items /> }).collect_view()}
+            {move || shown().into_iter().take(limit.get()).map(|i| view! { <LeavingRow item=i items=items /> }).collect_view()}
         </div>
+        {move || {
+            let total = shown().len();
+            (total > limit.get()).then(|| view! {
+                <button class="more" on:click=move |_| limit.update(|l| *l += 120)>
+                    {format!("More ({} of {total} shown)", limit.get())}
+                </button>
+            })
+        }}
     }
 }
 
@@ -247,14 +257,14 @@ fn paused(i: &LeavingItem, now: i64) -> bool {
         && i.effective_deletion_date.unwrap_or(i64::MAX) < now
 }
 
-/// The countdown as on the apps' poster badges ("3 days", "Today", "Paused"…), and whether
+/// The countdown as on the apps' poster badges ("3 days", "Today", "Not scheduled"…), and whether
 /// it is urgent.
 pub fn short_label(i: &LeavingItem, now: i64) -> (String, bool) {
     if matches!(i.protection, Protection::Forever | Protection::UntilWatched) {
         return ("Kept".into(), false);
     }
     if paused(i, now) {
-        return ("Paused".into(), false);
+        return ("Not scheduled".into(), false);
     }
     let Some(d) = i.effective_deletion_date else {
         return ("Soon".into(), false);
@@ -688,7 +698,7 @@ mod tests {
         );
         assert_eq!(
             short_label(&item(Protection::None, false, Some(now - 10)), now).0,
-            "Paused"
+            "Not scheduled"
         );
         assert_eq!(
             short_label(&item(Protection::None, true, Some(now - 10)), now),
