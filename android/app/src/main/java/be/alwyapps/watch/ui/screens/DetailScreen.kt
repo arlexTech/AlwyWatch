@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -329,7 +330,12 @@ fun DetailScreen(
                                 Unit
                             }
                             if (d.isTv) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                // Past the column if needed: the focused icon spells out its label.
+                                Row(
+                                    Modifier.wrapContentWidth(Alignment.Start, unbounded = true),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
                                     if (playLabel != null && playAction != null) {
                                         ActionButton(playLabel, playAction, Modifier.initialFocus(), primary = true, icon = Icons.Play)
                                     }

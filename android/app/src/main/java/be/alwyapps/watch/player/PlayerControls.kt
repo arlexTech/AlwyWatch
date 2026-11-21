@@ -364,7 +364,7 @@ fun PlayerOverlay(
                         if (ui.togetherCode != null) {
                             PillButton(
                                 be.alwyapps.watch.ui.Icons.Group,
-                                "${ui.togetherPeople.size} watching",
+                                if (ui.togetherPeople.size <= 1) "Only you so far" else "${ui.togetherPeople.size} watching",
                                 {
                                     roomDialog = true
                                     ui.poke()

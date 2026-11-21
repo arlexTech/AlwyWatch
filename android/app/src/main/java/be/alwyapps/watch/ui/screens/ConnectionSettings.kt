@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -32,6 +33,7 @@ import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.Chevron
+import be.alwyapps.watch.ui.ConfirmDialog
 import be.alwyapps.watch.ui.Danger
 import be.alwyapps.watch.ui.Divider
 import be.alwyapps.watch.ui.Field
@@ -122,6 +124,24 @@ fun AlwyWatchServerGroup(
     var url by remember { mutableStateOf("") }
     var served by remember(version) { mutableStateOf<List<ServerEntry>?>(null) }
     var choosing by remember(version) { mutableStateOf(false) }
+    // TV: when the group changes (connected, a list to choose from, disconnected), the focused
+    // row is gone; focus goes to the first row of what replaced it, not to the next group.
+    val tv = be.alwyapps.watch.ui.LocalDimens.current.isTv
+    val firstFocus =
+        remember {
+            androidx.compose.ui.focus
+                .FocusRequester()
+        }
+    val shape = listOf(keep?.baseUrl, keep?.accountId, served != null, choosing)
+    var lastShape by remember { mutableStateOf(shape) }
+    LaunchedEffect(shape) {
+        if (tv && shape != lastShape) {
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { firstFocus.requestFocus() }
+        }
+        lastShape = shape
+    }
+    val first = if (tv) Modifier.focusRequester(firstFocus) else Modifier
 
     fun attempt(block: suspend () -> Unit) {
         if (busy) return
@@ -157,10 +177,11 @@ fun AlwyWatchServerGroup(
             style = MaterialTheme.typography.bodySmall,
             color = Muted,
         )
-        usable.forEach { a ->
+        usable.forEachIndexed { n, a ->
             Divider()
             ListRow(
                 a.label(),
+                modifier = if (n == 0) first else Modifier,
                 icon = Icons.Person,
                 iconTint = if (a.id == current) Accent else OnSurface,
                 onClick = if (a.id == current) null else ({ attempt { connectKeep(core, ctx, base, a).also { onChanged() } } }),
@@ -202,7 +223,7 @@ fun AlwyWatchServerGroup(
                     Field(
                         url,
                         { url = it },
-                        Modifier.fillMaxWidth().dpadEscape(),
+                        Modifier.fillMaxWidth().dpadEscape().then(first),
                         placeholder = { Text("watch.example.org") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
@@ -215,14 +236,35 @@ fun AlwyWatchServerGroup(
             }
         } else {
             val syncing = accounts.firstOrNull { it.id == keep.accountId }
+            // Saved is not reachable: say so (an old address, the server down, a revoked account).
+            var problem by remember(keep.baseUrl, keep.accountId) { mutableStateOf<String?>(null) }
+            LaunchedEffect(keep.baseUrl, keep.accountId) {
+                problem =
+                    try {
+                        core.keepMe()
+                        null
+                    } catch (e: CoreException.Unauthorized) {
+                        "Your account isn't accepted there any more: choose it again below"
+                    } catch (e: CoreException) {
+                        "Can't reach ${keep.baseUrl}"
+                    }
+            }
             ListRow(
                 "Syncing as ${keep.userName}" + if (keep.isAdmin) " · admin" else "",
-                subtitle = listOfNotNull(syncing?.serverName, keep.baseUrl).joinToString(" · "),
+                modifier = if (choosing) Modifier else first,
+                subtitle = problem ?: listOfNotNull(syncing?.serverName, keep.baseUrl).joinToString(" · "),
                 icon = Icons.Hourglass,
-                iconTint = Accent,
+                iconTint = if (problem != null) Danger else Accent,
                 onClick = { nav.push(Route.LeavingSoon) },
                 trailing = { Chevron() },
             )
+            if (problem != null) {
+                Divider()
+                ListRow("Use another address", subtitle = "Your keep choices stay on the server", icon = Icons.Refresh, onClick = {
+                    core.keepDisconnect()
+                    onChanged()
+                }, trailing = { Chevron() })
+            }
             if (keep.isAdmin) {
                 Divider()
                 ListRow("Admin", subtitle = "Rights and countdown", icon = Icons.Settings, onClick = { nav.push(Route.KeepAdmin) }, trailing = {
@@ -259,9 +301,22 @@ fun AlwyWatchServerGroup(
                 trailing = { Chevron() },
             )
             Divider()
+            var stopping by remember { mutableStateOf(false) }
+            if (stopping) {
+                ConfirmDialog(
+                    "Stop syncing?",
+                    "Leaving soon, keep choices and watch together disappear from this device until you connect again. " +
+                        "Your choices stay on the server.",
+                    confirm = "Stop syncing",
+                    onConfirm = {
+                        core.keepDisconnect()
+                        onChanged()
+                    },
+                    onDismiss = { stopping = false },
+                )
+            }
             ListRow("Stop syncing", subtitle = "Leaving soon and keep choices disappear from this device", icon = Icons.Close, iconTint = Danger, onClick = {
-                core.keepDisconnect()
-                onChanged()
+                stopping = true
             })
         }
         error?.let { Text(it, Modifier.padding(16.dp), color = Danger, style = MaterialTheme.typography.bodySmall) }

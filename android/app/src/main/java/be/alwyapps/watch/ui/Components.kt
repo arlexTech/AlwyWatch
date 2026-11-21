@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -606,7 +607,8 @@ fun ErrorBanner(
 
 /**
  * Pill button. Primary: white with black text (the main action). Secondary: translucent glass.
- * On TV the focused button turns white whatever its style, the clearest focus cue at 3 m.
+ * On TV only the focused button is white, whatever its style (the clearest focus cue at 3 m); an
+ * unfocused primary is a lighter glass, so it never looks focused next to the real focus.
  */
 @Composable
 fun ActionButton(
@@ -621,8 +623,16 @@ fun ActionButton(
     val d = LocalDimens.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val light = primary || (focused && d.isTv)
-    val bg by animateColorAsState(if (light) Color.White else Glass, tween(140), label = "bg")
+    val light = if (d.isTv) focused else primary
+    val bg by animateColorAsState(
+        when {
+            light -> Color.White
+            primary -> Color.White.copy(alpha = 0.28f)
+            else -> Glass
+        },
+        tween(140),
+        label = "bg",
+    )
     val fg =
         if (light) {
             Color.Black
@@ -651,7 +661,8 @@ fun ActionButton(
     }
 }
 
-/** Round glass button with an icon only (secondary actions on detail pages). */
+/** Round glass button with an icon only (secondary actions on detail pages); on TV the focused one
+ * also says what it does, since there is no long-press or hover to ask. */
 @Composable
 fun IconAction(
     icon: ImageVector,
@@ -665,13 +676,15 @@ fun IconAction(
     val focused by interaction.collectIsFocusedAsState()
     val light = focused && d.isTv
     val bg by animateColorAsState(if (light) Color.White else Glass, tween(140), label = "bg")
-    Box(
+    Row(
         modifier
-            .size(if (d.isTv) 52.dp else 46.dp)
-            .clip(RoundedCornerShape(50))
-            .background(bg)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center,
+            .height(if (d.isTv) 52.dp else 46.dp)
+            .widthIn(min = if (d.isTv) 52.dp else 46.dp)
+            .background(bg, RoundedCornerShape(50))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = if (light) 16.dp else 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
     ) {
         Icon(
             icon,
@@ -686,6 +699,7 @@ fun IconAction(
                     OnSurface
                 },
         )
+        if (light) Text(contentDescription, color = Color.Black, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
 

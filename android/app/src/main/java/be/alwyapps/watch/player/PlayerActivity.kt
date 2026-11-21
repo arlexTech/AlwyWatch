@@ -865,7 +865,12 @@ class PlayerActivity : ComponentActivity() {
         roomState?.let { acceptRoom(it) }
         lifecycleScope.launch {
             try {
-                acceptRoom(core.togetherAnswer(code, me, requestId, accept))
+                val before = roomState
+                val after = core.togetherAnswer(code, me, requestId, accept)
+                acceptRoom(after)
+                // This reply already carries them: the next state would not say it.
+                val joined = after.members.filter { m -> before?.members?.none { it.id == m.id } ?: false }
+                if (joined.isNotEmpty()) ui.togetherNote = "${joined.joinToString(", ") { it.name }} joined"
             } catch (e: CoreException) {
                 // Gone meanwhile (they cancelled): nothing to do.
                 android.util.Log.w(TAG, "together answer: ${e.javaClass.simpleName}")

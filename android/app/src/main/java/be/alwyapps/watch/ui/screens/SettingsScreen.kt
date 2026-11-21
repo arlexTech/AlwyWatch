@@ -114,7 +114,7 @@ fun SettingsScreen(
                 accounts.joinToString(" · ") { "${it.serverName} (${kindName(it.kind)})" }.ifEmpty { "No server yet" }
             Section.SERVICES ->
                 listOf(
-                    if (keep != null) "AlwyWatch server connected" else "No AlwyWatch server",
+                    keep?.let { "AlwyWatch server ${it.baseUrl.substringAfter("://").trimEnd('/')}" } ?: "No AlwyWatch server",
                     if (seerr != null) "requests on" else "requests off",
                 ).joinToString(" · ")
             Section.PROFILES -> "Who's watching on this device, PINs"
