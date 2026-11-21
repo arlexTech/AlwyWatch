@@ -110,6 +110,11 @@ object Images {
         }
     }
 
+    fun cachedUrlInMemory(
+        url: String,
+        px: Int,
+    ): ImageBitmap? = memory.get("url|$url|${bucket(px)}")
+
     fun clearMemory() = memory.evictAll()
 }
 
@@ -121,11 +126,12 @@ fun UrlImage(
 ) {
     val core = LocalCore.current
     val px = with(LocalDensity.current) { width.roundToPx() }
-    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    // From memory in the first frame when it is there (no flat block flashing on every visit).
+    var bitmap by remember(url, px) { mutableStateOf(url?.let { Images.cachedUrlInMemory(it, px) }) }
     if (url != null && bitmap == null) {
         LaunchedEffect(url) { bitmap = Images.loadUrl(core, url, px) }
     }
-    Box(modifier.background(SurfaceColor)) {
+    Box(if (bitmap == null) modifier.background(SurfaceColor) else modifier) {
         bitmap?.let { Image(it, null, Modifier.matchParentSize(), contentScale = ContentScale.Crop) }
     }
 }
@@ -161,8 +167,10 @@ fun RemoteImage(
     }
     // Logos (Fit) get no placeholder: a blurred block would show behind transparent art.
     val fit = contentScale == ContentScale.Fit
-    Box(modifier.background(background)) {
-        val img = bitmap ?: placeholder.takeIf { !fit }
+    val img = bitmap ?: placeholder.takeIf { !fit }
+    // The fill only while there is nothing to show: under a loaded image it was one more
+    // full pass per card for nothing (and a transparent one still costs a draw).
+    Box(if (img == null && background.alpha > 0f) modifier.background(background) else modifier) {
         if (img != null) {
             Image(img, contentDescription, if (fit) Modifier else Modifier.matchParentSize(), contentScale = contentScale, alignment = alignment)
         }

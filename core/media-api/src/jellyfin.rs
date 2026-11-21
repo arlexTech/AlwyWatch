@@ -1008,12 +1008,34 @@ impl MediaServer for JellyfinClient {
 
     async fn segments(&self, item_id: &str) -> Result<Vec<Segment>> {
         // Jellyfin 10.10+: filled by a segment provider (e.g. the Intro Skipper plugin).
-        let r: SegmentsDto = net::send_json(self.req(
+        let found = net::send_json::<SegmentsDto>(self.req(
             Method::GET,
             &format!("/MediaSegments/{}", net::percent_encode(item_id)),
         ))
-        .await?;
-        Ok(convert_segments(r.items))
+        .await
+        .map(|r| convert_segments(r.items));
+        match found {
+            Ok(list) if !list.is_empty() => Ok(list),
+            // None detected (no provider installed): the file's own chapters, when they are
+            // named like an intro or credits ("Opening", "Générique de fin"…).
+            other => {
+                let d: ChaptersDto = net::send_json(
+                    self.req(
+                        Method::GET,
+                        &format!("/Items/{}", net::percent_encode(item_id)),
+                    )
+                    .query(&[("userId", self.uid()), ("fields", "Chapters")]),
+                )
+                .await
+                .unwrap_or_default();
+                let from_chapters = segments_from_chapters(&d.chapters, d.run_time_ticks);
+                if from_chapters.is_empty() {
+                    other
+                } else {
+                    Ok(from_chapters)
+                }
+            }
+        }
     }
 
     async fn report_progress(&self, r: &ProgressReport) -> Result<()> {
@@ -1286,6 +1308,101 @@ struct SegmentDto {
     end_ticks: i64,
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+struct ChaptersDto {
+    chapters: Vec<ChapterDto>,
+    run_time_ticks: Option<i64>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default, rename_all = "PascalCase")]
+struct ChapterDto {
+    start_position_ticks: i64,
+    name: Option<String>,
+}
+
+/// What a chapter's name says it is, if anything (English and French names; whole words, so
+/// "Operation" is not an "op").
+fn chapter_kind(name: &str) -> Option<SegmentKind> {
+    let folded: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'à' | 'â' => 'a',
+            'ô' => 'o',
+            'û' | 'ù' => 'u',
+            'î' | 'ï' => 'i',
+            'ç' => 'c',
+            c if c.is_alphanumeric() => c,
+            _ => ' ',
+        })
+        .collect();
+    let words: Vec<&str> = folded.split_whitespace().collect();
+    let has = |w: &str| words.contains(&w);
+    let phrase = |p: &str| format!(" {} ", words.join(" ")).contains(&format!(" {p} "));
+    // "Credits End" marks where the credits stop (an after-credits scene may follow).
+    if has("credits") && has("end") && !phrase("end credits") {
+        return None;
+    }
+    if has("recap") || has("previously") || has("precedemment") || phrase("resume des episodes") {
+        Some(SegmentKind::Recap)
+    } else if has("preview")
+        || phrase("next time")
+        || has("prochainement")
+        || has("next") && has("episode")
+    {
+        Some(SegmentKind::Preview)
+    } else if has("credits") && !has("opening")
+        || has("ending")
+        || has("outro")
+        || has("ed")
+        || has("generique") && (has("fin") || has("final"))
+        || phrase("end credits")
+    {
+        Some(SegmentKind::Credits)
+    } else if has("intro") || has("opening") || has("op") || has("generique") || has("titles") {
+        Some(SegmentKind::Intro)
+    } else {
+        None
+    }
+}
+
+/// Skippable spans from named chapters: a chapter runs until the next one (credits until the
+/// end). Implausible ones (a 20-minute "intro") are left out.
+fn segments_from_chapters(chapters: &[ChapterDto], runtime_ticks: Option<i64>) -> Vec<Segment> {
+    let end_of_file = runtime_ticks.map(ticks_to_ms);
+    let mut out = Vec::new();
+    for (i, c) in chapters.iter().enumerate() {
+        let Some(kind) = c.name.as_deref().and_then(chapter_kind) else {
+            continue;
+        };
+        let start_ms = ticks_to_ms(c.start_position_ticks.max(0));
+        let end_ms = match chapters.get(i + 1) {
+            Some(n) => ticks_to_ms(n.start_position_ticks.max(0)),
+            None => match end_of_file {
+                Some(e) => e,
+                None => continue,
+            },
+        };
+        let len = end_ms.saturating_sub(start_ms);
+        let max = match kind {
+            SegmentKind::Credits => 15 * 60_000,
+            SegmentKind::Commercial => 10 * 60_000,
+            _ => 5 * 60_000,
+        };
+        if len >= 5_000 && len <= max {
+            out.push(Segment {
+                kind,
+                start_ms,
+                end_ms,
+            });
+        }
+    }
+    out
+}
+
 fn convert_segments(list: Vec<SegmentDto>) -> Vec<Segment> {
     let mut out: Vec<Segment> = list
         .into_iter()
@@ -1308,6 +1425,60 @@ fn convert_segments(list: Vec<SegmentDto>) -> Vec<Segment> {
         .collect();
     out.sort_by_key(|s| s.start_ms);
     out
+}
+
+#[cfg(test)]
+mod chapter_tests {
+    use super::*;
+
+    fn ch(min: f64, name: &str) -> ChapterDto {
+        ChapterDto {
+            start_position_ticks: (min * 60_000.0) as i64 * TICKS_PER_MS,
+            name: Some(name.into()),
+        }
+    }
+
+    #[test]
+    fn chapter_names_are_recognised() {
+        assert_eq!(chapter_kind("Opening"), Some(SegmentKind::Intro));
+        assert_eq!(chapter_kind("OP"), Some(SegmentKind::Intro));
+        assert_eq!(chapter_kind("Générique"), Some(SegmentKind::Intro));
+        assert_eq!(chapter_kind("Générique de fin"), Some(SegmentKind::Credits));
+        assert_eq!(chapter_kind("End Credits"), Some(SegmentKind::Credits));
+        assert_eq!(chapter_kind("Ending"), Some(SegmentKind::Credits));
+        assert_eq!(chapter_kind("Previously on"), Some(SegmentKind::Recap));
+        assert_eq!(chapter_kind("Preview"), Some(SegmentKind::Preview));
+        assert_eq!(chapter_kind("Opening Credits"), Some(SegmentKind::Intro));
+        assert_eq!(chapter_kind("Credits Start"), Some(SegmentKind::Credits));
+        assert_eq!(chapter_kind("Credits End"), None);
+        assert_eq!(chapter_kind("Chapter 2"), None);
+        assert_eq!(chapter_kind("Operation Overlord"), None);
+    }
+
+    #[test]
+    fn spans_run_to_the_next_chapter_or_the_end() {
+        let list = [
+            ch(0.0, "Prologue"),
+            ch(1.5, "Opening"),
+            ch(3.0, "Part A"),
+            ch(21.0, "Ending"),
+            ch(22.5, "Preview"),
+        ];
+        let s = segments_from_chapters(&list, Some(23 * 60_000 * TICKS_PER_MS));
+        assert_eq!(s.len(), 3);
+        assert_eq!(
+            (s[0].kind, s[0].start_ms, s[0].end_ms),
+            (SegmentKind::Intro, 90_000, 180_000)
+        );
+        assert_eq!(s[1].kind, SegmentKind::Credits);
+        assert_eq!(
+            (s[2].kind, s[2].end_ms),
+            (SegmentKind::Preview, 23 * 60_000)
+        );
+        // A whole act named like an intro is not one.
+        let long = [ch(0.0, "Intro"), ch(25.0, "Chapter 2")];
+        assert!(segments_from_chapters(&long, None).is_empty());
+    }
 }
 
 #[cfg(test)]
