@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Settings that follow the viewer across devices, kept with their Jellyfin user (Jellyfin's
-//! per-app `DisplayPreferences`, free key/values): nothing to deploy, any device signed in to
-//! that user gets them. Per setting, the newer change wins (each carries its time).
+//! Settings that follow the viewer across devices. Kept on the AlwyWatch server when one is
+//! connected (`/v1/me/settings`, any server type), else with their Jellyfin user (Jellyfin's
+//! per-app `DisplayPreferences`, free key/values: nothing to deploy). Per setting, the newer
+//! change wins (each carries its time).
 //!
 //! Only what is about the viewer travels (languages, subtitle mode, skip choices, per-title
 //! tracks, which servers the home shows); what depends on the screen or the hardware stays on
@@ -116,23 +117,47 @@ impl Core {
     /// Merges this device's synced settings with the shared ones. Returns how many changed
     /// here (the UI reloads them when > 0).
     pub(crate) async fn sync_settings(&self) -> Result<u32> {
-        let Some(account) = self.settings_account() else {
-            return Ok(0);
+        // Where they are kept: the AlwyWatch server when connected (any server type), else
+        // the Jellyfin user's app preferences.
+        // An AlwyWatch server that can't be reached (down, not deployed yet) falls back to
+        // Jellyfin; change times keep both consistent once it is back.
+        let mut keep = self.keep().ok();
+        let from_keep = match &keep {
+            Some(k) => match k.settings().await {
+                Ok(m) => Some(m),
+                Err(e) if crate::CoreError::from(e.clone()).is_transient() => None,
+                Err(e) => return Err(e.into()),
+            },
+            None => None,
         };
-        let srv = self.server(&account)?;
-        let AnyServer::Jellyfin(jf) = srv.as_ref() else {
-            return Ok(0);
+        if from_keep.is_none() {
+            keep = None;
+        }
+        let mut jellyfin: Option<(Arc<AnyServer>, serde_json::Value)> = None;
+        let remote: HashMap<String, String> = if let Some(m) = from_keep {
+            m
+        } else {
+            let Some(account) = self.settings_account() else {
+                return Ok(0);
+            };
+            let srv = self.server(&account)?;
+            let AnyServer::Jellyfin(jf) = srv.as_ref() else {
+                return Ok(0);
+            };
+            let prefs = jf.app_prefs(CLIENT).await?;
+            let map = prefs
+                .get("CustomPrefs")
+                .and_then(|v| v.as_object())
+                .map(|o| {
+                    o.iter()
+                        .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_owned())))
+                        .collect()
+                })
+                .unwrap_or_default();
+            jellyfin = Some((srv.clone(), prefs));
+            map
         };
-        let mut prefs = jf.app_prefs(CLIENT).await?;
-        // Other apps' entries (Jellyfin's own, some null) are kept as they are.
-        let mut out: serde_json::Map<String, serde_json::Value> = prefs
-            .get("CustomPrefs")
-            .and_then(|v| v.as_object().cloned())
-            .unwrap_or_default();
-        let remote: HashMap<String, String> = out
-            .iter()
-            .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_owned())))
-            .collect();
+
         let mut meta = self.settings_meta();
         let mut keys: Vec<String> = remote.keys().filter(|k| synced(k)).cloned().collect();
         for (k, _) in self.store.settings_with_prefix("")? {
@@ -140,7 +165,8 @@ impl Core {
                 keys.push(k);
             }
         }
-        let (mut pulled, mut pushed) = (0, false);
+        let mut pulled = 0;
+        let mut push: HashMap<String, String> = HashMap::new();
         for k in keys {
             let lv = self.store.setting(&k)?;
             let local = lv
@@ -158,15 +184,28 @@ impl Core {
                 Step::Push => {
                     let (t, v) = local.unwrap_or_default();
                     meta.insert(k.clone(), t);
-                    out.insert(k, format!("{t}{SEP}{v}").into());
-                    pushed = true;
+                    push.insert(k, format!("{t}{SEP}{v}"));
                 }
             }
         }
         self.save_settings_meta(&meta);
-        if pushed {
-            prefs["CustomPrefs"] = serde_json::Value::Object(out);
-            jf.set_app_prefs(CLIENT, &prefs).await?;
+        if !push.is_empty() {
+            if let Some(k) = &keep {
+                k.set_settings(&push).await?;
+            } else if let Some((srv, mut prefs)) = jellyfin
+                && let AnyServer::Jellyfin(jf) = srv.as_ref()
+            {
+                // Other apps' entries (Jellyfin's own, some null) are kept as they are.
+                let mut out = prefs
+                    .get("CustomPrefs")
+                    .and_then(|v| v.as_object().cloned())
+                    .unwrap_or_default();
+                for (k, v) in push {
+                    out.insert(k, v.into());
+                }
+                prefs["CustomPrefs"] = serde_json::Value::Object(out);
+                jf.set_app_prefs(CLIENT, &prefs).await?;
+            }
         }
         Ok(pulled)
     }

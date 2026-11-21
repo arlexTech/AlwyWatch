@@ -1021,3 +1021,54 @@ async fn watch_together_between_a_jellyfin_and_a_plex_user() {
         StatusCode::NOT_FOUND
     );
 }
+
+#[tokio::test]
+async fn settings_follow_each_user_and_stay_theirs() {
+    let e = env().await;
+    let (s, _) = e
+        .call(
+            "PUT",
+            "/v1/me/settings",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"player.sub_mode": "17\u{1f}always", "tracks.x.y": "18\u{1f}fra"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    // An update replaces one key, the others stay.
+    e.call(
+        "PUT",
+        "/v1/me/settings",
+        "jfsrv",
+        "jf-alice",
+        Some(json!({"player.sub_mode": "20\u{1f}off"})),
+    )
+    .await;
+    let (s, mine) = e
+        .call("GET", "/v1/me/settings", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        mine,
+        json!({"player.sub_mode": "20\u{1f}off", "tracks.x.y": "18\u{1f}fra"})
+    );
+    // Another user sees only theirs.
+    let (_, theirs) = e
+        .call("GET", "/v1/me/settings", "plexsrv", "px-friend", None)
+        .await;
+    assert_eq!(theirs, json!({}));
+    // Oversized values are refused.
+    let big = "x".repeat(5000);
+    assert_eq!(
+        e.call(
+            "PUT",
+            "/v1/me/settings",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"k": big}))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+}

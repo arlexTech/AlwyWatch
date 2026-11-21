@@ -2262,7 +2262,7 @@ const KEEP_PRESET_KEY: &str = "keep.preset_url";
 const LEAVING_KEY: &str = "keep/leaving-soon";
 
 impl Core {
-    fn keep(&self) -> Result<keep_service::KeepClient> {
+    pub(crate) fn keep(&self) -> Result<keep_service::KeepClient> {
         self.keep
             .read()
             .unwrap_or_else(|e| e.into_inner())

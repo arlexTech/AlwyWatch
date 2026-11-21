@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS applied (
 CREATE TABLE IF NOT EXISTS seerr_links (
     user_key TEXT PRIMARY KEY, seerr_user_id INTEGER NOT NULL, created INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS settings (
+    user_key TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+    PRIMARY KEY (user_key, key)
+);
 CREATE TABLE IF NOT EXISTS log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, actor TEXT NOT NULL,
     action TEXT NOT NULL, detail TEXT NOT NULL
@@ -214,6 +218,40 @@ impl Db {
             params![user_key, r.can_keep_forever, r.max_forever, r.max_keep_days],
         )?;
         Ok(())
+    }
+
+    /// A user's settings shared across their devices (values are opaque to the server).
+    pub fn settings(&self, user_key: &str) -> rusqlite::Result<Vec<(String, String)>> {
+        let c = self.c();
+        let mut st = c.prepare("SELECT key, value FROM settings WHERE user_key = ?1")?;
+        st.query_map([user_key], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect()
+    }
+
+    pub fn settings_count(&self, user_key: &str) -> rusqlite::Result<u32> {
+        self.c().query_row(
+            "SELECT COUNT(*) FROM settings WHERE user_key = ?1",
+            [user_key],
+            |r| r.get(0),
+        )
+    }
+
+    /// Upserts some of a user's settings (one transaction).
+    pub fn set_settings(
+        &self,
+        user_key: &str,
+        values: &[(String, String)],
+    ) -> rusqlite::Result<()> {
+        let mut c = self.c();
+        let tx = c.transaction()?;
+        for (k, v) in values {
+            tx.execute(
+                "INSERT INTO settings(user_key, key, value) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(user_key, key) DO UPDATE SET value = excluded.value",
+                params![user_key, k, v],
+            )?;
+        }
+        tx.commit()
     }
 
     pub fn forever_count(&self, user_key: &str) -> rusqlite::Result<u32> {

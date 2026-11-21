@@ -115,3 +115,10 @@ add the time elapsed since (`now_ms` tells the server's clock) and seek when mor
 `wait` doubles as the heartbeat: a member silent for a minute leaves, an empty room closes after
 five minutes, any room after twelve hours. Long polls: a reverse proxy must allow ~40 s requests
 (Caddy's defaults do).
+
+## Settings across devices
+
+`GET /v1/me/settings` returns the caller's settings as a JSON object of strings; `PUT
+/v1/me/settings` upserts some of them (204). Values are opaque to the server (the apps store
+"change time ␟ value" and merge per key, newer wins). Limits: 20 000 keys per user, keys up to
+256 bytes, values up to 4 KiB (400 otherwise).

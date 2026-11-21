@@ -22,6 +22,7 @@ pub fn router(state: Shared) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .route("/v1/servers", get(servers))
         .route("/v1/me", get(me))
+        .route("/v1/me/settings", get(my_settings).put(set_my_settings))
         .route("/v1/leaving-soon", get(leaving_soon))
         .route("/v1/triage", get(triage))
         .route("/v1/votes/{key}", put(vote).delete(unvote))
@@ -285,6 +286,44 @@ async fn me(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<Me>, Err
         server_id: id.server_id,
         is_admin: id.is_admin,
     }))
+}
+
+/// Limits of the settings a user stores (they are small: languages, choices per title).
+const MAX_SETTINGS: u32 = 20_000;
+const MAX_SETTING_KEY: usize = 256;
+const MAX_SETTING_VALUE: usize = 4096;
+
+async fn my_settings(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+) -> Result<Json<std::collections::HashMap<String, String>>, Error> {
+    Ok(Json(
+        s.db.settings(&id.user_key)
+            .map_err(internal)?
+            .into_iter()
+            .collect(),
+    ))
+}
+
+async fn set_my_settings(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Json(values): Json<std::collections::HashMap<String, String>>,
+) -> Result<StatusCode, Error> {
+    let bad = |m: &str| Error(StatusCode::BAD_REQUEST, m.into());
+    if values
+        .iter()
+        .any(|(k, v)| k.is_empty() || k.len() > MAX_SETTING_KEY || v.len() > MAX_SETTING_VALUE)
+    {
+        return Err(bad("setting too long"));
+    }
+    let have = s.db.settings_count(&id.user_key).map_err(internal)?;
+    if have + values.len() as u32 > MAX_SETTINGS {
+        return Err(bad("too many settings"));
+    }
+    let values: Vec<(String, String)> = values.into_iter().collect();
+    s.db.set_settings(&id.user_key, &values).map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn leaving_soon(

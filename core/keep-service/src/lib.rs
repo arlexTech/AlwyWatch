@@ -411,6 +411,20 @@ impl KeepClient {
         net::send_json(self.req(Method::GET, "/me")).await
     }
 
+    /// My settings shared across my devices (opaque key/values, see the core's settings sync).
+    pub async fn settings(&self) -> Result<std::collections::HashMap<String, String>> {
+        net::send_json(self.req(Method::GET, "/me/settings")).await
+    }
+
+    /// Upserts some of my shared settings.
+    pub async fn set_settings(
+        &self,
+        values: &std::collections::HashMap<String, String>,
+    ) -> Result<()> {
+        net::send(self.req(Method::PUT, "/me/settings").json(values)).await?;
+        Ok(())
+    }
+
     pub async fn leaving_soon(&self) -> Result<Vec<LeavingItem>> {
         net::send_json(self.req(Method::GET, "/leaving-soon")).await
     }
