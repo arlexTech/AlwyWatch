@@ -18,6 +18,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
 import be.alwyapps.watch.core.AlwyWatch
 import be.alwyapps.watch.ui.AlwyTheme
 import be.alwyapps.watch.ui.AppScaffold
@@ -40,6 +41,7 @@ import be.alwyapps.watch.ui.screens.SearchScreen
 import be.alwyapps.watch.ui.screens.SeerrConnectScreen
 import be.alwyapps.watch.ui.screens.SettingsScreen
 import be.alwyapps.watch.ui.screens.TriageScreen
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var lastBackAt = Long.MIN_VALUE / 2
@@ -59,6 +61,15 @@ class MainActivity : ComponentActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Back to the app: settings changed on another device apply here.
+        val core = services.core
+        if (core.isCompleted) {
+            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) { SettingsSync.run(core.await()) }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,7 +96,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun Root(core: AlwyWatch) {
-    var account by remember {
+    // Settings from another device (server in use…) re-read when they arrive.
+    val synced = SettingsSync.version
+    var account by remember(synced) {
         mutableStateOf(
             core.getSetting("current_account")?.takeIf { id -> core.isActive(id) }
                 ?: core.accounts().firstOrNull { core.isActive(it.id) }?.id,
@@ -131,7 +144,7 @@ private fun Root(core: AlwyWatch) {
             return@CompositionLocalProvider
         }
         // Re-create screens when the account changes (different server, different cache keys).
-        key(acct) {
+        key(acct, synced) {
             CompositionLocalProvider(LocalAccount provides acct) {
                 AppScaffold {
                     // One initial focus per screen visit (see initialFocus).

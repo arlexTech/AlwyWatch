@@ -120,6 +120,21 @@ and order across a season gets the same track in every episode (VFF over VFQ, fu
 `tracks` is the player's list in file order (`TrackInfo { id, kind, language, title, forced }`);
 `id` is the player's own index, returned as is.
 
+## Settings across devices
+
+Settings about the viewer follow them to their other devices, kept with their Jellyfin user in
+Jellyfin's per-app `DisplayPreferences` (`CustomPrefs`, client "AlwyWatch"); nothing to deploy.
+Each synced setting carries its local change time; per setting the newer side wins, ties take the
+shared value (a device that never synced adopts it). Other apps' entries there are kept.
+
+Synced: languages, subtitle mode/colour/background, skip and next-episode choices, per-title
+tracks and versions, which servers the home shows and the one in use, theme music, confirm quit,
+menu libraries. Per device: refresh rate, tunneling, passthrough, subtitle size and raise, clock,
+scroll positions, downloads.
+
+`sync_settings()`: at start and when the app comes back (> 0: reload). Changing a synced setting
+with `set_setting` shares it a few seconds later.
+
 ## Settings
 
 `get_setting(key)`, `set_setting(key, value)`: small UI state (current account, last tab).

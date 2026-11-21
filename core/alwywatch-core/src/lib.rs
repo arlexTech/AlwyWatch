@@ -19,6 +19,7 @@ mod error;
 mod history;
 mod merge;
 mod playback;
+mod settings_sync;
 mod sync;
 mod tracks;
 

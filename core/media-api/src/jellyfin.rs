@@ -381,6 +381,27 @@ impl JellyfinClient {
             .header("Accept", "application/json")
     }
 
+    /// This user's preferences stored by an app on the server (`DisplayPreferences`, whose
+    /// `CustomPrefs` hold free key/values): how AlwyWatch carries settings across devices.
+    pub async fn app_prefs(&self, client: &str) -> Result<serde_json::Value> {
+        net::send_json(
+            self.req(Method::GET, "/DisplayPreferences/alwywatch")
+                .query(&[("userId", self.uid()), ("client", client)]),
+        )
+        .await
+    }
+
+    /// Saves preferences read with `app_prefs` (the whole object, `CustomPrefs` changed).
+    pub async fn set_app_prefs(&self, client: &str, prefs: &serde_json::Value) -> Result<()> {
+        net::send(
+            self.req(Method::POST, "/DisplayPreferences/alwywatch")
+                .query(&[("userId", self.uid()), ("client", client)])
+                .json(prefs),
+        )
+        .await?;
+        Ok(())
+    }
+
     fn uid(&self) -> &str {
         &self.session.user_id
     }

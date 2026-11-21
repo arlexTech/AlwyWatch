@@ -435,9 +435,7 @@ impl AlwyWatch {
         title_key: String,
         pref: TrackPref,
     ) -> Result<()> {
-        Ok(self
-            .store()
-            .set_setting(&format!("tracks.{account_id}.{title_key}"), &encode(&pref))?)
+        self.set_setting(format!("tracks.{account_id}.{title_key}"), encode(&pref))
     }
 }
 

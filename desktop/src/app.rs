@@ -233,6 +233,18 @@ impl App {
         ui.set_grid(ModelRc::from(app.state.borrow().grid_model.clone()));
         ui.set_episodes(ModelRc::from(app.state.borrow().episodes_model.clone()));
         app.load_player_settings();
+        // Settings changed on the viewer's other devices (kept with their Jellyfin user).
+        {
+            let (core, this) = (app.core.clone(), Rc::downgrade(&app));
+            slint::spawn_local(async move {
+                if core.sync_settings().await.unwrap_or(0) > 0
+                    && let Some(a) = this.upgrade()
+                {
+                    a.load_player_settings();
+                }
+            })
+            .ok();
+        }
         ui.set_spdif(
             app.core
                 .get_setting("player.spdif".into())

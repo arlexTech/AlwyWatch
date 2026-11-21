@@ -216,6 +216,8 @@ pub struct Core {
     snapshots: Mutex<HashMap<(String, String), i64>>,
     /// Where a watch history copy is (check or copy), for the progress shown to the viewer.
     pub(crate) history: Mutex<crate::history::HistoryProgress>,
+    /// Bumped by each synced setting change: only the last of a burst pushes them.
+    pub(crate) settings_gen: std::sync::atomic::AtomicU64,
 }
 
 impl Core {
@@ -867,6 +869,7 @@ impl AlwyWatch {
                 transfer_peers: Mutex::new(HashMap::new()),
                 plex_tv: RwLock::new(HashMap::new()),
                 history: Mutex::new(Default::default()),
+                settings_gen: std::sync::atomic::AtomicU64::new(0),
             }),
             rt,
         }))
@@ -1781,7 +1784,16 @@ impl AlwyWatch {
     }
 
     pub fn set_setting(&self, key: String, value: String) -> Result<()> {
-        Ok(self.core.store.set_setting(&key, &value)?)
+        if self.core.store.setting(&key)?.as_deref() == Some(value.as_str()) {
+            return Ok(());
+        }
+        self.core.store.set_setting(&key, &value)?;
+        // Settings that follow the viewer: shared with their other devices.
+        if crate::settings_sync::synced(&key) {
+            let _rt = self.rt.enter();
+            self.core.setting_changed(&key);
+        }
+        Ok(())
     }
 }
 

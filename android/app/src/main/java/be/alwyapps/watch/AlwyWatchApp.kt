@@ -61,6 +61,7 @@ class Services(
                 .schedule(app)
             be.alwyapps.watch.history.SyncWorker
                 .schedule(app, core)
+            scope.launch { SettingsSync.run(core) }
             watchNetwork(core)
             // Deletion rules, "next N episodes", and downloads interrupted by a reboot or a
             // killed process (they continue on their own).

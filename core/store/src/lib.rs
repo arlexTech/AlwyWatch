@@ -260,6 +260,16 @@ impl Store {
         Ok(())
     }
 
+    /// Every setting whose key starts with `prefix` ("" for all), as (key, value).
+    pub fn settings_with_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>> {
+        let conn = self.conn();
+        let mut st = conn.prepare("SELECT key, value FROM settings WHERE key LIKE ?1 || '%'")?;
+        let rows = st
+            .query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn remove_setting(&self, key: &str) -> Result<()> {
         self.conn()
             .execute("DELETE FROM settings WHERE key = ?1", [key])?;
