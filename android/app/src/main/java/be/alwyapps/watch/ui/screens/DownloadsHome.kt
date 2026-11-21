@@ -104,7 +104,7 @@ fun RuleChips(
     onSelect: (DeleteRule) -> Unit,
 ) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (r in RulePresets) ActionButton(r.label(), { onSelect(r) }, primary = r == selected)
+        for (r in RulePresets) ActionButton(r.label(), { onSelect(r) }, selected = r == selected)
     }
 }
 
@@ -654,16 +654,16 @@ fun DownloadSheet(
             Text(seriesTitle, color = Muted)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (episode != null) {
-                    ActionButton("This episode", { choice = "episode" }, primary = choice == "episode")
+                    ActionButton("This episode", { choice = "episode" }, selected = choice == "episode")
                 }
                 if (season != null) {
-                    ActionButton(season.title, { choice = "season" }, primary = choice == "season")
+                    ActionButton(season.title, { choice = "season" }, selected = choice == "season")
                 }
-                ActionButton("Whole show", { choice = "show" }, primary = choice == "show")
+                ActionButton("Whole show", { choice = "show" }, selected = choice == "show")
                 ActionButton("Next episodes", {
                     choice = "next"
                     if (rule is DeleteRule.Never) rule = DeleteRule.WhenWatched
-                }, primary = choice == "next")
+                }, selected = choice == "next")
             }
             if (choice == "next") {
                 Text(

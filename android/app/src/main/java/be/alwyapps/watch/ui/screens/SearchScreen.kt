@@ -136,7 +136,7 @@ fun SearchScreen() {
                 ) {
                     for ((key, label) in listOf("all" to "All", "mine" to "On my servers", "other" to "Not on my servers")) {
                         be.alwyapps.watch.ui
-                            .ActionButton(label, { filter = key }, primary = filter == key)
+                            .ActionButton(label, { filter = key }, selected = filter == key)
                     }
                 }
             }

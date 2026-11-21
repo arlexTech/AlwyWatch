@@ -609,13 +609,22 @@ fun ActionButton(
     modifier: Modifier = Modifier,
     primary: Boolean = false,
     icon: ImageVector? = null,
+    /** The current choice of a group (a season): accent outline, so it never looks focused. */
+    selected: Boolean = false,
 ) {
     val d = LocalDimens.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val light = primary || (focused && d.isTv)
-    val bg by animateColorAsState(if (light) Color.White else SurfaceHigh, tween(140), label = "bg")
-    val fg = if (light) Color.Black else OnSurface
+    val bg by animateColorAsState(if (light) Color.White else Glass, tween(140), label = "bg")
+    val fg =
+        if (light) {
+            Color.Black
+        } else if (selected) {
+            Accent
+        } else {
+            OnSurface
+        }
     val scale by animateFloatAsState(if (focused && d.isTv) 1.05f else 1f, tween(140), label = "scale")
     Row(
         modifier
@@ -624,8 +633,9 @@ fun ActionButton(
                 scaleY = scale
             }.clip(RoundedCornerShape(50))
             .background(bg)
-            .then(if (focused && !d.isTv) Modifier.border(2.dp, Accent, RoundedCornerShape(50)) else Modifier)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .then(
+                if ((focused && !d.isTv) || (selected && !light)) Modifier.border(2.dp, Accent, RoundedCornerShape(50)) else Modifier,
+            ).clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = if (icon != null) 18.dp else 20.dp, vertical = if (d.isTv) 11.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -648,7 +658,7 @@ fun IconAction(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val light = focused && d.isTv
-    val bg by animateColorAsState(if (light) Color.White else SurfaceHigh, tween(140), label = "bg")
+    val bg by animateColorAsState(if (light) Color.White else Glass, tween(140), label = "bg")
     Box(
         modifier
             .size(if (d.isTv) 52.dp else 46.dp)

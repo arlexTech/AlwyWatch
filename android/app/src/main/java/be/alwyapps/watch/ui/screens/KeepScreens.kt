@@ -280,7 +280,7 @@ fun LeavingSoonScreen() {
                 }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for ((key, label) in listOf("all" to "All", "urgent" to "Within a week", "mine" to "My choices", "kept" to "Kept")) {
-                        item(key) { ActionButton(label, { filter = key }, primary = filter == key) }
+                        item(key) { ActionButton(label, { filter = key }, selected = filter == key) }
                     }
                 }
             }

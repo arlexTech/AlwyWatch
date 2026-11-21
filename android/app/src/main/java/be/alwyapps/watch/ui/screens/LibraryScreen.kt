@@ -152,7 +152,7 @@ fun LibraryScreen(
                     ActionButton(t.label, {
                         tab = t
                         runCatching { core.setSetting(tabKey, t.name) }
-                    }, if (i == 0) Modifier.initialFocus() else Modifier, primary = tab == t)
+                    }, if (i == 0) Modifier.initialFocus() else Modifier, selected = tab == t)
                 }
             }
         }
@@ -358,7 +358,7 @@ fun LibraryGrid(
                 if (sortable) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for ((label, s) in listOf("A–Z" to SortBy.TITLE, "Recently added" to SortBy.DATE_ADDED, "Release date" to SortBy.RELEASE_DATE)) {
-                            ActionButton(label, { sort = s }, primary = sort == s)
+                            ActionButton(label, { sort = s }, selected = sort == s)
                         }
                     }
                 }

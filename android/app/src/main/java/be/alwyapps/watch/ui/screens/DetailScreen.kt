@@ -1061,7 +1061,7 @@ private fun Seasons(
     LaunchedEffect(selected) { onSelected(selected) }
     Text("Episodes", Modifier.padding(horizontal = d.gutter, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
     LazyRow(contentPadding = PaddingValues(horizontal = d.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(list, key = { it.id }) { s -> ActionButton(s.title, { selected = s }, primary = s.id == selected.id) }
+        items(list, key = { it.id }) { s -> ActionButton(s.title, { selected = s }, selected = s.id == selected.id) }
     }
     Episodes(series.id, selected.id, dls)
 }

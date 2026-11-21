@@ -26,6 +26,9 @@ import be.alwyapps.watch.R
 val Background = Color(0xFF09090C)
 val SurfaceColor = Color(0x14FFFFFF)
 val SurfaceHigh = Color(0x24FFFFFF)
+
+/** Buttons over artwork: dark enough to read on a bright backdrop, still visible on black. */
+val Glass = Color(0xB3333333)
 val Outline = Color(0x1FFFFFFF)
 val OnSurface = Color(0xFFF4F4F6)
 val Muted = Color(0x99F4F4F6)

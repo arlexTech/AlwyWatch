@@ -779,6 +779,8 @@ class PlayerActivity : ComponentActivity() {
                                 else -> base
                             },
                         )
+                        // Redraw the cue on screen now, not at the next one.
+                        player?.let { sv.setCues(it.currentCues.cues) }
                     }
             }
     }
