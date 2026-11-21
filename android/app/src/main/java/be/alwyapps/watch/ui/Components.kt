@@ -130,13 +130,15 @@ fun FocusCard(
     onLongClick: (() -> Unit)? = null,
     // The TV focus glow is a shadow: behind see-through content it shows as a grey band.
     glow: Boolean = true,
+    // Wide rows grow less (the same ratio on a full-width row reaches under the side menu).
+    focusScale: Float? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val d = LocalDimens.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     if (focused && onFocus != null) LaunchedEffect(Unit) { onFocus() }
-    val scale by animateFloatAsState(if (focused) d.focusScale else 1f, tween(160), label = "scale")
+    val scale by animateFloatAsState(if (focused) focusScale ?: d.focusScale else 1f, tween(160), label = "scale")
     Box(
         modifier
             // One layer for the scale and the rounded clip (a clip is a layer of its own

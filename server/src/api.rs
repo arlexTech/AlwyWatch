@@ -37,9 +37,18 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/seerr", get(seerr_info))
         .route("/v1/seerr/api/v1/{*path}", any(seerr_forward))
         .route("/v1/hooks/{source}/{secret}", post(hook))
-        .route("/v1/together", post(together_create))
+        .route("/v1/together", get(together_rooms).post(together_create))
         .route("/v1/together/{code}", put(together_update))
-        .route("/v1/together/{code}/join", post(together_join))
+        .route("/v1/together/{code}/knock", post(together_knock))
+        .route(
+            "/v1/together/{code}/knock/{id}/wait",
+            get(together_knock_wait),
+        )
+        .route(
+            "/v1/together/{code}/knock/{id}",
+            axum::routing::delete(together_knock_cancel),
+        )
+        .route("/v1/together/{code}/requests/{id}", post(together_answer))
         .route("/v1/together/{code}/wait", get(together_wait))
         .route(
             "/v1/together/{code}/members/{member}",
@@ -162,7 +171,7 @@ fn together_error(e: crate::together::TogetherError) -> Error {
             "too many rooms open, try again later".into(),
         ),
         E::Full => Error(StatusCode::CONFLICT, "this room is full".into()),
-        E::Forbidden => Error(StatusCode::FORBIDDEN, "not your seat in this room".into()),
+        E::Forbidden => Error(StatusCode::FORBIDDEN, "not allowed in this room".into()),
     }
 }
 
@@ -180,24 +189,60 @@ async fn together_create(
         .map_err(together_error)
 }
 
-async fn together_join(
+async fn together_rooms(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+) -> Json<Vec<keep_service::together::TogetherRoom>> {
+    Json(s.rooms.list(&id.user_key))
+}
+
+async fn together_knock(
     State(s): State<Shared>,
     Caller(id): Caller,
     Path(code): Path<String>,
-) -> Result<Json<keep_service::together::TogetherJoined>, Error> {
-    // Codes are six digits: a few wrong ones, then a pause (no guessing others' rooms).
-    if s.limits.together_misses.blocked(&id.user_key) {
+) -> Result<Json<keep_service::together::TogetherKnockState>, Error> {
+    if !s.limits.together_knocks.allow(&id.user_key) {
         return Err(too_many());
     }
     s.rooms
-        .join(&code, &id.name, &id.user_key)
+        .knock(&code, &id.name, &id.user_key)
         .map(Json)
-        .map_err(|e| {
-            if e == crate::together::TogetherError::NotFound {
-                s.limits.together_misses.hit(&id.user_key);
-            }
-            together_error(e)
-        })
+        .map_err(together_error)
+}
+
+async fn together_knock_wait(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path((code, req)): Path<(String, String)>,
+) -> Result<Json<keep_service::together::TogetherKnockState>, Error> {
+    s.rooms
+        .knock_wait(&code, &req, &id.user_key)
+        .await
+        .map(Json)
+        .map_err(together_error)
+}
+
+async fn together_knock_cancel(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path((code, req)): Path<(String, String)>,
+) -> Result<StatusCode, Error> {
+    s.rooms
+        .knock_cancel(&code, &req, &id.user_key)
+        .map_err(together_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn together_answer(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path((code, req)): Path<(String, String)>,
+    Json(a): Json<keep_service::together::TogetherAnswer>,
+) -> Result<Json<keep_service::together::TogetherState>, Error> {
+    s.rooms
+        .answer(&code, &req, &a.member_id, a.accept, &id.user_key)
+        .map(Json)
+        .map_err(together_error)
 }
 
 async fn together_update(

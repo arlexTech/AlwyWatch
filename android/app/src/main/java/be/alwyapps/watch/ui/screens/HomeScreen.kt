@@ -209,7 +209,11 @@ private fun Rails(
     // posters with progress (an episode shows its show's poster), on TV too.
     Rail("Continue watching", h.continueWatching, open, onFocus, focusKey = "home", defaultFocus = first == "resume")
     // After what the user is watching, before the "new" rails.
-    if (core.keepActive() && !offline) LeavingSoonRail()
+    if (core.keepActive() && !offline) {
+        // Friends watching together right now (nothing when nobody is).
+        TogetherRail()
+        LeavingSoonRail()
+    }
     val account = LocalAccount.current
     val servers = remember(account) { runCatching { core.accounts() }.getOrDefault(emptyList()).associate { it.id to it.serverName } }
     for (rail in h.latest) {

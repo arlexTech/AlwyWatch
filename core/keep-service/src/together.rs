@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Watch together: people on different servers (Plex or Jellyfin) play the same title in sync,
-//! through a room on the AlwyWatch server joined with a six-digit code.
+//! through a room on the AlwyWatch server. Everyone signed in to that server sees the open rooms;
+//! joining one asks its host, who accepts or declines (the same person on another device gets
+//! in without asking).
 //!
 //! The room holds the title (by TMDB/IMDB/TVDB id, and season/episode, so each member plays
 //! their own server's copy), whether it plays and the position at a server time. Members
 //! long-poll for changes (`wait`), compute where playback should be from the server clock and
 //! seek when they drift; every play, pause, seek or title change is sent with `update`.
 //!
-//! - `POST /v1/together` (signed in) → [`TogetherJoined`]: a new room, the caller its first member.
-//! - `POST /v1/together/{code}/join` (signed in) → [`TogetherJoined`].
+//! - `GET /v1/together` (signed in) → `Vec<`[`TogetherRoom`]`>`: the open rooms.
+//! - `POST /v1/together` (signed in) → [`TogetherJoined`]: a new room, the caller its host.
+//! - `POST /v1/together/{code}/knock` (signed in) → [`TogetherKnockState`]: asks to join.
+//! - `GET /v1/together/{code}/knock/{id}/wait` → [`TogetherKnockState`], as soon as the host
+//!   answered or after about 25 s (the asker's heartbeat: a request not polled for a minute goes).
+//! - `DELETE /v1/together/{code}/knock/{id}` → 204: no longer asking.
+//! - `POST /v1/together/{code}/requests/{id}` with [`TogetherAnswer`] (host) → [`TogetherState`].
 //! - `PUT /v1/together/{code}` with [`TogetherUpdate`] → [`TogetherState`].
 //! - `GET /v1/together/{code}/wait?after={seq}&member={id}` → [`TogetherState`], as soon as
 //!   `seq` is past `after` or after about 25 s (it doubles as the member's heartbeat).
@@ -72,6 +79,57 @@ record! {
         /// Member who made the last change (empty when it was the server).
         pub by: String,
         pub members: Vec<TogetherMember>,
+        /// Member id of the host (who answers join requests; the longest member after they leave).
+        #[serde(default)]
+        pub host: String,
+        /// People asking to join, for the host to answer.
+        #[serde(default)]
+        pub requests: Vec<TogetherMember>,
+    }
+}
+
+record! {
+    /// An open room, as listed to everyone signed in to the server.
+    pub struct TogetherRoom {
+        pub code: String,
+        /// The host's name.
+        pub host: String,
+        pub media: TogetherMedia,
+        /// Members' names.
+        pub members: Vec<String>,
+        pub playing: bool,
+        pub position_ms: u64,
+        pub at_ms: i64,
+        pub now_ms: i64,
+        /// The caller is in it (another of their devices).
+        pub mine: bool,
+    }
+}
+
+/// Where a join request stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
+#[serde(rename_all = "lowercase")]
+pub enum KnockStatus {
+    Waiting,
+    Accepted,
+    Declined,
+}
+
+record! {
+    pub struct TogetherKnockState {
+        pub request_id: String,
+        pub status: KnockStatus,
+        /// Accepted: the asker's seat and the room.
+        pub joined: Option<TogetherJoined>,
+    }
+}
+
+record! {
+    pub struct TogetherAnswer {
+        /// The host's member id.
+        pub member_id: String,
+        pub accept: bool,
     }
 }
 
@@ -139,6 +197,8 @@ mod tests {
             now_ms: 1_000,
             by: String::new(),
             members: vec![],
+            host: String::new(),
+            requests: vec![],
         };
         assert_eq!(s.position_at(3_500), 12_500);
         s.playing = false;

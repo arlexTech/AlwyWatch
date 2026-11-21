@@ -332,11 +332,71 @@ impl KeepClient {
         net::send_json(self.req(Method::POST, "/together").json(create)).await
     }
 
-    pub async fn together_join(&self, code: &str) -> Result<together::TogetherJoined> {
+    /// Watch together: the rooms open on this server.
+    pub async fn together_rooms(&self) -> Result<Vec<together::TogetherRoom>> {
+        net::send_json(self.req(Method::GET, "/together")).await
+    }
+
+    /// Asks the room's host to join.
+    pub async fn together_knock(&self, code: &str) -> Result<together::TogetherKnockState> {
         net::send_json(self.req(
             Method::POST,
-            &format!("/together/{}/join", net::percent_encode(code)),
+            &format!("/together/{}/knock", net::percent_encode(code)),
         ))
+        .await
+    }
+
+    /// The request once the host answered, or after about 25 s (a long poll).
+    pub async fn together_knock_wait(
+        &self,
+        code: &str,
+        request: &str,
+    ) -> Result<together::TogetherKnockState> {
+        net::send_json(
+            self.req(
+                Method::GET,
+                &format!(
+                    "/together/{}/knock/{}/wait",
+                    net::percent_encode(code),
+                    net::percent_encode(request)
+                ),
+            )
+            .timeout(std::time::Duration::from_secs(together::WAIT_SECS + 15)),
+        )
+        .await
+    }
+
+    pub async fn together_knock_cancel(&self, code: &str, request: &str) -> Result<()> {
+        net::send(self.req(
+            Method::DELETE,
+            &format!(
+                "/together/{}/knock/{}",
+                net::percent_encode(code),
+                net::percent_encode(request)
+            ),
+        ))
+        .await?;
+        Ok(())
+    }
+
+    /// The host accepts or declines a join request.
+    pub async fn together_answer(
+        &self,
+        code: &str,
+        request: &str,
+        answer: &together::TogetherAnswer,
+    ) -> Result<together::TogetherState> {
+        net::send_json(
+            self.req(
+                Method::POST,
+                &format!(
+                    "/together/{}/requests/{}",
+                    net::percent_encode(code),
+                    net::percent_encode(request)
+                ),
+            )
+            .json(answer),
+        )
         .await
     }
 

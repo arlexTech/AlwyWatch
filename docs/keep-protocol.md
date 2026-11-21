@@ -96,25 +96,35 @@ same Plex id / Jellyfin user id, or creates a local one (`create_users = true`),
 
 ## Watch together
 
-People on different servers (Plex or Jellyfin) watch the same title in sync. Rooms live in the
-server's memory only. Types: `keep_service::together`.
+People on different servers (Plex or Jellyfin) watch the same title in sync. Everyone signed in
+to the AlwyWatch server sees the open rooms; joining asks the room's host, who accepts or
+declines (the same user on another device gets in at once). Rooms live in the server's memory
+only. Types: `keep_service::together`.
 
 | Method | Path | Body → answer |
 |---|---|---|
-| POST | `/v1/together` | `{media, position_ms, playing}` → `{member_id, state}`: a new room, six-digit `state.code` |
-| POST | `/v1/together/{code}/join` | → `{member_id, state}` |
+| GET | `/v1/together` | → `[{code, host, media, members, playing, position_ms, at_ms, now_ms, mine}]`: open rooms, newest first |
+| POST | `/v1/together` | `{media, position_ms, playing}` → `{member_id, state}`: a new room, the caller its host |
+| POST | `/v1/together/{code}/knock` | → `{request_id, status, joined?}`: asks to join (`waiting`, or `accepted` at once for one's own devices) |
+| GET | `/v1/together/{code}/knock/{id}/wait` | → the same, once the host answered (`accepted` with `joined = {member_id, state}`, or `declined`), else after ~25 s |
+| DELETE | `/v1/together/{code}/knock/{id}` | → 204: no longer asking |
+| POST | `/v1/together/{code}/requests/{id}` | `{member_id, accept}` (host only, else 403) → `state` |
 | PUT | `/v1/together/{code}` | `{member_id, playing, position_ms, media?}` → `state` |
 | GET | `/v1/together/{code}/wait?after={seq}&member={id}` | → `state` once `seq > after`, else after ~25 s |
 | DELETE | `/v1/together/{code}/members/{id}` | → 204 |
 
-All calls are signed in like the others; a member id only works for the user who got it (403).
-`media` names the title by `tmdb`/`imdb`/`tvdb` (episodes: the show's ids, `season`, `episode`)
-so each member plays their own server's copy. `state` = `{code, seq, media, playing,
-position_ms, at_ms, now_ms, by, members}`: the position at `at_ms` on the server clock; clients
-add the time elapsed since (`now_ms` tells the server's clock) and seek when more than 1.5 s off.
-`wait` doubles as the heartbeat: a member silent for a minute leaves, an empty room closes after
-five minutes, any room after twelve hours. Long polls: a reverse proxy must allow ~40 s requests
-(Caddy's defaults do).
+All calls are signed in like the others; member and request ids only work for the user who got
+them (403). `media` names the title by `tmdb`/`imdb`/`tvdb` (episodes: the show's ids, `season`,
+`episode`) so each member plays their own server's copy. `state` = `{code, seq, media, playing,
+position_ms, at_ms, now_ms, by, members, host, requests}`: the position at `at_ms` on the server
+clock; clients add the time elapsed since (`now_ms` tells the server's clock) and seek when more
+than 1.5 s off. `host` is the host's member id (when they leave, the longest member takes over);
+`requests` lists who is asking, a new one wakes the host's `wait`. An answer is handed over once.
+`wait` (and `knock/{id}/wait` for someone asking) doubles as the heartbeat: a member or request
+silent for a minute goes, an empty room closes after five minutes, any room after twelve hours.
+Limits: 20 rooms opened per user per hour, 30 join requests per user per ten minutes (429), 10
+requests waiting per room. Long polls: a reverse proxy must allow ~40 s requests (Caddy's
+defaults do).
 
 ## Settings across devices
 

@@ -3037,10 +3037,46 @@ impl AlwyWatch {
         .await
     }
 
-    pub async fn together_join(&self, code: String) -> Result<TogetherJoined> {
+    /// The watch together rooms open on the AlwyWatch server (everyone signed in sees them).
+    pub async fn together_rooms(&self) -> Result<Vec<TogetherRoom>> {
+        self.run(|c| async move { Ok(c.keep()?.together_rooms().await?) })
+            .await
+    }
+
+    /// Asks a room's host to let you in (your own other devices get in at once).
+    pub async fn together_knock(&self, code: String) -> Result<TogetherKnockState> {
+        self.run(|c| async move { Ok(c.keep()?.together_knock(&code).await?) })
+            .await
+    }
+
+    /// The request once the host answered, or after about 25 s (call it in a loop: it also
+    /// tells the server you are still waiting).
+    pub async fn together_knock_wait(
+        &self,
+        code: String,
+        request_id: String,
+    ) -> Result<TogetherKnockState> {
+        self.run(|c| async move { Ok(c.keep()?.together_knock_wait(&code, &request_id).await?) })
+            .await
+    }
+
+    pub async fn together_knock_cancel(&self, code: String, request_id: String) -> Result<()> {
+        self.run(|c| async move { Ok(c.keep()?.together_knock_cancel(&code, &request_id).await?) })
+            .await
+    }
+
+    /// The host lets someone in (`accept`) or not.
+    pub async fn together_answer(
+        &self,
+        code: String,
+        member_id: String,
+        request_id: String,
+        accept: bool,
+    ) -> Result<TogetherState> {
         self.run(|c| async move {
-            let code: String = code.chars().filter(char::is_ascii_digit).collect();
-            Ok(c.keep()?.together_join(&code).await?)
+            Ok(c.keep()?
+                .together_answer(&code, &request_id, &TogetherAnswer { member_id, accept })
+                .await?)
         })
         .await
     }
@@ -3148,6 +3184,8 @@ mod together_tests {
             },
             playing: true,
             position_ms: 60_000,
+            host: String::new(),
+            requests: vec![],
             at_ms: 1_000_000,
             now_ms: 1_000_500,
             by: String::new(),

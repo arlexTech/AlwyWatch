@@ -961,16 +961,64 @@ async fn watch_together_between_a_jellyfin_and_a_plex_user() {
     assert_eq!(s, StatusCode::OK);
     let code = a["state"]["code"].as_str().unwrap().to_owned();
     assert_eq!(code.len(), 6);
-    // Only users of a served server get in.
-    let join = format!("/v1/together/{code}/join");
+    // Only users of a served server see rooms or get in.
     assert_eq!(
-        e.call("POST", &join, "plexsrv", "px-stranger", None)
+        e.call("GET", "/v1/together", "plexsrv", "px-stranger", None)
             .await
             .0,
         StatusCode::UNAUTHORIZED
     );
-    let (s, b) = e.call("POST", &join, "plexsrv", "px-friend", None).await;
+    let (s, rooms) = e
+        .call("GET", "/v1/together", "plexsrv", "px-friend", None)
+        .await;
     assert_eq!(s, StatusCode::OK);
+    assert_eq!(rooms[0]["code"], code.as_str());
+    assert_eq!(rooms[0]["mine"], false);
+    let knock = format!("/v1/together/{code}/knock");
+    assert_eq!(
+        e.call("POST", &knock, "plexsrv", "px-stranger", None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    // The friend asks, Bob (host) accepts, the friend collects the seat.
+    let (s, k) = e.call("POST", &knock, "plexsrv", "px-friend", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(k["status"], "waiting");
+    let req = k["request_id"].as_str().unwrap().to_owned();
+    let (s, _) = e
+        .call(
+            "POST",
+            &format!("/v1/together/{code}/requests/{req}"),
+            "plexsrv",
+            "px-friend",
+            Some(json!({"member_id": a["member_id"], "accept": true})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "only the host answers");
+    let (s, st) = e
+        .call(
+            "POST",
+            &format!("/v1/together/{code}/requests/{req}"),
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"member_id": a["member_id"], "accept": true})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(st["members"].as_array().unwrap().len(), 2);
+    let (s, k) = e
+        .call(
+            "GET",
+            &format!("/v1/together/{code}/knock/{req}/wait"),
+            "plexsrv",
+            "px-friend",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(k["status"], "accepted");
+    let b = k["joined"].clone();
     assert_eq!(b["state"]["members"].as_array().unwrap().len(), 2);
     assert_eq!(b["state"]["media"]["tmdb"], "329865");
     // Bob plays: the friend's wait returns it at once.
@@ -1088,10 +1136,10 @@ async fn wrong_tokens_and_room_codes_get_a_pause() {
         StatusCode::TOO_MANY_REQUESTS
     );
 
-    // Room codes: ten unknown ones per user, then a pause; other users are not affected.
+    // Join requests: thirty per user in ten minutes, then a pause; other users are not affected.
     let e = env().await;
-    for n in 0..10 {
-        let code = format!("/v1/together/{:06}/join", 900_000 + n);
+    for n in 0..30 {
+        let code = format!("/v1/together/{:06}/knock", 900_000 + n);
         assert_eq!(
             e.call("POST", &code, "jfsrv", "jf-alice", None).await.0,
             StatusCode::NOT_FOUND
@@ -1100,7 +1148,7 @@ async fn wrong_tokens_and_room_codes_get_a_pause() {
     assert_eq!(
         e.call(
             "POST",
-            "/v1/together/123456/join",
+            "/v1/together/123456/knock",
             "jfsrv",
             "jf-alice",
             None
@@ -1112,7 +1160,7 @@ async fn wrong_tokens_and_room_codes_get_a_pause() {
     assert_eq!(
         e.call(
             "POST",
-            "/v1/together/123456/join",
+            "/v1/together/123456/knock",
             "plexsrv",
             "px-friend",
             None

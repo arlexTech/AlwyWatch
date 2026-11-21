@@ -66,6 +66,7 @@ import be.alwyapps.watch.ui.Icons
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.Subtle
+import be.alwyapps.watch.ui.initialFocus
 import kotlinx.coroutines.delay
 
 /** Overlay state shared between the activity (keys, player events) and the Compose controls. */
@@ -110,10 +111,12 @@ class PlayerUi {
     /** Last seconds of an episode with a next one: show the "Next episode" prompt. */
     var nearEnd by mutableStateOf(false)
 
-    /** Watch together: offered (an AlwyWatch server is connected), the room's code and who is in it. */
-    var togetherAvailable by mutableStateOf(false)
+    /** Watch together: the room (null: watching alone, nothing shown) and who is in it. */
     var togetherCode by mutableStateOf<String?>(null)
     var togetherPeople by mutableStateOf<List<String>>(emptyList())
+
+    /** Host: someone asking to join (request id, name), answered from a popup. */
+    var togetherRequest by mutableStateOf<Pair<String, String>?>(null)
 
     /** A short line about the room ("Ana paused"), shown a few seconds even with hidden controls. */
     var togetherNote by mutableStateOf<String?>(null)
@@ -151,8 +154,8 @@ fun PlayerOverlay(
     onPrevious: () -> Unit,
     onSkip: () -> Unit,
     onPip: (() -> Unit)? = null,
-    onTogether: () -> Unit = {},
     onLeaveTogether: () -> Unit = {},
+    onAnswerTogether: (String, Boolean) -> Unit = { _, _ -> },
     onTrackPicked: (Int, androidx.media3.common.Format?) -> Unit = { _, _ -> },
     onStillWatching: () -> Unit = {},
 ) {
@@ -173,6 +176,34 @@ fun PlayerOverlay(
         )
     }
     if (ui.pip) return
+    // Someone asks to join: a popup over the picture (playback goes on), one person at a time.
+    ui.togetherRequest?.let { (id, name) ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { onAnswerTogether(id, false) },
+            containerColor = be.alwyapps.watch.ui.Background,
+            icon = { Icon(be.alwyapps.watch.ui.Icons.Group, null, tint = be.alwyapps.watch.ui.Accent) },
+            title = { Text("$name wants to watch with you") },
+            text = {
+                Text(
+                    "They'll play this from where you are, and play, pause and seeking follow everyone.",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                be.alwyapps.watch.ui.ActionButton(
+                    "Let them in",
+                    { onAnswerTogether(id, true) },
+                    Modifier.initialFocus(),
+                    primary = true,
+                )
+            },
+            dismissButton = {
+                be.alwyapps.watch.ui
+                    .ActionButton("Not now", { onAnswerTogether(id, false) })
+            },
+        )
+    }
     var roomDialog by remember { mutableStateOf(false) }
     if (roomDialog) {
         androidx.compose.material3.AlertDialog(
@@ -181,14 +212,14 @@ fun PlayerOverlay(
             title = { Text("Watch together") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Room code", color = Muted, style = MaterialTheme.typography.bodySmall)
-                    Text(ui.togetherCode ?: "", style = MaterialTheme.typography.headlineMedium)
+                    Text("Watching now", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text(ui.togetherPeople.joinToString(", "), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Friends join from Together in the menu. Play, pause and seeking follow everyone.",
+                        "Friends on your AlwyWatch server see this in Together and ask to join. " +
+                            "Play, pause and seeking follow everyone.",
                         color = Muted,
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    Text(ui.togetherPeople.joinToString(", "), style = MaterialTheme.typography.bodyMedium)
                 }
             },
             confirmButton = {
@@ -329,13 +360,13 @@ fun PlayerOverlay(
                             PillButton(Icons.SkipNext, "Next episode", onNext)
                             Spacer(Modifier.width(10.dp))
                         }
-                        if (ui.togetherAvailable || ui.togetherCode != null) {
-                            val code = ui.togetherCode
+                        // Only in a room (started from the title's page): nothing while watching alone.
+                        if (ui.togetherCode != null) {
                             PillButton(
                                 be.alwyapps.watch.ui.Icons.Group,
-                                if (code == null) "Watch together" else "$code \u00b7 ${ui.togetherPeople.size} watching",
+                                "${ui.togetherPeople.size} watching",
                                 {
-                                    if (code == null) onTogether() else roomDialog = true
+                                    roomDialog = true
                                     ui.poke()
                                 },
                             )

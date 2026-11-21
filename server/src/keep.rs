@@ -46,8 +46,8 @@ pub struct Limits {
     pub failed_auth: crate::limit::Limiter,
     /// Transfers started (no sign-in needed), per client address.
     pub transfer_starts: crate::limit::Limiter,
-    /// Unknown room codes tried, per user.
-    pub together_misses: crate::limit::Limiter,
+    /// Requests to join a room, per user (no pestering a host).
+    pub together_knocks: crate::limit::Limiter,
     /// Rooms opened, per user.
     pub together_creates: crate::limit::Limiter,
 }
@@ -60,7 +60,7 @@ impl Default for Limits {
         Self {
             failed_auth: Limiter::new(20, min(10)),
             transfer_starts: Limiter::new(10, min(10)),
-            together_misses: Limiter::new(10, min(10)),
+            together_knocks: Limiter::new(30, min(10)),
             together_creates: Limiter::new(20, min(60)),
         }
     }

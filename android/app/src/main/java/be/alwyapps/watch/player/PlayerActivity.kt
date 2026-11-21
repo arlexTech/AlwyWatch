@@ -150,8 +150,8 @@ class PlayerActivity : ComponentActivity() {
                             onPrevious = { playPrevious() },
                             onSkip = { skipSegment() },
                             onPip = if (pipSupported) ({ enterPip() }) else null,
-                            onTogether = { startTogether() },
                             onLeaveTogether = { leaveTogether("You left watch together") },
+                            onAnswerTogether = { id, accept -> answerTogether(id, accept) },
                             onTrackPicked = { type, format -> rememberTrack(type, format) },
                             onStillWatching = {
                                 ui.stillWatching = false
@@ -172,9 +172,13 @@ class PlayerActivity : ComponentActivity() {
         val start = intent.getLongExtra(EXTRA_START, 0L)
         lifecycleScope.launch {
             core = services.core.await()
-            ui.togetherAvailable = runCatching { core.keepActive() }.getOrDefault(false)
             load(itemId, start)
-            if (room != null) followRoom()
+            if (room != null) {
+                followRoom()
+            } else if (intent.getBooleanExtra(EXTRA_TOGETHER, false)) {
+                // Started with "Watch together" on the title's page.
+                startTogether()
+            }
         }
     }
 
@@ -813,7 +817,7 @@ class PlayerActivity : ComponentActivity() {
 
     // ----- watch together ------------------------------------------------------------------
 
-    /** Opens a room with what plays now; its code shows in the controls for friends to join. */
+    /** Opens a room with what plays now: people on the same AlwyWatch server see it and ask to join. */
     private fun startTogether() {
         if (room != null) return
         val p = player ?: return
@@ -825,7 +829,7 @@ class PlayerActivity : ComponentActivity() {
                 member = joined.memberId
                 acceptRoom(joined.state)
                 roomMedia = joined.state.media
-                ui.togetherNote = "Room ${spaced(joined.state.code)}: share this code"
+                ui.togetherNote = "Watch together is open: friends can join from Together"
                 followRoom()
             } catch (e: CoreException) {
                 ui.togetherNote = "Watch together unavailable: ${e.message}"
@@ -833,14 +837,40 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun spaced(code: String) = if (code.length == 6) code.substring(0, 3) + " " + code.substring(3) else code
-
     private fun acceptRoom(s: be.alwyapps.watch.core.keep.TogetherState) {
         roomState = s
         roomReceivedAt = android.os.SystemClock.elapsedRealtime()
         if (s.seq > roomSeq) roomSeq = s.seq
-        ui.togetherCode = spaced(s.code)
+        ui.togetherCode = s.code
         ui.togetherPeople = s.members.map { it.name }
+        // The host answers who may join (one at a time, the ones not answered yet).
+        ui.togetherRequest =
+            if (s.host == member) {
+                s.requests.firstOrNull { it.id !in answered }?.let { it.id to it.name }
+            } else {
+                null
+            }
+    }
+
+    /** Join requests already answered here (until the server's next state drops them). */
+    private val answered = mutableSetOf<String>()
+
+    private fun answerTogether(
+        requestId: String,
+        accept: Boolean,
+    ) {
+        val code = room ?: return
+        val me = member ?: return
+        answered += requestId
+        roomState?.let { acceptRoom(it) }
+        lifecycleScope.launch {
+            try {
+                acceptRoom(core.togetherAnswer(code, me, requestId, accept))
+            } catch (e: CoreException) {
+                // Gone meanwhile (they cancelled): nothing to do.
+                android.util.Log.w(TAG, "together answer: ${e.javaClass.simpleName}")
+            }
+        }
     }
 
     /** Long-polls the room and applies what the others do. */
@@ -894,8 +924,12 @@ class PlayerActivity : ComponentActivity() {
                         !before.playing && s.playing -> "$who resumed"
                         else -> "$who moved to ${formatTime(s.positionMs.toLong())}"
                     }
-            } else if (s.members.size != before.members.size) {
-                ui.togetherNote = "${s.members.size} watching"
+            } else if (s.members.size > before.members.size) {
+                val joined = s.members.filter { m -> before.members.none { it.id == m.id } }.joinToString(", ") { it.name }
+                ui.togetherNote = "$joined joined"
+            } else if (s.members.size < before.members.size) {
+                val left = before.members.filter { m -> s.members.none { it.id == m.id } }.joinToString(", ") { it.name }
+                ui.togetherNote = "$left left"
             }
         }
         syncToRoom(s)
@@ -984,6 +1018,7 @@ class PlayerActivity : ComponentActivity() {
         roomMedia = null
         ui.togetherCode = null
         ui.togetherPeople = emptyList()
+        ui.togetherRequest = null
         ui.togetherNote = note
         if (tellServer && me != null) services.scope.launch { runCatching { core.togetherLeave(code, me) } }
     }
@@ -998,7 +1033,10 @@ class PlayerActivity : ComponentActivity() {
         report(PlaybackEvent.STOP)
         account = acct
         announceTitle = room != null
-        lifecycleScope.launch { load(id, intent.getLongExtra(EXTRA_START, 0L)) }
+        lifecycleScope.launch {
+            load(id, intent.getLongExtra(EXTRA_START, 0L))
+            if (room == null && intent.getBooleanExtra(EXTRA_TOGETHER, false)) startTogether()
+        }
     }
 
     /** Show (or movie) name, then "S1 · E2 · Episode" or the year. Works offline. */
@@ -1110,6 +1148,7 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_START = "start"
         private const val EXTRA_ROOM = "together_room"
         private const val EXTRA_MEMBER = "together_member"
+        private const val EXTRA_TOGETHER = "together_start"
         private const val TAG = "AlwyPlayer"
         private const val BACK_GRACE_MS = 2000L
         private const val BACK_ECHO_MS = 300L
@@ -1122,11 +1161,13 @@ class PlayerActivity : ComponentActivity() {
             startMs: Long,
             room: String? = null,
             member: String? = null,
+            startTogether: Boolean = false,
         ) = Intent(ctx, PlayerActivity::class.java)
             .putExtra(EXTRA_ACCOUNT, account)
             .putExtra(EXTRA_ITEM, itemId)
             .putExtra(EXTRA_START, startMs)
             .putExtra(EXTRA_ROOM, room)
             .putExtra(EXTRA_MEMBER, member)
+            .putExtra(EXTRA_TOGETHER, startTogether)
     }
 }

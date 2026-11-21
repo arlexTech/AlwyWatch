@@ -111,6 +111,8 @@ fun DetailScreen(
     // Back from the player, or watched state changed from a menu: positions and marks moved.
     val changed = be.alwyapps.watch.ui.ItemsChanged.version
     LaunchedEffect(changed) { if (changed > 0) res.reload() }
+    // Watch together goes through the AlwyWatch server.
+    val togetherOn = remember { runCatching { core.keepActive() }.getOrDefault(false) }
     // My list (movies and shows), from the cache; the button flips it on the server.
     var watchlisted by remember(itemId) { mutableStateOf(core.isWatchlisted(account, itemId)) }
     LaunchedEffect(itemId) {
@@ -310,6 +312,15 @@ fun DetailScreen(
                                 }
                             val playAction: (() -> Unit)? = target?.let { t -> { play(ctx, account, t, fromStart = false) } }
                             val fromStart: (() -> Unit)? = target?.takeIf { resumable }?.let { t -> { play(ctx, account, t, fromStart = true) } }
+                            // Plays it and opens a room others on the AlwyWatch server can ask to join.
+                            val watchTogether: (() -> Unit)? =
+                                target?.takeIf { togetherOn }?.let { t ->
+                                    {
+                                        ctx.startActivity(
+                                            PlayerActivity.intent(ctx, account, t.id, t.user.positionMs.toLong(), startTogether = true),
+                                        )
+                                    }
+                                }
                             val toggleWatched = {
                                 scope.launch {
                                     runCatching { core.setPlayed(account, item.id, !item.user.played) }
@@ -323,6 +334,7 @@ fun DetailScreen(
                                         ActionButton(playLabel, playAction, Modifier.initialFocus(), primary = true, icon = Icons.Play)
                                     }
                                     fromStart?.let { ActionButton("From start", it) }
+                                    watchTogether?.let { IconAction(Icons.Group, "Watch together", it) }
                                     playTrailer?.let { IconAction(Icons.Movie, "Trailer", it) }
                                     if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
                                         IconAction(
@@ -349,6 +361,9 @@ fun DetailScreen(
                                         CaptionAction("From start", fromStart) {
                                             Icon(Icons.Refresh, null, Modifier.size(22.dp))
                                         }
+                                    }
+                                    watchTogether?.let {
+                                        CaptionAction("Together", it) { Icon(Icons.Group, null, Modifier.size(22.dp)) }
                                     }
                                     playTrailer?.let {
                                         CaptionAction("Trailer", it) { Icon(Icons.Movie, null, Modifier.size(22.dp)) }
@@ -1101,6 +1116,7 @@ private fun EpisodeRow(
             // Long press (hold OK on a remote): watched / unwatched, download…
             onLongClick = onMenu,
             glow = false,
+            focusScale = 1.02f,
             modifier =
                 Modifier.fillMaxWidth().onFocusChanged {
                     if (it.isFocused) core.prefetchPlaybackInfo(account, ep.id, DeviceProfiles.get(ctx))
