@@ -191,6 +191,53 @@ record! {
 }
 
 record! {
+    /// `GET /v1/admin/forever`: who keeps what forever, and how much of it others keep too.
+    pub struct ForeverStats {
+        /// Distinct titles someone keeps forever.
+        pub titles: u32,
+        /// Of those, kept forever by two people or more.
+        pub shared: u32,
+        /// Most titles first.
+        pub people: Vec<ForeverPerson>,
+        /// Every title kept forever, most keepers first.
+        pub items: Vec<ForeverTitle>,
+    }
+}
+
+record! {
+    pub struct ForeverPerson {
+        pub user_key: String,
+        pub name: String,
+        pub count: u32,
+        /// Also kept forever by someone else.
+        pub shared: u32,
+        /// Kept forever by them alone.
+        pub alone: u32,
+        /// Who they overlap with, most titles in common first.
+        pub overlaps: Vec<ForeverOverlap>,
+    }
+}
+
+record! {
+    pub struct ForeverOverlap {
+        pub user_key: String,
+        pub name: String,
+        pub both: u32,
+    }
+}
+
+record! {
+    pub struct ForeverTitle {
+        pub key: String,
+        pub title: String,
+        pub year: Option<i32>,
+        pub poster_url: Option<String>,
+        /// user_keys of the people keeping it forever.
+        pub keepers: Vec<String>,
+    }
+}
+
+record! {
     /// `PUT /v1/admin/users/{user}/seerr`: link to this Seerr user, or unlink (None).
     pub struct SeerrLinkRequest {
         pub seerr_user_id: Option<i64>,
@@ -517,6 +564,11 @@ impl KeepClient {
     /// Seerr's users (admins), to link AlwyWatch users to them.
     pub async fn admin_seerr_users(&self) -> Result<Vec<SeerrUser>> {
         net::send_json(self.req(Method::GET, "/admin/seerr-users")).await
+    }
+
+    /// Admins: keep-forever counts per person and their overlaps.
+    pub async fn admin_forever(&self) -> Result<ForeverStats> {
+        net::send_json(self.req(Method::GET, "/admin/forever")).await
     }
 
     /// Links a user's requests to an existing Seerr user (None: back to automatic).

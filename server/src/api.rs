@@ -30,6 +30,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/admin/users/{user}/rights", put(admin_rights))
         .route("/v1/admin/users/{user}/seerr", put(admin_link_seerr))
         .route("/v1/admin/seerr-users", get(admin_seerr_users))
+        .route("/v1/admin/forever", get(admin_forever))
         .route(
             "/v1/admin/collections/{id}/countdown",
             post(admin_countdown),
@@ -471,6 +472,20 @@ async fn unvote(
 
 async fn admin_users(State(s): State<Shared>, Admin(_): Admin) -> Result<impl IntoResponse, Error> {
     Ok(Json(s.db.users().map_err(internal)?))
+}
+
+async fn admin_forever(
+    State(s): State<Shared>,
+    Admin(_): Admin,
+) -> Result<impl IntoResponse, Error> {
+    let names =
+        s.db.users()
+            .map_err(internal)?
+            .into_iter()
+            .map(|u| (u.user_key, u.name))
+            .collect();
+    let votes = s.db.forever_votes().map_err(internal)?;
+    Ok(Json(crate::keep::forever_stats(&votes, &names)))
 }
 
 async fn admin_seerr_users(

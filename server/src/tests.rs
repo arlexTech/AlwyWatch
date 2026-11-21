@@ -1182,3 +1182,62 @@ async fn internal_errors_do_not_leak_details() {
         assert_eq!(body["error"], "server error, try again later");
     }
 }
+
+#[tokio::test]
+async fn admin_sees_who_keeps_what_forever_and_the_overlaps() {
+    let e = env().await;
+    e.state.sync().await.unwrap();
+    let forever = || Some(json!({"kind": "keep_forever"}));
+    // Alice keeps 100 and 101, Bob keeps 100: one title in common, one Alice's alone.
+    for (item, tok) in [("100", "jf-alice"), ("101", "jf-alice"), ("100", "jf-bob")] {
+        let (s, _) = e
+            .call("PUT", &format!("/v1/votes/{item}"), "jfsrv", tok, forever())
+            .await;
+        assert_eq!(s, StatusCode::OK);
+    }
+    // Not a forever keep: not counted.
+    e.call(
+        "PUT",
+        "/v1/votes/101",
+        "jfsrv",
+        "jf-bob",
+        Some(json!({"kind": "keep_days", "days": 7})),
+    )
+    .await;
+    assert_eq!(
+        e.call("GET", "/v1/admin/forever", "jfsrv", "jf-bob", None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (s, st) = e
+        .call("GET", "/v1/admin/forever", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        (st["titles"].clone(), st["shared"].clone()),
+        (json!(2), json!(1))
+    );
+    let people = st["people"].as_array().unwrap();
+    let alice = &people[0];
+    assert_eq!(
+        (
+            alice["count"].clone(),
+            alice["shared"].clone(),
+            alice["alone"].clone()
+        ),
+        (json!(2), json!(1), json!(1))
+    );
+    assert_eq!(alice["overlaps"][0]["both"], 1);
+    let bob = &people[1];
+    assert_eq!(
+        (
+            bob["count"].clone(),
+            bob["shared"].clone(),
+            bob["alone"].clone()
+        ),
+        (json!(1), json!(1), json!(0))
+    );
+    assert_eq!(st["items"][0]["key"], "100");
+    assert_eq!(st["items"][0]["keepers"].as_array().unwrap().len(), 2);
+}

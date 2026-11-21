@@ -2633,6 +2633,12 @@ impl AlwyWatch {
             .await
     }
 
+    /// Admins: who keeps what forever and how much of it others keep too.
+    pub async fn keep_admin_forever(&self) -> Result<keep_service::ForeverStats> {
+        self.run(|c| async move { Ok(c.keep()?.admin_forever().await?) })
+            .await
+    }
+
     /// Seerr's users, to link AlwyWatch users to (admins; empty when Seerr is not offered).
     pub async fn keep_admin_seerr_users(&self) -> Result<Vec<keep_service::SeerrUser>> {
         self.run(|c| async move { Ok(c.keep()?.admin_seerr_users().await?) })

@@ -770,3 +770,82 @@ pub fn spawn_jobs(state: Shared) {
         }
     });
 }
+
+/// Admin stats: who keeps what forever, and how much of it someone else keeps too.
+pub fn forever_stats(
+    votes: &[crate::db::ForeverVote],
+    names: &std::collections::HashMap<String, String>,
+) -> keep_service::ForeverStats {
+    use keep_service::{ForeverOverlap, ForeverPerson, ForeverStats, ForeverTitle};
+    use std::collections::{BTreeMap, BTreeSet, HashMap};
+    let name = |k: &str| names.get(k).cloned().unwrap_or_else(|| k.to_owned());
+    // Title -> keepers, and person -> titles.
+    let mut by_item: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    let mut by_user: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for v in votes {
+        by_item.entry(&v.item_key).or_default().insert(&v.user_key);
+        by_user.entry(&v.user_key).or_default().insert(&v.item_key);
+    }
+    let mut people: Vec<ForeverPerson> = by_user
+        .iter()
+        .map(|(&user, items)| {
+            let mut with: HashMap<&str, u32> = HashMap::new();
+            let mut shared = 0;
+            for item in items {
+                let keepers = &by_item[item];
+                if keepers.len() > 1 {
+                    shared += 1;
+                }
+                for &other in keepers.iter().filter(|&&o| o != user) {
+                    *with.entry(other).or_default() += 1;
+                }
+            }
+            let mut overlaps: Vec<ForeverOverlap> = with
+                .into_iter()
+                .map(|(k, both)| ForeverOverlap {
+                    user_key: k.to_owned(),
+                    name: name(k),
+                    both,
+                })
+                .collect();
+            overlaps.sort_by(|a, b| b.both.cmp(&a.both).then_with(|| a.name.cmp(&b.name)));
+            let count = items.len() as u32;
+            ForeverPerson {
+                user_key: user.to_owned(),
+                name: name(user),
+                count,
+                shared,
+                alone: count - shared,
+                overlaps,
+            }
+        })
+        .collect();
+    people.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
+    let first: HashMap<&str, &crate::db::ForeverVote> =
+        votes.iter().map(|v| (v.item_key.as_str(), v)).collect();
+    let mut items: Vec<ForeverTitle> = by_item
+        .iter()
+        .map(|(&key, keepers)| {
+            let v = first[key];
+            ForeverTitle {
+                key: key.to_owned(),
+                title: v.title.clone().unwrap_or_else(|| key.to_owned()),
+                year: v.year,
+                poster_url: v.poster.clone(),
+                keepers: keepers.iter().map(|k| (*k).to_owned()).collect(),
+            }
+        })
+        .collect();
+    items.sort_by(|a, b| {
+        b.keepers
+            .len()
+            .cmp(&a.keepers.len())
+            .then_with(|| a.title.cmp(&b.title))
+    });
+    ForeverStats {
+        titles: items.len() as u32,
+        shared: items.iter().filter(|i| i.keepers.len() > 1).count() as u32,
+        people,
+        items,
+    }
+}

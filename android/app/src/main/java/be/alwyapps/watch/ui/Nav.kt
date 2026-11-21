@@ -27,6 +27,9 @@ sealed interface Route {
 
     data object KeepAdmin : Route
 
+    /** Admins: who keeps what forever, and the overlaps. */
+    data object KeepForever : Route
+
     /** The watchlist (Plex) / favorites (Jellyfin) of the home's servers. */
     data object Watchlist : Route
 
@@ -101,6 +104,7 @@ sealed interface Route {
             LeavingSoon -> "leaving"
             Triage -> "triage"
             KeepAdmin -> "keep-admin"
+            KeepForever -> "keep-forever"
             Together -> "together"
             Watchlist -> "watchlist"
             HistoryCopy -> "history-copy"
@@ -129,6 +133,7 @@ sealed interface Route {
                 "leaving" -> LeavingSoon
                 "triage" -> Triage
                 "keep-admin" -> KeepAdmin
+                "keep-forever" -> KeepForever
                 "together" -> Together
                 "watchlist" -> Watchlist
                 "history-copy" -> HistoryCopy

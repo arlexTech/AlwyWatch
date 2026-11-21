@@ -538,6 +538,7 @@ fun TriageScreen() {
 @Composable
 fun KeepAdminScreen() {
     val core = LocalCore.current
+    val nav = be.alwyapps.watch.ui.LocalNavigator.current
     val d = LocalDimens.current
     val scope = rememberCoroutineScope()
     var users by remember { mutableStateOf<List<AdminUser>?>(null) }
@@ -633,6 +634,21 @@ fun KeepAdminScreen() {
         item {
             be.alwyapps.watch.ui
                 .PageTitle("Admin", "Leaving soon: countdown and people's rights")
+        }
+        item {
+            be.alwyapps.watch.ui.Group("Kept forever") {
+                be.alwyapps.watch.ui.ListRow(
+                    "Who keeps what forever",
+                    subtitle = "Per person, and how much of it someone else keeps too",
+                    icon = be.alwyapps.watch.ui.Icons.FavoriteFilled,
+                    onClick = { nav.push(Route.KeepForever) },
+                    trailing = {
+                        be.alwyapps.watch.ui
+                            .Chevron()
+                    },
+                    modifier = Modifier.initialFocus(),
+                )
+            }
         }
         message?.let { item { Text(it, color = Accent) } }
         item {

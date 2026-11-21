@@ -102,6 +102,15 @@ pub struct NewItem<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ForeverVote {
+    pub item_key: String,
+    pub user_key: String,
+    pub title: Option<String>,
+    pub year: Option<i32>,
+    pub poster: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct VoteRow {
     pub item_key: String,
     pub user_key: String,
@@ -287,6 +296,26 @@ impl Db {
                 })
             })
             .collect()
+    }
+
+    /// Active keep-forever votes as (item, user, item title, year, poster), for the admin stats.
+    pub fn forever_votes(&self) -> rusqlite::Result<Vec<ForeverVote>> {
+        let c = self.c();
+        let mut st = c.prepare(
+            "SELECT v.item_key, v.user_key, i.title, i.year, i.poster FROM votes v
+             LEFT JOIN items i ON i.key = v.item_key
+             WHERE v.kind = 'keep_forever' AND v.fulfilled_at IS NULL",
+        )?;
+        st.query_map([], |r| {
+            Ok(ForeverVote {
+                item_key: r.get(0)?,
+                user_key: r.get(1)?,
+                title: r.get(2)?,
+                year: r.get(3)?,
+                poster: r.get(4)?,
+            })
+        })?
+        .collect()
     }
 
     pub fn user_exists(&self, user_key: &str) -> rusqlite::Result<bool> {

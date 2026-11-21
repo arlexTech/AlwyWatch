@@ -33,6 +33,7 @@ import be.alwyapps.watch.ui.screens.DetailScreen
 import be.alwyapps.watch.ui.screens.DownloadsScreen
 import be.alwyapps.watch.ui.screens.HomeScreen
 import be.alwyapps.watch.ui.screens.KeepAdminScreen
+import be.alwyapps.watch.ui.screens.KeepForeverScreen
 import be.alwyapps.watch.ui.screens.LeavingSoonScreen
 import be.alwyapps.watch.ui.screens.LibraryGrid
 import be.alwyapps.watch.ui.screens.LibraryScreen
@@ -206,6 +207,7 @@ private fun Root(core: AlwyWatch) {
                                     .HistoryCopyScreen()
                             Route.Triage -> TriageScreen()
                             Route.KeepAdmin -> KeepAdminScreen()
+                            Route.KeepForever -> KeepForeverScreen()
                             Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
                             // Combined home: a page of another account's server runs as that account.
                             is Route.Library ->
