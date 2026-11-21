@@ -159,13 +159,13 @@ button.danger:hover { background: #ff7a7e; }
 .dialog { background: #16161b; border: 1px solid var(--outline); border-radius: var(--radius); padding: 8px 24px 16px; max-width: 520px; width: 100%; }
 
 /* Watch together. */
-.join-code { display: flex; gap: 10px; align-items: center; margin: 14px 0 20px; max-width: 420px; }
 .search.small { font-size: 1rem; padding: 10px 18px; margin: 0; }
 .room-row { align-items: center; justify-content: space-between; padding: 14px 18px; }
 .pill.together { color: var(--accent); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast { position: absolute; left: 32px; bottom: 90px; background: #000c; border-radius: 999px; padding: 10px 20px; }
-.knock { position: absolute; left: 32px; top: 90px; background: #16161bf2; border: 1px solid var(--outline);
-  border-radius: var(--radius); padding: 14px 18px; box-shadow: 0 6px 24px #0008; }
+.invite-note { position: absolute; left: 32px; top: 90px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  max-width: min(520px, calc(100% - 64px)); background: #16161bd9; border-radius: var(--radius); padding: 8px 12px; font-size: .9rem; }
+.invite-note button.small { padding: 4px 10px; font-size: .85rem; }
 .skip-row { position: absolute; right: 32px; bottom: 90px; display: flex; gap: 10px; align-items: center; }
 .skip-row .skip { position: static; }
 label.row.toggle { cursor: pointer; }
@@ -208,8 +208,8 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
   .pill.together { max-width: 60vw; }
   .skip, .skip-row { right: 12px; bottom: 70px; }
   .toast { left: 12px; right: 12px; bottom: 120px; }
-  .knock { left: 12px; right: 12px; top: 70px; }
-  .join-code { flex-wrap: wrap; }
+  .invite-note { left: 12px; right: 12px; top: 70px; max-width: none; }
+  .room-poster { width: 80px; }
   .dialog { padding: 8px 16px 12px; }
   .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
   .chip { flex: none; }
@@ -225,3 +225,54 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
   .menu { scrollbar-width: none; }
   .menu::-webkit-scrollbar { display: none; }
 }
+
+/* People: avatars, rows, the room. */
+.avatar { display: inline-block; flex: none; border-radius: 50%; overflow: hidden; vertical-align: middle; object-fit: cover; }
+.avatar svg { display: block; width: 100%; height: 100%; }
+.person-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; min-width: 0; }
+.person-row .pname, .pick-row .pname { overflow-wrap: anywhere; }
+.person-row button { margin-left: auto; }
+.person-head { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.room-row > .avatar { align-self: center; }
+.room-row .leaving-info { flex: 1; }
+.room-head { display: flex; gap: 20px; align-items: flex-end; margin-bottom: 4px; }
+.room-head h1 { margin-top: 0; }
+.room-poster { width: 110px; aspect-ratio: 2/3; object-fit: cover; border-radius: var(--radius); flex: none; }
+.waiting { margin: 0; align-self: center; }
+.empty { max-width: 60ch; }
+.banner.invite, .banner.seat { border-left-color: var(--accent); }
+.pill.together { display: inline-flex; align-items: center; gap: 8px; }
+.pill .faces { display: inline-flex; }
+.pill .faces .avatar + .avatar { margin-left: -6px; box-shadow: 0 0 0 2px #000; }
+
+/* Inviting people. */
+.dialog.people { display: flex; flex-direction: column; max-height: min(640px, calc(100vh - 32px)); }
+.dialog.people .search { max-width: none; }
+.pick-list { overflow-y: auto; margin: 10px -8px 0; padding: 0 8px; min-height: 80px; }
+.pick-head { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 12px 0 4px; }
+.pick-row { width: 100%; background: none; border-radius: 10px; padding: 8px 10px; gap: 12px; text-align: left; }
+.pick-row.selected { background: var(--surface); box-shadow: inset 0 0 0 2px var(--accent); }
+.pick-row .check { width: 18px; color: var(--accent); font-weight: 700; flex: none; }
+
+/* Profile: settings, avatar picker, cropper, welcome. */
+.profile-head { display: flex; align-items: center; gap: 16px; padding: 8px 0; }
+.profile-name { font-size: 1.15rem; }
+.name-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+.name-form input, .welcome-name input { font: inherit; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--outline);
+  background: var(--surface); color: var(--text); min-width: 0; flex: 1 1 200px; max-width: 320px; }
+.welcome-name { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: .9rem; flex: 1; }
+.welcome-name input { max-width: none; }
+.avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 8px; max-width: 520px; margin: 10px 0; }
+.avatar-tile { padding: 6px; border-radius: 50%; background: none; justify-content: center; }
+.avatar-tile.selected { box-shadow: 0 0 0 3px var(--accent); }
+.hidden-file { display: none; }
+.dialog.welcome { max-width: 600px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.dialog.cropper { max-width: 360px; display: flex; flex-direction: column; align-items: center; }
+.dialog.cropper .actions { align-self: stretch; justify-content: flex-end; }
+.crop-stage { position: relative; touch-action: none; cursor: grab; border-radius: 8px; overflow: hidden; user-select: none; flex: none; }
+.crop-stage:active { cursor: grabbing; }
+.crop-stage canvas { width: 100%; height: 100%; display: block; }
+.crop-ring { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle at center, transparent var(--r), #000000b3 calc(var(--r) + 1px));
+  box-shadow: inset 0 0 0 1px #ffffff22; }
+.crop-zoom { width: 100%; margin: 14px 0 4px; accent-color: var(--accent); }

@@ -33,13 +33,20 @@ async fn link(c: &Ctx, s: &Session) -> bool {
         Ok(me) => {
             c.set_keep(Some(KeepLink {
                 account: state::account_key(s),
-                user_name: me.name,
+                user_name: me.name.clone(),
                 is_admin: me.is_admin,
             }));
+            got_me(c, me);
             true
         }
         Err(_) => false,
     }
+}
+
+/// My profile, fresh from the server: the welcome step while it was never done.
+fn got_me(c: &Ctx, me: keep_service::Me) {
+    c.welcome.set(!me.profile_set);
+    c.set_me(me);
 }
 
 /// At start: refreshes the AlwyWatch server link (name, admin right; a refused account is
@@ -53,12 +60,13 @@ pub async fn check_keep(c: Ctx) {
             Ok(me) => {
                 let fresh = KeepLink {
                     account: k.account.clone(),
-                    user_name: me.name,
+                    user_name: me.name.clone(),
                     is_admin: me.is_admin,
                 };
                 if fresh != k {
                     c.set_keep(Some(fresh));
                 }
+                got_me(&c, me);
             }
             Err(e) => c.failed(&k.account, &e),
         }
@@ -380,10 +388,13 @@ pub fn Settings() -> impl IntoView {
             <leptos_router::components::A href="/signin" attr:class="button">"Add an account"</leptos_router::components::A>
         </section>
         <section class="group">
-            <h2>"AlwyWatch server"</h2>
+            <h2>"AlwyWatch account"</h2>
             {move || match c2.keep.get() {
-                Some(k) => view! { <p>"Signed in as "<strong>{k.user_name}</strong>{k.is_admin.then_some(" · admin")}
-                    " on "{Ctx::origin()}</p> }.into_any(),
+                Some(k) => view! {
+                    <p class="muted small">"Signed in as "<strong>{k.user_name}</strong>" on "{Ctx::origin()}
+                        ". Others see this name and avatar."</p>
+                    <crate::profile::AccountProfile />
+                }.into_any(),
                 None => {
                     // Plex accounts from before the plex.tv token was kept can't sign in here.
                     let old_plex = c2.accounts.get().iter().any(|s| s.kind == media_api::ServerKind::Plex && c2.keep_token(s).is_none());

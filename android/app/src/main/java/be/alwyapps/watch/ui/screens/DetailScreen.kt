@@ -117,6 +117,7 @@ fun DetailScreen(
     LaunchedEffect(changed) { if (changed > 0) res.reload() }
     // Watch together goes through the AlwyWatch server.
     val togetherOn = remember { runCatching { core.keepActive() }.getOrDefault(false) }
+    var creatingRoom by remember { mutableStateOf(false) }
     // My list (movies and shows), from the cache; the button flips it on the server.
     var watchlisted by remember(itemId) { mutableStateOf(core.isWatchlisted(account, itemId)) }
     LaunchedEffect(itemId) {
@@ -221,7 +222,10 @@ fun DetailScreen(
         if (item?.kind == ItemKind.SERIES) {
             rememberSwr(account, "seasons", item.id, cached = { core.cachedSeasons(account, item.id)?.items }, refresh = {
                 core.refreshSeasons(account, item.id, it).items
-            }).value.orEmpty()
+            })
+                .also { s -> LaunchedEffect(changed) { if (changed > 0) s.reload() } }
+                .value
+                .orEmpty()
         } else {
             emptyList()
         }
@@ -238,6 +242,31 @@ fun DetailScreen(
         } else {
             null
         }
+    // A whole show or season watched / unwatched (asks before forgetting where you stopped).
+    var markAll by remember { mutableStateOf<Item?>(null) }
+    val markFocus =
+        remember {
+            androidx.compose.ui.focus
+                .FocusRequester()
+        }
+    val seasonMarkFocus =
+        remember {
+            androidx.compose.ui.focus
+                .FocusRequester()
+        }
+    markAll?.let { target ->
+        val isShow = target.kind == ItemKind.SERIES
+        be.alwyapps.watch.ui.MarkAllDialog(
+            target,
+            if (isShow) target.title else "${item?.title ?: ""} · ${target.title}".trimStart(' ', '·'),
+            if (isShow) seasonList.sumOf { (it.childCount ?: 0u).toInt() }.takeIf { it > 0 } else target.childCount?.toInt(),
+            onDismiss = {
+                markAll = null
+                // TV: back on what opened it.
+                if (d.isTv) scope.launch { runCatching { (if (isShow) markFocus else seasonMarkFocus).requestFocus() } }
+            },
+        )
+    }
     var episodeMenu by remember { mutableStateOf<Item?>(null) }
     episodeMenu?.let {
         be.alwyapps.watch.ui
@@ -316,19 +345,38 @@ fun DetailScreen(
                                 }
                             val playAction: (() -> Unit)? = target?.let { t -> { play(ctx, account, t, fromStart = false) } }
                             val fromStart: (() -> Unit)? = target?.takeIf { resumable }?.let { t -> { play(ctx, account, t, fromStart = true) } }
-                            // Plays it and opens a room others on the AlwyWatch server can ask to join.
+                            // Opens a private room with it (never the player): the host invites, then starts.
                             val watchTogether: (() -> Unit)? =
                                 target?.takeIf { togetherOn }?.let { t ->
                                     {
-                                        ctx.startActivity(
-                                            PlayerActivity.intent(ctx, account, t.id, t.user.positionMs.toLong(), startTogether = true),
-                                        )
+                                        if (!creatingRoom) {
+                                            creatingRoom = true
+                                            scope.launch {
+                                                try {
+                                                    createRoom(core, nav, account, t.id, t.user.positionMs.toLong())
+                                                } catch (e: be.alwyapps.watch.core.CoreException) {
+                                                    android.widget.Toast
+                                                        .makeText(
+                                                            ctx,
+                                                            be.alwyapps.watch.together
+                                                                .friendly(e),
+                                                            android.widget.Toast.LENGTH_LONG,
+                                                        ).show()
+                                                } finally {
+                                                    creatingRoom = false
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             val toggleWatched = {
-                                scope.launch {
-                                    runCatching { core.setPlayed(account, item.id, !item.user.played) }
-                                    res.reload()
+                                if (item.kind == ItemKind.SERIES) {
+                                    markAll = item
+                                } else {
+                                    scope.launch {
+                                        runCatching { core.setPlayed(account, item.id, !item.user.played) }
+                                        res.reload()
+                                    }
                                 }
                                 Unit
                             }
@@ -355,8 +403,13 @@ fun DetailScreen(
                                     }
                                     IconAction(
                                         Icons.Check,
-                                        if (item.user.played) "Mark unwatched" else "Mark watched",
+                                        when {
+                                            item.kind == ItemKind.SERIES -> "Watched or not"
+                                            item.user.played -> "Mark unwatched"
+                                            else -> "Mark watched"
+                                        },
                                         toggleWatched,
+                                        if (item.kind == ItemKind.SERIES) Modifier.focusRequester(markFocus) else Modifier,
                                         active = item.user.played,
                                     )
                                 }
@@ -447,7 +500,9 @@ fun DetailScreen(
                     }
                 }
                 if (item.kind == ItemKind.SERIES && shownSeason != null) {
-                    item(key = "seasons") { SeasonPicker(seasonList, shownSeason) { pickedSeason = it.id } }
+                    item(key = "seasons") {
+                        SeasonPicker(seasonList, shownSeason, onMark = { markAll = it }, markFocus = seasonMarkFocus) { pickedSeason = it.id }
+                    }
                     item(key = "eps-top") { Spacer(Modifier.height(7.dp)) }
                     items(episodes?.value.orEmpty(), key = { "ep:" + it.id }) { ep ->
                         EpisodeRow(ep, dls[ep.id]) { episodeMenu = ep }
@@ -1149,13 +1204,26 @@ private fun DownloadButton(
 private fun SeasonPicker(
     list: List<Item>,
     selected: Item,
+    onMark: (Item) -> Unit,
+    markFocus: androidx.compose.ui.focus.FocusRequester,
     onSelected: (Item) -> Unit,
 ) {
     val d = LocalDimens.current
     Column {
         Text("Episodes", Modifier.padding(horizontal = d.gutter, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
-        LazyRow(contentPadding = PaddingValues(horizontal = d.gutter), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(list, key = { it.id }) { s -> ActionButton(s.title, { onSelected(s) }, selected = s.id == selected.id) }
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = d.gutter),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Long press (hold OK on a remote): this season watched or unwatched.
+            items(list, key = { it.id }) { s ->
+                ActionButton(s.title, { onSelected(s) }, selected = s.id == selected.id, onLongClick = { onMark(s) })
+            }
+            // The same, visible: for the season shown.
+            item(key = "mark") {
+                IconAction(Icons.Check, "${selected.title}: watched or not", { onMark(selected) }, Modifier.focusRequester(markFocus))
+            }
         }
     }
 }

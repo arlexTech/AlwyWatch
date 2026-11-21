@@ -17,6 +17,7 @@ pub fn ItemActions(acc: String, item: Item) -> impl IntoView {
     let error = RwSignal::new(None::<String>);
     let id = item.id.clone();
     let (a1, i1) = (acc.clone(), id.clone());
+    let a2 = acc.clone();
     let toggle_played = move |_| {
         let (acc, id, want) = (a1.clone(), i1.clone(), !played.get_untracked());
         error.set(None);
@@ -55,11 +56,19 @@ pub fn ItemActions(acc: String, item: Item) -> impl IntoView {
     };
     let can_list =
         matches!(item.kind, ItemKind::Movie | ItemKind::Series) && (!plex || plex_tv.is_some());
+    // A show: every episode at once, both ways (a partly watched show can go either way).
+    let show = item.kind == ItemKind::Series;
+    let (show_acc, show_id, show_title) = (a2, item.id.clone(), item.title.clone());
     view! {
+        {show.then(|| view! {
+            <MarkAll acc=show_acc.clone() id=show_id.clone() noun="all episodes" what=show_title.clone() watched=item.user.played />
+        })}
         <div class="actions">
-            <button on:click=toggle_played>
-                {move || if played.get() { "✓ Watched · mark unwatched" } else { "Mark watched" }}
-            </button>
+            {(!show).then(|| view! {
+                <button on:click=toggle_played.clone()>
+                    {move || if played.get() { "✓ Watched · mark unwatched" } else { "Mark watched" }}
+                </button>
+            })}
             {can_list.then(|| view! {
                 <button on:click=toggle_listed>
                     {move || if listed.get() { "★ In my list · remove" } else { "☆ Add to my list" }}
@@ -145,5 +154,99 @@ pub fn MyList() -> impl IntoView {
             }.into_any(),
             Some((l, _)) => view! { <Grid items=l /> }.into_any(),
         }}
+    }
+}
+
+/// Bumped after episodes were marked watched or unwatched: the seasons and episodes shown
+/// reload.
+#[derive(Clone, Copy)]
+pub struct Refresh(pub RwSignal<u32>);
+
+/// Marks every episode of a show or a season (`id`) watched or unwatched. Unwatched forgets
+/// where the viewer stopped, so it asks first. `noun`: "all episodes" or "season"; `what`:
+/// the show (or "Season 2 of the show"), for the question.
+#[component]
+pub fn MarkAll(
+    acc: String,
+    id: String,
+    noun: &'static str,
+    what: String,
+    watched: bool,
+) -> impl IntoView {
+    let fully = RwSignal::new(watched);
+    let asking = RwSignal::new(false);
+    let busy = RwSignal::new(false);
+    let error = RwSignal::new(None::<String>);
+    let refresh = use_context::<Refresh>();
+    let set = move |played: bool| {
+        let (acc, id) = (acc.clone(), id.clone());
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            let c = state::ctx();
+            let res = match c.server(&acc) {
+                Some(srv) => srv.set_played(&id, played).await,
+                None => Err(media_api::Error::NotFound),
+            };
+            busy.try_set(false);
+            asking.try_set(false);
+            match res {
+                Ok(()) => {
+                    fully.try_set(played);
+                    // The home rows kept in the browser are out of date now.
+                    state::remove(state::HOME);
+                    if let Some(Refresh(r)) = refresh {
+                        r.try_update(|n| *n += 1);
+                    }
+                }
+                Err(e) => {
+                    c.failed(&acc, &e);
+                    error.try_set(Some(state::plain(&e)));
+                }
+            }
+        });
+    };
+    let (set1, set2) = (set.clone(), set);
+    let cancel = NodeRef::<leptos::html::Button>::new();
+    // The question opens with the focus on Cancel.
+    Effect::new(move |_| {
+        if let Some(b) = cancel.get() {
+            let _ = b.focus();
+        }
+    });
+    view! {
+        <div class="actions tight">
+            {move || (!fully.get()).then(|| {
+                let set1 = set1.clone();
+                view! {
+                    <button class="small" disabled=move || busy.get() on:click=move |_| set1(true)>
+                        {format!("Mark {noun} watched")}
+                    </button>
+                }
+            })}
+            <button class="small" disabled=move || busy.get() on:click=move |_| asking.set(true)>
+                {format!("Mark {noun} unwatched")}
+            </button>
+        </div>
+        {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+        {move || asking.get().then(|| {
+            let set2 = set2.clone();
+            let question = format!("Mark all episodes of {what} unwatched?");
+            view! {
+                <div class="dialog-back" on:click=move |_| if !busy.get_untracked() { asking.set(false) }
+                    on:keydown=move |ev| if ev.key() == "Escape" && !busy.get_untracked() { asking.set(false) }>
+                    <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="unwatch-title" on:click=|ev| ev.stop_propagation()>
+                        <h2 id="unwatch-title">{question}</h2>
+                        <p>"This forgets where you stopped."</p>
+                        <div class="actions">
+                            <button node_ref=cancel disabled=move || busy.get() on:click=move |_| asking.set(false)>"Cancel"</button>
+                            <button class="danger" disabled=move || busy.get() on:click=move |_| set2(false)>
+                                {move || if busy.get() { "Marking…" } else { "Mark unwatched" }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        })}
     }
 }

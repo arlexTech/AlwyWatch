@@ -178,6 +178,7 @@ fun SettingsSectionScreen(
                 val core = LocalCore.current
                 var version by remember { mutableIntStateOf(0) }
                 val accounts = remember(version) { core.accounts() }
+                if (remember(version) { core.keepConnection() } != null) AlwyWatchAccountGroup()
                 AlwyWatchServerGroup(accounts, version) { version++ }
                 RequestsGroup(version) { version++ }
             }

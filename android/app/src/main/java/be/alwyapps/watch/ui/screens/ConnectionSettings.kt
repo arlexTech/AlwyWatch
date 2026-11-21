@@ -100,6 +100,8 @@ private suspend fun connectKeep(
     val token = keepToken(ctx, account) ?: throw CoreException.Invalid("Sign in to ${account.serverName} again first.")
     val conn = core.keepConnect(url, account.id, token)
     if (core.seerrConnection() == null) runCatching { connectSeerrThroughKeep(core, ctx) }
+    // A new account there: the welcome step (name and picture) if it was never done.
+    MyAccount.linked(core)
     return conn
 }
 
@@ -262,6 +264,7 @@ fun AlwyWatchServerGroup(
                 Divider()
                 ListRow("Use another address", subtitle = "Your keep choices stay on the server", icon = Icons.Refresh, onClick = {
                     core.keepDisconnect()
+                    MyAccount.me = null
                     onChanged()
                 }, trailing = { Chevron() })
             }
@@ -310,6 +313,7 @@ fun AlwyWatchServerGroup(
                     confirm = "Stop syncing",
                     onConfirm = {
                         core.keepDisconnect()
+                        MyAccount.me = null
                         onChanged()
                     },
                     onDismiss = { stopping = false },

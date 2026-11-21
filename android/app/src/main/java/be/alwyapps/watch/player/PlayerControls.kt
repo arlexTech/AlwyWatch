@@ -61,12 +61,12 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
+import be.alwyapps.watch.together.people
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.Icons
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.Subtle
-import be.alwyapps.watch.ui.initialFocus
 import kotlinx.coroutines.delay
 
 /** Overlay state shared between the activity (keys, player events) and the Compose controls. */
@@ -120,10 +120,10 @@ class PlayerUi {
 
     /** Watch together: the room (null: watching alone, nothing shown) and who is in it. */
     var togetherCode by mutableStateOf<String?>(null)
-    var togetherPeople by mutableStateOf<List<String>>(emptyList())
+    var togetherMembers by mutableStateOf<List<be.alwyapps.watch.core.keep.TogetherMember>>(emptyList())
 
-    /** Host: someone asking to join (request id, name), answered from a popup. */
-    var togetherRequest by mutableStateOf<Pair<String, String>?>(null)
+    /** Watching alone with an AlwyWatch server: "Watch together" opens a room with this title. */
+    var canWatchTogether by mutableStateOf(false)
 
     /** A short line about the room ("Ana paused"), shown a few seconds even with hidden controls. */
     var togetherNote by mutableStateOf<String?>(null)
@@ -168,7 +168,7 @@ fun PlayerOverlay(
     onSkip: () -> Unit,
     onPip: (() -> Unit)? = null,
     onLeaveTogether: () -> Unit = {},
-    onAnswerTogether: (String, Boolean) -> Unit = { _, _ -> },
+    onStartTogether: () -> Unit = {},
     onTrackPicked: (Int, androidx.media3.common.Format?) -> Unit = { _, _ -> },
     onServerTrackPicked: (be.alwyapps.watch.core.media.StreamKind, Long?) -> Unit = { _, _ -> },
     onStillWatching: () -> Unit = {},
@@ -190,34 +190,6 @@ fun PlayerOverlay(
         )
     }
     if (ui.pip) return
-    // Someone asks to join: a popup over the picture (playback goes on), one person at a time.
-    ui.togetherRequest?.let { (id, name) ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { onAnswerTogether(id, false) },
-            containerColor = be.alwyapps.watch.ui.Background,
-            icon = { Icon(be.alwyapps.watch.ui.Icons.Group, null, tint = be.alwyapps.watch.ui.Accent) },
-            title = { Text("$name wants to watch with you") },
-            text = {
-                Text(
-                    "They'll play this from where you are, and play, pause and seeking follow everyone.",
-                    color = Muted,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            },
-            confirmButton = {
-                be.alwyapps.watch.ui.ActionButton(
-                    "Let them in",
-                    { onAnswerTogether(id, true) },
-                    Modifier.initialFocus(),
-                    primary = true,
-                )
-            },
-            dismissButton = {
-                be.alwyapps.watch.ui
-                    .ActionButton("Not now", { onAnswerTogether(id, false) })
-            },
-        )
-    }
     var roomDialog by remember { mutableStateOf(false) }
     if (roomDialog) {
         androidx.compose.material3.AlertDialog(
@@ -225,12 +197,21 @@ fun PlayerOverlay(
             containerColor = be.alwyapps.watch.ui.Background,
             title = { Text("Watch together") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Watching now", color = Muted, style = MaterialTheme.typography.bodySmall)
-                    Text(ui.togetherPeople.joinToString(", "), style = MaterialTheme.typography.titleMedium)
+                    for ((m, devices) in ui.togetherMembers.people()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            be.alwyapps.watch.ui
+                                .Avatar(m.avatar, m.name, m.userKey, 36.dp)
+                            Text(
+                                m.name + if (devices > 1) " · $devices devices" else "",
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                     Text(
-                        "Friends on your AlwyWatch server see this in Together and ask to join. " +
-                            "Play, pause and seeking follow everyone.",
+                        "Play, pause and seeking follow everyone. Leaving is for good: you'd need a new invitation to come back.",
                         color = Muted,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -392,14 +373,18 @@ fun PlayerOverlay(
                         }
                         // Only in a room (started from the title's page): nothing while watching alone.
                         if (ui.togetherCode != null) {
+                            val n = ui.togetherMembers.people().size
                             PillButton(
                                 be.alwyapps.watch.ui.Icons.Group,
-                                if (ui.togetherPeople.size <= 1) "Only you so far" else "${ui.togetherPeople.size} watching",
+                                if (n <= 1) "Only you so far" else "$n watching",
                                 {
                                     roomDialog = true
                                     ui.poke()
                                 },
                             )
+                            Spacer(Modifier.width(10.dp))
+                        } else if (ui.canWatchTogether) {
+                            PillButton(be.alwyapps.watch.ui.Icons.Group, "Watch together", onStartTogether)
                             Spacer(Modifier.width(10.dp))
                         }
                         PillButton(Icons.Subtitles, "Audio & subtitles", {

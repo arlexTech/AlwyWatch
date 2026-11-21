@@ -10,6 +10,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
 
+use crate::profile::{Avatar, name_with_media};
 use crate::state;
 use crate::ui::{ErrorText, Loading};
 
@@ -209,7 +210,13 @@ pub fn Forever() -> impl IntoView {
                             view! {
                                 <button class="person" class:selected=move || person.get().as_deref() == Some(k.as_str())
                                     on:click=move |_| person.update(|x| *x = if x.as_deref() == Some(k2.as_str()) { None } else { Some(k2.clone()) })>
-                                    <div class="row"><strong>{p.name.clone()}</strong><span>{p.count}</span></div>
+                                    <div class="row">
+                                        <span class="person-head">
+                                            <Avatar user_key=p.user_key.clone() name=p.name.clone() avatar=p.avatar.clone() size=32 />
+                                            <strong>{name_with_media(&p.name, &p.media_name)}</strong>
+                                        </span>
+                                        <span>{p.count}</span>
+                                    </div>
                                     <div class="muted small">{format!("{} shared · {} only them", p.shared, p.alone)}
                                         {(!overlaps.is_empty()).then(|| format!(" · most with {overlaps}"))}</div>
                                     <div class="split"><div class="shared" style=format!("width:{}%", p.shared as f32 / total * 100.0) /></div>
@@ -609,7 +616,10 @@ pub fn Admin() -> impl IntoView {
                     let linked = u.seerr_user_id;
                     view! {
                         <div class="person-rights">
-                            <strong>{u.name.clone()}{u.is_admin.then_some(" · admin")}</strong>
+                            <div class="person-head">
+                                <Avatar user_key=u.user_key.clone() name=u.name.clone() avatar=u.avatar.clone() size=32 />
+                                <strong>{name_with_media(&u.name, &u.media_name)}{u.is_admin.then_some(" · admin")}</strong>
+                            </div>
                             <div class="muted small">{format!("{server} · {} kept forever", u.forever_count)}</div>
                             <div class="actions tight">
                                 <button class="small" class:selected=!r.can_keep_forever on:click=move |_| {

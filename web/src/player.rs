@@ -18,6 +18,7 @@ use media_api::{
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
 use crate::prefs::{self, SubTrack};
+use crate::profile::Avatar;
 use crate::state::{self, fmt_time};
 use crate::together::{self, Room};
 
@@ -514,29 +515,14 @@ fn leave(navigate: &impl Fn(&str, leptos_router::NavigateOptions), acc: &str, id
     }
 }
 
-/// The player page: one per title (rebuilt when the next episode starts), and the watch
-/// together room, which outlives the titles and is left when the page closes.
+/// The player page: one per title (rebuilt when the next episode starts). In a watch
+/// together room (`?room=`, the app's seat in it), it follows the room; the seat outlives the
+/// page (back to the Room page keeps it).
 #[component]
 pub fn Player() -> impl IntoView {
     let params = use_params_map();
     let query = use_query_map();
-    let room = Room::new();
-    let (code, member, start_together) =
-        query.with_untracked(|q| (q.get("room"), q.get("member"), q.get("together").is_some()));
-    if let (Some(code), Some(member)) = (code, member) {
-        room.open(code, member, None);
-    }
-    on_cleanup(move || room.leave("", true));
-    // Notes go away after a few seconds.
-    Effect::new(move |_| {
-        let Some(n) = room.note.get() else { return };
-        spawn_local(async move {
-            state::sleep(5000).await;
-            if room.note.try_get_untracked().flatten().as_deref() == Some(n.as_str()) {
-                room.note.try_set(None);
-            }
-        });
-    });
+    let room = state::ctx().room;
     let title = Memo::new(move |_| {
         params.with(|p| {
             (
@@ -545,15 +531,15 @@ pub fn Player() -> impl IntoView {
             )
         })
     });
-    let first = StoredValue::new(true);
     move || {
         let (acc, id) = title.get();
-        let start_ms: u64 = query
-            .with_untracked(|q| q.get("t").and_then(|t| t.parse().ok()))
-            .unwrap_or(0);
-        let start_together = start_together && first.get_value();
-        first.set_value(false);
-        view! { <PlayerView acc=acc id=id start_ms=start_ms room=room start_together=start_together /> }
+        let (start_ms, room_code) = query.with_untracked(|q| {
+            (
+                q.get("t").and_then(|t| t.parse::<u64>().ok()).unwrap_or(0),
+                q.get("room"),
+            )
+        });
+        view! { <PlayerView acc=acc id=id start_ms=start_ms room=room room_code=room_code /> }
     }
 }
 
@@ -563,9 +549,16 @@ fn PlayerView(
     id: String,
     start_ms: u64,
     room: Room,
-    start_together: bool,
+    room_code: Option<String>,
 ) -> impl IntoView {
     let navigate = use_navigate();
+    // Playing in the room this tab has a seat in (not after leaving it).
+    let room_code = StoredValue::new(room_code);
+    let joined = move || {
+        room_code
+            .try_with_value(|c| c.as_deref().is_some_and(|c| room.is(c)))
+            .unwrap_or(false)
+    };
     let prefs = prefs::load();
     let (auto_skip, auto_next, countdown_s) =
         (prefs.auto_skip_intro, prefs.auto_next, prefs.countdown_s);
@@ -835,10 +828,10 @@ fn PlayerView(
             return;
         };
         // In a room: a title chosen here is announced, one chosen by the room follows it.
-        if room.active() && first && room.announce.get_value() {
+        if joined() && first && room.announce.get_value() {
             room.announce.set_value(false);
             room.send(Some((srv.clone(), item.clone())), true, at);
-        } else if room.active()
+        } else if joined()
             && room.plays(&item)
             && let Some((exp, playing)) = room.expected()
         {
@@ -851,13 +844,13 @@ fn PlayerView(
         if at > 0 {
             v.set_current_time(at as f64 / 1000.0);
         }
-        if first && start_together {
-            room.create(srv, item, at, true);
-        }
     };
 
     // Plays or pauses like the room and seeks when more than 1.5 s apart.
     let sync = move || {
+        if !joined() {
+            return;
+        }
         let (Some(v), Some((exp, playing))) = (video.get_untracked(), room.expected()) else {
             return;
         };
@@ -875,7 +868,7 @@ fn PlayerView(
     };
     // Our own play, pause or seek: tell the room (its own changes, once applied, match it).
     let local_action = move || {
-        if !room.active() || room.busy() || off_title.get_value() {
+        if !joined() || room.busy() || off_title.get_value() {
             return;
         }
         let (Some(v), Some((exp, room_playing))) = (video.get_untracked(), room.expected()) else {
@@ -896,7 +889,7 @@ fn PlayerView(
         if !alive() {
             return;
         }
-        if room.active() && !off_title.get_value() && room.expected().is_some_and(|(_, p)| p) {
+        if joined() && !off_title.get_value() && room.expected().is_some_and(|(_, p)| p) {
             sync();
         } else {
             local_action();
@@ -982,17 +975,17 @@ fn PlayerView(
         stop();
         match next {
             Some(n) => {
-                let href = match (room.code.get_untracked(), room.member.get_untracked()) {
-                    (Some(code), Some(member)) => {
+                let href = match room.code.get_untracked().filter(|_| joined()) {
+                    Some(code) => {
                         room.announce.set_value(true);
-                        together::play_href(&acc2, &n.id, 0, &code, &member)
+                        together::play_href(&acc2, &n.id, 0, &code)
                     }
-                    _ => format!("/play/{}/{}?t=0", acc2, n.id),
+                    None => format!("/play/{}/{}?t=0", acc2, n.id),
                 };
                 nav2(&href, Default::default())
             }
             // Watching together: stay with the others.
-            None if room.active() => {}
+            None if joined() => {}
             None => leave(&nav2, &acc2, &id2),
         }
     };
@@ -1016,12 +1009,13 @@ fn PlayerView(
     });
     let (nav4, acc4, id4) = (navigate.clone(), acc.clone(), id.clone());
     let back = move |_| leave(&nav4, &acc4, &id4);
+    let nav5 = navigate.clone();
 
     // Others' changes (not the one left over from the previous title).
     let nav3 = navigate.clone();
     Effect::new(move |prev: Option<()>| {
         let incoming = room.incoming.get();
-        if prev.is_none() {
+        if prev.is_none() || !joined() {
             return;
         }
         match incoming {
@@ -1042,20 +1036,17 @@ fn PlayerView(
                             }
                         }
                         Some((acc, item)) => {
-                            if !alive() {
+                            if !alive() || !joined() {
                                 return;
                             }
-                            let (Some(code), Some(member)) = (
-                                room.code.try_get_untracked().flatten(),
-                                room.member.try_get_untracked().flatten(),
-                            ) else {
+                            let Some(code) = room.code.try_get_untracked().flatten() else {
                                 return;
                             };
                             stop();
                             room.announce.set_value(false);
                             let at = room.expected().map_or(0, |(p, _)| p);
                             nav(
-                                &together::play_href(&acc, &item, at, &code, &member),
+                                &together::play_href(&acc, &item, at, &code),
                                 Default::default(),
                             );
                         }
@@ -1095,21 +1086,40 @@ fn PlayerView(
                     None => view! { <div class="muted">"Loading…"</div> }.into_any(),
                 }}
                 {move || transcoding.get().then(|| view! { <span class="pill">"Converted by the server"</span> })}
-                {move || match room.state.get() {
+                {move || match room.state.get().filter(|_| { room.code.track(); joined() }) {
                     Some(s) => {
-                        let names = s.members.iter().map(|m| m.name.clone()).collect::<Vec<_>>().join(", ");
+                        let people = together::group_members(&s);
+                        let names = people.iter().map(|p| p.member.name.clone()).collect::<Vec<_>>().join(", ");
+                        let shown = people.len();
                         view! {
-                            <span class="pill together" title=names.clone()>{format!("{} watching · {}", s.members.len(), names)}</span>
+                            <span class="pill together" title=names.clone()>
+                                <span class="faces">
+                                    {people.into_iter().take(4).map(|p| view! {
+                                        <Avatar user_key=p.member.user_key.clone() name=p.member.name.clone() avatar=p.member.avatar.clone() size=20 />
+                                    }).collect_view()}
+                                </span>
+                                {format!("{shown} watching · {names}")}
+                            </span>
                             <button class="small" on:click=move |_| room.leave("You left watch together", true)>"Leave"</button>
                         }.into_any()
                     }
                     None => {
                         let can = state::ctx().keep.get().is_some() && loaded.with(|l| matches!(l, Some(Ok(l))
                             if matches!(l.item.kind, ItemKind::Movie | ItemKind::Episode)));
-                        (can && !room.active()).then(|| view! {
+                        let nav = nav5.clone();
+                        (can && room.code.get().is_none()).then(|| view! {
                             <button class="small" on:click=move |_| {
-                                let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else { return };
-                                room.create(l.srv.clone(), l.item.clone(), (v.current_time() * 1000.0) as u64, !v.paused());
+                                let Some(Ok(l)) = loaded.get_untracked() else { return };
+                                let nav = nav.clone();
+                                room.note.set(Some("Opening a room…".into()));
+                                // A lobby, then its Room page (this player stops there).
+                                spawn_local(async move {
+                                    match together::create_room(l.srv.clone(), l.item.clone()).await {
+                                        Ok(code) if alive() => nav(&together::room_href(&code), Default::default()),
+                                        Ok(_) => {}
+                                        Err(e) => { room.note.try_set(Some(format!("Watch together unavailable: {e}"))); }
+                                    }
+                                });
                             }>"Watch together"</button>
                         }).into_any()
                     }
@@ -1148,18 +1158,9 @@ fn PlayerView(
                 })
             }}
             {move || room.note.get().map(|n| view! { <div class="toast" role="status">{n}</div> })}
-            {move || room.request().map(|r| {
-                let (a, b) = (r.id.clone(), r.id.clone());
-                view! {
-                    <div class="knock">
-                        <div><strong>{r.name.clone()}</strong>" wants to watch with you"</div>
-                        <div class="actions tight">
-                            <button class="primary small" on:click=move |_| room.answer(a.clone(), true)>"Let in"</button>
-                            <button class="small" on:click=move |_| room.answer(b.clone(), false)>"Not now"</button>
-                        </div>
-                    </div>
-                }
-            })}
+            <Show when=move || state::ctx().keep.get().is_some()>
+                <together::InviteBanner compact=true />
+            </Show>
             {move || current.get().map(|s| {
                 let has_next = loaded.with(|l| matches!(l, Some(Ok(l)) if l.next.is_some()));
                 let go_next = go_next2.clone();

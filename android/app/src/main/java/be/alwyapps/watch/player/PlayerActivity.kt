@@ -43,6 +43,9 @@ import be.alwyapps.watch.core.media.StreamKind
 import be.alwyapps.watch.core.media.SubtitleSelection
 import be.alwyapps.watch.core.media.TrackSelection
 import be.alwyapps.watch.services
+import be.alwyapps.watch.together.TogetherInbox
+import be.alwyapps.watch.together.TogetherSession
+import be.alwyapps.watch.together.friendly
 import io.github.peerless2012.ass.media.kt.buildWithAssSupport
 import io.github.peerless2012.ass.media.type.AssRenderType
 import kotlinx.coroutines.Job
@@ -98,12 +101,16 @@ class PlayerActivity : ComponentActivity() {
     private val ui = PlayerUi()
 
     // ----- watch together: the room this player follows (null: alone) -----
-    private var room: String? = null
-    private var member: String? = null
-    private var roomSeq = 0uL
+    // The seat itself lives in TogetherSession (shared with the Room screen, which opened us).
+    private var together = false
+    private val room: String? get() = if (together) TogetherSession.seat?.code else null
+    private val member: String? get() = if (together) TogetherSession.seat?.memberId else null
+    private val roomState: be.alwyapps.watch.core.keep.TogetherState? get() = if (together) TogetherSession.state else null
+    private val roomReceivedAt: Long get() = TogetherSession.receivedAt
     private var roomMedia: be.alwyapps.watch.core.keep.TogetherMedia? = null
-    private var roomState: be.alwyapps.watch.core.keep.TogetherState? = null
-    private var roomReceivedAt = 0L
+
+    /** The last room state handled here (to say who did what). */
+    private var lastSeen: be.alwyapps.watch.core.keep.TogetherState? = null
     private var roomJob: Job? = null
 
     /** Applying the room's state (or starting a title): the player's events are not ours to send. */
@@ -128,8 +135,8 @@ class PlayerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         account = intent.getStringExtra(EXTRA_ACCOUNT) ?: return finish()
         itemId = intent.getStringExtra(EXTRA_ITEM) ?: return finish()
-        room = intent.getStringExtra(EXTRA_ROOM)
-        member = intent.getStringExtra(EXTRA_MEMBER)
+        val roomCode = intent.getStringExtra(EXTRA_ROOM)
+        val roomMember = intent.getStringExtra(EXTRA_MEMBER)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -157,7 +164,7 @@ class PlayerActivity : ComponentActivity() {
                             onSkip = { skipSegment() },
                             onPip = if (pipSupported) ({ enterPip() }) else null,
                             onLeaveTogether = { leaveTogether("You left watch together") },
-                            onAnswerTogether = { id, accept -> answerTogether(id, accept) },
+                            onStartTogether = { watchTogether() },
                             onTrackPicked = { type, format -> rememberTrack(type, format) },
                             onServerTrackPicked = { kind, index -> pickServerTrack(kind, index) },
                             onStillWatching = {
@@ -179,13 +186,15 @@ class PlayerActivity : ComponentActivity() {
         val start = intent.getLongExtra(EXTRA_START, 0L)
         lifecycleScope.launch {
             core = services.core.await()
-            load(itemId, start)
-            if (room != null) {
-                followRoom()
-            } else if (intent.getBooleanExtra(EXTRA_TOGETHER, false)) {
-                // Started with "Watch together" on the title's page.
-                startTogether()
+            // New invitations while watching: a short note (the full prompt waits in the app).
+            launch { TogetherInbox.notes.collect { ui.togetherNote = it } }
+            if (roomCode != null && roomMember != null) {
+                TogetherSession.adopt(core, roomCode, roomMember)
+                together = true
             }
+            ui.canWatchTogether = !together && runCatching { core.keepActive() }.getOrDefault(false)
+            load(itemId, start)
+            if (together) followRoom()
         }
     }
 
@@ -909,98 +918,66 @@ class PlayerActivity : ComponentActivity() {
 
     // ----- watch together ------------------------------------------------------------------
 
-    /** Opens a room with what plays now: people on the same AlwyWatch server see it and ask to join. */
-    private fun startTogether() {
-        if (room != null) return
-        val p = player ?: return
-        ui.togetherNote = "Opening a room\u2026"
+    /**
+     * "Watch together" while watching alone: opens a private room with this title and shows it
+     * in the app (the host invites people there, then starts for everyone).
+     */
+    private fun watchTogether() {
+        if (together) return
         lifecycleScope.launch {
             try {
-                val joined = core.togetherCreate(account, itemId, p.currentPosition.coerceAtLeast(0).toULong(), p.playWhenReady)
-                room = joined.state.code
-                member = joined.memberId
-                acceptRoom(joined.state)
-                roomMedia = joined.state.media
-                ui.togetherNote = "Watch together is open: friends can join from Together"
-                followRoom()
+                val joined = core.togetherCreate(account, itemId)
+                if (TogetherSession.seat != null) TogetherSession.leave()
+                TogetherSession.begin(core, joined, startAt = player?.currentPosition?.coerceAtLeast(0) ?: 0L)
+                startActivity(
+                    be.alwyapps.watch.MainActivity
+                        .openRoom(this@PlayerActivity, joined.state.code),
+                )
+                finish()
             } catch (e: CoreException) {
-                ui.togetherNote = "Watch together unavailable: ${e.message}"
+                ui.togetherNote = friendly(e)
             }
         }
     }
 
-    private fun acceptRoom(s: be.alwyapps.watch.core.keep.TogetherState) {
-        roomState = s
-        roomReceivedAt = android.os.SystemClock.elapsedRealtime()
-        if (s.seq > roomSeq) roomSeq = s.seq
+    private fun showRoom(s: be.alwyapps.watch.core.keep.TogetherState) {
         ui.togetherCode = s.code
-        ui.togetherPeople = s.members.map { it.name }
-        // The host answers who may join (one at a time, the ones not answered yet).
-        ui.togetherRequest =
-            if (s.host == member) {
-                s.requests.firstOrNull { it.id !in answered }?.let { it.id to it.name }
-            } else {
-                null
-            }
+        ui.togetherMembers = s.members
     }
 
-    /** Join requests already answered here (until the server's next state drops them). */
-    private val answered = mutableSetOf<String>()
-
-    private fun answerTogether(
-        requestId: String,
-        accept: Boolean,
-    ) {
-        val code = room ?: return
-        val me = member ?: return
-        answered += requestId
-        roomState?.let { acceptRoom(it) }
-        lifecycleScope.launch {
-            try {
-                val before = roomState
-                val after = core.togetherAnswer(code, me, requestId, accept)
-                acceptRoom(after)
-                // This reply already carries them: the next state would not say it.
-                val joined = after.members.filter { m -> before?.members?.none { it.id == m.id } ?: false }
-                if (joined.isNotEmpty()) ui.togetherNote = "${joined.joinToString(", ") { it.name }} joined"
-            } catch (e: CoreException) {
-                // Gone meanwhile (they cancelled): nothing to do.
-                android.util.Log.w(TAG, "together answer: ${e.javaClass.simpleName}")
-            }
-        }
-    }
-
-    /** Long-polls the room and applies what the others do. */
+    /** Follows the room (its long poll runs in TogetherSession: we keep it alive while shown). */
     private fun followRoom() {
+        val code = room ?: return
         roomJob?.cancel()
+        TogetherSession.attach(core)
+        roomState?.let {
+            showRoom(it)
+            lastSeen = it
+            roomMedia = it.media
+        }
+        ui.togetherCode = code
         roomJob =
             lifecycleScope.launch {
-                var failures = 0
-                while (isActive) {
-                    val code = room ?: break
-                    val me = member ?: break
-                    val s =
-                        try {
-                            core.togetherWait(code, me, roomSeq)
-                        } catch (e: CoreException) {
-                            if (e is CoreException.NotFound) {
-                                leaveTogether("The watch together room closed", tellServer = false)
-                                break
+                launch { TogetherSession.updates.collect { if (it.code == code) onRoomState(it) } }
+                // The room closed, or this device moved to another one.
+                launch {
+                    androidx.compose.runtime
+                        .snapshotFlow { TogetherSession.seat?.code }
+                        .collect { now ->
+                            if (now != code) {
+                                val why = TogetherSession.ended
+                                TogetherSession.ended = null
+                                leaveTogether(why ?: "You're no longer in this room", tellServer = false)
                             }
-                            failures++
-                            delay((failures * 2000L).coerceAtMost(10_000))
-                            continue
                         }
-                    failures = 0
-                    if (room != code) break
-                    onRoomState(s)
                 }
             }
     }
 
     private fun onRoomState(s: be.alwyapps.watch.core.keep.TogetherState) {
-        val before = roomState
-        acceptRoom(s)
+        val before = lastSeen
+        lastSeen = s
+        showRoom(s)
         if (s.by == member || roomSending > 0) {
             roomMedia = s.media
             return
@@ -1092,7 +1069,9 @@ class PlayerActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 val s = core.togetherUpdate(code, me, playing, position, acct, item)
-                acceptRoom(s)
+                TogetherSession.accept(s)
+                lastSeen = s
+                showRoom(s)
                 roomMedia = s.media
             } catch (e: CoreException) {
                 android.util.Log.w(TAG, "together update: ${e.javaClass.simpleName}")
@@ -1106,18 +1085,17 @@ class PlayerActivity : ComponentActivity() {
         note: String,
         tellServer: Boolean = true,
     ) {
-        val code = room ?: return
-        val me = member
-        room = null
-        member = null
+        if (!together) return
+        together = false
         roomJob?.cancel()
-        roomState = null
+        roomJob = null
+        TogetherSession.detach()
         roomMedia = null
+        lastSeen = null
         ui.togetherCode = null
-        ui.togetherPeople = emptyList()
-        ui.togetherRequest = null
+        ui.togetherMembers = emptyList()
         ui.togetherNote = note
-        if (tellServer && me != null) services.scope.launch { runCatching { core.togetherLeave(code, me) } }
+        if (tellServer) TogetherSession.leave()
     }
 
     // Another title started while this one plays (e.g. from the app behind a PiP window).
@@ -1132,7 +1110,6 @@ class PlayerActivity : ComponentActivity() {
         announceTitle = room != null
         lifecycleScope.launch {
             load(id, intent.getLongExtra(EXTRA_START, 0L))
-            if (room == null && intent.getBooleanExtra(EXTRA_TOGETHER, false)) startTogether()
         }
     }
 
@@ -1212,8 +1189,14 @@ class PlayerActivity : ComponentActivity() {
         if (!isInPictureInPictureMode) ui.poke()
     }
 
+    override fun onStart() {
+        super.onStart()
+        TogetherInbox.activityStarted(null, player = true)
+    }
+
     override fun onStop() {
         super.onStop()
+        TogetherInbox.activityStopped(player = true)
         val stop = report(PlaybackEvent.STOP)
         // Once the server knows where we stopped, the screens behind show "Resume" at the right place.
         services.scope.launch {
@@ -1245,7 +1228,6 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_START = "start"
         private const val EXTRA_ROOM = "together_room"
         private const val EXTRA_MEMBER = "together_member"
-        private const val EXTRA_TOGETHER = "together_start"
         private const val TAG = "AlwyPlayer"
         private const val BACK_GRACE_MS = 2000L
         private const val BACK_ECHO_MS = 300L
@@ -1258,13 +1240,11 @@ class PlayerActivity : ComponentActivity() {
             startMs: Long,
             room: String? = null,
             member: String? = null,
-            startTogether: Boolean = false,
         ) = Intent(ctx, PlayerActivity::class.java)
             .putExtra(EXTRA_ACCOUNT, account)
             .putExtra(EXTRA_ITEM, itemId)
             .putExtra(EXTRA_START, startMs)
             .putExtra(EXTRA_ROOM, room)
             .putExtra(EXTRA_MEMBER, member)
-            .putExtra(EXTRA_TOGETHER, startTogether)
     }
 }

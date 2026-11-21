@@ -7,6 +7,7 @@ mod extra;
 mod keep;
 mod player;
 mod prefs;
+mod profile;
 mod request;
 mod signin;
 mod state;
@@ -67,7 +68,29 @@ fn show_crashes() {
 fn App() -> impl IntoView {
     let c = state::install();
     provide_context(c.clone());
-    leptos::task::spawn_local(signin::check_keep(c));
+    leptos::task::spawn_local(signin::check_keep(c.clone()));
+    // One invitation long poll while an account is linked to the AlwyWatch server (restarted
+    // only when the linked account changes, stopped on sign-out).
+    let keep = c.keep;
+    let linked = Memo::new(move |_| keep.with(|k| k.as_ref().map(|k| k.account.clone())));
+    let invites = c.invites;
+    Effect::new(move |_| match linked.get() {
+        Some(_) => invites.run(),
+        None => invites.stop(),
+    });
+    // The room seat this tab had before a reload.
+    c.room.restore();
+    // Room notes go away after a few seconds.
+    let room = c.room;
+    Effect::new(move |_| {
+        let Some(n) = room.note.get() else { return };
+        leptos::task::spawn_local(async move {
+            state::sleep(5000).await;
+            if room.note.try_get_untracked().flatten().as_deref() == Some(n.as_str()) {
+                room.note.try_set(None);
+            }
+        });
+    });
     view! {
         <Router>
             <Routes fallback=|| view! { <main class="page"><h1>"Not found"</h1></main> }>
@@ -81,6 +104,7 @@ fn App() -> impl IntoView {
                 <Route path=path!("/requests") view=|| view! { <Shell><request::Requests /></Shell> } />
                 <Route path=path!("/request/:kind/:tmdb") view=|| view! { <Shell><request::SeerrTitle /></Shell> } />
                 <Route path=path!("/together") view=|| view! { <Shell><together::Together /></Shell> } />
+                <Route path=path!("/together/:code") view=|| view! { <Shell><together::RoomPage /></Shell> } />
                 <Route path=path!("/leaving") view=|| view! { <Shell><keep::Leaving /></Shell> } />
                 <Route path=path!("/leaving/sort") view=|| view! { <Shell><keep::Triage /></Shell> } />
                 <Route path=path!("/admin") view=|| view! { <Shell><keep::Admin /></Shell> } />
@@ -95,9 +119,10 @@ fn App() -> impl IntoView {
 #[component]
 fn Shell(children: ChildrenFn) -> impl IntoView {
     let c = state::ctx();
-    let signed_in = move || !c.accounts.get().is_empty();
-    let keep_on = move || c.keep.get().is_some();
-    let admin = move || c.keep.get().is_some_and(|k| k.is_admin);
+    let (accounts, keep, welcome) = (c.accounts, c.keep, c.welcome);
+    let signed_in = move || !accounts.get().is_empty();
+    let keep_on = move || keep.get().is_some();
+    let admin = move || keep.get().is_some_and(|k| k.is_admin);
     view! {
         <div class="shell">
             <nav class="menu">
@@ -116,6 +141,8 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
             </nav>
             <main class="page">
                 <Expired />
+                <Show when=keep_on><together::InviteBanner /><together::SeatBanner /></Show>
+                {move || (keep_on() && welcome.get()).then(|| view! { <profile::Welcome /> })}
                 {move || if signed_in() || matches!(current_path().as_str(), "/signin" | "/settings") {
                     children().into_any()
                 } else {

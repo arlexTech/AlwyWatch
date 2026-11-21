@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.media.ImageKind
 import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.media.ItemKind
+import be.alwyapps.watch.services
 import kotlinx.coroutines.launch
 
 // ----- Item helpers ---------------------------------------------------------------------------
@@ -222,6 +223,15 @@ fun ItemMenu(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val played = item.user.played
+    // A whole show: unwatched asks first (it forgets where every episode stopped).
+    var confirmUnwatched by remember { mutableStateOf(false) }
+    if (confirmUnwatched) {
+        MarkAllDialog(item, item.title, null, onDismiss = {
+            confirmUnwatched = false
+            onDismiss()
+        }, askUnwatchedOnly = true)
+    }
+    val series = item.kind == ItemKind.SERIES
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
         // Fully open: half open, the rows below the fold took the focus out of sight (TV).
@@ -279,11 +289,26 @@ fun ItemMenu(
                     },
                 )
             }
-            if (!played) {
+            if (series) {
+                // Every episode at once (a partly watched show offers both).
+                if (!played) {
+                    ListRow("Mark all episodes watched", icon = Icons.Check, onClick = {
+                        onDismiss()
+                        ctx.services.scope.launch {
+                            runCatching { core.setPlayed(account, item.id, true) }
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { ItemsChanged.bump() }
+                        }
+                    })
+                }
+                ListRow("Mark all episodes unwatched", subtitle = "Forgets where you stopped", icon = Icons.Refresh, onClick = {
+                    confirmUnwatched = true
+                })
+            }
+            if (!played && !series) {
                 ListRow("Mark watched", icon = Icons.Check, onClick = { act { core.setPlayed(account, item.id, true) } })
             }
             // Watched, or partly watched: back to unwatched (forgets where it stopped).
-            if (played || started) {
+            if ((played || started) && !series) {
                 ListRow("Mark unwatched", subtitle = if (started && !played) "Forgets where you stopped" else null, icon = Icons.Refresh, onClick = {
                     act { core.setPlayed(account, item.id, false) }
                 })
@@ -761,6 +786,8 @@ fun ActionButton(
     icon: ImageVector? = null,
     /** The current choice of a group (a season): accent outline, so it never looks focused. */
     selected: Boolean = false,
+    /** Long press (touch, or holding OK on a remote). */
+    onLongClick: (() -> Unit)? = null,
 ) {
     val d = LocalDimens.current
     val interaction = remember { MutableInteractionSource() }
@@ -794,8 +821,13 @@ fun ActionButton(
             .background(bg)
             .then(
                 if ((focused && !d.isTv) || (selected && !light)) Modifier.border(2.dp, Accent, RoundedCornerShape(50)) else Modifier,
-            ).clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = if (icon != null) 18.dp else 20.dp, vertical = if (d.isTv) 11.dp else 10.dp),
+            ).then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(interactionSource = interaction, indication = null, onLongClick = onLongClick, onClick = onClick)
+                } else {
+                    Modifier.clickable(interactionSource = interaction, indication = null, onClick = onClick)
+                },
+            ).padding(horizontal = if (icon != null) 18.dp else 20.dp, vertical = if (d.isTv) 11.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -1009,4 +1041,89 @@ private fun BoxScope.ItemServerBadge(item: Item) {
     if (!LocalServerBadges.current) return
     val owner = LocalItemOwners.current[item.id] ?: return
     ServerBadge(owner, Modifier.align(Alignment.TopStart).padding(8.dp))
+}
+
+// ----- Watched / unwatched for a whole show or season ----------------------------------------
+
+/**
+ * Marks every episode of a show or a season watched or unwatched. Unwatched forgets where the
+ * person stopped, so it asks first (Cancel focused). [count]: how many episodes, when known.
+ * [askUnwatchedOnly]: skip the choice, straight to the confirmation (a menu already chose).
+ */
+@Composable
+fun MarkAllDialog(
+    target: Item,
+    label: String,
+    count: Int?,
+    onDismiss: () -> Unit,
+    askUnwatchedOnly: Boolean = false,
+    onDone: () -> Unit = {},
+) {
+    val core = LocalCore.current
+    val account = LocalItemOwners.current[target.id] ?: LocalAccount.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var confirm by remember { mutableStateOf(askUnwatchedOnly) }
+    val episodes = if (count != null && count > 0) "all $count episodes" else "all episodes"
+    // A season whose episodes are all unwatched and none started: nothing to forget.
+    val nothingWatched =
+        target.kind == ItemKind.SEASON &&
+            target.user.unplayedCount != null &&
+            target.childCount != null &&
+            target.user.unplayedCount == target.childCount &&
+            target.user.positionMs == 0uL
+
+    fun apply(played: Boolean) {
+        onDismiss()
+        // Not tied to the dialog: a whole show takes a moment, the dialog is gone by then.
+        ctx.services.scope.launch {
+            val r = runCatching { core.setPlayed(account, target.id, played) }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                r.onFailure {
+                    android.widget.Toast
+                        .makeText(ctx, "Couldn't change it: ${it.message}", android.widget.Toast.LENGTH_LONG)
+                        .show()
+                }
+                ItemsChanged.bump()
+                onDone()
+            }
+        }
+    }
+    if (confirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = onDismiss,
+            containerColor = Background,
+            title = { Text("Mark $episodes of $label unwatched?") },
+            text = { Text("This forgets where you stopped.", color = Muted) },
+            confirmButton = { ActionButton("Mark unwatched", { apply(false) }, Modifier.ignoreHeldOk()) },
+            dismissButton = { ActionButton("Cancel", onDismiss, Modifier.ignoreHeldOk().focusOnAppear(), primary = true) },
+        )
+        return
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Background,
+        title = { Text(label) },
+        text = {
+            Column(Modifier.ignoreHeldOk()) {
+                if (!target.user.played) {
+                    ListRow(
+                        "Mark $episodes watched",
+                        Modifier.focusOnAppear(),
+                        icon = Icons.Check,
+                        onClick = { apply(true) },
+                    )
+                }
+                if (!nothingWatched) {
+                    ListRow(
+                        "Mark $episodes unwatched",
+                        if (target.user.played) Modifier.focusOnAppear() else Modifier,
+                        subtitle = "Forgets where you stopped",
+                        icon = Icons.Refresh,
+                        onClick = { confirm = true },
+                    )
+                }
+            }
+        },
+        confirmButton = { ActionButton("Close", onDismiss) },
+    )
 }

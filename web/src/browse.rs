@@ -284,6 +284,8 @@ pub fn Library() -> impl IntoView {
 #[component]
 pub fn Detail() -> impl IntoView {
     let params = use_params_map();
+    // Marking episodes watched or unwatched reloads the seasons and episodes shown.
+    provide_context(crate::extra::Refresh(RwSignal::new(0)));
     let acc = Memo::new(move |_| params.read().get("acc").unwrap_or_default());
     let id = Memo::new(move |_| params.read().get("id").unwrap_or_default());
     let item = LocalResource::new(move || {
@@ -344,18 +346,22 @@ pub fn Detail() -> impl IntoView {
                                             view! { <A href=format!("{base}?t=0") attr:class="button primary">"Play"</A> }.into_any()
                                         }}
                                         {state::ctx().keep.get_untracked().is_some().then(|| view! {
-                                            <A href=format!("{base}?t={pos}&together=1") attr:class="button">"Watch together"</A>
+                                            <crate::together::TogetherButton srv=srv.clone() item=i.clone() />
                                         })}
                                     </div>
                                 })}
                                 {(i.kind != ItemKind::Season).then(|| view! {
                                     <crate::extra::ItemActions acc=acc.clone() item=i.clone() />
                                 })}
+                                {(i.kind == ItemKind::Season).then(|| view! {
+                                    <crate::extra::MarkAll acc=acc.clone() id=i.id.clone() noun="season"
+                                        what=format!("{} of {}", i.title, i.series_title.clone().unwrap_or_default()) watched=i.user.played />
+                                })}
                                 <p class="overview">{i.overview.clone().unwrap_or_default()}</p>
                             </div>
                         </div>
                     </div>
-                    {(i.kind == ItemKind::Series).then(|| view! { <Seasons acc=acc.clone() series=i.id.clone() /> })}
+                    {(i.kind == ItemKind::Series).then(|| view! { <Seasons acc=acc.clone() series=i.id.clone() show=i.title.clone() /> })}
                     {(i.kind == ItemKind::Season).then(|| view! {
                         <Episodes acc=acc.clone() series=i.series_id.clone().unwrap_or_default() season=i.id.clone() />
                     })}
@@ -369,9 +375,13 @@ pub fn Detail() -> impl IntoView {
 }
 
 #[component]
-fn Seasons(acc: String, series: String) -> impl IntoView {
+fn Seasons(acc: String, series: String, show: String) -> impl IntoView {
     let (a, s) = (acc.clone(), series.clone());
+    let refresh = use_context::<crate::extra::Refresh>();
     let seasons = LocalResource::new(move || {
+        if let Some(r) = refresh {
+            r.0.track();
+        }
         let (acc, series) = (a.clone(), s.clone());
         async move {
             let srv = state::ctx().server(&acc)?;
@@ -400,6 +410,17 @@ fn Seasons(acc: String, series: String) -> impl IntoView {
                 </div>
             }
         })}
+        {
+            let acc = acc.clone();
+            move || {
+                let id = picked.get()?;
+                let s = seasons.get().flatten()?.into_iter().find(|s| s.id == id)?;
+                Some(view! {
+                    <crate::extra::MarkAll acc=acc.clone() id=s.id.clone() noun="season"
+                        what=format!("{} of {}", s.title, show) watched=s.user.played />
+                })
+            }
+        }
         {move || picked.get().map(|season| view! { <Episodes acc=acc.clone() series=series.clone() season=season /> })}
     }
 }
@@ -407,7 +428,11 @@ fn Seasons(acc: String, series: String) -> impl IntoView {
 #[component]
 fn Episodes(acc: String, series: String, season: String) -> impl IntoView {
     let a = acc.clone();
+    let refresh = use_context::<crate::extra::Refresh>();
     let eps = LocalResource::new(move || {
+        if let Some(r) = refresh {
+            r.0.track();
+        }
         let (acc, series, season) = (a.clone(), series.clone(), season.clone());
         async move {
             let srv = state::ctx().server(&acc)?;

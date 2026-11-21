@@ -210,7 +210,7 @@ private fun Rails(
     Rail("Continue watching", h.continueWatching, open, onFocus, focusKey = "home", defaultFocus = first == "resume", continueWatching = true)
     // After what the user is watching, before the "new" rails.
     if (core.keepActive() && !offline) {
-        // Friends watching together right now (nothing when nobody is).
+        // Invitations to watch together waiting for an answer (nothing when there are none).
         TogetherRail()
         LeavingSoonRail()
     }

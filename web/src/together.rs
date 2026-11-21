@@ -1,25 +1,41 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Watch together: the rooms open on the AlwyWatch server, joining one (its host lets you in),
-//! and the room a player follows. Same protocol and rules as the apps: each member plays
-//! their own server's copy (found by provider ids), long-polls the room, applies what others
-//! do, seeks when more than 1.5 s apart, and tells the room about their own play, pause, seek
-//! and title changes (a title chosen here is announced; one chosen by the room is followed).
+//! Watch together: private rooms on the AlwyWatch server. "Watch together" on a title opens a
+//! lobby (never the player); its host invites people from a list (recent partners first), the
+//! invited join directly (the invitation is the approval) and the host starts playback for
+//! everyone. Nobody else can see a room; there is no code to type or show.
+//!
+//! The seat this tab holds in a room lives at the app level ([`Room`], in the app state): the
+//! lobby and the player share it, and its long poll (the seat's heartbeat) keeps running while
+//! moving between them. One more long poll ([`Invites`]) keeps my rooms and invitations
+//! current while an account is linked, for the invitation banner.
+//!
+//! Same sync rules as the apps: each member plays their own server's copy (found by provider
+//! ids), applies what others do, seeks when more than 1.5 s apart, and tells the room about
+//! their own play, pause, seek and title changes (a title chosen here is announced; one chosen
+//! by the room is followed).
 
 use keep_service::together::{
-    KnockStatus, TogetherAnswer, TogetherCreate, TogetherMedia, TogetherMember, TogetherRoom,
-    TogetherState, TogetherUpdate,
+    TogetherCreate, TogetherInvite, TogetherJoined, TogetherMedia, TogetherMember, TogetherPerson,
+    TogetherRoom, TogetherRooms, TogetherState, TogetherUpdate,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_router::hooks::use_navigate;
-use media_api::{AnyServer, Item, ItemKind, MediaServer, ProviderIds};
+use leptos_router::NavigateOptions;
+use leptos_router::components::A;
+use leptos_router::hooks::{use_location, use_navigate, use_params_map};
+use media_api::{AnyServer, ImageKind, Item, ItemKind, MediaServer, ProviderIds};
 use net::Error;
+use serde::{Deserialize, Serialize};
 
+use crate::profile::Avatar;
 use crate::state::{self, fmt_time};
-use crate::ui::Loading;
+use crate::ui::{ErrorText, Loading};
 
 /// Further apart than this from the room, a member seeks.
 pub const DRIFT_MS: u64 = 1500;
+
+const NO_KEEP: &str =
+    "Watch together needs an account on this AlwyWatch server: sign in with one in Settings.";
 
 pub fn now_ms() -> f64 {
     js_sys::Date::now()
@@ -78,7 +94,9 @@ pub fn on_remote(
     };
     let note = if let Some(who) = s.members.iter().find(|m| m.id == s.by) {
         let who = &who.name;
-        Some(if b.playing && !s.playing {
+        Some(if !b.started && s.started {
+            format!("{who} started")
+        } else if b.playing && !s.playing {
             format!("{who} paused")
         } else if !b.playing && s.playing {
             format!("{who} resumed")
@@ -203,17 +221,124 @@ pub async fn find(m: &TogetherMedia) -> Option<(String, String)> {
     None
 }
 
-/// The URL of the player in a room.
-pub fn play_href(acc: &str, item: &str, start_ms: u64, code: &str, member: &str) -> String {
+/// The URL of the player in a room (the seat itself is the app's: see [`Room`]).
+pub fn play_href(acc: &str, item: &str, start_ms: u64, code: &str) -> String {
     format!(
-        "/play/{acc}/{item}?t={start_ms}&room={}&member={}",
-        net::percent_encode(code),
-        net::percent_encode(member)
+        "/play/{acc}/{item}?t={start_ms}&room={}",
+        net::percent_encode(code)
     )
 }
 
-/// The room a player follows (none while `code` is empty). Lives as long as the player page,
-/// across the titles it plays.
+pub fn room_href(code: &str) -> String {
+    format!("/together/{}", net::percent_encode(code))
+}
+
+/// Errors of room calls in plain words.
+pub fn plain_together(e: &Error) -> String {
+    match e {
+        Error::NotFound => "This room has closed, or the invitation was withdrawn.".into(),
+        Error::Status { status: 409 } => "This room is full.".into(),
+        Error::Status { status: 429 } => {
+            "Too many rooms or invitations in a short time. Try again in a few minutes.".into()
+        }
+        Error::Status { status: 503 } => {
+            "The AlwyWatch server has too many rooms open right now. Try again later.".into()
+        }
+        other => state::plain_keep(other),
+    }
+}
+
+/// One person in a room: their first seat, how many devices they're on, whether they host.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Person {
+    pub member: TogetherMember,
+    pub devices: usize,
+    pub host: bool,
+}
+
+/// The members as people: a user on two devices is shown once, with a device count.
+pub fn group_members(s: &TogetherState) -> Vec<Person> {
+    let who = |m: &TogetherMember| {
+        if m.user_key.is_empty() {
+            m.id.clone()
+        } else {
+            m.user_key.clone()
+        }
+    };
+    let mut out: Vec<(String, Person)> = Vec::new();
+    for m in &s.members {
+        let key = who(m);
+        let host = m.id == s.host;
+        match out.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, p)) => {
+                p.devices += 1;
+                p.host |= host;
+            }
+            None => out.push((
+                key,
+                Person {
+                    member: m.clone(),
+                    devices: 1,
+                    host,
+                },
+            )),
+        }
+    }
+    out.into_iter().map(|(_, p)| p).collect()
+}
+
+/// Invitations in `after` that weren't in `before` (compared by code), minus the rooms just
+/// declined or left.
+pub fn new_invitations(
+    before: &[TogetherRoom],
+    after: &[TogetherRoom],
+    suppressed: &[String],
+) -> Vec<TogetherRoom> {
+    after
+        .iter()
+        .filter(|r| r.invited)
+        .filter(|r| !before.iter().any(|b| b.code == r.code && b.invited))
+        .filter(|r| !suppressed.contains(&r.code))
+        .cloned()
+        .collect()
+}
+
+/// Two people (or more) with this name: show their server too.
+pub fn name_taken(name: &str, all: &[TogetherPerson]) -> bool {
+    let n = name.to_lowercase();
+    all.iter().filter(|p| p.name.to_lowercase() == n).count() > 1
+}
+
+/// Who can still be invited (not in the room nor invited), matching `filter` (name, media
+/// name or server): recent partners, then everyone else, in the server's order.
+pub fn people_to_invite<'a>(
+    all: &'a [TogetherPerson],
+    s: &TogetherState,
+    filter: &str,
+) -> (Vec<&'a TogetherPerson>, Vec<&'a TogetherPerson>) {
+    let f = filter.trim().to_lowercase();
+    let shown = all.iter().filter(|p| {
+        !s.members.iter().any(|m| m.user_key == p.user_key)
+            && !s.invited.iter().any(|i| i.user_key == p.user_key)
+            && (f.is_empty()
+                || [&p.name, &p.media_name, &p.server_name]
+                    .iter()
+                    .any(|t| t.to_lowercase().contains(&f)))
+    });
+    shown.partition(|p| p.last_together_at.is_some())
+}
+
+/// Where this tab's seat is kept, so a reload keeps it.
+const SEAT: &str = "aw.room";
+
+#[derive(Serialize, Deserialize)]
+struct Seat {
+    code: String,
+    member: String,
+}
+
+/// The room this tab has a seat in. One per app: the lobby and the player share it, so moving
+/// between them keeps the seat (its long poll is the seat's heartbeat).
 #[derive(Clone, Copy)]
 pub struct Room {
     pub code: RwSignal<Option<String>>,
@@ -221,8 +346,8 @@ pub struct Room {
     pub state: RwSignal<Option<TogetherState>>,
     /// What just happened ("Ann paused"), shown for a few seconds.
     pub note: RwSignal<Option<String>>,
-    /// Join requests answered here, until the server's next state drops them.
-    answered: RwSignal<Vec<String>>,
+    /// A room that closed under us (its code), for its page to say so.
+    pub closed: RwSignal<Option<String>>,
     /// Others' changes for the player to apply: (new title, state).
     pub incoming: RwSignal<Option<(bool, TogetherState)>>,
     /// The title chosen here (next episode…): tell the room once it starts.
@@ -243,7 +368,7 @@ impl Room {
             member: RwSignal::new(None),
             state: RwSignal::new(None),
             note: RwSignal::new(None),
-            answered: RwSignal::new(Vec::new()),
+            closed: RwSignal::new(None),
             incoming: RwSignal::new(None),
             announce: StoredValue::new(false),
             seq: StoredValue::new(0),
@@ -254,9 +379,17 @@ impl Room {
         }
     }
 
-    /// In a room (safe after the page is gone).
+    /// In a room.
     pub fn active(&self) -> bool {
         self.code.try_get_untracked().flatten().is_some()
+    }
+
+    /// In this room.
+    pub fn is(&self, code: &str) -> bool {
+        self.code
+            .try_get_untracked()
+            .flatten()
+            .is_some_and(|c| c == code)
     }
 
     /// Our own update is on its way (a title announcement, say).
@@ -271,6 +404,13 @@ impl Room {
         ))
     }
 
+    /// This seat has the host's rights (reactive).
+    pub fn hosting(&self) -> bool {
+        let me = self.member.get();
+        self.state
+            .with(|s| s.as_ref().zip(me).is_some_and(|(s, m)| s.is_host(&m)))
+    }
+
     fn accept(&self, s: TogetherState) {
         self.received_at.set_value(now_ms());
         if s.seq > self.seq.get_value() {
@@ -281,11 +421,11 @@ impl Room {
 
     /// Where the room's playback is now, and whether it plays.
     pub fn expected(&self) -> Option<(u64, bool)> {
-        let at = self.received_at.get_value();
-        self.state.with_untracked(|s| {
+        let at = self.received_at.try_get_value()?;
+        self.state.try_with_untracked(|s| {
             s.as_ref()
                 .map(|s| (expected_position(s, at, now_ms()), s.playing))
-        })
+        })?
     }
 
     /// Whether the room's title is this one (episodes by show, season and number).
@@ -306,24 +446,27 @@ impl Room {
         })
     }
 
-    /// The next join request for the host to answer.
-    pub fn request(&self) -> Option<TogetherMember> {
-        let me = self.member.get()?;
-        let answered = self.answered.get();
-        self.state.with(|s| {
-            s.as_ref().filter(|s| s.host == me).and_then(|s| {
-                s.requests
-                    .iter()
-                    .find(|r| !answered.contains(&r.id))
-                    .cloned()
-            })
-        })
+    /// At start: the seat this tab had before a reload (its long poll tells whether it's
+    /// still there).
+    pub fn restore(self) {
+        if let Some(seat) = state::tab_load::<Seat>(SEAT)
+            && state::ctx().keep.get_untracked().is_some()
+        {
+            self.open(seat.code, seat.member, None);
+        }
     }
 
-    /// Joins (or rejoins) a room and starts following it.
+    /// Holds a seat (just created or joined) and follows the room.
     pub fn open(self, code: String, member: String, s: Option<TogetherState>) {
-        self.code.set(Some(code));
-        self.member.set(Some(member));
+        if !self.is(&code) {
+            self.state.set(None);
+            self.seq.set_value(0);
+            self.media.set_value(None);
+        }
+        self.closed.set(None);
+        self.code.set(Some(code.clone()));
+        self.member.set(Some(member.clone()));
+        state::tab_save(SEAT, Some(&Seat { code, member }));
         if let Some(s) = s {
             self.media.set_value(Some(s.media.clone()));
             self.accept(s);
@@ -331,31 +474,61 @@ impl Room {
         self.follow();
     }
 
-    /// Long-polls the room and hands others' changes to the player.
+    /// Long-polls the room (the seat's heartbeat) and hands others' changes to the player.
     fn follow(self) {
         self.generation.update_value(|g| *g += 1);
         let mine = self.generation.get_value();
-        let c = state::ctx();
+        let current = move || self.generation.try_get_value() == Some(mine);
         spawn_local(async move {
             let mut failures = 0u32;
+            let mut rejoined = false;
             loop {
-                if self.generation.try_get_value() != Some(mine) {
+                if !current() {
                     break;
                 }
                 let Some((code, me)) = self.ids() else { break };
-                let Some(k) = c.keep_client() else { break };
-                let after = self.seq.try_get_value().unwrap_or(0);
+                let Some(k) = state::ctx().keep_client() else {
+                    break;
+                };
+                let after = self.seq.get_value();
                 match k.together_wait(&code, &me, after).await {
                     Ok(s) => {
-                        failures = 0;
-                        if self.generation.try_get_value() != Some(mine) {
+                        if !current() {
                             break;
                         }
+                        failures = 0;
+                        rejoined = false;
                         self.on_state(s);
                     }
+                    // The seat was dropped (a minute without polling, say): it may come back
+                    // once; else the room is gone.
                     Err(Error::NotFound) => {
-                        if self.generation.try_get_value() == Some(mine) {
-                            self.leave("The watch together room closed", false);
+                        if !current() {
+                            break;
+                        }
+                        if !rejoined {
+                            rejoined = true;
+                            if let Ok(j) = k.together_join(&code).await {
+                                if !current() {
+                                    if !self.is(&code) {
+                                        let _ = k.together_leave(&code, &j.member_id).await;
+                                    }
+                                    break;
+                                }
+                                self.member.set(Some(j.member_id.clone()));
+                                state::tab_save(
+                                    SEAT,
+                                    Some(&Seat {
+                                        code: code.clone(),
+                                        member: j.member_id,
+                                    }),
+                                );
+                                self.on_state(j.state);
+                                continue;
+                            }
+                        }
+                        if current() {
+                            self.gone(&code);
                         }
                         break;
                     }
@@ -368,7 +541,11 @@ impl Room {
         });
     }
 
-    fn on_state(&self, s: TogetherState) {
+    /// A state from the server (long poll, or the answer to our own call).
+    pub fn on_state(&self, s: TogetherState) {
+        if !self.is(&s.code) {
+            return;
+        }
         let before = self.state.get_untracked();
         let me = self.member.get_untracked().unwrap_or_default();
         let sending = self.sending.get_value() > 0;
@@ -387,50 +564,6 @@ impl Room {
         }
     }
 
-    /// Opens a room with what plays now: people on the same AlwyWatch server see it.
-    pub fn create(self, srv: AnyServer, item: Item, position_ms: u64, playing: bool) {
-        if self.active() {
-            return;
-        }
-        let c = state::ctx();
-        self.note.set(Some("Opening a room…".into()));
-        spawn_local(async move {
-            let Some(k) = c.keep_client() else {
-                self.note.try_set(Some(
-                    "Watch together needs an account on this AlwyWatch server.".into(),
-                ));
-                return;
-            };
-            let media = media_of(&srv, &item).await;
-            let res = k
-                .together_create(&TogetherCreate {
-                    media,
-                    position_ms,
-                    playing,
-                })
-                .await;
-            if self.note.try_get_untracked().is_none() {
-                // The player is gone meanwhile: don't leave a room open.
-                if let Ok(j) = res {
-                    let _ = k.together_leave(&j.state.code, &j.member_id).await;
-                }
-                return;
-            }
-            match res {
-                Ok(j) => {
-                    self.open(j.state.code.clone(), j.member_id, Some(j.state));
-                    self.note.set(Some(
-                        "Watch together is open: friends can join from Together".into(),
-                    ));
-                }
-                Err(e) => self.note.set(Some(format!(
-                    "Watch together unavailable: {}",
-                    state::plain_keep(&e)
-                ))),
-            }
-        });
-    }
-
     /// Tells the room what we just did (play, pause, seek; with `title`, the title too).
     pub fn send(self, title: Option<(AnyServer, Item)>, playing: bool, position_ms: u64) {
         let Some((code, me)) = self.ids() else { return };
@@ -447,9 +580,10 @@ impl Room {
                     playing,
                     position_ms,
                     media,
+                    started: false,
                 };
                 if let Ok(s) = k.together_update(&code, &update).await
-                    && self.ids().is_some_and(|(c, _)| c == code)
+                    && self.is(&code)
                 {
                     self.media.set_value(Some(s.media.clone()));
                     self.accept(s);
@@ -459,319 +593,782 @@ impl Room {
         });
     }
 
-    /// The host lets someone in, or not.
-    pub fn answer(self, request_id: String, accept: bool) {
-        let Some((code, me)) = self.ids() else { return };
-        self.answered.update(|a| a.push(request_id.clone()));
-        let c = state::ctx();
-        spawn_local(async move {
-            let Some(k) = c.keep_client() else { return };
-            let Some(before) = self.state.try_get_untracked() else {
-                return;
-            };
-            let answer = TogetherAnswer {
-                member_id: me,
-                accept,
-            };
-            // Gone meanwhile (they stopped asking): nothing to do.
-            if let Ok(after) = k.together_answer(&code, &request_id, &answer).await
-                // Still in this room (the player may have closed meanwhile).
-                && self.ids().is_some_and(|(c, _)| c == code)
-            {
-                let joined = after
-                    .members
-                    .iter()
-                    .filter(|m| {
-                        before
-                            .as_ref()
-                            .is_some_and(|b| b.members.iter().all(|x| x.id != m.id))
-                    })
-                    .map(|m| m.name.clone())
-                    .collect::<Vec<_>>();
-                if !joined.is_empty() {
-                    self.note.set(Some(format!("{} joined", joined.join(", "))));
-                }
-                self.accept(after);
-            }
-        });
-    }
-
-    /// Leaves the room (telling the server, unless it already closed it).
-    pub fn leave(self, note: &str, tell_server: bool) {
-        let Some((code, me)) = self.ids() else { return };
+    fn clear(&self) -> Option<(String, String)> {
+        let ids = self.ids()?;
         let _ = self.generation.try_update_value(|g| *g += 1);
         self.code.try_set(None);
         self.member.try_set(None);
         self.state.try_set(None);
         let _ = self.media.try_update_value(|m| *m = None);
+        let _ = self.seq.try_update_value(|s| *s = 0);
+        state::tab_save::<Seat>(SEAT, None);
+        state::ctx().invites.suppress(&ids.0);
+        Some(ids)
+    }
+
+    /// Leaves the room for good (a new invitation is needed to come back).
+    pub fn leave(self, note: &str, tell_server: bool) {
+        // The client first: leaving can come with signing out.
+        let k = tell_server.then(|| state::ctx().keep_client()).flatten();
+        let Some((code, me)) = self.clear() else {
+            return;
+        };
         if !note.is_empty() {
             self.note.try_set(Some(note.to_owned()));
         }
-        if tell_server {
-            let c = state::ctx();
+        if let Some(k) = k {
             spawn_local(async move {
-                if let Some(k) = c.keep_client() {
-                    let _ = k.together_leave(&code, &me).await;
-                }
+                let _ = k.together_leave(&code, &me).await;
             });
+        }
+    }
+
+    /// The room closed under us.
+    fn gone(self, code: &str) {
+        self.clear();
+        self.closed.try_set(Some(code.to_owned()));
+        self.note
+            .try_set(Some("The watch together room closed".into()));
+    }
+}
+
+/// Opens a lobby with this title (the caller is its host): its code, for the Room page.
+pub async fn create_room(srv: AnyServer, item: Item) -> Result<String, String> {
+    let c = state::ctx();
+    let k = c.keep_client().ok_or(NO_KEEP)?;
+    let media = media_of(&srv, &item).await;
+    let j = k
+        .together_create(&TogetherCreate { media })
+        .await
+        .map_err(|e| plain_together(&e))?;
+    if c.room.active() {
+        c.room.leave("", true);
+    }
+    let code = j.state.code.clone();
+    c.room.open(code.clone(), j.member_id, Some(j.state));
+    Ok(code)
+}
+
+/// Takes a seat in a room I'm invited to (or in on another device).
+pub async fn join(code: &str) -> Result<TogetherJoined, String> {
+    let k = state::ctx().keep_client().ok_or(NO_KEEP)?;
+    k.together_join(code).await.map_err(|e| plain_together(&e))
+}
+
+/// After joining: the seat is this tab's (another room's is left), then the Room page while a
+/// lobby, the player once started.
+pub async fn enter(j: TogetherJoined, navigate: impl Fn(&str, NavigateOptions) + Clone) {
+    let room = state::ctx().room;
+    let code = j.state.code.clone();
+    if room.active() && !room.is(&code) {
+        room.leave("", true);
+    }
+    let started = j.state.started;
+    room.open(code.clone(), j.member_id, Some(j.state));
+    if started {
+        go_play(room, navigate, || true).await;
+    } else {
+        navigate(&room_href(&code), Default::default());
+    }
+}
+
+/// Opens the player in sync with the started room, playing this user's copy of its title.
+/// `still`: the page asking is still there (finding the title takes a moment).
+pub async fn go_play(
+    room: Room,
+    navigate: impl Fn(&str, NavigateOptions),
+    still: impl Fn() -> bool,
+) {
+    let Some(s) = room.state.try_get_untracked().flatten() else {
+        return;
+    };
+    match find(&s.media).await {
+        None => {
+            room.note.try_set(Some(format!(
+                "{} isn't on your servers, so you can't play it here",
+                media_label(&s.media)
+            )));
+        }
+        Some((acc, item)) => {
+            if !still() || !room.is(&s.code) {
+                return;
+            }
+            let at = room.expected().map_or(0, |(p, _)| p);
+            navigate(&play_href(&acc, &item, at, &s.code), Default::default());
         }
     }
 }
 
-/// A room to join: from the list (title known) or by its code.
-#[derive(Clone)]
-struct Join {
-    code: String,
-    host: String,
-    media: Option<TogetherMedia>,
+/// My rooms and invitations, kept current by one long poll while an account is linked to the
+/// AlwyWatch server; new invitations go to the banner.
+#[derive(Clone, Copy)]
+pub struct Invites {
+    pub rooms: RwSignal<Option<TogetherRooms>>,
+    /// New invitations not answered yet (the banner shows the first).
+    pub banner: RwSignal<Vec<TogetherRoom>>,
+    pub unreachable: RwSignal<bool>,
+    /// Rooms just declined or left: no banner for them.
+    suppressed: StoredValue<Vec<String>>,
+    generation: StoredValue<u32>,
 }
 
-/// The rooms open on the AlwyWatch server, and joining one.
-#[component]
-pub fn Together() -> impl IntoView {
-    let rooms = RwSignal::new(None::<Vec<TogetherRoom>>);
-    let unreachable = RwSignal::new(false);
-    let joining = RwSignal::new(None::<Join>);
-    let code = RwSignal::new(String::new());
-    let c = state::ctx();
-    spawn_local(async move {
-        loop {
-            let Some(k) = c.keep_client() else {
-                rooms.try_set(Some(Vec::new()));
-                break;
-            };
-            match k.together_rooms().await {
-                Ok(l) => {
-                    unreachable.try_set(false);
-                    if rooms.try_set(Some(l)).is_some() {
-                        break;
-                    }
+impl Invites {
+    pub fn new(cached: Option<TogetherRooms>) -> Self {
+        Self {
+            rooms: RwSignal::new(cached),
+            banner: RwSignal::new(Vec::new()),
+            unreachable: RwSignal::new(false),
+            suppressed: StoredValue::new(Vec::new()),
+            generation: StoredValue::new(0),
+        }
+    }
+
+    /// Starts the long poll (stopping any earlier one).
+    pub fn run(self) {
+        self.generation.update_value(|g| *g += 1);
+        let mine = self.generation.get_value();
+        let current = move || self.generation.try_get_value() == Some(mine);
+        spawn_local(async move {
+            let mut version = 0u64;
+            let mut failures = 0u32;
+            loop {
+                if !current() {
+                    break;
                 }
-                Err(_) => {
-                    unreachable.try_set(true);
-                    if rooms
-                        .try_update(|r| {
-                            r.get_or_insert_with(Vec::new);
-                        })
-                        .is_none()
-                    {
-                        break;
+                let Some(k) = state::ctx().keep_client() else {
+                    break;
+                };
+                let res = k.together_rooms_wait(version).await;
+                if !current() {
+                    break;
+                }
+                match res {
+                    Ok(r) => {
+                        failures = 0;
+                        self.unreachable.set(false);
+                        version = r.version;
+                        self.apply(r);
+                    }
+                    Err(e) => {
+                        failures += 1;
+                        self.unreachable.set(true);
+                        let ms = if e == Error::Unauthorized {
+                            60_000
+                        } else {
+                            (failures * 3000).min(30_000)
+                        };
+                        state::sleep(ms as i32).await;
                     }
                 }
             }
-            state::sleep(8_000).await;
-            if rooms.try_get_untracked().is_none() {
-                break;
+        });
+    }
+
+    /// Signed out of the AlwyWatch server: no more polling, nothing to show.
+    pub fn stop(self) {
+        self.generation.update_value(|g| *g += 1);
+        self.banner.set(Vec::new());
+        self.rooms.set(None);
+        self.unreachable.set(false);
+    }
+
+    fn apply(self, r: TogetherRooms) {
+        let before = self
+            .rooms
+            .with_untracked(|x| x.as_ref().map(|x| x.rooms.clone()))
+            .unwrap_or_default();
+        // A room gone from the list may invite again later.
+        self.suppressed
+            .update_value(|s| s.retain(|c| r.rooms.iter().any(|x| x.code == *c)));
+        let fresh = self
+            .suppressed
+            .with_value(|s| new_invitations(&before, &r.rooms, s));
+        self.banner.update(|b| {
+            b.retain(|x| r.rooms.iter().any(|y| y.code == x.code && y.invited));
+            for f in fresh {
+                if !b.iter().any(|x| x.code == f.code) {
+                    b.push(f);
+                }
+            }
+        });
+        state::save(state::TOGETHER, &r);
+        self.rooms.set(Some(r));
+    }
+
+    /// A room declined or left: off the banner and the list at once.
+    pub fn suppress(self, code: &str) {
+        let _ = self.suppressed.try_update_value(|s| {
+            if !s.iter().any(|c| c == code) {
+                s.push(code.to_owned());
+            }
+        });
+        self.banner.try_update(|b| b.retain(|r| r.code != code));
+        self.rooms.try_update(|r| {
+            if let Some(r) = r {
+                r.rooms.retain(|x| x.code != code);
+            }
+        });
+    }
+
+    /// "Not now": the invitation goes away.
+    pub fn decline(self, code: String) {
+        self.suppress(&code);
+        if let Some(k) = state::ctx().keep_client() {
+            spawn_local(async move {
+                let _ = k.together_decline(&code).await;
+            });
+        }
+    }
+
+    /// Closes the banner without answering (the invitation stays on the Together page).
+    pub fn dismiss(self, code: &str) {
+        self.banner.update(|b| b.retain(|r| r.code != code));
+    }
+}
+
+fn room_status(started: bool) -> &'static str {
+    if started { "Watching" } else { "Lobby" }
+}
+
+/// "Watch together" on a title page: opens a lobby, then its Room page.
+#[component]
+pub fn TogetherButton(srv: AnyServer, item: Item) -> impl IntoView {
+    let busy = RwSignal::new(false);
+    let error = RwSignal::new(None::<String>);
+    let navigate = use_navigate();
+    let alive = StoredValue::new(());
+    let click = move |_| {
+        if busy.get_untracked() {
+            return;
+        }
+        busy.set(true);
+        error.set(None);
+        let (srv, item, navigate) = (srv.clone(), item.clone(), navigate.clone());
+        spawn_local(async move {
+            let res = create_room(srv, item).await;
+            if alive.try_get_value().is_none() {
+                return;
+            }
+            busy.set(false);
+            match res {
+                Ok(code) => navigate(&room_href(&code), Default::default()),
+                Err(e) => error.set(Some(e)),
+            }
+        });
+    };
+    view! {
+        <button on:click=click disabled=move || busy.get()>
+            {move || if busy.get() { "Opening a room…" } else { "Watch together" }}
+        </button>
+        {move || error.get().map(|e| view! { <span class="error small">{e}</span> })}
+    }
+}
+
+/// Joins a room from the Together page or the banner (the invitation is the approval).
+fn join_and_enter(
+    code: String,
+    busy: RwSignal<Option<String>>,
+    error: RwSignal<Option<String>>,
+    navigate: impl Fn(&str, NavigateOptions) + Clone + 'static,
+) {
+    if busy.get_untracked().is_some() {
+        return;
+    }
+    busy.set(Some(code.clone()));
+    error.set(None);
+    spawn_local(async move {
+        let res = join(&code).await;
+        busy.try_set(None);
+        match res {
+            Ok(j) => {
+                let c = state::ctx();
+                c.invites.dismiss(&code);
+                enter(j, navigate).await;
+            }
+            Err(e) => {
+                error.try_set(Some(e));
             }
         }
     });
-    let join_code = move || {
-        let text = code.get_untracked().trim().to_owned();
-        if !text.is_empty() {
-            joining.set(Some(Join {
-                code: text,
-                host: "the host".into(),
-                media: None,
-            }));
-        }
-    };
+}
+
+/// My rooms and the rooms I'm invited to. No code to type: rooms are private.
+#[component]
+pub fn Together() -> impl IntoView {
+    let c = state::ctx();
+    let inv = c.invites;
+    let room = c.room;
+    let navigate = use_navigate();
+    let busy = RwSignal::new(None::<String>);
+    let error = RwSignal::new(None::<String>);
+    let linked = move || state::ctx().keep.get().is_some();
     view! {
         <h1>"Watch together"</h1>
-        <p class="muted">"What friends on your AlwyWatch server are watching together. Join one: its host lets you in."</p>
-        <form class="join-code" on:submit=move |ev| { ev.prevent_default(); join_code(); }>
-            <input class="search small" placeholder="Room code" aria-label="Room code"
-                prop:value=move || code.get() on:input=move |ev| code.set(event_target_value(&ev)) />
-            <button class="primary" type="submit">"Join"</button>
-        </form>
-        {move || match rooms.get() {
-            None => view! { <Loading /> }.into_any(),
-            Some(l) if l.is_empty() => view! {
-                <p class="muted">{if unreachable.get() {
-                    "Can't reach your AlwyWatch server right now. Trying again…"
-                } else {
-                    "Nobody is watching together right now. To start, open a movie or an episode and choose Watch together: friends will see it here."
-                }}</p>
+        <p class="muted">"Private rooms: only the people the host invites can see them."</p>
+        {move || (!linked()).then(|| view! { <ErrorText text=NO_KEEP.to_string() /> })}
+        {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+        {move || (inv.unreachable.get() && linked()).then(|| view! {
+            <p class="muted small">"Can't reach your AlwyWatch server right now. Trying again…"</p>
+        })}
+        {move || match inv.rooms.get() {
+            None if linked() => view! { <Loading /> }.into_any(),
+            None => ().into_any(),
+            Some(r) if r.rooms.is_empty() => view! {
+                <p class="muted empty">"No rooms yet. Open a movie or an episode and choose Watch together, then invite people."</p>
             }.into_any(),
-            Some(l) => view! {
-                <div class="leaving">
-                    {l.into_iter().map(|r| {
-                        let others = r.members.len().saturating_sub(1);
-                        let who = match others {
-                            0 => r.host.clone(),
-                            1 => format!("{} and 1 other", r.host),
-                            n => format!("{} and {n} others", r.host),
-                        };
-                        let at = r.position_ms + if r.playing { (r.now_ms - r.at_ms).max(0) as u64 } else { 0 };
-                        let status = [
-                            Some(if r.playing { "Playing".to_string() } else { "Paused".to_string() }),
-                            Some(fmt_time(at)),
-                            r.mine.then(|| "you're in it on another device".to_string()),
-                        ].into_iter().flatten().collect::<Vec<_>>().join(" · ");
-                        let join = Join { code: r.code.clone(), host: r.host.clone(), media: Some(r.media.clone()) };
-                        view! {
-                            <div class="leaving-row room-row">
-                                <div class="leaving-info">
-                                    <strong>{media_label(&r.media)}</strong>
-                                    <span>{who}</span>
-                                    <span class="muted small">{status}</span>
+            Some(r) => {
+                let (invites, mine): (Vec<_>, Vec<_>) = r.rooms.into_iter().partition(|r| r.invited);
+                let navigate = navigate.clone();
+                view! {
+                    {(!invites.is_empty()).then(|| view! { <h2>"Invitations"</h2> })}
+                    <div class="leaving">
+                        {invites.into_iter().map(|r| {
+                            let (code, code2, code3) = (r.code.clone(), r.code.clone(), r.code.clone());
+                            let navigate = navigate.clone();
+                            view! {
+                                <div class="leaving-row room-row">
+                                    <Avatar user_key=r.host_user_key.clone() name=r.host.clone() avatar=r.host_avatar.clone() size=40 />
+                                    <div class="leaving-info">
+                                        <span>{format!("{} invites you", r.host)}</span>
+                                        <strong>{media_label(&r.media)}</strong>
+                                        <span class="muted small">{room_status(r.started)}</span>
+                                    </div>
+                                    <div class="actions tight">
+                                        <button class="primary small" disabled=move || busy.get().is_some()
+                                            on:click=move |_| join_and_enter(code.clone(), busy, error, navigate.clone())>
+                                            {move || if busy.get().as_deref() == Some(code3.as_str()) { "Joining…" } else { "Join" }}
+                                        </button>
+                                        <button class="small" on:click=move |_| inv.decline(code2.clone())>"Not now"</button>
+                                    </div>
                                 </div>
-                                <button class="primary" on:click=move |_| joining.set(Some(join.clone()))>"Join"</button>
+                            }
+                        }).collect_view()}
+                    </div>
+                    {(!mine.is_empty()).then(|| view! { <h2>"My rooms"</h2> })}
+                    <div class="leaving">
+                        {mine.into_iter().map(|r| {
+                            let code = r.code.clone();
+                            let navigate = navigate.clone();
+                            let who = if r.hosting { "You host".to_string() } else { format!("Hosted by {}", r.host) };
+                            let members = r.members.join(", ");
+                            let open = move |_| {
+                                if room.is(&code) {
+                                    navigate(&room_href(&code), Default::default());
+                                } else {
+                                    // Joined on another device: a seat here too.
+                                    join_and_enter(code.clone(), busy, error, navigate.clone());
+                                }
+                            };
+                            view! {
+                                <div class="leaving-row room-row">
+                                    <Avatar user_key=r.host_user_key.clone() name=r.host.clone() avatar=r.host_avatar.clone() size=40 />
+                                    <div class="leaving-info">
+                                        <strong>{media_label(&r.media)}</strong>
+                                        <span>{who}</span>
+                                        <span class="muted small">{format!("{} · {members}", room_status(r.started))}</span>
+                                    </div>
+                                    <button class="small" disabled=move || busy.get().is_some() on:click=open>"Open"</button>
+                                </div>
+                            }
+                        }).collect_view()}
+                    </div>
+                }.into_any()
+            }
+        }}
+    }
+}
+
+/// The Room page (`/together/:code`): the lobby before the start, who's in the room after.
+#[component]
+pub fn RoomPage() -> impl IntoView {
+    let params = use_params_map();
+    let code = Memo::new(move |_| params.read().get("code").unwrap_or_default());
+    let c = state::ctx();
+    let room = c.room;
+    let navigate = use_navigate();
+    let busy = RwSignal::new(None::<String>);
+    let error = RwSignal::new(None::<String>);
+    let here = move || room.code.get().is_some_and(|x| x == code.get());
+    view! {
+        {move || {
+            if here() {
+                return view! { <Lobby room=room /> }.into_any();
+            }
+            if state::ctx().keep.get().is_none() {
+                return view! { <h1>"Watch together"</h1><ErrorText text=NO_KEEP.to_string() /> }.into_any();
+            }
+            let code = code.get();
+            if room.closed.get().as_deref() == Some(code.as_str()) {
+                return view! {
+                    <h1>"Watch together"</h1>
+                    <p class="muted">"This room has closed."</p>
+                    <A href="/together" attr:class="button">"Back to Together"</A>
+                }.into_any();
+            }
+            let navigate = navigate.clone();
+            view! {
+                <h1>"Watch together"</h1>
+                <p class="muted">"You're not in this room. If you were invited, join it."</p>
+                <div class="actions">
+                    <button class="primary" disabled=move || busy.get().is_some()
+                        on:click=move |_| join_and_enter(code.clone(), busy, error, navigate.clone())>"Join"</button>
+                    <A href="/together" attr:class="button">"Back to Together"</A>
+                </div>
+                {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+            }.into_any()
+        }}
+    }
+}
+
+#[component]
+fn Lobby(room: Room) -> impl IntoView {
+    let navigate = use_navigate();
+    let picking = RwSignal::new(false);
+    let busy = RwSignal::new(false);
+    let error = RwSignal::new(None::<String>);
+    let alive = StoredValue::new(());
+    let alive = move || alive.try_get_value().is_some();
+    // The host starts while this page is open: everyone goes to the player.
+    let seen_lobby = StoredValue::new(false);
+    let nav = navigate.clone();
+    Effect::new(move |_| {
+        let Some(started) = room.state.with(|s| s.as_ref().map(|s| s.started)) else {
+            return;
+        };
+        if !started {
+            seen_lobby.set_value(true);
+        } else if seen_lobby.get_value() {
+            seen_lobby.set_value(false);
+            let nav = nav.clone();
+            spawn_local(async move { go_play(room, nav, alive).await });
+        }
+    });
+    // The title on my servers (a poster; or a word that it can't be played here).
+    let media = Memo::new(move |_| room.state.with(|s| s.as_ref().map(|s| s.media.clone())));
+    let found = LocalResource::new(move || {
+        let m = media.get();
+        async move {
+            let m = m?;
+            let (acc, id) = find(&m).await?;
+            let srv = state::ctx().server(&acc)?;
+            let item = srv.item(&id).await.ok();
+            Some(item.and_then(|i| {
+                state::image(
+                    &srv,
+                    &i,
+                    &[ImageKind::Primary, ImageKind::SeriesPrimary],
+                    140,
+                )
+            }))
+        }
+    });
+    let me = move || state::ctx().me.get().map(|m| m.user_key);
+    let call = move |f: Box<dyn FnOnce(keep_service::KeepClient, String, String) -> CallFut>| {
+        let Some((code, member)) = room.ids() else {
+            return;
+        };
+        let Some(k) = state::ctx().keep_client() else {
+            return error.set(Some(NO_KEEP.into()));
+        };
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            let res = f(k, code, member).await;
+            busy.try_set(false);
+            match res {
+                Ok(s) => room.on_state(s),
+                Err(e) => {
+                    error.try_set(Some(plain_together(&e)));
+                }
+            }
+        });
+    };
+    let start = move |_| {
+        call(Box::new(|k, code, member| {
+            Box::pin(async move { k.together_start(&code, &member, 0).await })
+        }))
+    };
+    let nav2 = navigate.clone();
+    let leave = move |_| {
+        room.leave("", true);
+        nav2("/together", Default::default());
+    };
+    let nav3 = navigate.clone();
+    let watch = move |_| {
+        let nav = nav3.clone();
+        spawn_local(async move { go_play(room, nav, alive).await });
+    };
+    view! {
+        {move || room.state.get().map(|s| {
+            let host = s.members.iter().find(|m| m.id == s.host).map(|m| m.name.clone()).unwrap_or_else(|| "the host".into());
+            let hosting = room.hosting();
+            let people = group_members(&s);
+            let watch = watch.clone();
+            let leave = leave.clone();
+            view! {
+                <div class="room-head">
+                    {move || found.get().flatten().flatten().map(|p| view! { <img class="room-poster" src=p alt="" /> })}
+                    <div>
+                        <p class="muted">{if s.started { "Watch together · watching now" } else { "Watch together · lobby" }}</p>
+                        <h1>{media_label(&s.media)}</h1>
+                        {move || matches!(found.get(), Some(None)).then(|| view! {
+                            <p class="muted small">"This title isn't on your servers: you can be in the room but can't play it here."</p>
+                        })}
+                    </div>
+                </div>
+                <div class="actions">
+                    {match (s.started, hosting) {
+                        (true, _) => view! { <button class="primary" on:click=watch>"Open the player"</button> }.into_any(),
+                        (false, true) => view! {
+                            <button class="primary" disabled=move || busy.get() on:click=start>"Start watching"</button>
+                        }.into_any(),
+                        (false, false) => view! { <p class="accent waiting">{format!("Waiting for {host} to start")}</p> }.into_any(),
+                    }}
+                    {hosting.then(|| view! { <button on:click=move |_| picking.set(true)>"Invite"</button> })}
+                    <button class="subtle" on:click=leave>"Leave"</button>
+                </div>
+                {move || room.note.get().map(|n| view! { <p class="muted small" role="status">{n}</p> })}
+                {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+                <section class="group">
+                    <h2>{format!("In the room · {}", people.len())}</h2>
+                    {people.into_iter().map(|p| {
+                        let mine = me().is_some_and(|k| k == p.member.user_key);
+                        let extra = [
+                            p.host.then(|| "host".to_string()),
+                            (p.devices > 1).then(|| format!("{} devices", p.devices)),
+                            mine.then(|| "you".to_string()),
+                        ].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+                        view! {
+                            <div class="person-row">
+                                <Avatar user_key=p.member.user_key.clone() name=p.member.name.clone() avatar=p.member.avatar.clone() size=36 />
+                                <span class="pname">{p.member.name.clone()}</span>
+                                <span class="muted small">{extra}</span>
                             </div>
                         }
                     }).collect_view()}
-                </div>
-            }.into_any(),
-        }}
-        {move || joining.get().map(|j| view! { <JoinDialog join=j on_close=move || joining.set(None) /> })}
+                </section>
+                {(!s.invited.is_empty()).then(|| view! {
+                    <section class="group">
+                        <h2>{format!("Invited · {}", s.invited.len())}</h2>
+                        {s.invited.iter().map(|i| {
+                            let key = i.user_key.clone();
+                            view! {
+                                <div class="person-row">
+                                    <Avatar user_key=i.user_key.clone() name=i.name.clone() avatar=i.avatar.clone() size=36 />
+                                    <span class="pname">{i.name.clone()}</span>
+                                    {hosting.then(|| view! {
+                                        <button class="small subtle" disabled=move || busy.get() on:click=move |_| {
+                                            let key = key.clone();
+                                            call(Box::new(move |k, code, member| {
+                                                Box::pin(async move { k.together_uninvite(&code, &member, &key).await })
+                                            }))
+                                        }>"Remove"</button>
+                                    })}
+                                </div>
+                            }
+                        }).collect_view()}
+                    </section>
+                })}
+                {(hosting && !s.started && s.invited.is_empty() && s.members.len() < 2).then(|| view! {
+                    <p class="muted">"Invite people: they join right away, then start when everyone's here."</p>
+                })}
+            }
+        })}
+        {move || picking.get().then(|| view! { <PeoplePicker room=room on_close=move || picking.set(false) /> })}
     }
 }
 
-/// Asks the host and waits for their answer; accepted, the player opens in sync with the room.
-/// Closing the dialog while waiting withdraws the request.
+type CallFut = std::pin::Pin<Box<dyn std::future::Future<Output = Result<TogetherState, Error>>>>;
+
+/// The host picks people to invite: recent partners first, a filter, several at once.
 #[component]
-fn JoinDialog(join: Join, on_close: impl Fn() + Clone + Send + Sync + 'static) -> impl IntoView {
-    let message = RwSignal::new(None::<String>);
-    let request = StoredValue::new(None::<String>);
-    let title = join
-        .media
-        .as_ref()
-        .map(media_label)
-        .unwrap_or_else(|| format!("Room {}", join.code));
-    let navigate = use_navigate();
-    let c = state::ctx();
-    let code = join.code.clone();
-    let host = join.host.clone();
-    on_cleanup(move || {
-        if let Some(id) = request.try_get_value().flatten() {
-            let c = state::ctx();
-            spawn_local(async move {
-                if let Some(k) = c.keep_client() {
-                    let _ = k.together_knock_cancel(&code, &id).await;
-                }
-            });
-        }
+fn PeoplePicker(room: Room, on_close: impl Fn() + Clone + Send + Sync + 'static) -> impl IntoView {
+    /// The server takes at most this many at once.
+    const MAX: usize = 20;
+    let people = LocalResource::new(|| async {
+        let k = state::ctx().keep_client().ok_or(NO_KEEP.to_string())?;
+        k.together_people().await.map_err(|e| plain_together(&e))
     });
-    spawn_local(async move {
-        let end = |m: String| {
-            let _ = request.try_update_value(|r| *r = None);
-            message.try_set(Some(m));
-        };
-        let gone = || message.try_get_untracked().is_none();
-        let Some(k) = c.keep_client() else {
-            end("Watch together needs an account on this AlwyWatch server.".into());
-            return;
-        };
-        let mut found = None;
-        if let Some(m) = &join.media {
-            found = find(m).await;
-            if found.is_none() {
-                end(format!(
-                    "{} isn't on your servers, so you can't watch it with them.",
-                    media_label(m)
-                ));
-                return;
-            }
-        }
-        if gone() {
-            return;
-        }
-        let mut ks = match k.together_knock(&join.code).await {
-            Ok(x) => x,
-            Err(Error::NotFound) => return end("This session has ended.".into()),
-            Err(e) => return end(format!("Couldn't ask to join: {}", state::plain_keep(&e))),
-        };
-        let _ = request.try_update_value(|r| *r = Some(ks.request_id.clone()));
-        let mut failures = 0u32;
-        while ks.status == KnockStatus::Waiting {
-            if gone() {
-                return;
-            }
-            match k.together_knock_wait(&join.code, &ks.request_id).await {
-                Ok(x) => {
-                    failures = 0;
-                    ks = x;
-                }
-                Err(Error::NotFound) => return end("This session has ended.".into()),
-                Err(e) => {
-                    failures += 1;
-                    if failures > 5 {
-                        return end(format!("Couldn't ask to join: {}", state::plain_keep(&e)));
-                    }
-                    state::sleep(2000 * failures as i32).await;
-                }
-            }
-        }
-        let _ = request.try_update_value(|r| *r = None);
-        let joined = match (ks.status, ks.joined) {
-            (KnockStatus::Accepted, Some(j)) => j,
-            _ => return end(format!("{} can't let you in right now.", join.host)),
-        };
-        let received = now_ms();
-        let found = match found {
-            Some(f) => Some(f),
-            None => find(&joined.state.media).await,
-        };
-        let Some((acc, item)) = found else {
-            let _ = k
-                .together_leave(&joined.state.code, &joined.member_id)
-                .await;
-            return end(format!(
-                "{} isn't on your servers, so you can't watch it with them.",
-                media_label(&joined.state.media)
-            ));
-        };
-        if gone() {
-            let _ = k
-                .together_leave(&joined.state.code, &joined.member_id)
-                .await;
-            return;
-        }
-        let start = expected_position(&joined.state, received, now_ms());
-        navigate(
-            &play_href(&acc, &item, start, &joined.state.code, &joined.member_id),
-            Default::default(),
-        );
-    });
+    let filter = RwSignal::new(String::new());
+    let picked = RwSignal::new(Vec::<String>::new());
+    let busy = RwSignal::new(false);
+    let error = RwSignal::new(None::<String>);
     let close = on_close.clone();
-    let close_key = on_close.clone();
-    let first = NodeRef::<leptos::html::Div>::new();
-    // Focus inside the dialog, so Escape closes it.
+    let send = move |_| {
+        let keys = picked.get_untracked();
+        if keys.is_empty() || busy.get_untracked() {
+            return;
+        }
+        let (Some(code), Some(member)) = (room.code.get_untracked(), room.member.get_untracked())
+        else {
+            return;
+        };
+        let Some(k) = state::ctx().keep_client() else {
+            return error.set(Some(NO_KEEP.into()));
+        };
+        busy.set(true);
+        error.set(None);
+        let close = close.clone();
+        spawn_local(async move {
+            let invite = TogetherInvite {
+                member_id: member,
+                user_keys: keys,
+            };
+            let res = k.together_invite(&code, &invite).await;
+            busy.try_set(false);
+            match res {
+                Ok(s) => {
+                    room.on_state(s);
+                    close();
+                }
+                Err(e) => {
+                    error.try_set(Some(plain_together(&e)));
+                }
+            }
+        });
+    };
+    let row = move |p: &TogetherPerson, all: &[TogetherPerson]| {
+        let key = p.user_key.clone();
+        let (k1, k2, k3) = (key.clone(), key.clone(), key);
+        let server = if !p.server_name.is_empty() {
+            p.server_name.clone()
+        } else {
+            p.media_name.clone()
+        };
+        let detail = name_taken(&p.name, all).then_some(server);
+        let selected = move || picked.with(|v| v.contains(&k1));
+        view! {
+            <button class="pick-row" class:selected=selected.clone() aria-pressed=move || selected().to_string()
+                on:click=move |_| picked.update(|v| {
+                    if let Some(i) = v.iter().position(|x| *x == k2) {
+                        v.remove(i);
+                    } else if v.len() < MAX {
+                        v.push(k2.clone());
+                    }
+                })>
+                <span class="check" aria-hidden="true">{move || if picked.with(|v| v.contains(&k3)) { "✓" } else { "" }}</span>
+                <Avatar user_key=p.user_key.clone() name=p.name.clone() avatar=p.avatar.clone() size=32 />
+                <span class="pname">{p.name.clone()}</span>
+                {detail.map(|d| view! { <span class="muted small">{d}</span> })}
+            </button>
+        }
+    };
+    let input = NodeRef::<leptos::html::Input>::new();
     Effect::new(move |_| {
-        if let Some(d) = first.get() {
-            let _ = d.focus();
+        if let Some(i) = input.get() {
+            let _ = i.focus();
         }
     });
+    let (close1, close2, close3) = (on_close.clone(), on_close.clone(), on_close);
     view! {
-        <div class="dialog-back" on:click=move |_| close()
-            on:keydown=move |ev| if ev.key() == "Escape" { close_key() }>
-            <div class="dialog" role="dialog" aria-modal="true" tabindex="-1" node_ref=first on:click=|ev| ev.stop_propagation()>
-                <h2>{title}</h2>
-                {move || match message.get() {
-                    None => view! { <p>{format!("Waiting for {host} to let you in…")}</p> }.into_any(),
-                    Some(m) => view! { <p>{m}</p> }.into_any(),
-                }}
-                <div class="actions">
-                    {
-                        let on_close = on_close.clone();
-                        move || {
-                            let on_close = on_close.clone();
-                            let waiting = message.with(Option::is_none);
-                            view! {
-                                <button class:primary=!waiting on:click=move |_| on_close()>
-                                    {if waiting { "Cancel" } else { "OK" }}
-                                </button>
+        <div class="dialog-back" on:click=move |_| close1()
+            on:keydown=move |ev| if ev.key() == "Escape" { close2() }>
+            <div class="dialog people" role="dialog" aria-modal="true" aria-labelledby="invite-title" on:click=|ev| ev.stop_propagation()>
+                <h2 id="invite-title">"Invite people"</h2>
+                <input class="search small" type="search" placeholder="Filter by name" aria-label="Filter by name" node_ref=input
+                    prop:value=move || filter.get() on:input=move |ev| filter.set(event_target_value(&ev)) />
+                <div class="pick-list">
+                    {move || match people.get() {
+                        None => view! { <Loading /> }.into_any(),
+                        Some(Err(e)) => view! { <ErrorText text=e /> }.into_any(),
+                        Some(Ok(all)) => {
+                            let Some(s) = room.state.get() else { return ().into_any() };
+                            let f = filter.get();
+                            let (recent, others) = people_to_invite(&all, &s, &f);
+                            if recent.is_empty() && others.is_empty() {
+                                let text = if !f.trim().is_empty() {
+                                    "Nobody matches."
+                                } else if all.is_empty() {
+                                    "Nobody else has signed in to this AlwyWatch server yet."
+                                } else {
+                                    "Everyone is already in the room or invited."
+                                };
+                                return view! { <p class="muted">{text}</p> }.into_any();
                             }
+                            view! {
+                                {(!recent.is_empty()).then(|| view! { <h3 class="pick-head">"Recent"</h3> })}
+                                {recent.iter().map(|p| row(p, &all)).collect_view()}
+                                {(!recent.is_empty() && !others.is_empty()).then(|| view! { <h3 class="pick-head">"Everyone"</h3> })}
+                                {others.iter().map(|p| row(p, &all)).collect_view()}
+                            }.into_any()
                         }
-                    }
+                    }}
+                </div>
+                {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+                <div class="actions">
+                    <button on:click=move |_| close3()>"Cancel"</button>
+                    <button class="primary" disabled=move || busy.get() || picked.with(Vec::is_empty) on:click=send>
+                        {move || match picked.with(Vec::len) {
+                            0 => "Invite".to_string(),
+                            1 => "Invite 1 person".to_string(),
+                            n => format!("Invite {n} people"),
+                        }}
+                    </button>
                 </div>
             </div>
         </div>
     }
 }
 
+/// A new invitation, anywhere in the app: Join / Not now. In the player (`compact`), a small
+/// line in a corner rather than a banner over the video.
+#[component]
+pub fn InviteBanner(#[prop(optional)] compact: bool) -> impl IntoView {
+    let inv = state::ctx().invites;
+    let navigate = use_navigate();
+    let busy = RwSignal::new(None::<String>);
+    let error = RwSignal::new(None::<String>);
+    move || {
+        let r = inv.banner.with(|b| b.first().cloned())?;
+        let more = inv.banner.with(Vec::len) - 1;
+        let (c1, c2, c3) = (r.code.clone(), r.code.clone(), r.code.clone());
+        let navigate = navigate.clone();
+        let text = format!("{} invites you to watch {}", r.host, media_label(&r.media));
+        let join = move |_| join_and_enter(c1.clone(), busy, error, navigate.clone());
+        Some(view! {
+            <div class=if compact { "invite-note" } else { "banner invite" } role="status">
+                {(!compact).then(|| view! { <Avatar user_key=r.host_user_key.clone() name=r.host.clone() avatar=r.host_avatar.clone() size=32 /> })}
+                <span>{text}{(more > 0).then(|| format!(" (+{more} more)"))}</span>
+                <button class="small primary" disabled=move || busy.get().is_some() on:click=join>
+                    {move || if busy.get().is_some() { "Joining…" } else { "Join" }}
+                </button>
+                <button class="small" on:click=move |_| inv.decline(c2.clone())>"Not now"</button>
+                <button class="small subtle" aria-label="Close" on:click=move |_| inv.dismiss(&c3)>"✕"</button>
+                {move || error.get().map(|e| view! { <span class="error small">{e}</span> })}
+            </div>
+        })
+    }
+}
+
+/// In a room but on another page: a way back to it.
+#[component]
+pub fn SeatBanner() -> impl IntoView {
+    let room = state::ctx().room;
+    let location = use_location();
+    move || {
+        let code = room.code.get()?;
+        let href = room_href(&code);
+        if location.pathname.get() == href {
+            return None;
+        }
+        let (label, started) = room
+            .state
+            .with(|s| s.as_ref().map(|s| (media_label(&s.media), s.started)))
+            .unwrap_or_default();
+        Some(view! {
+            <div class="banner seat" role="status">
+                <span>{format!("You're in a watch together room{}{}", if label.is_empty() { "" } else { ": " }, label)}
+                    {started.then_some(" · watching now")}</span>
+                <A href=href attr:class="button small">"Open the room"</A>
+            </div>
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use keep_service::together::TogetherInvitee;
 
     fn media(title: &str) -> TogetherMedia {
         TogetherMedia {
@@ -793,6 +1390,8 @@ mod tests {
         TogetherMember {
             id: id.into(),
             name: name.into(),
+            user_key: format!("jf:{}", name.to_lowercase()),
+            avatar: Default::default(),
         }
     }
 
@@ -801,6 +1400,7 @@ mod tests {
             code: "R".into(),
             seq,
             media: media("X"),
+            started: true,
             playing,
             position_ms: 60_000,
             at_ms: 1_000,
@@ -808,7 +1408,37 @@ mod tests {
             by: by.into(),
             members: vec![member("a", "Ann"), member("b", "Bob")],
             host: "a".into(),
-            requests: vec![],
+            invited: vec![],
+        }
+    }
+
+    fn room(code: &str, invited: bool) -> TogetherRoom {
+        TogetherRoom {
+            code: code.into(),
+            host: "Ann".into(),
+            host_avatar: Default::default(),
+            host_user_key: "jf:ann".into(),
+            media: media("X"),
+            members: vec!["Ann".into()],
+            started: false,
+            playing: false,
+            position_ms: 0,
+            at_ms: 0,
+            now_ms: 0,
+            mine: !invited,
+            hosting: false,
+            invited,
+        }
+    }
+
+    fn person(key: &str, name: &str, server: &str, recent: Option<i64>) -> TogetherPerson {
+        TogetherPerson {
+            user_key: key.into(),
+            name: name.into(),
+            media_name: name.to_lowercase(),
+            avatar: Default::default(),
+            server_name: server.into(),
+            last_together_at: recent,
         }
     }
 
@@ -878,6 +1508,24 @@ mod tests {
             on_remote(Some(&before), &joined, "b", false, None),
             Remote::Follow(Some("Cid joined".into()))
         );
+        // The host started the lobby.
+        let mut lobby = state(1, false, "");
+        lobby.started = false;
+        assert_eq!(
+            on_remote(Some(&lobby), &state(2, true, "a"), "b", false, None),
+            Remote::Follow(Some("Ann started".into()))
+        );
+        // An invitation (server change, same members): nothing to say.
+        let mut invited = state(2, true, "");
+        invited.invited.push(TogetherInvitee {
+            user_key: "jf:cid".into(),
+            name: "Cid".into(),
+            avatar: Default::default(),
+        });
+        assert_eq!(
+            on_remote(Some(&before), &invited, "b", false, None),
+            Remote::Follow(None)
+        );
     }
 
     #[test]
@@ -890,8 +1538,87 @@ mod tests {
         m.episode = Some(3);
         assert_eq!(media_label(&m), "The Show · S2 · E3");
         assert_eq!(
-            play_href("jf.s.u", "42", 1000, "AB 1", "m"),
-            "/play/jf.s.u/42?t=1000&room=AB%201&member=m"
+            play_href("jf.s.u", "42", 1000, "AB 1"),
+            "/play/jf.s.u/42?t=1000&room=AB%201"
         );
+        assert_eq!(room_href("123456"), "/together/123456");
+    }
+
+    #[test]
+    fn members_are_grouped_by_user() {
+        let mut s = state(1, true, "a");
+        // Ann on a second device (host's user), and a seat without a user key.
+        s.members = vec![
+            member("a", "Ann"),
+            member("b", "Bob"),
+            member("a2", "Ann"),
+            TogetherMember {
+                id: "z".into(),
+                name: "Old".into(),
+                user_key: String::new(),
+                avatar: Default::default(),
+            },
+        ];
+        s.host = "a2".into();
+        let g = group_members(&s);
+        assert_eq!(g.len(), 3);
+        assert_eq!(
+            (g[0].member.id.as_str(), g[0].devices, g[0].host),
+            ("a", 2, true)
+        );
+        assert_eq!(
+            (g[1].member.id.as_str(), g[1].devices, g[1].host),
+            ("b", 1, false)
+        );
+        assert_eq!(g[2].devices, 1);
+    }
+
+    #[test]
+    fn only_new_invitations_reach_the_banner() {
+        let before = vec![room("1", true), room("2", false)];
+        let after = vec![
+            room("1", true),
+            room("3", true),
+            room("4", true),
+            room("2", false),
+        ];
+        let fresh = new_invitations(&before, &after, &["4".to_string()]);
+        // 1 was already there, 4 was just declined, 2 is mine.
+        assert_eq!(
+            fresh.iter().map(|r| r.code.as_str()).collect::<Vec<_>>(),
+            ["3"]
+        );
+        // A room of mine that becomes an invitation (I left on all devices, invited again).
+        let fresh = new_invitations(&before, &[room("2", true)], &[]);
+        assert_eq!(fresh.len(), 1);
+        assert!(new_invitations(&after, &after, &[]).is_empty());
+    }
+
+    #[test]
+    fn people_are_filtered_and_split() {
+        let all = vec![
+            person("jf:ann", "Ann", "Home", Some(10)),
+            person("jf:bob", "Bob", "Home", None),
+            person("px:alex", "alex", "Plex", None),
+            person("jf:alex", "Alex", "Home", None),
+            person("jf:cid", "Cid", "Home", Some(5)),
+        ];
+        let mut s = state(1, false, "");
+        s.members = vec![member("a", "Ann")];
+        s.invited = vec![TogetherInvitee {
+            user_key: "jf:bob".into(),
+            name: "Bob".into(),
+            avatar: Default::default(),
+        }];
+        let (recent, others) = people_to_invite(&all, &s, "");
+        let keys = |v: &[&TogetherPerson]| v.iter().map(|p| p.user_key.clone()).collect::<Vec<_>>();
+        assert_eq!(keys(&recent), ["jf:cid"]);
+        assert_eq!(keys(&others), ["px:alex", "jf:alex"]);
+        // By name or server, ignoring case and spaces around.
+        let (recent, others) = people_to_invite(&all, &s, " plex ");
+        assert!(recent.is_empty());
+        assert_eq!(keys(&others), ["px:alex"]);
+        assert!(name_taken("ALEX", &all));
+        assert!(!name_taken("Cid", &all));
     }
 }

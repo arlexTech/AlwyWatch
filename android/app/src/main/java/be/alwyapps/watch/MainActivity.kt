@@ -72,6 +72,54 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    override fun onStart() {
+        super.onStart()
+        be.alwyapps.watch.together.TogetherInbox
+            .activityStarted(null, player = false)
+        val core = services.core
+        if (core.isCompleted) {
+            lifecycleScope.launch {
+                be.alwyapps.watch.together.TogetherInbox
+                    .setCore(core.await())
+            }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        be.alwyapps.watch.together.TogetherInbox
+            .activityStopped(player = false)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        takeRoom(intent)
+    }
+
+    /** The player's "Watch together" opened a room: show it here. */
+    private fun takeRoom(intent: android.content.Intent?) {
+        intent?.getStringExtra(EXTRA_ROOM)?.let {
+            be.alwyapps.watch.together.TogetherInbox.openRoom = it
+            intent.removeExtra(EXTRA_ROOM)
+        }
+    }
+
+    companion object {
+        private const val EXTRA_ROOM = "open_room"
+
+        /** Brings the app to the front on a watch together room. */
+        fun openRoom(
+            ctx: android.content.Context,
+            code: String,
+        ) = android.content
+            .Intent(ctx, MainActivity::class.java)
+            .putExtra(EXTRA_ROOM, code)
+            .addFlags(
+                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            )
+    }
+
     override fun onResume() {
         super.onResume()
         // Back to the app: settings changed on another device apply here.
@@ -85,6 +133,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val services = services
+        takeRoom(intent)
         // Once Compose draws (its root paints the background), the window's own background is a
         // full-screen fill under it on every frame for nothing.
         window.decorView.post { window.setBackgroundDrawable(null) }
@@ -92,7 +141,13 @@ class MainActivity : ComponentActivity() {
             AlwyTheme(isTv = services.isTv) {
                 // The window background is already the app color, so waiting a few ms for the
                 // native core to load shows no flash; then the first composition renders from cache.
-                val core by produceState<AlwyWatch?>(null) { value = services.core.await() }
+                val core by produceState<AlwyWatch?>(null) {
+                    value =
+                        services.core.await().also {
+                            be.alwyapps.watch.together.TogetherInbox
+                                .setCore(it)
+                        }
+                }
                 Box(Modifier.fillMaxSize().background(Background)) {
                     core?.let { c ->
                         androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalCore provides c) {
@@ -158,6 +213,22 @@ private fun Root(core: AlwyWatch) {
         // Re-create screens when the account changes (different server, different cache keys).
         key(acct, synced) {
             CompositionLocalProvider(LocalAccount provides acct) {
+                // Over every screen: the one-time welcome step, then invitations to watch together.
+                be.alwyapps.watch.ui.screens
+                    .ProfileWelcome()
+                if (!be.alwyapps.watch.ui.screens
+                        .welcomeShowing()
+                ) {
+                    be.alwyapps.watch.ui.screens
+                        .InvitationPrompt()
+                }
+                val openRoom = be.alwyapps.watch.together.TogetherInbox.openRoom
+                androidx.compose.runtime.LaunchedEffect(openRoom) {
+                    if (openRoom != null) {
+                        be.alwyapps.watch.together.TogetherInbox.openRoom = null
+                        nav.push(Route.Room(openRoom))
+                    }
+                }
                 AppScaffold {
                     // One initial focus per screen visit (see initialFocus).
                     val focusDone = remember(nav.current) { mutableStateOf(false) }
@@ -225,6 +296,9 @@ private fun Root(core: AlwyWatch) {
                                 Route.Together ->
                                     be.alwyapps.watch.ui.screens
                                         .TogetherScreen()
+                                is Route.Room ->
+                                    be.alwyapps.watch.ui.screens
+                                        .RoomScreen(r.code)
                                 Route.Watchlist ->
                                     be.alwyapps.watch.ui.screens
                                         .WatchlistScreen()

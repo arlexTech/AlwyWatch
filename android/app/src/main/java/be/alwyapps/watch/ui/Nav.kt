@@ -33,8 +33,13 @@ sealed interface Route {
     /** The watchlist (Plex) / favorites (Jellyfin) of the home's servers. */
     data object Watchlist : Route
 
-    /** Watch together: join a room with its code. */
+    /** Watch together: my rooms and the invitations I got. */
     data object Together : Route
+
+    /** A watch together room (waiting room, people, invitations). */
+    data class Room(
+        val code: String,
+    ) : Route
 
     /** Copy watch history from one server to another. */
     data object HistoryCopy : Route
@@ -106,6 +111,7 @@ sealed interface Route {
             KeepAdmin -> "keep-admin"
             KeepForever -> "keep-forever"
             Together -> "together"
+            is Room -> "room\u001f$code"
             Watchlist -> "watchlist"
             HistoryCopy -> "history-copy"
             is SettingsSection -> "settings-section\u001f$id"
@@ -135,6 +141,7 @@ sealed interface Route {
                 "keep-admin" -> KeepAdmin
                 "keep-forever" -> KeepForever
                 "together" -> Together
+                "room" -> p.getOrNull(1)?.let { Room(it) }
                 "watchlist" -> Watchlist
                 "history-copy" -> HistoryCopy
                 "settings-section" -> p.getOrNull(1)?.let { SettingsSection(it) }

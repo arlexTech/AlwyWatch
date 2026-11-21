@@ -577,6 +577,10 @@ fun KeepAdminScreen() {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { linking = null },
             containerColor = be.alwyapps.watch.ui.Background,
+            icon = {
+                be.alwyapps.watch.ui
+                    .Avatar(u.avatar, u.name, u.userKey, 48.dp)
+            },
             title = { Text("Requests of ${u.name}") },
             text = {
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
@@ -718,14 +722,19 @@ fun KeepAdminScreen() {
                     }
                     val r = u.rights
                     Column(Modifier.padding(bottom = 12.dp)) {
+                        val sameName = users.orEmpty().count { it.name.equals(u.name, true) } > 1
                         be.alwyapps.watch.ui.ListRow(
                             u.name + if (u.isAdmin) " · admin" else "",
                             subtitle =
-                                listOf(
+                                listOfNotNull(
+                                    u.mediaName.takeIf { it.isNotEmpty() && (sameName || !it.equals(u.name, true)) },
                                     if (u.userKey.startsWith("plex:")) "Plex" else "Jellyfin",
                                     "${u.foreverCount} kept forever",
                                 ).joinToString(" · "),
-                            icon = be.alwyapps.watch.ui.Icons.Person,
+                            leading = {
+                                be.alwyapps.watch.ui
+                                    .Avatar(u.avatar, u.name, u.userKey, if (d.isTv) 40.dp else 34.dp)
+                            },
                         )
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             item {

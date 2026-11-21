@@ -130,6 +130,9 @@ record! {
         pub host: String,
         #[serde(default)]
         pub host_avatar: crate::Avatar,
+        /// The host's user, to fetch their uploaded picture (invitations show it).
+        #[serde(default)]
+        pub host_user_key: String,
         pub media: TogetherMedia,
         /// Members' names (sorted; a user on two devices appears twice).
         pub members: Vec<String>,

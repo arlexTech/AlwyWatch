@@ -36,7 +36,6 @@ import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.Divider
 import be.alwyapps.watch.ui.Group
-import be.alwyapps.watch.ui.Icons
 import be.alwyapps.watch.ui.ListRow
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.LocalDimens
@@ -179,14 +178,23 @@ private fun PersonRow(
             p.name,
             subtitle =
                 listOfNotNull(
+                    p.mediaName.takeIf { it.isNotEmpty() && !it.equals(p.name, true) },
                     "${p.shared} shared · ${p.alone} only them",
                     p.overlaps
                         .take(3)
                         .takeIf { it.isNotEmpty() }
                         ?.joinToString(", ", prefix = "most with ") { "${it.name} (${it.both})" },
                 ).joinToString(" · "),
-            icon = Icons.Person,
-            iconTint = if (selected) Accent else be.alwyapps.watch.ui.OnSurface,
+            leading = {
+                Box(
+                    Modifier
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .then(if (selected) Modifier.background(Accent).padding(3.dp) else Modifier),
+                ) {
+                    be.alwyapps.watch.ui
+                        .Avatar(p.avatar, p.name, p.userKey, 36.dp)
+                }
+            },
             onClick = onClick,
             trailing = { Value("${p.count}") },
         )

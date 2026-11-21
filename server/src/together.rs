@@ -213,11 +213,17 @@ impl Room {
         let hosting = self.is_host_user(user_key);
         let host = self.host_name();
         let host_avatar = self.host_avatar();
+        let host_user_key = self
+            .members
+            .get(&self.state.host)
+            .map(|m| m.user_key.clone())
+            .unwrap_or_default();
         let s = self.view();
         TogetherRoom {
             code: s.code,
             host,
             host_avatar,
+            host_user_key,
             media: s.media,
             members,
             started: s.started,

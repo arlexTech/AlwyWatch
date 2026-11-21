@@ -26,6 +26,10 @@ pub const LEAVING: &str = "aw.leaving";
 pub const REQUESTS_MINE: &str = "aw.requests.mine";
 pub const REQUESTS_ALL: &str = "aw.requests.all";
 pub const REQUESTS_EVERYONE: &str = "aw.requests.everyone";
+/// My AlwyWatch profile (name, avatar), to draw it at once next time.
+const ME: &str = "aw.me";
+/// My watch-together rooms and invitations, shown at once on the next start.
+pub const TOGETHER: &str = "aw.together";
 
 fn storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok()?
@@ -44,6 +48,24 @@ pub fn save<T: Serialize>(key: &str, value: &T) {
 pub fn remove(key: &str) {
     if let Some(s) = storage() {
         let _ = s.remove_item(key);
+    }
+}
+
+/// This tab's storage: what lives as long as the tab (the seat in a watch-together room).
+fn tab_storage() -> Option<web_sys::Storage> {
+    web_sys::window()?.session_storage().ok()?
+}
+
+pub fn tab_load<T: DeserializeOwned>(key: &str) -> Option<T> {
+    serde_json::from_str(&tab_storage()?.get_item(key).ok()??).ok()
+}
+
+pub fn tab_save<T: Serialize>(key: &str, value: Option<&T>) {
+    if let Some(s) = tab_storage() {
+        let _ = match value {
+            Some(v) => s.set_item(key, &serde_json::to_string(v).unwrap_or_default()),
+            None => s.remove_item(key),
+        };
     }
 }
 
@@ -72,6 +94,16 @@ pub struct Ctx {
     pub keep: RwSignal<Option<KeepLink>>,
     /// An account a server refused (session ended): the menu offers to sign in again.
     pub expired: RwSignal<Option<String>>,
+    /// My profile on the AlwyWatch server (the linked account's).
+    pub me: RwSignal<Option<keep_service::Me>>,
+    /// The one-time welcome step (name and avatar) is to be shown.
+    pub welcome: RwSignal<bool>,
+    /// The watch-together room this tab has a seat in (kept across pages).
+    pub room: crate::together::Room,
+    /// My rooms and invitations, kept current by one long poll while linked.
+    pub invites: crate::together::Invites,
+    /// Custom avatar pictures fetched: user key → (version, blob URL once loaded).
+    pub avatars: RwSignal<HashMap<String, (u32, Option<String>)>>,
 }
 
 impl Ctx {
@@ -98,6 +130,11 @@ impl Ctx {
             accounts: RwSignal::new(load(ACCOUNTS).unwrap_or_default()),
             keep: RwSignal::new(load(KEEP)),
             expired: RwSignal::new(None),
+            me: RwSignal::new(load(ME)),
+            welcome: RwSignal::new(false),
+            room: crate::together::Room::new(),
+            invites: crate::together::Invites::new(load(TOGETHER)),
+            avatars: RwSignal::new(HashMap::new()),
         }
     }
 
@@ -165,14 +202,40 @@ impl Ctx {
         remove(HOME);
         remove(LIBS);
         if self.keep.get_untracked().is_some_and(|k| k.account == key) {
+            // The room's seat goes with the account (told while its token is still here).
+            self.room.leave("", true);
             self.set_keep(None);
-            for k in [LEAVING, REQUESTS_MINE, REQUESTS_ALL, REQUESTS_EVERYONE] {
+            self.me.set(None);
+            self.welcome.set(false);
+            for k in [
+                LEAVING,
+                REQUESTS_MINE,
+                REQUESTS_ALL,
+                REQUESTS_EVERYONE,
+                TOGETHER,
+                ME,
+            ] {
                 remove(k);
             }
         }
         if self.expired.get_untracked().as_deref() == Some(key) {
             self.expired.set(None);
         }
+    }
+
+    /// My profile as the AlwyWatch server just returned it (every profile call returns it).
+    pub fn set_me(&self, me: keep_service::Me) {
+        save(ME, &me);
+        if let Some(k) = self.keep.get_untracked()
+            && (k.user_name != me.name || k.is_admin != me.is_admin)
+        {
+            self.set_keep(Some(KeepLink {
+                user_name: me.name.clone(),
+                is_admin: me.is_admin,
+                ..k
+            }));
+        }
+        self.me.set(Some(me));
     }
 
     pub fn set_keep(&self, k: Option<KeepLink>) {
@@ -320,6 +383,9 @@ pub fn plain_keep(e: &Error) -> String {
         Error::Network { .. } => "Can't reach your AlwyWatch server right now.".into(),
         Error::Status { status } if *status >= 500 => {
             "The AlwyWatch server had a problem. Try again in a moment.".into()
+        }
+        Error::Status { status: 429 } => {
+            "Too many changes in a short time. Try again in a few minutes.".into()
         }
         other => plain(other),
     }
@@ -524,5 +590,6 @@ mod tests {
             })
             .contains("AlwyWatch")
         );
+        assert!(plain_keep(&Error::Status { status: 429 }).contains("few minutes"));
     }
 }
