@@ -214,6 +214,22 @@ pub fn open_url(url: &str) {
     }
 }
 
+/// The desktop's language ("fr" from LANG=fr_BE.UTF-8), for subtitles in "our" language;
+/// empty when unknown (Windows without LANG: only explicit settings apply).
+pub fn system_language() -> String {
+    ["LC_ALL", "LC_MESSAGES", "LANG"]
+        .iter()
+        .filter_map(|k| std::env::var(k).ok())
+        .find(|v| !v.is_empty() && v != "C" && v != "POSIX")
+        .map(|v| {
+            v.split(['_', '.', '-'])
+                .next()
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

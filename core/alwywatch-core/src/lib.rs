@@ -18,6 +18,7 @@ mod app;
 mod error;
 mod merge;
 mod playback;
+mod tracks;
 
 pub use app::*;
 pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
@@ -38,6 +39,10 @@ pub use seerr::{
     Availability, QuickConnect as SeerrQuickConnect, RequestStatus, SeerrCast, SeerrCollection,
     SeerrCollectionRef, SeerrDetails, SeerrInfo, SeerrLogin, SeerrMediaType, SeerrRequest,
     SeerrResult, SeerrSeason,
+};
+pub use tracks::{
+    TrackChoice, TrackInfo, TrackKind, TrackPref, TrackRules, choose_tracks, lang3, pick_track,
+    remembered_track, track_title_key,
 };
 
 /// Version of the core library, shown in the about screens.

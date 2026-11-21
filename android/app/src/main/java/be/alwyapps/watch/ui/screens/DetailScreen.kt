@@ -540,24 +540,43 @@ private fun TrackPills(
     val settings = remember { PlayerSettings(core, true) }
     val p = pref
 
-    fun lang(st: be.alwyapps.watch.core.media.MediaStream) =
-        be.alwyapps.watch.player
-            .lang3(st.language)
+    // The server's tracks in the player's order, numbered for the core (see TrackPrefs).
+    val streams = audio + subs
+    val infos =
+        streams.mapIndexed { i, st ->
+            be.alwyapps.watch.core.TrackInfo(
+                i.toUInt(),
+                if (st.kind == be.alwyapps.watch.core.media.StreamKind.AUDIO) {
+                    be.alwyapps.watch.core.TrackKind.AUDIO
+                } else {
+                    be.alwyapps.watch.core.TrackKind.SUBTITLE
+                },
+                st.language,
+                st.title,
+                st.isForced,
+            )
+        }
 
-    fun sameAudio(l: String?) = audio.filter { lang(it) == l }
+    fun remembered(kind: be.alwyapps.watch.core.TrackKind) =
+        p
+            ?.let {
+                be.alwyapps.watch.core
+                    .rememberedTrack(it, kind, infos)
+            }?.let { streams[it.toInt()] }
 
-    fun sameSubs(
-        l: String?,
-        forced: Boolean,
-    ) = subs.filter { lang(it) == l && it.isForced == forced }
+    fun picked(
+        kind: be.alwyapps.watch.core.TrackKind,
+        st: be.alwyapps.watch.core.media.MediaStream?,
+    ) = be.alwyapps.watch.core
+        .pickTrack(pref, kind, infos, st?.let { streams.indexOf(it).toUInt() })
+    val rememberedSubs = remembered(be.alwyapps.watch.core.TrackKind.SUBTITLE)
     val currentAudio =
-        p?.audio?.let { a ->
-            be.alwyapps.watch.player
-                .likeRemembered(sameAudio(a), p.audioTitle, p.audioNth) { it.title }
-        } ?: settings.audioLanguage.takeIf { it.isNotEmpty() }?.let { a ->
+        remembered(be.alwyapps.watch.core.TrackKind.AUDIO) ?: settings.audioLanguage.takeIf { it.isNotEmpty() }?.let { a ->
             audio.firstOrNull {
                 be.alwyapps.watch.player
-                    .lang3(it.language) == a
+                    .lang3(it.language) ==
+                    be.alwyapps.watch.player
+                        .lang3(a)
             }
         }
             ?: audio.firstOrNull { it.index == src.defaultAudioIndex } ?: audio.firstOrNull { it.isDefault } ?: audio.firstOrNull()
@@ -565,9 +584,7 @@ private fun TrackPills(
         when {
             p?.subs == "off" -> "Off"
             p?.subs != null ->
-                be.alwyapps.watch.player
-                    .likeRemembered(sameSubs(p.subs, p.forced), p.subsTitle, p.subsNth) { it.title }
-                    ?.let(::subtitleLabel) ?: (
+                rememberedSubs?.let(::subtitleLabel) ?: (
                     be.alwyapps.watch.player
                         .languageName(p.subs) ?: p.subs
                 ) + if (p.forced) " · forced" else ""
@@ -625,16 +642,7 @@ private fun TrackPills(
                 audio.map { it.index.toString() to audioLabel(it) },
                 currentAudio?.index?.toString(),
                 onPick = { k ->
-                    val st = audio.first { it.index.toString() == k }
-                    val np =
-                        (
-                            pref ?: be.alwyapps.watch.player
-                                .TrackPref()
-                        ).copy(
-                            audio = lang(st),
-                            audioTitle = st.title,
-                            audioNth = sameAudio(lang(st)).indexOf(st).takeIf { it >= 0 },
-                        )
+                    val np = picked(be.alwyapps.watch.core.TrackKind.AUDIO, audio.first { it.index.toString() == k })
                     be.alwyapps.watch.player.TrackPrefs
                         .set(core, account, key, np)
                     pref = np
@@ -649,29 +657,18 @@ private fun TrackPills(
                 when {
                     p?.subs == null -> "auto"
                     p.subs == "off" -> "off"
-                    else ->
-                        be.alwyapps.watch.player
-                            .likeRemembered(sameSubs(p.subs, p.forced), p.subsTitle, p.subsNth) { it.title }
-                            ?.index
-                            ?.toString()
+                    else -> rememberedSubs?.index?.toString()
                 },
                 onPick = { k ->
-                    val base =
-                        pref ?: be.alwyapps.watch.player
-                            .TrackPref()
                     val np =
                         when (k) {
-                            "auto" -> base.copy(subs = null, forced = false, subsTitle = null, subsNth = null)
-                            "off" -> base.copy(subs = "off", forced = false, subsTitle = null, subsNth = null)
-                            else -> {
-                                val st = subs.first { it.index.toString() == k }
-                                base.copy(
-                                    subs = lang(st) ?: "off",
-                                    forced = st.isForced,
-                                    subsTitle = st.title,
-                                    subsNth = sameSubs(lang(st), st.isForced).indexOf(st).takeIf { it >= 0 },
-                                )
-                            }
+                            "auto" ->
+                                (
+                                    pref ?: be.alwyapps.watch.core
+                                        .TrackPref(null, null, null, null, false, null, null)
+                                ).copy(subs = null, forced = false, subsTitle = null, subsNth = null)
+                            "off" -> picked(be.alwyapps.watch.core.TrackKind.SUBTITLE, null)
+                            else -> picked(be.alwyapps.watch.core.TrackKind.SUBTITLE, subs.first { it.index.toString() == k })
                         }
                     be.alwyapps.watch.player.TrackPrefs
                         .set(core, account, key, np)

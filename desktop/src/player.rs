@@ -4,7 +4,10 @@
 
 use std::time::{Duration, Instant};
 
-use alwywatch_core::{HttpRequest, PlaybackEvent, Segment, SegmentKind, playback_prompt};
+use alwywatch_core::{
+    HttpRequest, PlaybackEvent, Segment, SegmentKind, TrackInfo, TrackKind, TrackPref, TrackRules,
+    choose_tracks, pick_track, playback_prompt,
+};
 
 use crate::mpv::{self, Mpv};
 
@@ -12,7 +15,9 @@ pub struct PlayRequest {
     pub media: HttpRequest,
     pub start_ms: u64,
     pub title: String,
-    pub external_subs: Vec<String>,
+    pub external_subs: Vec<ExternalSub>,
+    /// Audio/subtitle choice for this title (shared with Android, see the core's `tracks`).
+    pub tracks: TrackSetup,
     pub spdif: bool,
     /// Skippable intro/credits (from the server), for the skip and next-episode prompts.
     pub segments: Vec<Segment>,
@@ -20,6 +25,20 @@ pub struct PlayRequest {
     pub has_previous: bool,
     pub auto_skip_intro: bool,
     pub auto_next: bool,
+}
+
+/// A subtitle file next to the media, added with its language so the choice can find it.
+pub struct ExternalSub {
+    pub url: String,
+    pub title: Option<String>,
+    pub language: Option<String>,
+}
+
+pub struct TrackSetup {
+    pub pref: Option<TrackPref>,
+    pub rules: TrackRules,
+    /// Called when the viewer switches audio or subtitles: the movie's or show's new choice.
+    pub save: Box<dyn Fn(TrackPref) + Send>,
 }
 
 /// Where to go after this one, when the viewer asked for it.
@@ -99,9 +118,6 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
             &format!("{}: {}", h.name, h.value),
         )?;
     }
-    for s in &req.external_subs {
-        m.set_option("sub-files-append", s)?;
-    }
     m.initialize()?;
     // Our keys, on top of mpv's defaults: S skips, > and < (mpv's playlist keys) and the media
     // keys change episode, C cancels the credits countdown.
@@ -140,11 +156,40 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
     let mut countdown: Option<Instant> = None;
     let mut cancelled = false;
     let mut go: Option<Go> = None;
+    let mut tracks = Tracks::default();
+    let mut pref = req.tracks.pref.clone();
+    let mut applied: (Option<String>, Option<String>) = (None, None);
     loop {
         let event = m.wait_event(0.5);
         let reason = event.reason;
         match event.id {
-            mpv::EVENT_FILE_LOADED => report(snapshot(PlaybackEvent::Start, false)),
+            mpv::EVENT_FILE_LOADED => {
+                for s in &req.external_subs {
+                    let _ = m.command(&[
+                        "sub-add",
+                        &s.url,
+                        "auto",
+                        s.title.as_deref().unwrap_or(""),
+                        s.language.as_deref().unwrap_or(""),
+                    ]);
+                }
+                tracks = read_tracks(&m);
+                let rules = TrackRules {
+                    default_audio: selected(&m, "aid")
+                        .and_then(|id| tracks.find(TrackKind::Audio, &id)),
+                    ..req.tracks.rules.clone()
+                };
+                let choice = choose_tracks(pref.clone(), rules, tracks.infos.clone());
+                if let Some(a) = choice.audio {
+                    let _ = m.command(&["set", "aid", &tracks.mpv_ids[a as usize]]);
+                }
+                let sid = choice
+                    .subtitle
+                    .map_or("no", |s| tracks.mpv_ids[s as usize].as_str());
+                let _ = m.command(&["set", "sid", sid]);
+                applied = (selected(&m, "aid"), selected(&m, "sid"));
+                report(snapshot(PlaybackEvent::Start, false));
+            }
             mpv::EVENT_END_FILE => {
                 let finished = reason == Some(mpv::END_FILE_EOF);
                 if reason == Some(mpv::END_FILE_ERROR) {
@@ -198,6 +243,25 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         let now = snapshot(PlaybackEvent::Stop, false);
         if now.duration_ms.is_some() {
             last_pos = now;
+        }
+        // The viewer switched audio or subtitles (mpv's # and j keys): remember it for the
+        // movie or the show.
+        if !tracks.infos.is_empty() {
+            let now = (selected(&m, "aid"), selected(&m, "sid"));
+            for (kind, before, after) in [
+                (TrackKind::Audio, &applied.0, &now.0),
+                (TrackKind::Subtitle, &applied.1, &now.1),
+            ] {
+                if before != after {
+                    let picked = after.as_deref().and_then(|id| tracks.find(kind, id));
+                    if after.is_none() || picked.is_some() {
+                        let p = pick_track(pref.clone(), kind, tracks.infos.clone(), picked);
+                        (req.tracks.save)(p.clone());
+                        pref = Some(p);
+                    }
+                }
+            }
+            applied = now;
         }
         let is_paused = m.get_flag("pause").unwrap_or(false);
         if is_paused != paused {
@@ -262,6 +326,59 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// mpv's audio and subtitle tracks, numbered for the core, with their mpv ids.
+#[derive(Default)]
+struct Tracks {
+    infos: Vec<TrackInfo>,
+    mpv_ids: Vec<String>,
+}
+
+impl Tracks {
+    fn find(&self, kind: TrackKind, mpv_id: &str) -> Option<u32> {
+        self.infos
+            .iter()
+            .find(|t| t.kind == kind && self.mpv_ids[t.id as usize] == mpv_id)
+            .map(|t| t.id)
+    }
+}
+
+fn read_tracks(m: &Mpv) -> Tracks {
+    let mut out = Tracks::default();
+    let count: usize = m
+        .get_string("track-list/count")
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    for i in 0..count {
+        let prop = |name: &str| {
+            m.get_string(&format!("track-list/{i}/{name}"))
+                .filter(|v| !v.is_empty())
+        };
+        let kind = match prop("type").as_deref() {
+            Some("audio") => TrackKind::Audio,
+            Some("sub") => TrackKind::Subtitle,
+            _ => continue,
+        };
+        let Some(id) = prop("id") else { continue };
+        out.infos.push(TrackInfo {
+            id: out.infos.len() as u32,
+            kind,
+            language: prop("lang"),
+            title: prop("title"),
+            forced: m
+                .get_flag(&format!("track-list/{i}/forced"))
+                .unwrap_or(false),
+        });
+        out.mpv_ids.push(id);
+    }
+    out
+}
+
+/// The selected track id of "aid"/"sid"; None when off ("no") or not decided yet.
+fn selected(m: &Mpv, prop: &str) -> Option<String> {
+    m.get_string(prop)
+        .filter(|v| !matches!(v.as_str(), "no" | "auto" | "false" | ""))
 }
 
 fn seek_to(m: &Mpv, ms: u64) {

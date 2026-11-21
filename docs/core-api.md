@@ -70,6 +70,24 @@ Protocol: [keep-protocol.md](keep-protocol.md).
 | `keep_due_reminders(now)` | "Keep until watched" reminders due now (local notifications) |
 | `keep_admin_users()`, `keep_admin_set_rights(user, Rights)`, `keep_admin_countdown(collection, stagger_days)` | Admins only |
 
+## Audio and subtitles
+
+One choice per movie or show (episodes follow), shared by every player. Besides the language, the
+track's title and its position among same-language tracks are kept, so a pack with the same naming
+and order across a season gets the same track in every episode (VFF over VFQ, full over SDH).
+
+| Function | Notes |
+|---|---|
+| `track_title_key(item)` | Movie id, or the show's id for an episode |
+| `track_pref(account, key)`, `set_track_pref(account, key, pref)` | Stored per account |
+| `choose_tracks(pref, rules, tracks)` | Once the file's tracks are known: the choice, else the settings (`player.audio_lang`, `player.sub_mode` auto/forced/always/off, `player.sub_lang`). Returns the audio to select (None: keep the player's) and the subtitle (None: off) |
+| `pick_track(pref, kind, tracks, picked)` | The new choice after the viewer picked a track (`picked` None: subtitles off) |
+| `remembered_track(pref, kind, tracks)` | The track the choice points to in a file (title page) |
+| `lang3(code)` | Any code ("fr", "fre", "fr-CA") → ISO 639-2/T |
+
+`tracks` is the player's list in file order (`TrackInfo { id, kind, language, title, forced }`);
+`id` is the player's own index, returned as is.
+
 ## Settings
 
 `get_setting(key)`, `set_setting(key, value)`: small UI state (current account, last tab).

@@ -15,7 +15,7 @@ use slint::{
 };
 
 use crate::platform::{self, Tokens};
-use crate::player::{self, PlayRequest};
+use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
 use crate::{
     AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, LeavingRow, NamedId, Page, Rail,
     SeerrPage, SeerrPanel, ServerChoice,
@@ -2645,8 +2645,26 @@ impl App {
             item.as_ref().map(|i| i.user.position_ms).unwrap_or(0)
         };
         let title = item.as_ref().map(|i| i.title.clone()).unwrap_or_default();
+        let title_key = item
+            .clone()
+            .map_or_else(|| id.clone(), alwywatch_core::track_title_key);
         let spdif = self.ui().get_spdif();
         let setting = |k: &str| self.core.get_setting(k.to_owned()).ok().flatten();
+        let track_pref = self
+            .core
+            .track_pref(account.clone(), title_key.clone())
+            .ok()
+            .flatten();
+        let track_rules = TrackRules {
+            audio_language: setting("player.audio_lang").unwrap_or_default(),
+            subtitle_mode: setting("player.sub_mode")
+                .filter(|m| !m.is_empty())
+                .unwrap_or_else(|| "auto".into()),
+            subtitle_language: setting("player.sub_lang")
+                .filter(|l| !l.is_empty())
+                .unwrap_or_else(platform::system_language),
+            default_audio: None,
+        };
         let auto_skip_intro = setting("player.auto_skip_intro").as_deref() == Some("1");
         let auto_next = setting("player.auto_next").as_deref() != Some("0");
         let local = self.core.downloaded_file(account.clone(), id.clone());
@@ -2696,7 +2714,13 @@ impl App {
                 .streams
                 .iter()
                 .filter(|s| s.kind == StreamKind::Subtitle)
-                .filter_map(|s| s.external.as_ref().map(|r| r.url.clone()))
+                .filter_map(|s| {
+                    s.external.as_ref().map(|r| ExternalSub {
+                        url: r.url.clone(),
+                        title: s.title.clone(),
+                        language: s.language.clone(),
+                    })
+                })
                 .collect();
             // Episodes around this one and skippable parts (both cached: they work offline).
             let adjacent = core
@@ -2715,6 +2739,16 @@ impl App {
                 start_ms,
                 title,
                 external_subs: subs,
+                tracks: TrackSetup {
+                    pref: track_pref,
+                    rules: track_rules,
+                    save: {
+                        let (core, account, key) = (core.clone(), account.clone(), title_key);
+                        Box::new(move |p| {
+                            let _ = core.set_track_pref(account.clone(), key.clone(), p);
+                        })
+                    },
+                },
                 spdif,
                 segments: segments.unwrap_or_default(),
                 has_next: next.is_some(),

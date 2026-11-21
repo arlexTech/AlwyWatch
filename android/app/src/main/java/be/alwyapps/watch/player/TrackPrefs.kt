@@ -7,82 +7,30 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import be.alwyapps.watch.core.AlwyWatch
+import be.alwyapps.watch.core.TrackInfo
+import be.alwyapps.watch.core.TrackKind
+import be.alwyapps.watch.core.TrackPref
+import be.alwyapps.watch.core.TrackRules
+import be.alwyapps.watch.core.chooseTracks
 import be.alwyapps.watch.core.media.Item
-import be.alwyapps.watch.core.media.ItemKind
 
 /**
- * Audio and subtitle choices, like Plex: one per movie or per show (the episodes follow), picked
- * on the title page or in the player; otherwise the languages and subtitle mode of the settings.
+ * Audio and subtitle choices, like Plex: one per movie or per show (the episodes follow, by the
+ * track's title and position, see the core's `tracks` module), picked on the title page or in
+ * the player; otherwise the languages and subtitle mode of the settings. This file only maps
+ * Media3 tracks to the core's neutral track list and back.
  */
-data class TrackPref(
-    /** Audio language (ISO 639-2/T) and track title when several share it. */
-    val audio: String? = null,
-    val audioTitle: String? = null,
-    /** Null: the settings decide; "off"; or a language, with [forced] for signs-only tracks. */
-    val subs: String? = null,
-    val forced: Boolean = false,
-    /**
-     * Position among the tracks of the same language (and kind, for subtitles), and the subtitle's
-     * title: a season or a show is usually packed by one person with the same naming and order,
-     * so "the second French track, titled VFQ" finds the same track in every episode.
-     */
-    val audioNth: Int? = null,
-    val subsTitle: String? = null,
-    val subsNth: Int? = null,
-) {
-    fun encode() =
-        listOf(
-            audio.orEmpty(),
-            audioTitle.orEmpty(),
-            subs.orEmpty(),
-            if (forced) "1" else "",
-            audioNth?.toString().orEmpty(),
-            subsTitle.orEmpty(),
-            subsNth?.toString().orEmpty(),
-        ).joinToString("\u001f")
-
-    companion object {
-        fun decode(s: String?): TrackPref? {
-            val p = s?.split('\u001f') ?: return null
-            if (p.size < 4) return null
-            return TrackPref(
-                p[0].ifEmpty { null },
-                p[1].ifEmpty { null },
-                p[2].ifEmpty { null },
-                p[3] == "1",
-                p.getOrNull(4)?.toIntOrNull(),
-                p.getOrNull(5)?.ifEmpty { null },
-                p.getOrNull(6)?.toIntOrNull(),
-            )
-        }
-    }
-}
-
-/**
- * The track like the remembered one among [same] (the tracks of its language and kind, in file
- * order): same title, else same position, else the first.
- */
-fun <T> likeRemembered(
-    same: List<T>,
-    title: String?,
-    nth: Int?,
-    titleOf: (T) -> String?,
-): T? {
-    val t = title?.trim()?.lowercase()
-    return same.firstOrNull { t != null && titleOf(it)?.trim()?.lowercase() == t }
-        ?: nth?.let { same.getOrNull(it) }
-        ?: same.firstOrNull()
-}
-
 object TrackPrefs {
     /** Episodes share their show's choice. */
-    fun titleKey(item: Item): String = if (item.kind == ItemKind.EPISODE) item.seriesId ?: item.id else item.id
+    fun titleKey(item: Item): String =
+        be.alwyapps.watch.core
+            .trackTitleKey(item)
 
     fun get(
         core: AlwyWatch,
         account: String,
         titleKey: String,
-    ): TrackPref? = TrackPref.decode(runCatching { core.getSetting("tracks.$account.$titleKey") }.getOrNull())
+    ): TrackPref? = runCatching { core.trackPref(account, titleKey) }.getOrNull()
 
     fun set(
         core: AlwyWatch,
@@ -90,7 +38,7 @@ object TrackPrefs {
         titleKey: String,
         pref: TrackPref,
     ) {
-        runCatching { core.setSetting("tracks.$account.$titleKey", pref.encode()) }
+        runCatching { core.setTrackPref(account, titleKey, pref) }
     }
 
     /** The version (media source) chosen for an item, if any. */
@@ -110,46 +58,10 @@ object TrackPrefs {
     }
 }
 
-/** Bibliographic ISO 639-2 codes (what servers often send) → terminology codes (what Java uses). */
-private val BIBLIOGRAPHIC =
-    mapOf(
-        "fre" to "fra",
-        "ger" to "deu",
-        "dut" to "nld",
-        "chi" to "zho",
-        "cze" to "ces",
-        "gre" to "ell",
-        "per" to "fas",
-        "rum" to "ron",
-        "slo" to "slk",
-        "alb" to "sqi",
-        "arm" to "hye",
-        "baq" to "eus",
-        "bur" to "mya",
-        "geo" to "kat",
-        "ice" to "isl",
-        "mac" to "mkd",
-        "mao" to "mri",
-        "may" to "msa",
-        "tib" to "bod",
-        "wel" to "cym",
-    )
-
 /** Any language code ("fr", "fre", "fra", "fr-FR") → ISO 639-2/T ("fra"); null when unknown. */
-fun lang3(code: String?): String? {
-    val c =
-        code
-            ?.trim()
-            ?.lowercase()
-            ?.substringBefore('-')
-            ?.substringBefore('_')
-            ?.takeIf { it.isNotEmpty() && it != "und" && it != "unknown" } ?: return null
-    BIBLIOGRAPHIC[c]?.let { return it }
-    return runCatching {
-        @Suppress("DEPRECATION")
-        java.util.Locale(c).isO3Language
-    }.getOrNull()?.ifEmpty { null } ?: c
-}
+fun lang3(code: String?): String? =
+    be.alwyapps.watch.core
+        .lang3(code)
 
 /** A language's name in the device language ("French"). */
 fun languageName(code: String?): String? {
@@ -164,6 +76,37 @@ fun languageName(code: String?): String? {
 
 private fun isForced(f: Format) = f.selectionFlags and C.SELECTION_FLAG_FORCED != 0
 
+/** A player's playable audio and text tracks, in file order, numbered for the core. */
+class PlayerTracks(
+    tracks: Tracks,
+) {
+    val refs = mutableListOf<Pair<Tracks.Group, Int>>()
+    val infos = mutableListOf<TrackInfo>()
+
+    init {
+        for (g in tracks.groups) {
+            val kind =
+                when (g.type) {
+                    C.TRACK_TYPE_AUDIO -> TrackKind.AUDIO
+                    C.TRACK_TYPE_TEXT -> TrackKind.SUBTITLE
+                    else -> continue
+                }
+            for (i in 0 until g.length) {
+                if (!g.isTrackSupported(i)) continue
+                val f = g.getTrackFormat(i)
+                infos += TrackInfo(refs.size.toUInt(), kind, f.language, f.label, isForced(f))
+                refs += g to i
+            }
+        }
+    }
+
+    fun idOf(format: Format): UInt? =
+        refs
+            .indexOfFirst { (g, i) -> g.getTrackFormat(i).let { it.id == format.id && it.label == format.label && it.language == format.language } }
+            .takeIf { it >= 0 }
+            ?.toUInt()
+}
+
 /**
  * Picks audio and subtitles once the file's tracks are known: the title's choice, else the
  * settings (audio language; subtitles automatic/forced/always/off in the subtitle language).
@@ -173,91 +116,37 @@ fun applyTrackPrefs(
     pref: TrackPref?,
     settings: PlayerSettings,
 ) {
-    val tracks = p.currentTracks
-    val b = p.trackSelectionParameters.buildUpon()
-
-    /** Playable tracks of a type, in file order. */
-    fun all(type: Int): List<Pair<Tracks.Group, Int>> =
-        tracks.groups.filter { it.type == type }.flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { g to it } }
-
-    fun Pair<Tracks.Group, Int>.format() = first.getTrackFormat(second)
-
-    fun find(
-        type: Int,
-        match: (Format) -> Boolean,
-    ): Pair<Tracks.Group, Int>? = all(type).firstOrNull { match(it.format()) }
-
-    // Audio.
-    val wantAudio = pref?.audio ?: lang3(settings.audioLanguage)
-    var audioLang: String? = null
-    if (wantAudio != null) {
-        val same = all(C.TRACK_TYPE_AUDIO).filter { lang3(it.format().language) == wantAudio }
-        val hit =
-            if (pref?.audio != null) likeRemembered(same, pref.audioTitle, pref.audioNth) { it.format().label } else same.firstOrNull()
-        if (hit != null) {
-            b.setOverrideForType(TrackSelectionOverride(hit.first.mediaTrackGroup, hit.second))
-            audioLang = wantAudio
-        }
-    }
-    if (audioLang == null) {
-        audioLang =
-            tracks.groups
-                .firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
-                ?.let { g -> (0 until g.length).firstOrNull { g.isTrackSelected(it) }?.let { lang3(g.getTrackFormat(it).language) } }
-    }
-
-    // Subtitles.
-    val subLang =
-        lang3(
+    val tracks = PlayerTracks(p.currentTracks)
+    val default =
+        tracks.refs
+            .indexOfFirst { (g, i) -> g.type == C.TRACK_TYPE_AUDIO && g.isTrackSelected(i) }
+            .takeIf { it >= 0 }
+            ?.toUInt()
+    val rules =
+        TrackRules(
+            settings.audioLanguage,
+            settings.subtitleMode,
             settings.subtitleLanguage.ifEmpty {
                 java.util.Locale
                     .getDefault()
                     .language
             },
+            default,
         )
-
-    fun pick(
-        lang: String?,
-        forcedOnly: Boolean,
-    ): Boolean {
-        val hit =
-            if (forcedOnly) {
-                find(C.TRACK_TYPE_TEXT) { isForced(it) && (lang == null || lang3(it.language) == lang) }
-            } else {
-                find(C.TRACK_TYPE_TEXT) { !isForced(it) && lang3(it.language) == lang }
-                    ?: find(C.TRACK_TYPE_TEXT) { lang3(it.language) == lang }
-            }
-        if (hit == null) return false
-        b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-        b.setOverrideForType(TrackSelectionOverride(hit.first.mediaTrackGroup, hit.second))
-        return true
+    val choice = chooseTracks(pref, rules, tracks.infos)
+    val b = p.trackSelectionParameters.buildUpon()
+    choice.audio?.let { id ->
+        val (g, i) = tracks.refs[id.toInt()]
+        b.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
     }
-
-    fun off() {
+    val sub = choice.subtitle
+    if (sub == null) {
         b.clearOverridesOfType(C.TRACK_TYPE_TEXT)
         b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-    }
-
-    // The remembered subtitle: same language and kind, then same title or position.
-    fun pickRemembered(pref: TrackPref): Boolean {
-        val same = all(C.TRACK_TYPE_TEXT).filter { lang3(it.format().language) == pref.subs && isForced(it.format()) == pref.forced }
-        val hit = likeRemembered(same, pref.subsTitle, pref.subsNth) { it.format().label } ?: return pick(pref.subs, pref.forced)
+    } else {
+        val (g, i) = tracks.refs[sub.toInt()]
         b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-        b.setOverrideForType(TrackSelectionOverride(hit.first.mediaTrackGroup, hit.second))
-        return true
-    }
-
-    val chosen = pref?.subs
-    when {
-        chosen == "off" -> off()
-        chosen != null -> if (!pickRemembered(pref)) off()
-        settings.subtitleMode == "off" -> off()
-        settings.subtitleMode == "always" -> if (!pick(subLang, false)) off()
-        settings.subtitleMode == "forced" -> if (!pick(audioLang, true)) off()
-        // Automatic: the audio is in another language than ours → subtitles in ours; else only
-        // forced ones (signs, foreign dialogue).
-        audioLang != null && subLang != null && audioLang != subLang -> if (!pick(subLang, false) && !pick(audioLang, true)) off()
-        else -> if (!pick(audioLang, true)) off()
+        b.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
     }
     p.trackSelectionParameters = b.build()
 }

@@ -40,6 +40,7 @@ pub const EVENT_END_FILE: c_int = 7;
 pub const EVENT_FILE_LOADED: c_int = 8;
 pub const END_FILE_EOF: c_int = 0;
 pub const END_FILE_ERROR: c_int = 4;
+const FORMAT_STRING: c_int = 1;
 const FORMAT_FLAG: c_int = 3;
 const FORMAT_DOUBLE: c_int = 5;
 
@@ -53,6 +54,7 @@ struct Api {
     wait_event: unsafe extern "C" fn(*mut MpvHandle, c_double) -> *mut MpvEvent,
     terminate_destroy: unsafe extern "C" fn(*mut MpvHandle),
     error_string: unsafe extern "C" fn(c_int) -> *const c_char,
+    free: unsafe extern "C" fn(*mut c_void),
 }
 
 #[cfg(windows)]
@@ -95,6 +97,7 @@ unsafe fn load(lib: Library) -> Result<Api, String> {
         wait_event: sym!(b"mpv_wait_event\0"),
         terminate_destroy: sym!(b"mpv_terminate_destroy\0"),
         error_string: sym!(b"mpv_error_string\0"),
+        free: sym!(b"mpv_free\0"),
         _lib: lib,
     })
 }
@@ -168,6 +171,28 @@ impl Mpv {
             )
         };
         (rc >= 0).then_some(v)
+    }
+
+    /// A property as text ("track-list/0/lang", "aid" → "1" or "no").
+    pub fn get_string(&self, name: &str) -> Option<String> {
+        let n = cstr(name).ok()?;
+        let mut v: *mut c_char = ptr::null_mut();
+        // SAFETY: MPV_FORMAT_STRING writes a heap string we own and release with mpv_free.
+        let rc = unsafe {
+            (self.api.get_property)(
+                self.h,
+                n.as_ptr(),
+                FORMAT_STRING,
+                (&mut v as *mut *mut c_char).cast(),
+            )
+        };
+        if rc < 0 || v.is_null() {
+            return None;
+        }
+        // SAFETY: `v` is a valid NUL-terminated string until freed just below.
+        let out = unsafe { CStr::from_ptr(v) }.to_string_lossy().into_owned();
+        unsafe { (self.api.free)(v.cast()) };
+        Some(out)
     }
 
     pub fn get_flag(&self, name: &str) -> Option<bool> {

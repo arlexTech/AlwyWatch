@@ -790,31 +790,15 @@ class PlayerActivity : ComponentActivity() {
         type: Int,
         format: androidx.media3.common.Format?,
     ) {
-        val old = TrackPrefs.get(core, account, trackKey) ?: TrackPref()
-
-        fun forced(f: androidx.media3.common.Format) = f.selectionFlags and C.SELECTION_FLAG_FORCED != 0
-
-        // Its position among the same-language (same-kind) tracks, so the next episodes of a pack
-        // with the same layout get the same track even when titles differ slightly.
-        fun nth(f: androidx.media3.common.Format): Int? {
-            val same =
-                player
-                    ?.currentTracks
-                    ?.groups
-                    ?.filter { it.type == type }
-                    ?.flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { g.getTrackFormat(it) } }
-                    ?.filter { lang3(it.language) == lang3(f.language) && (type == C.TRACK_TYPE_AUDIO || forced(it) == forced(f)) }
-                    ?: return null
-            return same.indexOfFirst { it.id == f.id && it.label == f.label }.takeIf { it >= 0 }
-        }
+        // The core remembers its title and position among same-language tracks, so the next
+        // episodes of a pack with the same layout get the same track.
+        val tracks = PlayerTracks(player?.currentTracks ?: return)
+        val kind = if (type == C.TRACK_TYPE_AUDIO) be.alwyapps.watch.core.TrackKind.AUDIO else be.alwyapps.watch.core.TrackKind.SUBTITLE
+        val picked = format?.let { tracks.idOf(it) }
+        if (format != null && picked == null) return
         val pref =
-            if (type == C.TRACK_TYPE_AUDIO) {
-                format?.let { old.copy(audio = lang3(it.language), audioTitle = it.label, audioNth = nth(it)) } ?: old
-            } else if (format == null) {
-                old.copy(subs = "off", forced = false, subsTitle = null, subsNth = null)
-            } else {
-                old.copy(subs = lang3(format.language) ?: "off", forced = forced(format), subsTitle = format.label, subsNth = nth(format))
-            }
+            be.alwyapps.watch.core
+                .pickTrack(TrackPrefs.get(core, account, trackKey), kind, tracks.infos, picked)
         TrackPrefs.set(core, account, trackKey, pref)
     }
 
