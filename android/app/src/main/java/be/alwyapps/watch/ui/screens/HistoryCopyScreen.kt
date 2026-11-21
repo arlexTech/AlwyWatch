@@ -65,8 +65,20 @@ fun HistoryCopyScreen() {
         progress = null
     }
 
+    // The progress lives in a notification: ask once (Android 13+), then check either way.
+    val notify =
+        androidx.activity.compose.rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts
+                .RequestPermission(),
+        ) { }
+
     fun check() {
         if (from == to) return
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         job.from = from
         job.to = to
         job.check(ctx, from, to)
