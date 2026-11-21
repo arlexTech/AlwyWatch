@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -213,6 +214,8 @@ fun ItemMenu(
     val played = item.user.played
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
+        // Fully open: half open, the rows below the fold took the focus out of sight (TV).
+        sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = Background,
         // On TV the handle would take the focus first (it is only for touch).
         dragHandle =
@@ -227,7 +230,13 @@ fun ItemMenu(
                 )
             },
     ) {
-        Column(Modifier.ignoreHeldOk().padding(bottom = 24.dp).navigationBarsPadding()) {
+        Column(
+            Modifier
+                .ignoreHeldOk()
+                .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                .padding(bottom = 24.dp)
+                .navigationBarsPadding(),
+        ) {
             Text(
                 if (item.kind == ItemKind.EPISODE) "${item.seriesTitle ?: ""} · ${item.subtitle()}" else item.title,
                 Modifier.padding(horizontal = 20.dp, vertical = 8.dp),

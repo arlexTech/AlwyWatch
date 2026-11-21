@@ -202,37 +202,40 @@ fun LeavingSoonRail() {
                     .IconAction(be.alwyapps.watch.ui.Icons.ChevronRight, "See all", { nav.push(Route.LeavingSoon) })
             }
         }
-        LazyRow(contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(d.railSpacing)) {
-            items(items, key = { it.key }) { item ->
-                Column(Modifier.width(d.posterWidth)) {
-                    FocusCard(onClick = { nav.push(Route.LeavingSoon) }) {
-                        UrlImage(item.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
-                        val (label, urgent) = item.shortLabel()
-                        be.alwyapps.watch.ui.Badge(
-                            label,
-                            Modifier.align(Alignment.TopStart).padding(8.dp),
-                            color = if (urgent) be.alwyapps.watch.ui.Danger else Color.Black.copy(alpha = 0.6f),
-                        )
-                    }
-                    if (!d.isTv) {
-                        Text(
-                            item.title,
-                            Modifier.padding(top = 8.dp),
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            listOfNotNull(
-                                item.year?.toString(),
-                                item.kind.replaceFirstChar {
-                                    it.uppercase()
-                                },
-                            ).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Muted,
-                            maxLines = 1,
-                        )
+        // Like the other rows on TV: the focused card at a fixed spot, clear of the side menu.
+        be.alwyapps.watch.ui.TvScrollSpec(leading = d.gutter) {
+            LazyRow(contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(d.railSpacing)) {
+                items(items, key = { it.key }) { item ->
+                    Column(Modifier.width(d.posterWidth)) {
+                        FocusCard(onClick = { nav.push(Route.LeavingSoon) }) {
+                            UrlImage(item.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+                            val (label, urgent) = item.shortLabel()
+                            be.alwyapps.watch.ui.Badge(
+                                label,
+                                Modifier.align(Alignment.TopStart).padding(8.dp),
+                                color = if (urgent) be.alwyapps.watch.ui.Danger else Color.Black.copy(alpha = 0.6f),
+                            )
+                        }
+                        if (!d.isTv) {
+                            Text(
+                                item.title,
+                                Modifier.padding(top = 8.dp),
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                listOfNotNull(
+                                    item.year?.toString(),
+                                    item.kind.replaceFirstChar {
+                                        it.uppercase()
+                                    },
+                                ).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Muted,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }
