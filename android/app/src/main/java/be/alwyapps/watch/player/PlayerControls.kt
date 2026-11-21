@@ -306,7 +306,12 @@ fun PlayerOverlay(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val small = if (tv) 44 else 52
-                        if (ui.hasPrevious) RoundButton(Icons.SkipPrevious, "Previous episode", onPrevious, size = small)
+                        // An empty slot when there is none, so play/pause stays in the middle.
+                        if (ui.hasPrevious) {
+                            RoundButton(Icons.SkipPrevious, "Previous episode", onPrevious, size = small)
+                        } else {
+                            Spacer(Modifier.size(small.dp))
+                        }
                         RoundButton(Icons.Replay10, "Back 10 seconds", {
                             player()?.seekBack()
                             ui.poke()
@@ -321,12 +326,17 @@ fun PlayerOverlay(
                             size = if (tv) 60 else 72,
                             modifier = Modifier.focusRequester(playFocus),
                             emphasized = true,
+                            loading = ui.buffering,
                         )
                         RoundButton(Icons.Forward30, "Forward 30 seconds", {
                             player()?.seekForward()
                             ui.poke()
                         }, size = small)
-                        if (ui.hasNext) RoundButton(Icons.SkipNext, "Next episode", onNext, size = small)
+                        if (ui.hasNext) {
+                            RoundButton(Icons.SkipNext, "Next episode", onNext, size = small)
+                        } else {
+                            Spacer(Modifier.size(small.dp))
+                        }
                     }
                     Spacer(Modifier.weight(1f))
                     // Bottom: seek bar, times, extra actions.
@@ -470,7 +480,8 @@ fun PlayerOverlay(
                 Text(note ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White)
             }
         }
-        if (ui.buffering) {
+        // With the controls open, loading is the ring around play/pause instead (no overlap).
+        if (ui.buffering && !ui.visible) {
             Box(
                 Modifier
                     .align(Alignment.Center)
@@ -522,6 +533,8 @@ private fun RoundButton(
     size: Int,
     modifier: Modifier = Modifier,
     emphasized: Boolean = false,
+    /** Loading: a spinning ring around the button. */
+    loading: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -540,6 +553,13 @@ private fun RoundButton(
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, label, Modifier.size((size * 0.5f).dp), tint = if (focused) Color.Black else Color.White)
+        if (loading) {
+            androidx.compose.material3.CircularProgressIndicator(
+                Modifier.fillMaxSize(),
+                color = if (focused) Color.Black.copy(alpha = 0.6f) else Color.White,
+                strokeWidth = 3.dp,
+            )
+        }
     }
 }
 
