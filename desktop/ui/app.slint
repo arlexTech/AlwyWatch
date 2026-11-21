@@ -136,7 +136,27 @@ export struct AdminRow {
     max-days: string,
 }
 
-export enum Page { add, home, library, detail, search, mylist, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin, together }
+/// A profile of this computer (Settings → Profiles, and "Who's watching?" at start).
+export struct ProfileRow {
+    id: string,
+    name: string,
+    initial: string,
+    /// Avatar colours (0 to 3), derived from the name.
+    tone: int,
+    has-pin: bool,
+    current: bool,
+    removable: bool,
+}
+
+/// An account to copy watch history from or to.
+export struct AccountChoice {
+    id: string,
+    title: string,
+    server: string, // plex | jellyfin
+    selected: bool,
+}
+
+export enum Page { add, home, library, detail, search, mylist, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin, together, profiles, historycopy }
 
 export global Palette {
     out property <color> bg: #09090c;
@@ -162,9 +182,12 @@ component Icon inherits Image {
 // A focusable, clickable surface: Enter/Space activate; focus and hover are always visible.
 component Focusable inherits Rectangle {
     in property <bool> primary: false;
+    /// Takes the keyboard when it appears (first tile of "Who's watching?").
+    in property <bool> autofocus: false;
     out property <bool> active: fs.has-focus || ta.has-hover;
     callback clicked();
     callback focused();
+    init => { if root.autofocus { fs.focus(); } }
     border-radius: 14px;
     fs := FocusScope {
         key-pressed(e) => {
@@ -484,6 +507,56 @@ component RailView {
     }
 }
 
+// Round initial with colours derived from the name (same palette as Android).
+component Avatar inherits Rectangle {
+    in property <string> initial;
+    in property <int> tone;
+    in property <length> size: 40px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    background: root.tone == 1 ? @linear-gradient(135deg, #5b8cff 0%, #9b5bff 100%)
+        : root.tone == 2 ? @linear-gradient(135deg, #3ddc97 0%, #14a3c7 100%)
+        : root.tone == 3 ? @linear-gradient(135deg, #ff5a8a 0%, #ff9f5a 100%)
+        : @linear-gradient(135deg, #ffb224 0%, #ff6a3d 100%);
+    Text { text: root.initial; color: #000; font-size: root.size * 0.42; font-weight: 800; }
+}
+
+// "Who's watching?": the whole tile (avatar and name) is the target.
+component ProfileTile inherits Focusable {
+    in property <ProfileRow> profile;
+    width: 150px;
+    height: 190px;
+    border-radius: 20px;
+    background: root.active ? Palette.surface-high : transparent;
+    border-width: root.active ? 2px : 0px;
+    border-color: #ffffff;
+    VerticalLayout {
+        padding: 12px;
+        spacing: 10px;
+        alignment: center;
+        HorizontalLayout { alignment: center; Avatar { initial: root.profile.initial; tone: root.profile.tone; size: 96px; } }
+        Text { text: root.profile.name; color: Palette.text; font-size: 16px; font-weight: 700; horizontal-alignment: center; overflow: elide; }
+        Text { text: root.profile.has-pin ? "PIN" : " "; color: Palette.muted; font-size: 11px; font-weight: 800; horizontal-alignment: center; }
+    }
+}
+
+// One account in a "From" / "To" list: its server mark, its name, a check when chosen.
+component AccountChoiceRow inherits Focusable {
+    in property <AccountChoice> choice;
+    height: 48px;
+    border-radius: 12px;
+    background: root.active ? Palette.surface-high : (root.choice.selected ? #ffb2241f : transparent);
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 12px;
+        ServerMark { server: root.choice.server; y: (parent.height - self.height) / 2; }
+        Text { text: root.choice.title; color: root.choice.selected ? Palette.accent : Palette.text; font-weight: root.choice.selected ? 700 : 600; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+        if root.choice.selected : Icon { source: @image-url("icons/check.svg"); tint: Palette.accent; y: (parent.height - self.height) / 2; }
+    }
+}
+
 // Grouped settings card.
 component Group inherits VerticalLayout {
     in property <string> title;
@@ -689,10 +762,45 @@ export component AppWindow inherits Window {
     callback triage-vote(string);       // choice
     callback admin-rights(string, string); // user key, field
     callback admin-countdown(string, int); // collection id, stagger days
+    // Profiles
+    in property <[ProfileRow]> profiles;
+    in property <string> profile-name; // the one in use
+    in property <bool> profile-auto;
+    in property <string> profile-dialog; // "" | add | rename | pin | switch | remove
+    in property <ProfileRow> profile-target;
+    in-out property <string> profile-input; // the dialog's name or PIN field
+    in property <string> profile-message;
+    in property <bool> profile-gate; // "Who's watching?" before the app
+    in property <bool> profile-gate-back; // the gate's PIN step can go back to the tiles
+    callback profile-open(string); // switch to (or, at start, pick) a profile
+    callback profile-dialog-open(string, string); // kind, profile id
+    callback profile-submit();
+    callback profile-edited(string);
+    callback profile-pin-remove();
+    callback profile-cancel();
+    callback profile-auto-toggle();
+    // Copy watch history
+    in property <[AccountChoice]> history-from;
+    in property <[AccountChoice]> history-to;
+    in property <string> history-state: "idle"; // idle | running | plan | done
+    in property <string> history-step;
+    in property <float> history-progress: -1; // -1: not known yet
+    in property <string> history-summary;
+    in property <string> history-detail;
+    in property <string> history-copy-label; // "" when there is nothing to copy
+    in property <string> history-missing; // titles the destination doesn't have, one per line
+    in property <bool> history-show-missing;
+    in property <string> history-error;
+    callback history-pick(string, string); // from | to, account id
+    callback history-check();
+    callback history-copy();
+    callback history-toggle-missing();
 
     // Arrow keys and Escape not consumed by a focused element end up here.
     FocusScope {
+        visible: !root.profile-gate;
         key-pressed(e) => {
+            if (e.text == Key.Escape && root.profile-dialog != "") { root.profile-cancel(); return accept; }
             if (e.text == Key.Escape || (e.text == Key.Backspace && !e.modifiers.control)) {
                 if (root.can-go-back) { root.back(); return accept; }
             }
@@ -743,7 +851,7 @@ export component AppWindow inherits Window {
                     }
                     if root.seerr-active : NavItem { label: "Requests"; icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
                     NavItem { label: "Downloads"; icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
-                    NavItem { label: "Settings"; icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings; clicked => { root.go(Page.settings); } }
+                    NavItem { label: "Settings"; icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings || root.page == Page.profiles || root.page == Page.historycopy; clicked => { root.go(Page.settings); } }
                 }
             }
 
@@ -1626,6 +1734,98 @@ export component AppWindow inherits Window {
                         }
                     }
 
+                    if root.page == Page.profiles : ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 20px;
+                            alignment: start;
+                            PageTitle { title: "Profiles"; }
+                            Text {
+                                text: "Several people on this computer: each profile has its own servers, history and settings. Downloads are shared.";
+                                color: Palette.muted;
+                                wrap: word-wrap;
+                            }
+                            Group {
+                                for p in root.profiles : HorizontalLayout {
+                                    spacing: 12px;
+                                    Avatar { initial: p.initial; tone: p.tone; size: 40px; y: (parent.height - self.height) / 2; }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: p.name; color: Palette.text; font-weight: 700; }
+                                        if p.has-pin : Text { text: "Protected by a PIN"; color: Palette.muted; font-size: 12px; }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    if p.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
+                                    if p.current : Button { label: "Rename"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("rename", p.id); } }
+                                    if p.current : Button { label: p.has-pin ? "PIN" : "Set a PIN"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("pin", p.id); } }
+                                    if !p.current : Button { label: "Switch"; y: (parent.height - self.height) / 2; clicked => { root.profile-open(p.id); } }
+                                    if p.removable : IconButton { icon: @image-url("icons/delete.svg"); clicked => { root.profile-dialog-open("remove", p.id); } }
+                                }
+                                HorizontalLayout { alignment: start; Button { label: "Add a profile"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.profile-dialog-open("add", ""); } } }
+                            }
+                            if root.profiles.length > 1 : Group {
+                                SettingToggle {
+                                    title: "Sign in automatically";
+                                    subtitle: "Open the last profile used instead of asking who's watching (a PIN is still asked)";
+                                    on: root.profile-auto;
+                                    clicked => { root.profile-auto-toggle(); }
+                                }
+                            }
+                        }
+                    }
+
+                    if root.page == Page.historycopy : ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 18px;
+                            alignment: start;
+                            PageTitle { title: "Copy watch history"; }
+                            Text {
+                                text: "Marks what you watched on one server as watched on the other, and copies where you stopped. It only adds: nothing gets unmarked, and a resume point never goes back.";
+                                color: Palette.muted;
+                                wrap: word-wrap;
+                            }
+                            if root.history-from.length < 2 : Text { text: "Add both servers first (Settings → Add a server)."; color: Palette.muted; }
+                            if root.history-from.length >= 2 : Group {
+                                title: "FROM";
+                                for c in root.history-from : AccountChoiceRow { choice: c; clicked => { root.history-pick("from", c.id); } }
+                            }
+                            if root.history-from.length >= 2 : Group {
+                                title: "TO";
+                                for c in root.history-to : AccountChoiceRow { choice: c; clicked => { root.history-pick("to", c.id); } }
+                            }
+                            if root.history-state == "running" : VerticalLayout {
+                                spacing: 10px;
+                                Text { text: root.history-step; color: Palette.text; font-weight: 700; }
+                                if root.history-progress >= 0 : Progress { value: root.history-progress; }
+                                if root.history-progress < 0 : Progress { value: 0.05; }
+                                Text { text: "You can use the rest of the app meanwhile: this page shows where it is when you come back."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                            }
+                            if root.history-from.length >= 2 && root.history-state == "idle" : HorizontalLayout {
+                                alignment: start;
+                                Button { label: "Check what will change"; primary: true; has-icon: true; icon: @image-url("icons/search.svg"); clicked => { root.history-check(); } }
+                            }
+                            if root.history-summary != "" : Text { text: root.history-summary; color: Palette.text; font-size: 18px; font-weight: 700; wrap: word-wrap; }
+                            if root.history-detail != "" : Text { text: root.history-detail; color: Palette.muted; wrap: word-wrap; }
+                            if root.history-state == "plan" && root.history-copy-label != "" : HorizontalLayout {
+                                alignment: start;
+                                Button { label: root.history-copy-label; primary: true; has-icon: true; icon: @image-url("icons/check.svg"); clicked => { root.history-copy(); } }
+                            }
+                            if root.history-state == "done" : HorizontalLayout {
+                                alignment: start;
+                                Button { label: "Check again"; clicked => { root.history-check(); } }
+                            }
+                            if root.history-missing != "" && root.history-state != "running" : HorizontalLayout {
+                                alignment: start;
+                                Button { label: root.history-show-missing ? "Hide missing titles" : "Show missing titles"; clicked => { root.history-toggle-missing(); } }
+                            }
+                            if root.history-missing != "" && root.history-show-missing && root.history-state != "running" : Text { text: root.history-missing; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                            if root.history-error != "" : Text { text: root.history-error; color: Palette.danger; wrap: word-wrap; }
+                        }
+                    }
+
                     if root.page == Page.settings : ScrollView {
                         VerticalLayout {
                             padding: 40px;
@@ -1647,7 +1847,30 @@ export component AppWindow inherits Window {
                                     if a.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
                                     IconButton { icon: @image-url("icons/delete.svg"); clicked => { root.remove-account(a.id); } }
                                 }
-                                HorizontalLayout { alignment: start; Button { label: "Add a server"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.go(Page.add); } } }
+                                HorizontalLayout {
+                                    alignment: start;
+                                    spacing: 10px;
+                                    Button { label: "Add a server"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.go(Page.add); } }
+                                    if root.accounts.length >= 2 : Button { label: "Copy watch history"; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.go(Page.historycopy); } }
+                                }
+                            }
+                            Group {
+                                title: "PROFILES";
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: root.profile-name; color: Palette.text; font-weight: 700; }
+                                        Text {
+                                            text: root.profiles.length > 1 ? root.profiles.length + " profiles on this computer" : "Several people on this computer? Each profile has its own servers, history and settings.";
+                                            color: Palette.muted;
+                                            font-size: 12px;
+                                            wrap: word-wrap;
+                                        }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    Button { label: "Profiles"; has-icon: true; icon: @image-url("icons/person.svg"); y: (parent.height - self.height) / 2; clicked => { root.go(Page.profiles); } }
+                                }
                             }
                             Group {
                                 title: "ALWYWATCH SERVER";
@@ -1801,6 +2024,121 @@ export component AppWindow inherits Window {
                         clicked => { root.together-cancel(); }
                     }
                 }
+            }
+        }
+    }
+    // Profiles: add, rename, PIN, switch (PIN) and remove, over the page.
+    if root.profile-dialog != "" : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #000000b0;
+        TouchArea { }
+        FocusScope {
+            // No field to type in (remove): the dialog takes the keyboard, for Escape.
+            init => { if root.profile-dialog == "remove" { self.focus(); } }
+            key-pressed(e) => {
+                if (e.text == Key.Escape) { root.profile-cancel(); return accept; }
+                return reject;
+            }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: min(480px, root.width - 48px);
+                height: pd.preferred-height;
+                border-radius: 22px;
+                background: Palette.surface-high;
+                pd := VerticalLayout {
+                    padding: 28px;
+                    spacing: 14px;
+                    Text {
+                        text: root.profile-dialog == "add" ? "New profile"
+                            : root.profile-dialog == "rename" ? "Rename"
+                            : root.profile-dialog == "pin" ? (root.profile-target.has-pin ? "PIN for " + root.profile-target.name : "Protect " + root.profile-target.name + " with a PIN")
+                            : root.profile-dialog == "switch" ? "Switch to " + root.profile-target.name
+                            : "Remove " + root.profile-target.name + "?";
+                        color: Palette.text;
+                        font-size: 22px;
+                        font-weight: 800;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: root.profile-dialog == "add" ? "A new profile starts empty: you sign in to your servers in it."
+                            : root.profile-dialog == "pin" ? "Asked when opening this profile."
+                            : root.profile-dialog == "switch" ? "PIN for " + root.profile-target.name
+                            : root.profile-dialog == "remove" ? "Their servers, history and settings on this computer are deleted. Downloads only they wanted are deleted too."
+                            : "";
+                        color: Palette.muted;
+                        wrap: word-wrap;
+                    }
+                    if root.profile-dialog != "remove" : Field {
+                        text <=> root.profile-input;
+                        autofocus: true;
+                        placeholder: root.profile-dialog == "add" || root.profile-dialog == "rename" ? "Name"
+                            : root.profile-dialog == "pin" ? (root.profile-target.has-pin ? "New 4-digit PIN" : "4-digit PIN")
+                            : "••••";
+                        input-type: root.profile-dialog == "add" || root.profile-dialog == "rename" ? InputType.text : InputType.password;
+                        accepted => { root.profile-submit(); }
+                        edited(t) => { root.profile-edited(t); }
+                    }
+                    if root.profile-message != "" : Text { text: root.profile-message; color: Palette.danger; }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 10px;
+                        if root.profile-dialog == "pin" && root.profile-target.has-pin : Button { label: "Remove PIN"; clicked => { root.profile-pin-remove(); } }
+                        Button { label: "Cancel"; clicked => { root.profile-cancel(); } }
+                        Button {
+                            label: root.profile-dialog == "add" ? "Create and switch"
+                                : root.profile-dialog == "switch" ? "Switch"
+                                : root.profile-dialog == "remove" ? "Remove"
+                                : "Save";
+                            primary: true;
+                            clicked => { root.profile-submit(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Before the app: "Who's watching?" when the computer has several profiles, or the PIN of
+    // the profile when it has one.
+    if root.profile-gate : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: Palette.bg;
+        TouchArea { }
+        FocusScope {
+            key-pressed(e) => {
+                if (e.text == Key.Escape && root.profile-gate-back) { root.profile-cancel(); return accept; }
+                if (e.text == Key.RightArrow || e.text == Key.DownArrow) { root.move-focus(true); return accept; }
+                if (e.text == Key.LeftArrow || e.text == Key.UpArrow) { root.move-focus(false); return accept; }
+                return reject;
+            }
+            VerticalLayout {
+                padding: 24px;
+                spacing: 28px;
+                alignment: center;
+                if root.profile-target.id == "" : Text { text: "Who's watching?"; color: Palette.text; font-size: 40px; font-weight: 800; letter-spacing: -0.5px; horizontal-alignment: center; }
+                if root.profile-target.id == "" : HorizontalLayout {
+                    alignment: center;
+                    spacing: 20px;
+                    for p[i] in root.profiles : ProfileTile { profile: p; autofocus: i == 0; clicked => { root.profile-open(p.id); } }
+                }
+                if root.profile-target.id != "" : HorizontalLayout { alignment: center; Avatar { initial: root.profile-target.initial; tone: root.profile-target.tone; size: 96px; } }
+                if root.profile-target.id != "" : Text { text: "PIN for " + root.profile-target.name; color: Palette.text; font-size: 24px; font-weight: 700; horizontal-alignment: center; }
+                if root.profile-target.id != "" : HorizontalLayout {
+                    alignment: center;
+                    Field {
+                        width: 220px;
+                        text <=> root.profile-input;
+                        autofocus: true;
+                        placeholder: "••••";
+                        input-type: InputType.password;
+                        accepted => { root.profile-submit(); }
+                        edited(t) => { root.profile-edited(t); }
+                    }
+                }
+                if root.profile-target.id != "" && root.profile-message != "" : Text { text: root.profile-message; color: Palette.danger; horizontal-alignment: center; }
+                if root.profile-target.id != "" && root.profile-gate-back : HorizontalLayout { alignment: center; Button { label: "Back"; clicked => { root.profile-cancel(); } } }
             }
         }
     }

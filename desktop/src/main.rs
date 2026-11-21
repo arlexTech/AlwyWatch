@@ -7,6 +7,7 @@ mod headless;
 mod mpv;
 mod platform;
 mod player;
+mod profiles;
 
 use std::time::Instant;
 
@@ -29,10 +30,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     let paths = platform::paths();
-    let tokens = platform::Tokens::new(&paths.data);
-    let device_id = device_id(&paths.data);
+    // Several people on one computer: each profile its own database and tokens (the original
+    // profile's stay where they were); downloads are shared.
+    let profiles = profiles::ProfileStore::new(&paths.data);
+    let profile = profiles.current();
+    let gate = !profiles.opens_directly();
+    let data = profiles.data_dir(&profile);
+    let _ = std::fs::create_dir_all(&data);
+    let tokens = platform::Tokens::new(&data);
+    let base_id = device_id(&paths.data);
+    // Per profile: Jellyfin signs a device's previous user out at sign-in (same as Android).
+    let device_id = if profile == profiles::DEFAULT {
+        base_id
+    } else {
+        format!("{base_id}-{profile}")
+    };
     let core = AlwyWatch::new(CoreConfig {
-        data_dir: paths.data.to_string_lossy().into_owned(),
+        data_dir: data.to_string_lossy().into_owned(),
         cache_dir: paths.cache.to_string_lossy().into_owned(),
         client: ClientInfo {
             product: "AlwyWatch".into(),
@@ -43,8 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         image_cache_mb: 300,
         downloads_dir: paths.downloads.to_string_lossy().into_owned(),
-        profile: None,
-        downloads_db: None,
+        profile: Some(profile),
+        downloads_db: Some(
+            paths
+                .data
+                .join("downloads.sqlite")
+                .to_string_lossy()
+                .into_owned(),
+        ),
     })?;
     app::activate_saved(&core, &tokens);
     // Test hook: print the skippable segments of an item as each account sees it, then exit
@@ -60,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let ui = AppWindow::new()?;
-    let app = app::App::new(core.clone(), &ui, tokens);
+    let app = app::App::new(core.clone(), &ui, tokens, profiles, gate);
     // Test hook (headless screenshots): start the Jellyfin sign-in with this address.
     match std::env::var("ALWYWATCH_TEST_PAGE").as_deref() {
         Ok("settings") => app.test_settings(),

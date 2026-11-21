@@ -15,6 +15,9 @@ use slint::{
 };
 
 use crate::platform::{self, Tokens};
+use crate::profiles::ProfileStore;
+mod history;
+mod profiles;
 mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
 use crate::{
@@ -49,6 +52,8 @@ enum Route {
     Settings,
     Add,
     Together,
+    Profiles,
+    HistoryCopy,
 }
 
 /// What a poster grid shows: a library (sorted), or one of its genres or collections.
@@ -122,6 +127,8 @@ struct State {
     transfer_gen: u64,
     /// The title page's first trailer: (title id, account, trailer).
     trailer: Option<(String, String, Trailer)>,
+    /// Copy watch history: kept while away from its page.
+    history: history::HistoryJob,
 }
 
 thread_local! {
@@ -133,9 +140,11 @@ pub struct App {
     downloads_timer: slint::Timer,
     runner_timer: slint::Timer,
     together_timer: slint::Timer,
+    history_timer: slint::Timer,
     core: Arc<AlwyWatch>,
     ui: Weak<AppWindow>,
     tokens: Tokens,
+    profiles: ProfileStore,
     state: RefCell<State>,
     images: RefCell<HashMap<String, Image>>,
 }
@@ -193,7 +202,14 @@ fn image_ref(i: &Item, kind: ImageKind) -> Option<ImageRef> {
 }
 
 impl App {
-    pub fn new(core: Arc<AlwyWatch>, ui: &AppWindow, tokens: Tokens) -> Rc<Self> {
+    /// `gate`: ask "Who's watching?" (or the profile's PIN) before showing the app.
+    pub fn new(
+        core: Arc<AlwyWatch>,
+        ui: &AppWindow,
+        tokens: Tokens,
+        profiles: ProfileStore,
+        gate: bool,
+    ) -> Rc<Self> {
         let account = core
             .get_setting("current_account".into())
             .ok()
@@ -210,9 +226,11 @@ impl App {
             downloads_timer: slint::Timer::default(),
             runner_timer: slint::Timer::default(),
             together_timer: slint::Timer::default(),
+            history_timer: slint::Timer::default(),
             core,
             ui: ui.as_weak(),
             tokens,
+            profiles,
             state: RefCell::new(State {
                 account,
                 stack: vec![],
@@ -247,6 +265,7 @@ impl App {
                 poll_gen: 0,
                 transfer_gen: 0,
                 trailer: None,
+                history: Default::default(),
             }),
             images: RefCell::new(HashMap::new()),
         });
@@ -285,6 +304,10 @@ impl App {
             Route::Add
         };
         app.navigate(first);
+        app.render_profiles();
+        if gate {
+            app.show_gate();
+        }
         app
     }
 
@@ -1781,6 +1804,15 @@ impl App {
                 self.refresh_seerr_settings();
                 self.refresh_keep_settings();
                 self.refresh_settings();
+                self.render_profiles();
+            }
+            Route::Profiles => {
+                ui.set_page(Page::Profiles);
+                self.render_profiles();
+            }
+            Route::HistoryCopy => {
+                ui.set_page(Page::Historycopy);
+                self.render_history();
             }
             Route::Add => {
                 ui.set_page(Page::Add);
@@ -4157,9 +4189,24 @@ impl App {
             Page::Together => Route::Together,
             Page::Triage => Route::Triage,
             Page::Keepadmin => Route::KeepAdmin,
+            Page::Profiles => Route::Profiles,
+            Page::Historycopy => Route::HistoryCopy,
             _ => Route::Home,
         }));
         on!(on_add_choose, |a, which| a.add_choose(which.into()));
+        on!(on_profile_open, |a, id| a.profile_open(id.into()));
+        on!(on_profile_dialog_open, |a, kind, id| a
+            .profile_dialog(kind.into(), id.into()));
+        on!(on_profile_submit, |a| a.profile_submit());
+        on!(on_profile_edited, |a, text| a.profile_edited(text.into()));
+        on!(on_profile_pin_remove, |a| a.profile_pin_remove());
+        on!(on_profile_cancel, |a| a.profile_cancel());
+        on!(on_profile_auto_toggle, |a| a.profile_auto_toggle());
+        on!(on_history_pick, |a, side, id| a
+            .history_pick(side.into(), id.into()));
+        on!(on_history_check, |a| a.history_check());
+        on!(on_history_copy, |a| a.history_copy());
+        on!(on_history_toggle_missing, |a| a.history_toggle_missing());
         on!(on_jellyfin_url, |a, url| a.jellyfin_url(url.into()));
         on!(on_add_keep_servers, |a, url| a.add_keep_servers(url.into()));
         on!(on_add_keep_pick, |a, i| a.add_keep_pick(i.into()));

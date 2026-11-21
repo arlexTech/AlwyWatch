@@ -24,6 +24,9 @@ serde_json = { workspace = true }
 # oneshot channel for the timer-based sleep (already compiled in through the core).
 # rt: the segments probe test hook (the core already links tokio's runtime).
 tokio = { workspace = true, features = ["sync", "rt"] }
+# Profile PINs: salted PBKDF2-HMAC-SHA256 and the salt's randomness. Already compiled in
+# through rustls (the core's TLS), so no size cost.
+ring = { version = "0.17", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 # DPAPI for token storage.

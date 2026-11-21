@@ -80,6 +80,7 @@ dependencies = [
  "alwywatch-core",
  "image",
  "libloading",
+ "ring",
  "serde_json",
  "slint",
  "slint-build",
