@@ -2,3 +2,4 @@ target
 android
 dist
 .git
+web/dist

@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#09090c">
+  <title>AlwyWatch</title>
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="modulepreload" href="/alwywatch_web.js">
+  <link rel="preload" href="/alwywatch_web_bg.wasm" as="fetch" type="application/wasm" crossorigin>
+  <script type="module">
+    import init from '/alwywatch_web.js';
+    init({ module_or_path: '/alwywatch_web_bg.wasm' });
+  </script>
+</head>
+<body><noscript>AlwyWatch needs JavaScript.</noscript></body>
+</html>

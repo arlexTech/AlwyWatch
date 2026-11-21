@@ -58,6 +58,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/transfer", post(transfer_start))
         .route("/v1/transfer/poll/{handle}", get(transfer_poll))
         .route("/v1/transfer/{code}", get(transfer_peer).put(transfer_send))
+        .fallback(crate::web::serve)
         .with_state(state)
 }
 

@@ -29,3 +29,4 @@ android/.kotlin/
 .vscode/
 .idea/
 /dist/
+web/dist/

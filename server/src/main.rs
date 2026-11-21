@@ -15,6 +15,7 @@ mod limit;
 mod seerr;
 mod together;
 mod transfer;
+mod web;
 
 use std::sync::Arc;
 

@@ -1,0 +1,29 @@
+[package]
+name = "alwywatch-web"
+description = "AlwyWatch web app: Leptos (client-side) over the shared Rust clients, compiled to wasm32."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+media-api = { workspace = true }
+keep-service = { workspace = true }
+seerr = { workspace = true }
+net = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# UI: fine-grained reactive, client-side rendering only (no server functions).
+leptos = { version = "0.8", features = ["csr"] }
+# URLs per page, so the browser's back button and links work.
+leptos_router = { version = "0.8" }
+# Pinned to the installed wasm-bindgen CLI (the two must match exactly).
+wasm-bindgen = "=0.2.130"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Document", "Storage", "Location", "HtmlVideoElement", "HtmlMediaElement", "MediaSource", "Navigator", "Crypto", "HtmlInputElement", "KeyboardEvent", "Element", "HtmlElement", "HtmlScriptElement", "MediaError", "Event", "History", "HtmlHeadElement"] }
+
+[lints]
+workspace = true

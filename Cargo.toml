@@ -11,6 +11,7 @@ members = [
     "core/alwywatch-core",
     "server",
     "desktop",
+    "web",
     "tools/uniffi-bindgen",
 ]
 default-members = [
@@ -87,3 +88,11 @@ opt-level = 2
 # Experimental profile used by the size report to compare against opt-level 3.
 inherits = "release"
 opt-level = "s"
+
+[profile.web]
+# The web app: download size is load time, so optimise for size. Symbols are kept for
+# wasm-bindgen (it reads the target_features section); it strips the output itself.
+inherits = "release"
+opt-level = "z"
+strip = false
+panic = "abort"
