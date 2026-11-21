@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=AlwyWatch
+GenericName=Media client
+Comment=Watch your Jellyfin and Plex libraries
+Exec=alwywatch
+Icon=alwywatch
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=jellyfin;plex;movies;shows;
+StartupWMClass=alwywatch
