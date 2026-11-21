@@ -252,13 +252,62 @@ fun PlayerOverlay(
         }
     }
     val playFocus = remember { FocusRequester() }
+    // Touch: a double tap on the left half goes back 10 s, on the right half forward 30 s.
+    // Each further tap on the same side soon after repeats it, so taps add up (−10, −20…).
+    // `tapSeek`: the side (true = forward) and the seconds added up so far, shown on that side.
+    var tapSeek by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
+    var lastTapSeekAt by remember { mutableStateOf(0L) }
+    val seekByTap = { forward: Boolean ->
+        player()?.let { p ->
+            val step = if (forward) p.seekForwardIncrement else -p.seekBackIncrement
+            val base = ui.seekTarget ?: p.currentPosition
+            val dur = p.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+            val target = (base + step).coerceIn(0, dur)
+            ui.seekTarget = target
+            p.seekTo(target)
+            ui.seekFlash++
+            val soFar = tapSeek?.takeIf { it.first == forward }?.second ?: 0
+            tapSeek = forward to soFar + (kotlin.math.abs(step) / 1000).toInt()
+            lastTapSeekAt = android.os.SystemClock.uptimeMillis()
+        }
+    }
+    LaunchedEffect(tapSeek) {
+        if (tapSeek != null) {
+            delay(900)
+            tapSeek = null
+        }
+    }
     Box(
         Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { if (ui.visible) ui.dismiss() else ui.poke() })
+                detectTapGestures(
+                    onDoubleTap = { o -> seekByTap(o.x > size.width / 2) },
+                    onTap = { o ->
+                        val forward = o.x > size.width / 2
+                        val repeating =
+                            tapSeek?.first == forward && android.os.SystemClock.uptimeMillis() - lastTapSeekAt < 900
+                        when {
+                            repeating -> seekByTap(forward)
+                            ui.visible -> ui.dismiss()
+                            else -> ui.poke()
+                        }
+                    },
+                )
             },
     ) {
+        tapSeek?.let { (forward, seconds) ->
+            Text(
+                if (forward) "+$seconds s" else "−$seconds s",
+                Modifier
+                    .align(if (forward) Alignment.CenterEnd else Alignment.CenterStart)
+                    .padding(horizontal = 56.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+        }
         AnimatedVisibility(ui.visible, enter = fadeIn(), exit = fadeOut()) {
             LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
             Box(Modifier.fillMaxSize()) {
@@ -307,14 +356,8 @@ fun PlayerOverlay(
                         } else {
                             Spacer(Modifier.size(small.dp))
                         }
-                        // Not on TV: ←/→ already seek there (and on the bar), the buttons only
-                        // stood between play and the episode buttons.
-                        if (!tv) {
-                            RoundButton(Icons.Replay10, "Back 10 seconds", {
-                                player()?.seekBack()
-                                ui.poke()
-                            }, size = small)
-                        }
+                        // No −10 s / +30 s buttons: ←/→ seek on TV, a double tap on the left or
+                        // right half of the picture does on touch screens.
                         RoundButton(
                             if (ui.playing) Icons.PauseFilled else Icons.Play,
                             if (ui.playing) "Pause" else "Play",
@@ -327,12 +370,6 @@ fun PlayerOverlay(
                             emphasized = true,
                             loading = ui.buffering,
                         )
-                        if (!tv) {
-                            RoundButton(Icons.Forward30, "Forward 30 seconds", {
-                                player()?.seekForward()
-                                ui.poke()
-                            }, size = small)
-                        }
                         if (ui.hasNext) {
                             RoundButton(Icons.SkipNext, "Next episode", onNext, size = small)
                         } else {
