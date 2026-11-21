@@ -451,6 +451,24 @@ fun PlayerOverlay(
                 androidx.compose.material3.CircularProgressIndicator(Modifier.size(32.dp), color = Color.White, strokeWidth = 3.dp)
             }
         }
+        // Open: a tap anywhere outside the panel closes it (and does nothing else).
+        if (ui.tracksOpen) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource =
+                            remember {
+                                androidx.compose.foundation.interaction
+                                    .MutableInteractionSource()
+                            },
+                        indication = null,
+                    ) {
+                        ui.tracksOpen = false
+                        ui.poke()
+                    },
+            )
+        }
         AnimatedVisibility(
             ui.tracksOpen,
             Modifier.align(Alignment.CenterEnd),
@@ -692,6 +710,8 @@ private fun TracksPanel(
             .fillMaxHeight()
             .width(if (LocalDimens.current.isTv) 340.dp else 320.dp)
             .background(Color(0xF2111116))
+            // Taps on the panel itself stay here (the layer behind closes it).
+            .pointerInput(Unit) { detectTapGestures { } }
             .safeDrawingPadding()
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
