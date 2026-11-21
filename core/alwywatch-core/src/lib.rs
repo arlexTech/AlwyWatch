@@ -16,6 +16,7 @@ uniffi::setup_scaffolding!();
 mod android;
 mod app;
 mod error;
+mod history;
 mod merge;
 mod playback;
 mod tracks;
@@ -23,6 +24,7 @@ mod tracks;
 pub use app::*;
 pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
 pub use error::{CoreError, Result};
+pub use history::{HistoryChange, HistoryCopyResult, HistoryPlan};
 pub use keep_service::together::{
     TogetherCreate, TogetherJoined, TogetherMedia, TogetherMember, TogetherState, TogetherUpdate,
 };

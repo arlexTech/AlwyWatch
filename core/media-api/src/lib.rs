@@ -85,6 +85,15 @@ pub trait MediaServer: Send + Sync {
         plex_tv_token: Option<&str>,
     ) -> impl Future<Output = Result<()>> + Send;
     fn set_played(&self, item_id: &str, played: bool) -> impl Future<Output = Result<()>> + Send;
+    /// Every movie and episode the user watched or started, with user data and external ids
+    /// (episodes with their show's id and season/episode numbers). For moving history.
+    fn watch_history(&self) -> impl Future<Output = Result<Vec<Item>>> + Send;
+    /// Sets watched, resume position (and the last played date where the server allows it).
+    fn set_watch_state(
+        &self,
+        item_id: &str,
+        state: &WatchState,
+    ) -> impl Future<Output = Result<()>> + Send;
     /// The original file (never a transcode), so downloads can be resumed.
     fn download_source(&self, item_id: &str)
     -> impl Future<Output = Result<DownloadSource>> + Send;
@@ -206,6 +215,12 @@ impl MediaServer for AnyServer {
     }
     async fn provider_index(&self, kind: ItemKind) -> Result<Vec<Item>> {
         dispatch!(self, c => c.provider_index(kind).await)
+    }
+    async fn watch_history(&self) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.watch_history().await)
+    }
+    async fn set_watch_state(&self, item_id: &str, state: &WatchState) -> Result<()> {
+        dispatch!(self, c => c.set_watch_state(item_id, state).await)
     }
     fn image_request(&self, item_id: &str, image: &ImageRef, max_width: u32) -> HttpRequest {
         dispatch!(self, c => c.image_request(item_id, image, max_width))

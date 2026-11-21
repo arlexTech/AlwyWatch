@@ -492,3 +492,46 @@ async fn people_and_favorites() {
     assert_eq!(fav[0].id, "m1");
     c.set_watchlisted("m1", true, None).await.unwrap();
 }
+
+#[tokio::test]
+async fn watch_history_and_setting_watch_state() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("filters", "IsPlayed"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": [
+            {"Id": "m1", "Name": "Arrival", "Type": "Movie", "UserData": {"Played": true}}
+        ]})))
+        .mount(&s)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("filters", "IsResumable"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": [
+            {"Id": "e1", "Name": "Pilot", "Type": "Episode", "SeriesId": "s1",
+             "ParentIndexNumber": 1, "IndexNumber": 1,
+             "UserData": {"PlaybackPositionTicks": 1_200_000_000}}
+        ]})))
+        .mount(&s)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/UserItems/e1/UserData"))
+        .and(body_partial_json(
+            json!({"Played": false, "PlaybackPositionTicks": 1_200_000_000,
+            "LastPlayedDate": "2023-11-14T22:13:20.0000000Z"}),
+        ))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    let h = c.watch_history().await.unwrap();
+    assert_eq!(h.len(), 2);
+    assert_eq!(h[1].user.position_ms, 120_000);
+    let st = WatchState {
+        played: false,
+        position_ms: 120_000,
+        last_played_at: Some(1_700_000_000),
+    };
+    c.set_watch_state("e1", &st).await.unwrap();
+}

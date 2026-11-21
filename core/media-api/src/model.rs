@@ -290,6 +290,17 @@ simple_enum! {
 }
 
 record! {
+    /// What a viewer did with an item, to copy it to another server (history copy).
+    pub struct WatchState {
+        pub played: bool,
+        /// Resume position; 0 when played or not started.
+        pub position_ms: u64,
+        /// Unix seconds.
+        pub last_played_at: Option<i64>,
+    }
+}
+
+record! {
     pub struct ProgressReport {
         pub item_id: String,
         pub media_source_id: Option<String>,

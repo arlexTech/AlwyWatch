@@ -180,6 +180,9 @@ private fun Root(core: AlwyWatch) {
                             Route.Watchlist ->
                                 be.alwyapps.watch.ui.screens
                                     .WatchlistScreen()
+                            Route.HistoryCopy ->
+                                be.alwyapps.watch.ui.screens
+                                    .HistoryCopyScreen()
                             Route.Triage -> TriageScreen()
                             Route.KeepAdmin -> KeepAdminScreen()
                             Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })

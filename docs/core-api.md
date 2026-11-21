@@ -70,6 +70,21 @@ Protocol: [keep-protocol.md](keep-protocol.md).
 | `keep_due_reminders(now)` | "Keep until watched" reminders due now (local notifications) |
 | `keep_admin_users()`, `keep_admin_set_rights(user, Rights)`, `keep_admin_countdown(collection, stagger_days)` | Admins only |
 
+## Watch history copy
+
+Moves a viewer's history between their own servers (Plex → Jellyfin when switching). Titles are
+matched by TMDB/IMDb/TVDB ids, then title and year; episodes by show and season/episode number.
+Only adds: nothing is unmarked and a resume point never moves backwards.
+
+| Function | Notes |
+|---|---|
+| `history_copy_plan(from, to)` | Reads both histories, writes nothing: `changes`, `up_to_date`, `not_found` (labels) |
+| `history_copy_apply(to, changes)` | One request per change, continues past failures: `applied`, `failed` |
+
+Server side: `MediaServer::watch_history()` (watched or started movies and episodes) and
+`set_watch_state(item, WatchState)` (Jellyfin `POST /UserItems/{id}/UserData`, with the last played
+date; Plex `/:/scrobble` or `/:/progress`).
+
 ## Audio and subtitles
 
 One choice per movie or show (episodes follow), shared by every player. Besides the language, the

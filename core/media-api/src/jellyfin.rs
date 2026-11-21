@@ -549,6 +549,27 @@ pub(crate) fn iso_to_unix(s: &str) -> Option<i64> {
     Some(days * 86_400 + hh * 3600 + mm * 60 + ss)
 }
 
+/// ISO-8601 UTC from Unix seconds (inverse of `iso_to_unix`).
+pub(crate) fn unix_to_iso(t: i64) -> String {
+    let (days, secs) = (t.div_euclid(86_400), t.rem_euclid(86_400));
+    // Civil from days (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.0000000Z",
+        secs / 3600,
+        secs % 3600 / 60,
+        secs % 60
+    )
+}
+
 fn image(
     images: &mut Vec<ImageRef>,
     kind: ImageKind,
@@ -1140,6 +1161,51 @@ impl MediaServer for JellyfinClient {
         })
     }
 
+    async fn watch_history(&self) -> Result<Vec<Item>> {
+        let mut out: Vec<Item> = Vec::new();
+        for filter in ["IsPlayed", "IsResumable"] {
+            let p = [
+                ("userId", self.uid().to_owned()),
+                ("recursive", "true".into()),
+                ("includeItemTypes", "Movie,Episode".into()),
+                ("filters", filter.into()),
+                ("fields", "ProviderIds".into()),
+                ("enableImages", "false".into()),
+                ("enableUserData", "true".into()),
+                ("enableTotalRecordCount", "false".into()),
+            ];
+            for i in self.convert_all(self.query("/Items", &p).await?.items) {
+                if !out.iter().any(|o| o.id == i.id) {
+                    out.push(i);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    async fn set_watch_state(&self, item_id: &str, state: &WatchState) -> Result<()> {
+        let mut body = serde_json::json!({
+            "Played": state.played,
+            "PlaybackPositionTicks": if state.played { 0 } else { state.position_ms as i64 * 10_000 },
+        });
+        if state.played {
+            body["PlayCount"] = 1.into();
+        }
+        if let Some(at) = state.last_played_at {
+            body["LastPlayedDate"] = unix_to_iso(at).into();
+        }
+        net::send(
+            self.req(
+                Method::POST,
+                &format!("/UserItems/{}/UserData", net::percent_encode(item_id)),
+            )
+            .query(&[("userId", self.uid())])
+            .json(&body),
+        )
+        .await?;
+        Ok(())
+    }
+
     async fn provider_index(&self, kind: ItemKind) -> Result<Vec<Item>> {
         let t = match kind {
             ItemKind::Movie => "Movie",
@@ -1215,6 +1281,14 @@ fn convert_segments(list: Vec<SegmentDto>) -> Vec<Segment> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn iso_round_trip() {
+        for t in [0, 1_700_000_000, 1_795_000_123, 951_782_400] {
+            assert_eq!(iso_to_unix(&unix_to_iso(t)), Some(t), "{t}");
+        }
+        assert_eq!(unix_to_iso(1_700_000_000), "2023-11-14T22:13:20.0000000Z");
+    }
 
     #[test]
     fn iso_parsing() {

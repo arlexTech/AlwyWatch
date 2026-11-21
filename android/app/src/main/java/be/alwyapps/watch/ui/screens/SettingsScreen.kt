@@ -156,6 +156,16 @@ fun SettingsScreen(onAccountChanged: (String?) -> Unit) {
             }
             Divider()
             ListRow("Add a server", icon = Icons.Add, onClick = { nav.push(Route.AddServer) }, trailing = { Chevron() })
+            if (accounts.size > 1) {
+                Divider()
+                ListRow(
+                    "Copy watch history",
+                    subtitle = "What you watched and where you stopped, from one server to another (Plex to Jellyfin)",
+                    icon = Icons.Refresh,
+                    onClick = { nav.push(Route.HistoryCopy) },
+                    trailing = { Chevron() },
+                )
+            }
         }
 
         AlwyWatchServerGroup(accounts, version) { version++ }

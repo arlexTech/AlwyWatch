@@ -500,3 +500,75 @@ async fn trailers_and_theme_song() {
     // The token stays in headers, never in the URL.
     assert!(theme.headers.iter().any(|h| h.name == "X-Plex-Token"));
 }
+
+#[tokio::test]
+async fn watch_history_and_setting_watch_state() {
+    let s = MockServer::start().await;
+    Mock::given(path("/library/sections"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"MediaContainer": {"Directory": [
+                {"key": "1", "title": "Films", "type": "movie"},
+                {"key": "4", "title": "Séries", "type": "show"}
+            ]}}),
+        ))
+        .mount(&s)
+        .await;
+    Mock::given(path("/library/sections/1/all"))
+        .and(query_param("type", "1"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {
+            "Metadata": [
+                {"ratingKey": "10", "type": "movie", "title": "Seen", "viewCount": 2,
+                 "Guid": [{"id": "tmdb://1"}]},
+                {"ratingKey": "11", "type": "movie", "title": "Never"}
+            ]}})),
+        )
+        .mount(&s)
+        .await;
+    Mock::given(path("/library/sections/4/all"))
+        .and(query_param("type", "4"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"MediaContainer": {
+            "Metadata": [
+                {"ratingKey": "20", "type": "episode", "title": "Pilot", "viewOffset": 120_000,
+                 "grandparentRatingKey": "200", "grandparentTitle": "Show",
+                 "parentIndex": 1, "index": 1}
+            ]}})),
+        )
+        .mount(&s)
+        .await;
+    Mock::given(path("/:/scrobble"))
+        .and(query_param("key", "10"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&s)
+        .await;
+    Mock::given(path("/:/progress"))
+        .and(query_param("key", "20"))
+        .and(query_param("time", "120000"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&s)
+        .await;
+    let c = PlexClient::new(session(&s.uri()), client_info(), http());
+    let h = c.watch_history().await.unwrap();
+    assert_eq!(h.len(), 2, "only watched or started items");
+    assert!(h[0].user.played);
+    assert_eq!(h[1].series_id.as_deref(), Some("200"));
+    assert_eq!(
+        (h[1].season_number, h[1].episode_number),
+        (Some(1), Some(1))
+    );
+    let played = WatchState {
+        played: true,
+        position_ms: 0,
+        last_played_at: None,
+    };
+    c.set_watch_state("10", &played).await.unwrap();
+    let started = WatchState {
+        played: false,
+        position_ms: 120_000,
+        last_played_at: None,
+    };
+    c.set_watch_state("20", &started).await.unwrap();
+}

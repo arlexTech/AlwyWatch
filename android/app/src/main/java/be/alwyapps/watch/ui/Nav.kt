@@ -33,6 +33,9 @@ sealed interface Route {
     /** Watch together: join a room with its code. */
     data object Together : Route
 
+    /** Copy watch history from one server to another. */
+    data object HistoryCopy : Route
+
     /** [account]: whose library (combined home: another account than the current one). */
     data class Library(
         val id: String,
@@ -95,6 +98,7 @@ sealed interface Route {
             KeepAdmin -> "keep-admin"
             Together -> "together"
             Watchlist -> "watchlist"
+            HistoryCopy -> "history-copy"
             is Library -> "lib\u001f$id\u001f$title\u001f${account.orEmpty()}"
             is Detail -> "item\u001f$itemId\u001f${season.orEmpty()}\u001f${account.orEmpty()}"
             is DownloadedShow -> "dlshow\u001f$seriesId\u001f$title"
@@ -121,6 +125,7 @@ sealed interface Route {
                 "keep-admin" -> KeepAdmin
                 "together" -> Together
                 "watchlist" -> Watchlist
+                "history-copy" -> HistoryCopy
                 "lib" -> if (p.size >= 3) Library(p[1], p[2], p.getOrNull(3)?.ifEmpty { null }) else null
                 "item" -> if (p.size >= 2) Detail(p[1], p.getOrNull(2)?.ifEmpty { null }, p.getOrNull(3)?.ifEmpty { null }) else null
                 "dlshow" -> if (p.size == 3) DownloadedShow(p[1], p[2]) else null

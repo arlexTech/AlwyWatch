@@ -1309,6 +1309,45 @@ impl MediaServer for PlexClient {
         })
     }
 
+    async fn watch_history(&self) -> Result<Vec<Item>> {
+        let mut out = Vec::new();
+        for lib in self.libraries().await? {
+            // Movies, or every episode of a show library; then only what was watched or started.
+            let kind = match lib.kind {
+                LibraryKind::Movies => "1",
+                LibraryKind::Shows => "4",
+                _ => continue,
+            };
+            let mc = self
+                .get(
+                    &format!("/library/sections/{}/all", net::percent_encode(&lib.id)),
+                    &[("type", kind.into()), ("includeGuids", "1".into())],
+                )
+                .await?;
+            out.extend(
+                self.convert_all(mc.metadata)
+                    .into_iter()
+                    .filter(|i| i.user.played || i.user.position_ms > 0),
+            );
+        }
+        Ok(out)
+    }
+
+    async fn set_watch_state(&self, item_id: &str, state: &WatchState) -> Result<()> {
+        if state.played {
+            return self.set_played(item_id, true).await;
+        }
+        // Plex's own resume point (no session needed); its last-viewed date can't be set.
+        net::send(self.req(Method::GET, "/:/progress").query(&[
+            ("key", item_id.to_owned()),
+            ("identifier", LIBRARY_IDENTIFIER.to_owned()),
+            ("time", state.position_ms.to_string()),
+            ("state", "stopped".to_owned()),
+        ]))
+        .await?;
+        Ok(())
+    }
+
     async fn provider_index(&self, kind: ItemKind) -> Result<Vec<Item>> {
         let want = match kind {
             ItemKind::Movie => LibraryKind::Movies,

@@ -217,7 +217,7 @@ pub struct Core {
 }
 
 impl Core {
-    fn server(&self, account_id: &str) -> Result<Arc<AnyServer>> {
+    pub(crate) fn server(&self, account_id: &str) -> Result<Arc<AnyServer>> {
         self.servers
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -774,7 +774,7 @@ pub struct AlwyWatch {
 impl AlwyWatch {
     /// Runs a future on the core runtime so callers can await it from any executor
     /// (Kotlin coroutines, Slint's event loop).
-    async fn run<T, F>(&self, f: impl FnOnce(Arc<Core>) -> F) -> Result<T>
+    pub(crate) async fn run<T, F>(&self, f: impl FnOnce(Arc<Core>) -> F) -> Result<T>
     where
         T: Send + 'static,
         F: Future<Output = Result<T>> + Send + 'static,
@@ -2866,7 +2866,7 @@ pub struct TogetherMatch {
     pub item_id: String,
 }
 
-fn same_title(a: &str, b: &str) -> bool {
+pub(crate) fn same_title(a: &str, b: &str) -> bool {
     let n = |s: &str| -> String {
         s.chars()
             .filter(|c| c.is_alphanumeric())
@@ -2876,7 +2876,7 @@ fn same_title(a: &str, b: &str) -> bool {
     !a.is_empty() && n(a) == n(b)
 }
 
-fn ids_match(
+pub(crate) fn ids_match(
     p: &ProviderIds,
     tmdb: &Option<String>,
     imdb: &Option<String>,
