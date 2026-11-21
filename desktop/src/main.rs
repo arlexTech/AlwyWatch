@@ -79,6 +79,70 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
+    // Test hook: ask each account's server to start converting an item for a TV-stick-like
+    // device and print the HTTP status (checks the transcode request end to end without
+    // playing). The request goes through curl's stdin config: no token in a command line.
+    if let Ok(item) = std::env::var("ALWYWATCH_PROBE_TRANSCODE") {
+        use std::io::Write;
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let list = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        let profile = alwywatch_core::DeviceProfile {
+            max_bitrate: None,
+            containers: list(&["mkv", "mp4", "ts", "mpegts"]),
+            video_codecs: list(&["h264", "hevc"]),
+            video_10bit_codecs: list(&["hevc"]),
+            audio_codecs: list(&["aac", "ac3", "eac3", "mp3"]),
+            subtitle_codecs: list(&["srt"]),
+            max_width: Some(3840),
+            max_height: Some(2160),
+            hdr: vec![],
+        };
+        for a in core.accounts()? {
+            let info = rt.block_on(core.playback_info(a.id.clone(), item.clone(), profile.clone()));
+            let Some(t) = info
+                .ok()
+                .and_then(|i| i.sources.into_iter().next())
+                .and_then(|s| s.transcode)
+            else {
+                eprintln!(
+                    "{} ({:?}): no such item or no conversion offered",
+                    a.server_name, a.kind
+                );
+                continue;
+            };
+            let mut config = format!("url = \"{}\"\n", t.url);
+            for h in &t.headers {
+                config.push_str(&format!("header = \"{}: {}\"\n", h.name, h.value));
+            }
+            let mut curl = std::process::Command::new("curl")
+                .args([
+                    "-s",
+                    "-o",
+                    "/dev/null",
+                    "-w",
+                    "%{http_code} %{content_type} %{size_download}B",
+                    "-K",
+                    "-",
+                ])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()?;
+            curl.stdin
+                .take()
+                .ok_or("curl stdin")?
+                .write_all(config.as_bytes())?;
+            let out = curl.wait_with_output()?;
+            eprintln!(
+                "{} ({:?}): {}",
+                a.server_name,
+                a.kind,
+                String::from_utf8_lossy(&out.stdout)
+            );
+        }
+        return Ok(());
+    }
     let ui = AppWindow::new()?;
     let app = app::App::new(core.clone(), &ui, tokens, profiles, gate);
     // Test hook (headless screenshots): start the Jellyfin sign-in with this address.

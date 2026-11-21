@@ -682,7 +682,13 @@ impl PlexClient {
         list.into_iter().map(convert_item).collect()
     }
 
-    fn convert_source(&self, rating_key: &str, index: usize, m: MediaDto) -> Option<MediaSource> {
+    fn convert_source(
+        &self,
+        rating_key: &str,
+        index: usize,
+        m: MediaDto,
+        profile: &DeviceProfile,
+    ) -> Option<MediaSource> {
         let part = m.part.into_iter().next()?;
         let streams = part
             .stream
@@ -744,12 +750,7 @@ impl PlexClient {
             .iter()
             .find(|s| s.kind == StreamKind::Subtitle && (s.is_default || s.is_forced))
             .map(|s| s.index);
-        let transcode = format!(
-            "{}/video/:/transcode/universal/start.m3u8?path={}&mediaIndex={index}&partIndex=0&protocol=hls&fastSeek=1&directPlay=0&directStream=1&directStreamAudio=1&session={}",
-            self.session.base_url,
-            net::percent_encode(&format!("/library/metadata/{rating_key}")),
-            net::percent_encode(&format!("{rating_key}-{index}"))
-        );
+        let transcode = transcode_url(&self.session.base_url, rating_key, index, profile);
         Some(MediaSource {
             id: id_string(&m.id),
             container: part.container.or(m.container),
@@ -1152,7 +1153,7 @@ impl MediaServer for PlexClient {
         ))
     }
 
-    async fn playback_info(&self, item_id: &str, _profile: &DeviceProfile) -> Result<PlaybackInfo> {
+    async fn playback_info(&self, item_id: &str, profile: &DeviceProfile) -> Result<PlaybackInfo> {
         let mc = self
             .get(
                 &format!("/library/metadata/{}", net::percent_encode(item_id)),
@@ -1164,7 +1165,7 @@ impl MediaServer for PlexClient {
             .media
             .into_iter()
             .enumerate()
-            .filter_map(|(i, m)| self.convert_source(item_id, i, m))
+            .filter_map(|(i, m)| self.convert_source(item_id, i, m, profile))
             .collect();
         Ok(PlaybackInfo {
             item_id: item_id.to_owned(),
@@ -1423,6 +1424,64 @@ impl MediaServer for PlexClient {
     }
 }
 
+/// The HLS conversion of a file. Plex only converts for clients it has a profile for; for
+/// any other it answers 400 unless the request describes the client: the "Generic" profile
+/// plus what this device plays (`X-Plex-Client-Profile-Extra`). Streams the device plays
+/// are copied (`directStream`), the others converted to H.264 / AAC.
+fn transcode_url(
+    base_url: &str,
+    rating_key: &str,
+    index: usize,
+    profile: &DeviceProfile,
+) -> String {
+    // HEVC is only kept as is where MPEG-TS plays natively (the apps' players, not browsers).
+    let ts = profile
+        .containers
+        .iter()
+        .any(|c| c == "ts" || c == "mpegts");
+    let mut video = vec!["h264"];
+    if ts && profile.video_codecs.iter().any(|c| c == "hevc") {
+        video.push("hevc");
+    }
+    let mut audio = vec!["aac"];
+    for c in ["ac3", "eac3", "mp3"] {
+        if profile.audio_codecs.iter().any(|a| a == c) {
+            audio.push(c);
+        }
+    }
+    let mut extra = vec![format!(
+        "add-transcode-target(type=videoProfile&context=streaming&protocol=hls&container=mpegts&videoCodec={}&audioCodec={})",
+        video.join(","),
+        audio.join(",")
+    )];
+    if let Some(w) = profile.max_width {
+        extra.push(format!(
+            "add-limitation(scope=videoCodec&scopeName=*&type=upperBound&name=video.width&value={w})"
+        ));
+    }
+    if let Some(h) = profile.max_height {
+        extra.push(format!(
+            "add-limitation(scope=videoCodec&scopeName=*&type=upperBound&name=video.height&value={h})"
+        ));
+    }
+    // 10-bit only where the device says so: otherwise the copy would not play.
+    for codec in &video {
+        if !profile.video_10bit_codecs.iter().any(|c| c == codec) {
+            extra.push(format!(
+                "add-limitation(scope=videoCodec&scopeName={codec}&type=upperBound&name=video.bitDepth&value=8)"
+            ));
+        }
+    }
+    let session = format!("{rating_key}-{index}");
+    format!(
+        "{base_url}/video/:/transcode/universal/start.m3u8?hasMDE=1&path={}&mediaIndex={index}&partIndex=0&protocol=hls&fastSeek=1&copyts=1&directPlay=0&directStream=1&directStreamAudio=1&videoQuality=100&mediaBufferSize=102400&session={}&X-Plex-Session-Identifier={}&X-Plex-Client-Profile-Name=Generic&X-Plex-Client-Profile-Extra={}",
+        net::percent_encode(&format!("/library/metadata/{rating_key}")),
+        net::percent_encode(&session),
+        net::percent_encode(&session),
+        net::percent_encode(&extra.join("+")),
+    )
+}
+
 fn empty_profile() -> DeviceProfile {
     DeviceProfile {
         max_bitrate: None,
@@ -1434,5 +1493,49 @@ fn empty_profile() -> DeviceProfile {
         max_width: None,
         max_height: None,
         hdr: vec![],
+    }
+}
+
+#[cfg(test)]
+mod transcode_tests {
+    use super::*;
+
+    #[test]
+    fn transcode_request_describes_the_device_so_plex_accepts_unknown_clients() {
+        let mut p = empty_profile();
+        p.containers = vec!["mkv".into(), "ts".into()];
+        p.video_codecs = vec!["h264".into(), "hevc".into()];
+        p.video_10bit_codecs = vec!["hevc".into()];
+        p.audio_codecs = vec!["aac".into(), "eac3".into()];
+        p.max_width = Some(3840);
+        let url = transcode_url("https://plex.example", "42", 0, &p);
+        assert!(url.starts_with("https://plex.example/video/:/transcode/universal/start.m3u8?"));
+        assert!(url.contains("X-Plex-Client-Profile-Name=Generic"));
+        let extra = url.split("X-Plex-Client-Profile-Extra=").nth(1).unwrap();
+        assert!(
+            !extra.contains('(') && !extra.contains('&'),
+            "encoded as one value"
+        );
+        let extra = extra
+            .replace("%28", "(")
+            .replace("%29", ")")
+            .replace("%3D", "=")
+            .replace("%26", "&")
+            .replace("%2C", ",")
+            .replace("%2B", "+");
+        assert!(
+            extra.contains("videoCodec=h264,hevc&audioCodec=aac,eac3)"),
+            "{extra}"
+        );
+        assert!(extra.contains("name=video.width&value=3840"));
+        // H.264 10-bit is not something this device plays: copies are limited to 8 bits.
+        assert!(extra.contains("scopeName=h264&type=upperBound&name=video.bitDepth&value=8"));
+        assert!(!extra.contains("scopeName=hevc&type=upperBound&name=video.bitDepth"));
+        // A browser-like profile (no MPEG-TS): everything goes to H.264 / AAC.
+        let web = transcode_url("https://plex.example", "42", 0, &empty_profile());
+        assert!(
+            web.contains("videoCodec%3Dh264%26audioCodec%3Daac%29"),
+            "{web}"
+        );
     }
 }
