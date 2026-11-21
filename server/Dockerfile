@@ -6,7 +6,8 @@ RUN apk add --no-cache musl-dev
 RUN cargo install --locked wasm-bindgen-cli --version 0.2.130
 
 FROM rust:1-alpine AS build
-RUN apk add --no-cache musl-dev ca-certificates gzip \
+# clang and llvm (llvm-ar): ring's C parts for the browser build of the web app.
+RUN apk add --no-cache musl-dev ca-certificates gzip clang llvm \
  && rustup target add wasm32-unknown-unknown
 COPY --from=tools /usr/local/cargo/bin/wasm-bindgen /usr/local/bin/wasm-bindgen
 WORKDIR /src
