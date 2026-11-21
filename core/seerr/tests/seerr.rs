@@ -311,3 +311,59 @@ async fn title_page_and_saga() {
     assert_eq!(col.parts[0].title, "Shin Godzilla", "release order");
     assert_eq!(col.parts[0].availability, Availability::Available);
 }
+
+#[tokio::test]
+async fn season_info_reads_requests_and_the_download_queue() {
+    let s = MockServer::start().await;
+    Mock::given(path("/api/v1/tv/7"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "seasons": [
+                {"seasonNumber": 0, "name": "Specials", "episodeCount": 3},
+                {"seasonNumber": 1, "name": "Saison 1", "episodeCount": 8},
+                {"seasonNumber": 2, "episodeCount": 8},
+                {"seasonNumber": 3, "episodeCount": 8},
+                {"seasonNumber": 4, "episodeCount": 8},
+                {"seasonNumber": 5, "episodeCount": 0}
+            ],
+            "mediaInfo": {
+                "status": 4,
+                "seasons": [
+                    {"seasonNumber": 1, "status": 5},
+                    {"seasonNumber": 3, "status": 3}
+                ],
+                "requests": [
+                    // Waiting for approval: season 2 asked for.
+                    {"id": 1, "status": 1, "is4k": false, "seasons": [{"seasonNumber": 2, "status": 1}]},
+                    // Declined, completed and 4K requests don't count.
+                    {"id": 2, "status": 3, "is4k": false, "seasons": [{"seasonNumber": 4}]},
+                    {"id": 3, "status": 5, "is4k": false, "seasons": [{"seasonNumber": 5}]},
+                    {"id": 4, "status": 1, "is4k": true, "seasons": [{"seasonNumber": 5}]}
+                ],
+                "downloadStatus": [
+                    {"size": 100.0, "sizeLeft": 50.0, "episode": {"seasonNumber": 3, "episodeNumber": 1}}
+                ]
+            }
+        })))
+        .mount(&s)
+        .await;
+    let c = SeerrClient::new(http(), &s.uri(), "connect.sid=x", false);
+    let info = c.season_info(7).await.unwrap();
+    assert_eq!(info.len(), 6, "specials kept for the plan to decide");
+    assert_eq!((info[1].name.as_str(), info[1].episodes), ("Saison 1", 8));
+    assert_eq!(info[2].name, "Season 2");
+    assert!(info[2].requested && !info[4].requested && !info[5].requested);
+    assert!(info[3].downloading && !info[2].downloading);
+    let plan = season_plan(&info, &[1]);
+    let states: Vec<_> = plan.seasons.iter().map(|c| (c.number, c.state)).collect();
+    assert_eq!(
+        states,
+        vec![
+            (1, SeasonState::OnServer),
+            (2, SeasonState::Requested),
+            (3, SeasonState::Downloading),
+            (4, SeasonState::Requestable),
+            (5, SeasonState::Requestable),
+        ]
+    );
+    assert_eq!(plan.missing, vec![4, 5]);
+}

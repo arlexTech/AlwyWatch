@@ -41,9 +41,9 @@ pub use media_api::plex::{PlexHomeUser, PlexPin, PlexServerResource};
 pub use merge::{AccountHome, MergedHome, merge_homes, same_as};
 pub use playback::{PlaybackPrompt, playback_prompt};
 pub use seerr::{
-    Availability, QuickConnect as SeerrQuickConnect, RequestStatus, SeerrCast, SeerrCollection,
-    SeerrCollectionRef, SeerrDetails, SeerrInfo, SeerrLogin, SeerrMediaType, SeerrRequest,
-    SeerrResult, SeerrSeason,
+    Availability, QuickConnect as SeerrQuickConnect, RequestStatus, SeasonChoice, SeasonPlan,
+    SeasonState, SeerrCast, SeerrCollection, SeerrCollectionRef, SeerrDetails, SeerrInfo,
+    SeerrLogin, SeerrMediaType, SeerrRequest, SeerrResult, SeerrSeason, SeerrSeasonInfo,
 };
 pub use sync::{SyncPair, SyncStatus};
 pub use tracks::{
@@ -72,6 +72,25 @@ pub fn normalize_server_url(input: String) -> Result<String> {
     Ok(net::normalize_base_url(&input)?)
 }
 
+/// Each season of a show with its state, and what can be requested, from the seasons
+/// `seerr_season_info` returns. `have`: the season numbers the media server being browsed shows.
+#[uniffi::export]
+pub fn season_plan(seasons: Vec<SeerrSeasonInfo>, have: Vec<u32>) -> SeasonPlan {
+    seerr::season_plan(&seasons, &have)
+}
+
+/// A season's state in plain words ("On your server", "Requested"…).
+#[uniffi::export]
+pub fn season_state_label(state: SeasonState) -> String {
+    seerr::season_state_label(state).to_owned()
+}
+
+/// The confirmation once seasons are requested ("Requested: seasons 2, 3. They'll appear…").
+#[uniffi::export]
+pub fn seasons_requested_message(numbers: Vec<u32>) -> String {
+    seerr::seasons_requested_message(&numbers)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,5 +100,31 @@ mod tests {
         let s = greet("TV".into());
         assert!(s.contains("TV"));
         assert!(s.contains(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn season_plan_is_exported_with_its_words() {
+        let s = |n: u32, availability| SeerrSeasonInfo {
+            number: n,
+            name: format!("Season {n}"),
+            episodes: 8,
+            availability,
+            requested: false,
+            downloading: false,
+        };
+        let p = season_plan(
+            vec![s(1, Availability::Available), s(2, Availability::Unknown)],
+            vec![1],
+        );
+        assert_eq!(p.missing, vec![2]);
+        assert!(p.has_some);
+        assert_eq!(
+            p.seasons[1].label,
+            season_state_label(SeasonState::Requestable)
+        );
+        assert_eq!(
+            seasons_requested_message(vec![2, 3]),
+            "Requested: seasons 2, 3. They'll appear here when they're ready."
+        );
     }
 }

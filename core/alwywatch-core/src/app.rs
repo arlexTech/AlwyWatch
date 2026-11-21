@@ -22,6 +22,23 @@ const TTL_HOME: i64 = 30;
 const TTL_LIST: i64 = 120;
 const TTL_DETAIL: i64 = 300;
 const TTL_SEGMENTS: i64 = 6 * 3600;
+/// Two copies of a title count as the same cut when their lengths differ by at most this.
+const SAME_CUT_MS: u64 = 2_000;
+
+/// Intro and credits are what a player offers to skip: the kinds worth asking another server for.
+fn missing_segment_kinds(list: &[Segment]) -> Vec<SegmentKind> {
+    [SegmentKind::Intro, SegmentKind::Credits]
+        .into_iter()
+        .filter(|k| !list.iter().any(|s| s.kind == *k))
+        .collect()
+}
+
+/// Adds from `theirs` the intro/credits kinds `own` lacks, keeping `own` sorted by start.
+fn merge_missing_segments(own: &mut Vec<Segment>, theirs: Vec<Segment>) {
+    let missing = missing_segment_kinds(own);
+    own.extend(theirs.into_iter().filter(|s| missing.contains(&s.kind)));
+    own.sort_by_key(|s| s.start_ms);
+}
 const TTL_PEOPLE: i64 = 24 * 3600;
 const TTL_WATCHLIST: i64 = 120;
 const PLAYBACK_INFO_TTL: Duration = Duration::from_secs(120);
@@ -297,11 +314,71 @@ impl Core {
     /// Skippable intro/credits spans of an item (cached: they work offline once fetched).
     async fn segments(&self, account: &str, item_id: &str) -> Result<Vec<Segment>> {
         self.swr_offline(
-            &key(account, &["segments", item_id]),
+            // "segments2": answers kept from before markers were borrowed are not reused.
+            &key(account, &["segments2", item_id]),
             TTL_SEGMENTS,
-            || async { Ok(self.server(account)?.segments(item_id).await?) },
+            || async {
+                let own = self.server(account)?.segments(item_id).await?;
+                Ok(self.with_borrowed_segments(account, item_id, own).await)
+            },
         )
         .await
+    }
+
+    /// One server often knows an intro the other has not detected (Plex analyses on its own
+    /// schedule, Jellyfin's Intro Skipper on another). When this copy lacks the intro or the
+    /// credits, they are taken from the same title on another signed-in server, provided both
+    /// copies have the same length (another cut would put them at the wrong time).
+    async fn with_borrowed_segments(
+        &self,
+        account: &str,
+        item_id: &str,
+        mut own: Vec<Segment>,
+    ) -> Vec<Segment> {
+        let missing = |list: &[Segment]| missing_segment_kinds(list);
+        if missing(&own).is_empty() {
+            return own;
+        }
+        let accounts: Vec<Account> = self.store.accounts().unwrap_or_default();
+        let others: Vec<String> = accounts
+            .into_iter()
+            .map(|a| a.id)
+            .filter(|id| id != account && self.server(id).is_ok())
+            .collect();
+        if others.is_empty() {
+            return own;
+        }
+        let Ok(srv) = self.server(account) else {
+            return own;
+        };
+        let (Ok(item), Ok(media)) = (
+            srv.item(item_id).await,
+            self.together_media(account, item_id).await,
+        ) else {
+            return own;
+        };
+        for other in others {
+            let Ok(Some(other_id)) = self.together_find_on(&other, &media).await else {
+                continue;
+            };
+            let Ok(other_srv) = self.server(&other) else {
+                continue;
+            };
+            let same_cut = match (item.runtime_ms, other_srv.item(&other_id).await) {
+                (Some(a), Ok(o)) => o.runtime_ms.is_some_and(|b| a.abs_diff(b) <= SAME_CUT_MS),
+                _ => false,
+            };
+            if !same_cut {
+                continue;
+            }
+            if let Ok(theirs) = other_srv.segments(&other_id).await {
+                merge_missing_segments(&mut own, theirs);
+            }
+            if missing(&own).is_empty() {
+                break;
+            }
+        }
+        own
     }
 
     fn plex_tv_token(&self, account: &str) -> Option<String> {
@@ -2150,6 +2227,13 @@ impl AlwyWatch {
             .await
     }
 
+    /// Every season of a show (specials included) with its state on the server, in requests
+    /// and downloads. `season_plan(info, have)` turns it into what can be requested.
+    pub async fn seerr_season_info(&self, tmdb_id: i64) -> Result<Vec<SeerrSeasonInfo>> {
+        self.run(|c| async move { Ok(c.seerr()?.season_info(tmdb_id).await?) })
+            .await
+    }
+
     /// Requests a movie or a show (`seasons` empty = every season).
     pub async fn seerr_request(
         &self,
@@ -3325,6 +3409,36 @@ impl AlwyWatch {
 #[cfg(test)]
 mod together_tests {
     use super::*;
+
+    #[test]
+    fn missing_intro_or_credits_come_from_the_other_copy_only() {
+        let seg = |kind, a: u64, b: u64| Segment {
+            kind,
+            start_ms: a * 1000,
+            end_ms: b * 1000,
+        };
+        // This copy knows its credits (from a chapter), the other one also the intro.
+        let mut own = vec![seg(SegmentKind::Credits, 1300, 1380)];
+        merge_missing_segments(
+            &mut own,
+            vec![
+                seg(SegmentKind::Intro, 1, 86),
+                seg(SegmentKind::Credits, 1302, 1380),
+            ],
+        );
+        assert_eq!(
+            own,
+            vec![
+                seg(SegmentKind::Intro, 1, 86),
+                seg(SegmentKind::Credits, 1300, 1380)
+            ]
+        );
+        assert!(missing_segment_kinds(&own).is_empty());
+        assert_eq!(
+            missing_segment_kinds(&[]),
+            vec![SegmentKind::Intro, SegmentKind::Credits]
+        );
+    }
 
     #[test]
     fn titles_and_ids_match_loosely() {

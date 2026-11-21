@@ -242,6 +242,35 @@ fun DetailScreen(
         } else {
             null
         }
+    // "More seasons": the show's seasons in Seerr, looked up once the page is shown (never
+    // delays it). Nothing shows while it loads, or if Seerr can't be reached.
+    val showTmdb =
+        item
+            ?.takeIf { it.kind == ItemKind.SERIES }
+            ?.providerIds
+            ?.tmdb
+            ?.toLongOrNull()
+    val seerrOn = remember { runCatching { core.seerrActive() }.getOrDefault(false) }
+    var seerrSeasons by remember(itemId) { mutableStateOf<List<be.alwyapps.watch.core.seerr.SeerrSeasonInfo>?>(null) }
+    if (seerrOn && showTmdb != null) {
+        LaunchedEffect(showTmdb) { seerrSeasons = runCatching { core.seerrSeasonInfo(showTmdb) }.getOrNull() }
+    }
+    val haveSeasons = seasonList.mapNotNull { it.seasonNumber }
+    val canRequestMore =
+        remember(seerrSeasons, haveSeasons) {
+            seerrSeasons?.let {
+                be.alwyapps.watch.core
+                    .seasonPlan(it, haveSeasons)
+                    .missing
+                    .isNotEmpty()
+            } == true
+        }
+    var requestingSeasons by remember { mutableStateOf(false) }
+    val moreFocus =
+        remember {
+            androidx.compose.ui.focus
+                .FocusRequester()
+        }
     // A whole show or season watched / unwatched (asks before forgetting where you stopped).
     var markAll by remember { mutableStateOf<Item?>(null) }
     val markFocus =
@@ -266,6 +295,22 @@ fun DetailScreen(
                 if (d.isTv) scope.launch { runCatching { (if (isShow) markFocus else seasonMarkFocus).requestFocus() } }
             },
         )
+    }
+    val requestInfo = seerrSeasons
+    if (requestingSeasons && showTmdb != null && requestInfo != null) {
+        RequestSeasonsDialog(showTmdb, item?.title.orEmpty(), haveSeasons, requestInfo) { latest ->
+            requestingSeasons = false
+            seerrSeasons = latest
+            // TV: back on "More seasons", or on the season row's mark when nothing is left.
+            if (d.isTv) {
+                val left =
+                    be.alwyapps.watch.core
+                        .seasonPlan(latest, haveSeasons)
+                        .missing
+                        .isNotEmpty()
+                scope.launch { runCatching { (if (left) moreFocus else seasonMarkFocus).requestFocus() } }
+            }
+        }
     }
     var episodeMenu by remember { mutableStateOf<Item?>(null) }
     episodeMenu?.let {
@@ -501,7 +546,14 @@ fun DetailScreen(
                 }
                 if (item.kind == ItemKind.SERIES && shownSeason != null) {
                     item(key = "seasons") {
-                        SeasonPicker(seasonList, shownSeason, onMark = { markAll = it }, markFocus = seasonMarkFocus) { pickedSeason = it.id }
+                        SeasonPicker(
+                            seasonList,
+                            shownSeason,
+                            onMark = { markAll = it },
+                            markFocus = seasonMarkFocus,
+                            onMore = if (canRequestMore) ({ requestingSeasons = true }) else null,
+                            moreFocus = moreFocus,
+                        ) { pickedSeason = it.id }
                     }
                     item(key = "eps-top") { Spacer(Modifier.height(7.dp)) }
                     items(episodes?.value.orEmpty(), key = { "ep:" + it.id }) { ep ->
@@ -1206,6 +1258,9 @@ private fun SeasonPicker(
     selected: Item,
     onMark: (Item) -> Unit,
     markFocus: androidx.compose.ui.focus.FocusRequester,
+    /** "More seasons" (Seerr): only when some season can be requested. */
+    onMore: (() -> Unit)?,
+    moreFocus: androidx.compose.ui.focus.FocusRequester,
     onSelected: (Item) -> Unit,
 ) {
     val d = LocalDimens.current
@@ -1223,6 +1278,12 @@ private fun SeasonPicker(
             // The same, visible: for the season shown.
             item(key = "mark") {
                 IconAction(Icons.Check, "${selected.title}: watched or not", { onMark(selected) }, Modifier.focusRequester(markFocus))
+            }
+            // After the mark, so it stays next to the seasons (RIGHT from the last one, then here).
+            if (onMore != null) {
+                item(key = "more") {
+                    ActionButton("More seasons", onMore, Modifier.focusRequester(moreFocus), icon = Icons.Add)
+                }
             }
         }
     }

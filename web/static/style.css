@@ -279,3 +279,16 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
 /* The welcome name field keeps a normal height (it stretched to fill its row). */
 .welcome-name { align-self: center; }
 .welcome-name input { flex: none; }
+
+/* Requesting more seasons of a show. */
+.season-row { display: flex; align-items: center; gap: 8px; }
+.season-row .chips { min-width: 0; }
+.more-seasons { flex: none; white-space: nowrap; }
+.dialog.seasons { display: flex; flex-direction: column; max-height: min(640px, calc(100vh - 32px)); }
+.pick-row .box { width: 20px; height: 20px; flex: none; border: 2px solid var(--muted); border-radius: 5px;
+  display: inline-grid; place-items: center; font-size: .8rem; font-weight: 700; color: #000; }
+.pick-row.selected .box { background: var(--accent); border-color: var(--accent); }
+.pick-row .pname { flex: 1; }
+.pick-row.static { display: flex; align-items: center; cursor: default; }
+.pick-row.static .check { color: var(--muted); text-align: center; }
+.pick-row.static.here .check { color: var(--accent); }

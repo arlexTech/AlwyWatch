@@ -39,7 +39,6 @@ import be.alwyapps.watch.core.seerr.RequestStatus
 import be.alwyapps.watch.core.seerr.SeerrMediaType
 import be.alwyapps.watch.core.seerr.SeerrRequest
 import be.alwyapps.watch.core.seerr.SeerrResult
-import be.alwyapps.watch.core.seerr.SeerrSeason
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.LocalCore
@@ -173,11 +172,12 @@ fun RequestPanel(
 ) {
     val core = LocalCore.current
     val scope = rememberCoroutineScope()
-    var seasons by remember(r.tmdbId) { mutableStateOf<List<SeerrSeason>?>(null) }
+    // Shows: the seasons with their state (on the server, requested…), to pick the missing ones.
+    var seasons by remember(r.tmdbId) { mutableStateOf<List<be.alwyapps.watch.core.seerr.SeerrSeasonInfo>?>(null) }
     var chosen by remember(r.tmdbId) { mutableStateOf(setOf<UInt>()) }
     var busy by remember { mutableStateOf(false) }
     if (r.mediaType == SeerrMediaType.TV) {
-        LaunchedEffect(r.tmdbId) { seasons = runCatching { core.seerrSeasons(r.tmdbId) }.getOrNull() }
+        LaunchedEffect(r.tmdbId) { seasons = runCatching { core.seerrSeasonInfo(r.tmdbId) }.getOrNull() }
     }
 
     fun send(numbers: List<UInt>) {
@@ -187,9 +187,14 @@ fun RequestPanel(
             val msg =
                 try {
                     core.seerrRequest(r.mediaType, r.tmdbId, numbers)
-                    "Requested: ${r.title}"
+                    if (numbers.isEmpty()) {
+                        "Requested: ${r.title}"
+                    } else {
+                        be.alwyapps.watch.core
+                            .seasonsRequestedMessage(numbers)
+                    }
                 } catch (e: CoreException) {
-                    "Could not request ${r.title}: ${e.message}"
+                    "Could not request ${r.title}: ${requestErrorText(e)}"
                 }
             busy = false
             onDone(msg)
@@ -230,35 +235,62 @@ fun RequestPanel(
                     )
                 }
             } else {
-                val list = seasons
-                if (list == null) {
+                val info = seasons
+                if (info == null) {
                     Text("Loading seasons…", color = Muted)
                 } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ActionButton(
-                            if (busy) {
-                                "Requesting…"
-                            } else if (chosen.isEmpty()) {
-                                "Request all seasons"
-                            } else {
-                                "Request ${chosen.size} season${if (chosen.size > 1) "s" else ""}"
-                            },
-                            { send(chosen.sorted()) },
-                            Modifier.focusOnAppear(),
-                            primary = true,
-                            icon = be.alwyapps.watch.ui.Icons.Add,
-                        )
-                    }
-                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(list.size) { i ->
-                            val s = list[i]
-                            val requestable = s.availability == Availability.UNKNOWN || s.availability == Availability.DELETED
+                    val plan =
+                        remember(info) {
+                            be.alwyapps.watch.core
+                                .seasonPlan(info, emptyList())
+                        }
+                    if (plan.missing.isEmpty()) {
+                        Text("Every season is on your servers or already requested.", color = Muted)
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             ActionButton(
-                                s.name + (s.availability.label()?.let { " · $it" } ?: ""),
-                                { if (requestable) chosen = if (s.number in chosen) chosen - s.number else chosen + s.number },
-                                primary = s.number in chosen,
-                                icon = if (s.number in chosen) be.alwyapps.watch.ui.Icons.Check else null,
+                                when {
+                                    busy -> "Requesting…"
+                                    chosen.isNotEmpty() -> "Request ${chosen.size} season${if (chosen.size > 1) "s" else ""}"
+                                    plan.hasSome -> "Request the missing seasons"
+                                    else -> "Request all seasons"
+                                },
+                                // Nothing picked: the missing ones (every season of a new show).
+                                {
+                                    send(
+                                        if (chosen.isNotEmpty()) {
+                                            chosen.sorted()
+                                        } else if (plan.hasSome) {
+                                            plan.missing
+                                        } else {
+                                            emptyList()
+                                        },
+                                    )
+                                },
+                                Modifier.focusOnAppear(),
+                                primary = true,
+                                icon = be.alwyapps.watch.ui.Icons.Add,
                             )
+                        }
+                    }
+                    androidx.compose.foundation.lazy.LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        items(plan.seasons.size) { i ->
+                            val s = plan.seasons[i]
+                            if (s.state == be.alwyapps.watch.core.seerr.SeasonState.REQUESTABLE) {
+                                ActionButton(
+                                    s.name,
+                                    { chosen = if (s.number in chosen) chosen - s.number else chosen + s.number },
+                                    primary = s.number in chosen,
+                                    icon = if (s.number in chosen) be.alwyapps.watch.ui.Icons.Check else null,
+                                )
+                            } else {
+                                // On the server or asked for already: said, not selectable.
+                                be.alwyapps.watch.ui
+                                    .Badge("${s.name} · ${s.label}", color = be.alwyapps.watch.ui.SurfaceHigh)
+                            }
                         }
                     }
                 }

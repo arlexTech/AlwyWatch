@@ -195,6 +195,64 @@ record! {
     }
 }
 
+simple_enum! {
+    /// Where one season of a show stands, for choosing what to request.
+    pub enum SeasonState {
+        /// Every episode is on the media server.
+        OnServer,
+        /// Some episodes are on the media server (Seerr won't take a request for the rest).
+        PartlyOnServer,
+        /// Asked for already (waiting for approval, or approved and not on the server yet).
+        Requested,
+        /// Sonarr is downloading it.
+        Downloading,
+        /// Not on the server and not asked for: can be requested.
+        Requestable,
+        /// Blocklisted on Seerr: can't be requested.
+        Blocked,
+    }
+}
+
+record! {
+    /// A season of a show as Seerr knows it: TMDB's facts plus what the media server and the
+    /// open requests say about it (input of [`season_plan`]).
+    pub struct SeerrSeasonInfo {
+        pub number: u32,
+        pub name: String,
+        /// Episodes TMDB lists for it (0 for an announced season not aired yet).
+        pub episodes: u32,
+        pub availability: Availability,
+        /// In an open request (pending, approved or failed: not declined or completed).
+        pub requested: bool,
+        /// Sonarr's queue holds episodes of it.
+        pub downloading: bool,
+    }
+}
+
+record! {
+    /// One season in the "request more seasons" list.
+    pub struct SeasonChoice {
+        pub number: u32,
+        pub name: String,
+        pub state: SeasonState,
+        /// The state in plain words ("On your server", "Requested"…).
+        pub label: String,
+    }
+}
+
+record! {
+    /// What can be requested of a show, season by season.
+    pub struct SeasonPlan {
+        /// The seasons to list, in order (specials only when they are all that is missing).
+        pub seasons: Vec<SeasonChoice>,
+        /// The seasons that can be requested ("Select all missing"); empty = nothing to do.
+        pub missing: Vec<u32>,
+        /// Some season is already on the server or asked for: the main button reads "Request
+        /// the missing seasons" rather than "Request all seasons".
+        pub has_some: bool,
+    }
+}
+
 record! {
     pub struct SeerrRequest {
         pub id: i64,
@@ -478,6 +536,26 @@ struct MediaInfoDto {
     /// Radarr/Sonarr queue entries (only while actually downloading).
     #[serde(default)]
     download_status: Vec<DownloadStatusDto>,
+    /// Requests for it (with the seasons each asked for), on the title endpoints.
+    #[serde(default)]
+    requests: Vec<MediaRequestDto>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MediaRequestDto {
+    #[serde(default)]
+    status: i64,
+    #[serde(default)]
+    is4k: bool,
+    #[serde(default)]
+    seasons: Vec<SeasonStatusDto>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QueueEpisodeDto {
+    season_number: u32,
 }
 
 #[derive(Deserialize)]
@@ -487,6 +565,9 @@ struct DownloadStatusDto {
     size: f64,
     #[serde(default)]
     size_left: f64,
+    /// The episode it is (shows only, when Sonarr says).
+    #[serde(default)]
+    episode: Option<QueueEpisodeDto>,
 }
 
 impl MediaInfoDto {
@@ -668,6 +749,77 @@ impl SeerrClient {
                     .clone()
                     .unwrap_or_else(|| format!("Season {}", s.season_number)),
                 availability: availability(status(s.season_number)),
+            })
+            .collect())
+    }
+
+    /// Every season of a show (specials included) with its state on the server, in requests
+    /// and in Sonarr's queue: the input of [`season_plan`].
+    pub async fn season_info(&self, tmdb_id: i64) -> Result<Vec<SeerrSeasonInfo>> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Tv {
+            #[serde(default)]
+            seasons: Vec<SeasonDto>,
+            #[serde(default)]
+            media_info: Option<MediaInfoDto>,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SeasonDto {
+            season_number: u32,
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            episode_count: Option<u32>,
+        }
+        let tv: Tv = net::send_json(self.req(Method::GET, &format!("/tv/{tmdb_id}"))).await?;
+        let info = tv.media_info.as_ref();
+        let status = |n: u32| {
+            info.and_then(|m| m.seasons.iter().find(|s| s.season_number == n))
+                .and_then(|s| s.status)
+        };
+        // Seerr counts a season as asked for while a (non-4K) request for it is neither
+        // declined (3) nor completed (5); the season's own status in it can say the same.
+        let requested = |n: u32| {
+            info.is_some_and(|m| {
+                m.requests.iter().any(|r| {
+                    !r.is4k
+                        && !matches!(r.status, 3 | 5)
+                        && r.seasons
+                            .iter()
+                            .any(|s| s.season_number == n && !matches!(s.status, Some(3 | 5)))
+                })
+            })
+        };
+        let queue = info.map(|m| m.download_status.as_slice()).unwrap_or(&[]);
+        let downloading = |n: u32, a: Availability| {
+            queue.iter().any(|d| match &d.episode {
+                Some(e) => e.season_number == n,
+                // Sonarr didn't say which episode: the seasons being processed.
+                None => a == Availability::Processing,
+            })
+        };
+        Ok(tv
+            .seasons
+            .iter()
+            .map(|s| {
+                let n = s.season_number;
+                let a = availability(status(n));
+                SeerrSeasonInfo {
+                    number: n,
+                    name: s.name.clone().filter(|x| !x.is_empty()).unwrap_or_else(|| {
+                        if n == 0 {
+                            "Specials".to_owned()
+                        } else {
+                            format!("Season {n}")
+                        }
+                    }),
+                    episodes: s.episode_count.unwrap_or(0),
+                    availability: a,
+                    requested: requested(n),
+                    downloading: downloading(n, a),
+                }
             })
             .collect())
     }
@@ -945,6 +1097,100 @@ impl SeerrClient {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Choosing seasons to request (shared by the apps: same rules, same words).
+
+/// A season's state in plain words.
+pub fn season_state_label(state: SeasonState) -> &'static str {
+    match state {
+        SeasonState::OnServer => "On your server",
+        SeasonState::PartlyOnServer => "Partly on your server",
+        SeasonState::Requested => "Requested",
+        SeasonState::Downloading => "Being downloaded",
+        SeasonState::Requestable => "Not on your server",
+        SeasonState::Blocked => "Can't be requested",
+    }
+}
+
+fn season_state(s: &SeerrSeasonInfo, have: &[u32]) -> SeasonState {
+    match s.availability {
+        Availability::Available => SeasonState::OnServer,
+        _ if s.downloading => SeasonState::Downloading,
+        Availability::PartiallyAvailable => SeasonState::PartlyOnServer,
+        _ if s.requested => SeasonState::Requested,
+        Availability::Pending | Availability::Processing => SeasonState::Requested,
+        Availability::Blocklisted => SeasonState::Blocked,
+        // Seerr follows one media server; the one being browsed may have it anyway.
+        _ if have.contains(&s.number) => SeasonState::OnServer,
+        _ => SeasonState::Requestable,
+    }
+}
+
+/// Each season of a show with its state, and what can be requested. `have`: the season
+/// numbers the media server being browsed shows (Seerr follows only one media server, so a
+/// season it doesn't know of can still be there). Specials (season 0) are listed only when
+/// they are the only thing that can be requested.
+pub fn season_plan(seasons: &[SeerrSeasonInfo], have: &[u32]) -> SeasonPlan {
+    let mut list: Vec<SeasonChoice> = seasons
+        .iter()
+        .map(|s| {
+            let state = season_state(s, have);
+            SeasonChoice {
+                number: s.number,
+                name: s.name.clone(),
+                state,
+                label: season_state_label(state).to_owned(),
+            }
+        })
+        .collect();
+    list.sort_by_key(|c| c.number);
+    let open = |c: &SeasonChoice| c.state == SeasonState::Requestable;
+    let specials_only = !list.iter().any(|c| c.number > 0 && open(c));
+    list.retain(|c| c.number > 0 || (specials_only && open(c)));
+    SeasonPlan {
+        missing: list.iter().filter(|c| open(c)).map(|c| c.number).collect(),
+        has_some: list
+            .iter()
+            .any(|c| !matches!(c.state, SeasonState::Requestable | SeasonState::Blocked)),
+        seasons: list,
+    }
+}
+
+/// "season 2", "seasons 2, 3 and 5", "the specials".
+fn seasons_words(numbers: &[u32]) -> String {
+    let names: Vec<String> = numbers
+        .iter()
+        .filter(|n| **n > 0)
+        .map(u32::to_string)
+        .collect();
+    let mut words = match names.as_slice() {
+        [] => String::new(),
+        [one] => format!("season {one}"),
+        many => format!("seasons {}", many.join(", ")),
+    };
+    if numbers.contains(&0) {
+        if words.is_empty() {
+            words = "the specials".to_owned();
+        } else {
+            words.push_str(" and the specials");
+        }
+    }
+    words
+}
+
+/// The confirmation once seasons are requested.
+pub fn seasons_requested_message(numbers: &[u32]) -> String {
+    let mut sorted = numbers.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let words = seasons_words(&sorted);
+    if sorted.len() == 1 && sorted[0] > 0 {
+        format!("Requested: {words}. It'll appear here when it's ready.")
+    } else {
+        format!("Requested: {words}. They'll appear here when they're ready.")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -955,6 +1201,112 @@ mod tests {
         assert_eq!(availability(Some(7)), Availability::Deleted);
         assert_eq!(availability(None), Availability::Unknown);
         assert_eq!(request_status(4), RequestStatus::Failed);
+    }
+
+    fn season(n: u32, a: Availability) -> SeerrSeasonInfo {
+        SeerrSeasonInfo {
+            number: n,
+            name: if n == 0 {
+                "Specials".into()
+            } else {
+                format!("Season {n}")
+            },
+            episodes: 8,
+            availability: a,
+            requested: false,
+            downloading: false,
+        }
+    }
+
+    #[test]
+    fn plan_for_a_show_with_seasons_1_6_7() {
+        use Availability::*;
+        let mut s: Vec<_> = (0..=8).map(|n| season(n, Unknown)).collect();
+        s[1].availability = Available;
+        s[6].availability = Available;
+        s[7].availability = PartiallyAvailable;
+        s[2].requested = true;
+        s[3].availability = Processing;
+        s[4].availability = Processing;
+        s[4].downloading = true;
+        s[8].availability = Blocklisted;
+        let p = season_plan(&s, &[1, 6, 7]);
+        let states: Vec<_> = p.seasons.iter().map(|c| (c.number, c.state)).collect();
+        assert_eq!(
+            states,
+            vec![
+                (1, SeasonState::OnServer),
+                (2, SeasonState::Requested),
+                (3, SeasonState::Requested),
+                (4, SeasonState::Downloading),
+                (5, SeasonState::Requestable),
+                (6, SeasonState::OnServer),
+                (7, SeasonState::PartlyOnServer),
+                (8, SeasonState::Blocked),
+            ],
+            "specials left out while other seasons can be requested"
+        );
+        assert_eq!(p.missing, vec![5]);
+        assert!(p.has_some);
+        assert_eq!(p.seasons[6].label, "Partly on your server");
+        assert_eq!(p.seasons[3].label, "Being downloaded");
+    }
+
+    #[test]
+    fn plan_lists_specials_only_when_they_are_all_that_is_missing() {
+        use Availability::*;
+        let s = vec![
+            season(2, Available),
+            season(0, Unknown),
+            season(1, Available),
+        ];
+        let p = season_plan(&s, &[]);
+        assert_eq!(
+            p.seasons.iter().map(|c| c.number).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        assert_eq!(p.missing, vec![0]);
+        // Specials already there: not listed, nothing to do.
+        let s = vec![season(0, Available), season(1, Available)];
+        let p = season_plan(&s, &[]);
+        assert_eq!(p.seasons.len(), 1);
+        assert!(p.missing.is_empty());
+    }
+
+    #[test]
+    fn plan_counts_what_the_browsed_server_has_and_fresh_shows() {
+        use Availability::*;
+        // Seerr follows another media server: the seasons this one shows are there.
+        let s = vec![season(1, Unknown), season(2, Deleted), season(3, Unknown)];
+        let p = season_plan(&s, &[1]);
+        assert_eq!(p.seasons[0].state, SeasonState::OnServer);
+        assert_eq!(p.missing, vec![2, 3]);
+        assert!(p.has_some);
+        // Nothing anywhere: everything requestable, "Request all seasons".
+        let p = season_plan(&s, &[]);
+        assert_eq!(p.missing, vec![1, 2, 3]);
+        assert!(!p.has_some);
+        assert!(season_plan(&[], &[]).missing.is_empty());
+    }
+
+    #[test]
+    fn requested_message_in_plain_words() {
+        assert_eq!(
+            seasons_requested_message(&[5, 2, 3, 4]),
+            "Requested: seasons 2, 3, 4, 5. They'll appear here when they're ready."
+        );
+        assert_eq!(
+            seasons_requested_message(&[2]),
+            "Requested: season 2. It'll appear here when it's ready."
+        );
+        assert_eq!(
+            seasons_requested_message(&[0]),
+            "Requested: the specials. They'll appear here when they're ready."
+        );
+        assert_eq!(
+            seasons_requested_message(&[3, 0]),
+            "Requested: season 3 and the specials. They'll appear here when they're ready."
+        );
     }
 
     #[tokio::test]

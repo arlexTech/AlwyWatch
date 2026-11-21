@@ -361,7 +361,8 @@ pub fn Detail() -> impl IntoView {
                             </div>
                         </div>
                     </div>
-                    {(i.kind == ItemKind::Series).then(|| view! { <Seasons acc=acc.clone() series=i.id.clone() show=i.title.clone() /> })}
+                    {(i.kind == ItemKind::Series).then(|| view! { <Seasons acc=acc.clone() series=i.id.clone() show=i.title.clone()
+                        tmdb=i.provider_ids.tmdb.as_deref().and_then(|t| t.parse().ok()) /> })}
                     {(i.kind == ItemKind::Season).then(|| view! {
                         <Episodes acc=acc.clone() series=i.series_id.clone().unwrap_or_default() season=i.id.clone() />
                     })}
@@ -375,7 +376,7 @@ pub fn Detail() -> impl IntoView {
 }
 
 #[component]
-fn Seasons(acc: String, series: String, show: String) -> impl IntoView {
+fn Seasons(acc: String, series: String, show: String, tmdb: Option<i64>) -> impl IntoView {
     let (a, s) = (acc.clone(), series.clone());
     let refresh = use_context::<crate::extra::Refresh>();
     let seasons = LocalResource::new(move || {
@@ -389,10 +390,20 @@ fn Seasons(acc: String, series: String, show: String) -> impl IntoView {
         }
     });
     let picked = RwSignal::new(None::<String>);
+    // The season numbers shown, for "More seasons" (Seerr may follow another media server).
+    let have = Signal::derive(move || {
+        seasons
+            .get()
+            .flatten()
+            .map(|l| l.iter().filter_map(|s| s.season_number).collect())
+            .unwrap_or_default()
+    });
+    let more_show = show.clone();
     view! {
         {move || matches!(seasons.get(), Some(None)).then(|| view! {
             <ErrorText text="Couldn't load the seasons.".to_string() />
         })}
+        <div class="season-row">
         {move || seasons.get().flatten().map(|list| {
             // The first season not fully watched, else the first.
             if picked.get_untracked().is_none() {
@@ -410,6 +421,8 @@ fn Seasons(acc: String, series: String, show: String) -> impl IntoView {
                 </div>
             }
         })}
+        {tmdb.map(|t| view! { <crate::request::MoreSeasons tmdb=t show=more_show.clone() have=have /> })}
+        </div>
         {
             let acc = acc.clone();
             move || {

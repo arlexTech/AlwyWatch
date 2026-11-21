@@ -190,6 +190,16 @@ Then: `seerr_connection()`, `seerr_active()`, `seerr_sign_out()`, `seerr_search(
 `seerr_request(type, tmdb, seasons)`, `seerr_cancel(id)`,
 `cached_seerr_requests` / `refresh_seerr_requests(force)`.
 
+Requesting more seasons of a show: `seerr_season_info(tmdb)` returns every season (specials
+included) with its availability, whether an open request covers it (pending, approved or
+failed; not declined, completed or 4K) and whether Sonarr's queue holds episodes of it. The
+pure `season_plan(info, have)` (also `seerr::season_plan` for the web app) turns that into one
+state per season (`OnServer`, `PartlyOnServer`, `Requested`, `Downloading`, `Requestable`,
+`Blocked`) with its label (`season_state_label`), the requestable numbers (`missing`) and
+`has_some` (button reads "Request the missing seasons"). `have`: the season numbers the browsed
+media server shows (Seerr follows one media server only). Specials are listed only when they
+are all that can be requested. `seasons_requested_message(numbers)` is the shared confirmation.
+
 ## Keep service (AlwyWatch server)
 
 Protocol: [keep-protocol.md](keep-protocol.md).

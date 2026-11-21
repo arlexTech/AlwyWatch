@@ -90,12 +90,21 @@ fun SeerrTitleScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var requesting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    // Shows: season by season (some may be on the server or requested while others are not).
+    var seasonPlan by remember { mutableStateOf<be.alwyapps.watch.core.seerr.SeasonPlan?>(null) }
     LaunchedEffect(reload) {
         try {
             title = core.seerrTitle(type, tmdbId)
             error = null
         } catch (e: CoreException) {
             error = e.message
+        }
+        if (type == SeerrMediaType.TV) {
+            runCatching { core.seerrSeasonInfo(tmdbId) }.onSuccess {
+                seasonPlan =
+                    be.alwyapps.watch.core
+                        .seasonPlan(it, emptyList())
+            }
         }
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
@@ -134,13 +143,13 @@ fun SeerrTitleScreen(
                             textColor = if (t.availability == Availability.AVAILABLE) Color.Black else Color.White,
                         )
                     }
-                    if (d.isTv && !requesting) PrimaryAction(t, onRequest = { requesting = true }, onBack = { nav.pop() })
+                    if (d.isTv && !requesting) PrimaryAction(t, seasonPlan, onRequest = { requesting = true }, onBack = { nav.pop() })
                 }
             }
         }
         item(key = "actions") {
             Column(Modifier.padding(horizontal = d.gutter, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (!d.isTv && !requesting) PrimaryAction(t, onRequest = { requesting = true }, onBack = { nav.pop() })
+                if (!d.isTv && !requesting) PrimaryAction(t, seasonPlan, onRequest = { requesting = true }, onBack = { nav.pop() })
                 if (requesting) {
                     RequestPanel(t.asResult(), onDone = { msg ->
                         requesting = false
@@ -219,15 +228,23 @@ fun SeerrTitleScreen(
     }
 }
 
-/** Whether the title can be requested now (not on the servers, or a show with seasons missing). */
-private fun SeerrDetails.canRequest() =
+/**
+ * Whether the title can be requested now (not on the servers, or a show with seasons missing).
+ * Shows: their seasons decide once known (a show partly requested still has others to ask for).
+ */
+private fun SeerrDetails.canRequest(plan: be.alwyapps.watch.core.seerr.SeasonPlan?) =
+    if (mediaType == SeerrMediaType.TV && plan != null) plan.missing.isNotEmpty() else canRequestTitle()
+
+private fun SeerrDetails.canRequestTitle() =
     availability == Availability.UNKNOWN ||
         availability == Availability.DELETED ||
         (mediaType == SeerrMediaType.TV && availability == Availability.PARTIALLY_AVAILABLE)
 
 /** Why there is no Request button, in one line. */
-private fun SeerrDetails.whyNoRequest(): String =
+private fun SeerrDetails.whyNoRequest(plan: be.alwyapps.watch.core.seerr.SeasonPlan?): String =
     when {
+        plan != null && mediaType == SeerrMediaType.TV && availability != Availability.AVAILABLE ->
+            "Every season is on your servers or already requested."
         downloadProgress != null -> "Already requested: it is downloading."
         availability == Availability.AVAILABLE -> "Already on your servers: search for it to watch it."
         availability == Availability.PARTIALLY_AVAILABLE -> "Already partly on your servers."
@@ -244,15 +261,17 @@ private fun SeerrDetails.whyNoRequest(): String =
 @Composable
 private fun PrimaryAction(
     t: SeerrDetails,
+    plan: be.alwyapps.watch.core.seerr.SeasonPlan?,
     onRequest: () -> Unit,
     onBack: () -> Unit,
 ) {
     val d = LocalDimens.current
     // focusOnAppear: it also comes back in place of the request panel (closed, or request sent).
-    if (t.canRequest()) {
-        ActionButton("Request", onRequest, Modifier.then(if (d.isTv) Modifier else Modifier.fillMaxWidth()).focusOnAppear(), primary = true, icon = Icons.Add)
+    if (t.canRequest(plan)) {
+        val label = if (t.mediaType == SeerrMediaType.TV && plan?.hasSome == true) "Request the missing seasons" else "Request"
+        ActionButton(label, onRequest, Modifier.then(if (d.isTv) Modifier else Modifier.fillMaxWidth()).focusOnAppear(), primary = true, icon = Icons.Add)
     } else {
-        Text(t.whyNoRequest(), color = Muted, style = MaterialTheme.typography.bodyMedium)
+        Text(t.whyNoRequest(plan), color = Muted, style = MaterialTheme.typography.bodyMedium)
         if (d.isTv) ActionButton("Back", onBack, Modifier.focusOnAppear(), icon = Icons.Back)
     }
 }
