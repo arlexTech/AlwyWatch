@@ -18,8 +18,8 @@ use crate::platform::{self, Tokens};
 mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
 use crate::{
-    AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, LeavingRow, NamedId, Page, Rail,
-    SeerrPage, SeerrPanel, ServerChoice,
+    AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, ForeverRow, LeavingRow, NamedId,
+    Page, Rail, SeerrPage, SeerrPanel, ServerChoice,
 };
 use together::TogetherPlay;
 
@@ -680,6 +680,7 @@ impl App {
 
     fn load_admin(self: &Rc<Self>) {
         self.load_leaving();
+        self.load_forever();
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             let r = core.keep_admin_users().await;
@@ -691,6 +692,83 @@ impl App {
                 }
                 Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
             }
+        })
+        .ok();
+    }
+
+    /// Who keeps what forever, and how much of it someone else keeps too.
+    fn load_forever(self: &Rc<Self>) {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.keep_admin_forever().await;
+            let Some(t) = this.upgrade() else { return };
+            let ui = t.ui();
+            let s = match r {
+                Ok(s) => s,
+                Err(e) => return ui.set_forever_summary(sstr(e.to_string())),
+            };
+            if s.people.is_empty() {
+                ui.set_forever_summary("Nobody keeps anything forever yet.".into());
+            } else {
+                ui.set_forever_summary(sstr(format!(
+                    "{} titles · {} kept by several people · {} by one person",
+                    s.titles,
+                    s.shared,
+                    s.titles.saturating_sub(s.shared)
+                )));
+            }
+            let names: HashMap<&str, &str> = s
+                .people
+                .iter()
+                .map(|p| (p.user_key.as_str(), p.name.as_str()))
+                .collect();
+            let people: Vec<ForeverRow> = s
+                .people
+                .iter()
+                .map(|p| {
+                    let overlaps = p
+                        .overlaps
+                        .iter()
+                        .take(3)
+                        .map(|o| format!("{} ({})", o.name, o.both))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    ForeverRow {
+                        title: sstr(format!("{}  ·  {}", p.name, p.count)),
+                        detail: sstr(format!(
+                            "{} shared · {} only them{}",
+                            p.shared,
+                            p.alone,
+                            if overlaps.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" · most with {overlaps}")
+                            }
+                        )),
+                        shared: p.shared as f32 / p.count.max(1) as f32,
+                    }
+                })
+                .collect();
+            let titles: Vec<ForeverRow> = s
+                .items
+                .iter()
+                .map(|i| ForeverRow {
+                    title: sstr(match i.year {
+                        Some(y) => format!("{} ({y})", i.title),
+                        None => i.title.clone(),
+                    }),
+                    detail: sstr(
+                        i.keepers
+                            .iter()
+                            .map(|k| names.get(k.as_str()).copied().unwrap_or(k))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    ),
+                    shared: -1.0,
+                })
+                .collect();
+            ui.set_forever_people(ModelRc::new(VecModel::from(people)));
+            ui.set_forever_titles(ModelRc::new(VecModel::from(titles)));
         })
         .ok();
     }

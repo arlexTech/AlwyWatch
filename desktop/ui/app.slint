@@ -120,6 +120,13 @@ export struct TogetherRow {
     mine: bool,
 }
 
+export struct ForeverRow {
+    title: string,
+    detail: string,
+    // Share of this person's titles that someone else keeps too (0..1); -1 for titles.
+    shared: float,
+}
+
 export struct AdminRow {
     key: string,
     name: string,
@@ -614,6 +621,9 @@ export component AppWindow inherits Window {
     in property <int> triage-left;
     in property <[AdminRow]> admin-users;
     in property <[NamedId]> admin-collections;
+    in property <string> forever-summary;
+    in property <[ForeverRow]> forever-people;
+    in property <[ForeverRow]> forever-titles;
 
     callback back();
     callback move-focus(bool);
@@ -1585,6 +1595,32 @@ export component AppWindow inherits Window {
                                         Button { label: u.max-forever; clicked => { root.admin-rights(u.key, "max-forever"); } }
                                         Button { label: u.max-days; clicked => { root.admin-rights(u.key, "max-days"); } }
                                     }
+                                }
+                            }
+                            Group {
+                                title: "KEPT FOREVER";
+                                Text { text: root.forever-summary; color: Palette.muted; wrap: word-wrap; }
+                                for p in root.forever-people : VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: p.title; color: Palette.text; font-weight: 700; }
+                                    Text { text: p.detail; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                    Rectangle {
+                                        height: 6px;
+                                        border-radius: 3px;
+                                        background: Palette.surface-high;
+                                        Rectangle {
+                                            x: 0;
+                                            width: parent.width * max(0, p.shared);
+                                            border-radius: 3px;
+                                            background: Palette.accent;
+                                        }
+                                    }
+                                }
+                                if root.forever-titles.length > 0 : Text { text: "Titles"; color: Palette.text; font-weight: 700; }
+                                for t in root.forever-titles : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: t.title; color: Palette.text; min-width: 260px; }
+                                    Text { text: t.detail; color: Palette.muted; wrap: word-wrap; horizontal-stretch: 1; }
                                 }
                             }
                         }
