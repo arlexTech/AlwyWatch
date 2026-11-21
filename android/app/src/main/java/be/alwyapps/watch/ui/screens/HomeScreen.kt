@@ -720,7 +720,12 @@ private fun HeroText(hero: androidx.compose.runtime.State<Item?>) {
     Crossfade(hero.value, animationSpec = tween(250), label = "heroText") { item ->
         if (item != null) {
             Column(Modifier.fillMaxWidth(0.48f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                TitleArt(item, 400.dp, big = true)
+                // A fixed slot: logos differ in height (and are empty until loaded), titles
+                // without one take one or two lines. The text below must not move from one
+                // focused card to the next.
+                Box(Modifier.height(130.dp).fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
+                    TitleArt(item, 400.dp, big = true)
+                }
                 HeroMeta(item)
                 item.overview?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
