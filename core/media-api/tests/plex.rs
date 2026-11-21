@@ -249,11 +249,9 @@ async fn playback_info_direct_play_and_download() {
         src.streams[3].external.as_ref().unwrap().url,
         format!("{}/library/streams/4", s.uri())
     );
-    assert!(
-        src.transcode.as_ref().unwrap().url.contains(
-            "/video/:/transcode/universal/start.m3u8?path=%2Flibrary%2Fmetadata%2F175731"
-        )
-    );
+    assert!(src.transcode.as_ref().unwrap().url.contains(
+        "/video/:/transcode/universal/start.m3u8?hasMDE=1&path=%2Flibrary%2Fmetadata%2F175731"
+    ));
 
     let d = c.download_source("175731").await.unwrap();
     assert_eq!(d.file_name, "Arrival.mkv");

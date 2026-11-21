@@ -750,7 +750,8 @@ impl PlexClient {
             .iter()
             .find(|s| s.kind == StreamKind::Subtitle && (s.is_default || s.is_forced))
             .map(|s| s.index);
-        let transcode = transcode_url(&self.session.base_url, rating_key, index, profile);
+        let session = play_session(rating_key, &id_string(&m.id));
+        let transcode = transcode_url(&self.session.base_url, rating_key, index, &session, profile);
         Some(MediaSource {
             id: id_string(&m.id),
             container: part.container.or(m.container),
@@ -1205,6 +1206,9 @@ impl MediaServer for PlexClient {
         if let Some(d) = r.duration_ms {
             p.push(("duration", d.to_string()));
         }
+        if let Some(media) = &r.media_source_id {
+            p.push(("X-Plex-Session-Identifier", play_session(&r.item_id, media)));
+        }
         net::send(self.req(Method::GET, "/:/timeline").query(&p)).await?;
         Ok(())
     }
@@ -1424,6 +1428,13 @@ impl MediaServer for PlexClient {
     }
 }
 
+/// Names one playback of one version of a title. The conversion and the progress reports
+/// carry the same name, so Plex ties them together: it shows the session as converted, and
+/// stops converting when playback is reported stopped.
+fn play_session(rating_key: &str, media_id: &str) -> String {
+    format!("{rating_key}-{media_id}")
+}
+
 /// The HLS conversion of a file. Plex only converts for clients it has a profile for; for
 /// any other it answers 400 unless the request describes the client: the "Generic" profile
 /// plus what this device plays (`X-Plex-Client-Profile-Extra`). Streams the device plays
@@ -1432,6 +1443,7 @@ fn transcode_url(
     base_url: &str,
     rating_key: &str,
     index: usize,
+    session: &str,
     profile: &DeviceProfile,
 ) -> String {
     // HEVC is only kept as is where MPEG-TS plays natively (the apps' players, not browsers).
@@ -1472,12 +1484,11 @@ fn transcode_url(
             ));
         }
     }
-    let session = format!("{rating_key}-{index}");
     format!(
         "{base_url}/video/:/transcode/universal/start.m3u8?hasMDE=1&path={}&mediaIndex={index}&partIndex=0&protocol=hls&fastSeek=1&copyts=1&directPlay=0&directStream=1&directStreamAudio=1&videoQuality=100&mediaBufferSize=102400&session={}&X-Plex-Session-Identifier={}&X-Plex-Client-Profile-Name=Generic&X-Plex-Client-Profile-Extra={}",
         net::percent_encode(&format!("/library/metadata/{rating_key}")),
-        net::percent_encode(&session),
-        net::percent_encode(&session),
+        net::percent_encode(session),
+        net::percent_encode(session),
         net::percent_encode(&extra.join("+")),
     )
 }
@@ -1508,9 +1519,10 @@ mod transcode_tests {
         p.video_10bit_codecs = vec!["hevc".into()];
         p.audio_codecs = vec!["aac".into(), "eac3".into()];
         p.max_width = Some(3840);
-        let url = transcode_url("https://plex.example", "42", 0, &p);
+        let url = transcode_url("https://plex.example", "42", 0, "42-7", &p);
         assert!(url.starts_with("https://plex.example/video/:/transcode/universal/start.m3u8?"));
         assert!(url.contains("X-Plex-Client-Profile-Name=Generic"));
+        assert!(url.contains("&session=42-7&X-Plex-Session-Identifier=42-7&"));
         let extra = url.split("X-Plex-Client-Profile-Extra=").nth(1).unwrap();
         assert!(
             !extra.contains('(') && !extra.contains('&'),
@@ -1532,7 +1544,7 @@ mod transcode_tests {
         assert!(extra.contains("scopeName=h264&type=upperBound&name=video.bitDepth&value=8"));
         assert!(!extra.contains("scopeName=hevc&type=upperBound&name=video.bitDepth"));
         // A browser-like profile (no MPEG-TS): everything goes to H.264 / AAC.
-        let web = transcode_url("https://plex.example", "42", 0, &empty_profile());
+        let web = transcode_url("https://plex.example", "42", 0, "42-7", &empty_profile());
         assert!(
             web.contains("videoCodec%3Dh264%26audioCodec%3Daac%29"),
             "{web}"
