@@ -147,7 +147,8 @@ pub struct Progress {
     pub event: PlaybackEvent,
     pub position_ms: u64,
     pub duration_ms: Option<u64>,
-    /// Set on the final Stop when the file played to the end.
+    /// Set on the final Stop when the file played to the end and the next episode may follow
+    /// (setting on, countdown not cancelled).
     pub finished: bool,
     /// Set on the final Stop when the viewer asked for the next/previous episode.
     pub go: Option<Go>,
@@ -502,7 +503,9 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 next_check = Instant::now() + Duration::from_secs(2);
             }
             mpv::EVENT_END_FILE => {
-                let finished = reason == Some(mpv::END_FILE_EOF);
+                // The next episode follows only with the setting on and the countdown not
+                // cancelled (C / "Keep watching").
+                let finished = reason == Some(mpv::END_FILE_EOF) && req.auto_next && !cancelled;
                 let error = (reason == Some(mpv::END_FILE_ERROR))
                     .then(|| "The player could not play this file.".to_owned());
                 report(Progress {

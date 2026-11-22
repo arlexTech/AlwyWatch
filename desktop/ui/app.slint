@@ -2816,8 +2816,8 @@ export component AppWindow inherits Window {
                                     clicked => { root.toggle-setting("player.auto_skip_intro"); }
                                 }
                                 SettingToggle {
-                                    title: "Play next episode during credits";
-                                    subtitle: "After a 10 second countdown, which Keep watching cancels.";
+                                    title: "Play the next episode automatically";
+                                    subtitle: "A 10 second countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode.";
                                     on: root.auto-next;
                                     clicked => { root.toggle-setting("player.auto_next"); }
                                 }

@@ -432,13 +432,13 @@ private fun PlaybackSection() {
         Divider()
         var autoNext by remember { mutableStateOf(settings.autoPlayNext) }
         ToggleRow(
-            "Play next episode during credits",
+            "Play the next episode automatically",
             autoNext,
             {
                 autoNext = it
                 settings.autoPlayNext = it
             },
-            subtitle = "After a countdown, which Back cancels.",
+            subtitle = "A countdown during the credits, which Back cancels. Off: playback stops at the end of the episode.",
         )
         Divider()
         SecondsRow(

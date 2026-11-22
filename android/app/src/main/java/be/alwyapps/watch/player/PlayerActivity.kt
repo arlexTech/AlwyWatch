@@ -533,7 +533,8 @@ class PlayerActivity : ComponentActivity() {
                     report(PlaybackEvent.STOP)
                     val next = nextEpisodeId
                     android.util.Log.i(TAG, "ended; next episode: ${next != null}")
-                    if (next != null) {
+                    // The next episode only with the setting on and the countdown not cancelled.
+                    if (next != null && autoPlayNext && !countdownCancelled) {
                         announceTitle = room != null
                         lifecycleScope.launch { load(next, freshStart(next, nextStartMs)) }
                     } else if (room == null) {

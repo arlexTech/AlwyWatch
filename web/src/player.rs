@@ -1161,6 +1161,7 @@ fn PlayerView(
     let (nav4, acc4, id4) = (navigate.clone(), acc.clone(), id.clone());
     let back = move |_| leave(&nav4, &acc4, &id4);
     let nav5 = navigate.clone();
+    let (nav6, acc6, id6) = (navigate.clone(), acc.clone(), id.clone());
 
     // Others' changes (not the one left over from the previous title).
     let nav3 = navigate.clone();
@@ -1230,7 +1231,15 @@ fn PlayerView(
                 on:play=move |_| on_play()
                 on:seeked=move |_| if alive() { local_action() }
                 on:pause=move |_| if alive() && !stopped.get_value() { report(PlaybackEvent::Pause); local_action() }
-                on:ended=move |_| go_next() />
+                on:ended=move |_| {
+                    // The next episode only with the setting on and the countdown not cancelled.
+                    if auto_next && !cancelled.get_untracked() {
+                        go_next()
+                    } else if alive() && !joined() {
+                        stop();
+                        leave(&nav6, &acc6, &id6);
+                    }
+                } />
             <div class="player-top">
                 <button class="icon" on:click=back.clone() aria-label="Back">"←"</button>
                 {move || match loaded.get() {

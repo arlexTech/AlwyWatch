@@ -167,7 +167,7 @@ pub fn PlaybackSettings() -> impl IntoView {
                     on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.auto_skip_intro = on) } />
             </label>
             <label class="row toggle">
-                <div>"Play next episode during credits"<div class="muted small">"After a countdown, which Cancel stops."</div></div>
+                <div>"Play the next episode automatically"<div class="muted small">"A countdown during the credits, which Cancel stops. Off: playback stops at the end of the episode."</div></div>
                 <input type="checkbox" prop:checked=move || prefs.with(|p| p.auto_next)
                     on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.auto_next = on) } />
             </label>
