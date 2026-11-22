@@ -3,7 +3,6 @@ package be.alwyapps.watch.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -134,9 +133,16 @@ private fun MyRequest(
     showWho: Boolean = false,
 ) {
     val d = LocalDimens.current
+    val nav = be.alwyapps.watch.ui.LocalNavigator.current
     Column(Modifier.width(d.posterWidth)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(d.radius))) {
-            UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxSize())
+        // A card (focusable with the remote) opening the title's page: its state, seasons, saga.
+        be.alwyapps.watch.ui.FocusCard(onClick = {
+            nav.push(
+                be.alwyapps.watch.ui.Route
+                    .SeerrTitle(if (r.mediaType == SeerrMediaType.TV) "tv" else "movie", r.tmdbId),
+            )
+        }) {
+            UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
             val (bg, fg) =
                 when (r.status) {
                     RequestStatus.COMPLETED -> be.alwyapps.watch.ui.Success to Color.Black
