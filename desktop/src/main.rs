@@ -30,6 +30,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::time::Duration::from_millis(after),
             driven,
         );
+    } else {
+        // Desktop OpenGL rather than Slint's default OpenGL ES: mpv draws the video into this
+        // context, and NVIDIA's GLES drew 10-bit video (P010: every 10-bit file once the GPU
+        // decodes it) as lines of noise. `ALWYWATCH_GLES` keeps GLES (comparison).
+        if std::env::var_os("ALWYWATCH_GLES").is_none() {
+            let _ = slint::BackendSelector::new()
+                .backend_name("winit".into())
+                .require_opengl()
+                .select();
+        }
     }
     let paths = platform::paths();
     // Several people on one computer: each profile its own database and tokens (the original

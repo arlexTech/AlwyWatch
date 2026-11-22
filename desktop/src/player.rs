@@ -209,10 +209,18 @@ fn open(req: &PlayRequest, embed: bool) -> Result<(Arc<Mpv>, bool), String> {
     for (k, v) in window {
         m.set_option(k, v)?;
     }
-    // Video: hardware decoding when safe (VAAPI/NVDEC on Linux, D3D11VA on Windows) and a
-    // bounded demuxer cache so RAM stays predictable for 4K remuxes.
+    // A bounded demuxer cache so RAM stays predictable for 4K remuxes.
+    // Hardware decoding when safe (NVDEC/VAAPI on Linux, D3D11VA on Windows); `ALWYWATCH_HWDEC`
+    // overrides it (diagnosis).
+    let hwdec = std::env::var("ALWYWATCH_HWDEC").unwrap_or_else(|_| "auto-safe".to_owned());
+    m.set_option("hwdec", &hwdec)?;
+    // Extra mpv options for diagnosis, "name=value;name=value".
+    if let Ok(extra) = std::env::var("ALWYWATCH_MPV_OPTIONS") {
+        for (k, v) in extra.split(';').filter_map(|o| o.split_once('=')) {
+            m.set_option(k, v)?;
+        }
+    }
     for (k, v) in [
-        ("hwdec", "auto-safe"),
         ("keep-open", "no"),
         ("cache", "yes"),
         ("demuxer-max-bytes", "64MiB"),
