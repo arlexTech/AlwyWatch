@@ -183,15 +183,23 @@ fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoV
         reminder_days: None,
         reason: None,
     };
-    let (v1, v2, v3, v4, v5) = (vote.clone(), vote.clone(), vote.clone(), vote.clone(), vote);
+    let (v1, v2, v3, v4, v5, v6) = (
+        vote.clone(),
+        vote.clone(),
+        vote.clone(),
+        vote.clone(),
+        vote.clone(),
+        vote,
+    );
     view! {
         <div class="actions">
             <button class="small" disabled=move || busy.get() on:click=move |_| v1(Some(req(VoteKind::KeepUntilWatched, None)))>"Until I watch it"</button>
-            <button class="small" disabled=move || busy.get() on:click=move |_| v2(Some(req(VoteKind::KeepForever, None)))>"Forever"</button>
-            <button class="small" disabled=move || busy.get() on:click=move |_| v3(Some(req(VoteKind::KeepDays, Some(30))))>"30 more days"</button>
-            <button class="small" disabled=move || busy.get() on:click=move |_| v4(Some(req(VoteKind::DontCare, None)))>"Don't care"</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v3(Some(req(VoteKind::KeepDays, Some(30))))>"Keep 30 days"</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v6(Some(req(VoteKind::KeepDays, Some(7))))>"Keep 7 days"</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v2(Some(req(VoteKind::KeepForever, None)))>"Keep forever"</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v4(Some(req(VoteKind::DontCare, None)))>"I don't care"</button>
             {item.my_vote.is_some().then(|| view! {
-                <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>"Undo"</button>
+                <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>"Remove my choice"</button>
             })}
         </div>
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
@@ -586,7 +594,7 @@ pub fn Triage() -> impl IntoView {
         });
     };
     let until = move || vote(vote_req(VoteKind::KeepUntilWatched, None, Some(7), None));
-    let forever = move || vote(vote_req(VoteKind::KeepForever, None, None, Some("love it")));
+    let forever = move || vote(vote_req(VoteKind::KeepForever, None, None, None));
     let days = move || vote(vote_req(VoteKind::KeepDays, Some(30), None, None));
     let dont = move || vote(vote_req(VoteKind::DontCare, None, None, None));
     let on_key = move |ev: web_sys::KeyboardEvent| {

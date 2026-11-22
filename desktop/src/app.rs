@@ -627,8 +627,7 @@ impl App {
             "days7" => r(VoteKind::KeepDays, Some(7), None, None),
             "days30" => r(VoteKind::KeepDays, Some(30), None, None),
             "watched" => r(VoteKind::KeepUntilWatched, None, Some(7), None),
-            "love" => r(VoteKind::KeepForever, None, None, Some("love it")),
-            "classic" => r(VoteKind::KeepForever, None, None, Some("classic")),
+            "love" => r(VoteKind::KeepForever, None, None, None),
             "dontcare" => r(VoteKind::DontCare, None, None, None),
             _ => return None,
         })

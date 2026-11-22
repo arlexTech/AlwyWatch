@@ -83,7 +83,7 @@ export struct KeepPanel {
     title: string,
     /// Muted line: which list, why nothing happens yet, who keeps it.
     detail: string,
-    /// "You keep it forever (love it)", "You haven't chosen anything"…
+    /// "You keep it forever", "You haven't chosen anything"…
     choice: string,
     voted: bool,
 }
@@ -359,9 +359,8 @@ component KeepChoices inherits HorizontalLayout {
     Button { label: "Until I watch it"; primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.vote(root.key, "watched"); } }
     Button { label: "Keep 30 days"; clicked => { root.vote(root.key, "days30"); } }
     Button { label: "Keep 7 days"; clicked => { root.vote(root.key, "days7"); } }
-    Button { label: "I love it"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.vote(root.key, "love"); } }
-    Button { label: "A classic"; clicked => { root.vote(root.key, "classic"); } }
-    Button { label: "Don't care"; clicked => { root.vote(root.key, "dontcare"); } }
+    Button { label: "Keep forever"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.vote(root.key, "love"); } }
+    Button { label: "I don't care"; clicked => { root.vote(root.key, "dontcare"); } }
     if root.voted : Button { label: "Remove my choice"; clicked => { root.vote(root.key, "remove"); } }
 }
 

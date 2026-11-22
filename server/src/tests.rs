@@ -626,6 +626,20 @@ async fn a_title_in_no_deletion_list_can_be_kept_ahead() {
         (&item["key"], &item["title"]),
         (&json!("950"), &json!("Dreamland"))
     );
+    // Same server, but the page shows another server's copy (accounts shown together): its
+    // id means nothing there, the provider ids find the title.
+    let (s, item) = e
+        .call(
+            "POST",
+            "/v1/keep-entry",
+            "plexsrv",
+            "px-friend",
+            Some(
+                json!({"item_id": "a-jellyfin-id", "kind": "show", "title": "x", "tmdb_id": "77"}),
+            ),
+        )
+        .await;
+    assert_eq!((s, &item["key"]), (StatusCode::OK, &json!("900")), "{item}");
     // An episode, or a title that isn't in that library: refused.
     let (s, _) = e
         .call(

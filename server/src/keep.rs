@@ -334,24 +334,50 @@ impl State {
         }
         let (tmdb, tvdb) = (req.tmdb_id.as_deref(), req.tvdb_id.as_deref());
         let same_server = who.server_id == self.config.maintainerr.server;
-        let known = if same_server {
-            self.db.item(&req.item_id)
+        // The id only says something on Maintainerr's own server; and even there the page may
+        // show another server's copy (accounts shown together), so the provider ids follow.
+        let by_id = if same_server {
+            self.db
+                .item(&req.item_id)
+                .map_err(|e| internal(e.to_string()))?
+                .filter(|row| row.kind.as_deref() == Some(req.kind.as_str()))
         } else {
-            self.db.item_by_ids(&req.kind, tmdb, tvdb)
-        }
-        .map_err(|e| internal(e.to_string()))?;
+            None
+        };
+        let known = match by_id {
+            Some(row) => Some(row),
+            None => self
+                .db
+                .item_by_ids(&req.kind, tmdb, tvdb)
+                .map_err(|e| internal(e.to_string()))?,
+        };
         let key = match known {
             Some(row) => row.key,
             None => {
-                let found = if same_server {
-                    self.maintainerr.meta(&req.item_id).await.ok()
-                } else {
-                    self.library_title(&req.kind, tmdb, tvdb)
+                let by_id = if same_server {
+                    self.maintainerr
+                        .meta(&req.item_id)
                         .await
-                        .map_err(internal)?
-                }
-                .filter(|m| m.kind == req.kind)
-                .ok_or(VoteError::NotFound)?;
+                        .ok()
+                        .filter(|m| m.kind == req.kind)
+                } else {
+                    None
+                };
+                let found = match by_id {
+                    Some(m) => Some(m),
+                    None => self
+                        .library_title(&req.kind, tmdb, tvdb)
+                        .await
+                        .map_err(internal)?,
+                };
+                let Some(found) = found else {
+                    // (To tell a title that really isn't there from ids that don't match.)
+                    eprintln!(
+                        "[keep] keep-entry: no {} on {} for tmdb {:?} tvdb {:?} (asked from {})",
+                        req.kind, self.config.maintainerr.server, tmdb, tvdb, who.server_id
+                    );
+                    return Err(VoteError::NotFound);
+                };
                 self.db
                     .adopt_item(
                         &found.id,

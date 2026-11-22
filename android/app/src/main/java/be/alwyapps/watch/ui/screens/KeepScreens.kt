@@ -175,8 +175,7 @@ fun KeepActions(
             }
             item { ActionButton("Keep 30 days", { send(req(VoteKind.KEEP_DAYS, days = 30u)) }) }
             item { ActionButton("Keep 7 days", { send(req(VoteKind.KEEP_DAYS, days = 7u)) }) }
-            item { ActionButton("I love it", { send(req(VoteKind.KEEP_FOREVER, reason = "love it")) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled) }
-            item { ActionButton("A classic", { send(req(VoteKind.KEEP_FOREVER, reason = "classic")) }, icon = be.alwyapps.watch.ui.Icons.Favorite) }
+            item { ActionButton("Keep forever", { send(req(VoteKind.KEEP_FOREVER)) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled) }
             item { ActionButton("I don't care", { send(req(VoteKind.DONT_CARE)) }) }
             if (item.myVote != null) item { ActionButton("Remove my choice", { send(null) }, icon = be.alwyapps.watch.ui.Icons.Close) }
         }
@@ -530,7 +529,7 @@ fun TriageScreen() {
                                 when (it.key) {
                                     Key.DirectionLeft -> vote(req(VoteKind.DONT_CARE))
                                     Key.DirectionRight -> vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u))
-                                    Key.DirectionUp -> vote(req(VoteKind.KEEP_FOREVER, reason = "love it"))
+                                    Key.DirectionUp -> vote(req(VoteKind.KEEP_FOREVER))
                                     else -> return@onKeyEvent false
                                 }
                                 true
@@ -544,7 +543,7 @@ fun TriageScreen() {
                                     val v = tracker.calculateVelocity()
                                     val flick = 1200f
                                     when {
-                                        (dy < -250 || v.y < -flick) && abs(dy) > abs(dx) -> vote(req(VoteKind.KEEP_FOREVER, reason = "love it"))
+                                        (dy < -250 || v.y < -flick) && abs(dy) > abs(dx) -> vote(req(VoteKind.KEEP_FOREVER))
                                         dx > 250 || v.x > flick -> vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u))
                                         dx < -250 || v.x < -flick -> vote(req(VoteKind.DONT_CARE))
                                     }
@@ -582,7 +581,7 @@ fun TriageScreen() {
                         primary = true,
                         icon = be.alwyapps.watch.ui.Icons.Schedule,
                     )
-                    ActionButton("Forever", { vote(req(VoteKind.KEEP_FOREVER, reason = "love it")) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled)
+                    ActionButton("Forever", { vote(req(VoteKind.KEEP_FOREVER)) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled)
                     ActionButton("Keep 30 days", { vote(req(VoteKind.KEEP_DAYS, days = 30u)) })
                     ActionButton("Don't care", { vote(req(VoteKind.DONT_CARE)) }, icon = be.alwyapps.watch.ui.Icons.Close)
                 }
