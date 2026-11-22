@@ -24,6 +24,13 @@ minutes under a keyed hash of (server, token); tokens are never stored or logged
 `jellyfin:<server>:<user id>` or `plex:<server>:<plex user id>`. Too many rejected tokens from
 one address (20 in 10 minutes) get 429 before the media server is asked.
 
+Right after validation the signed-in user key is resolved to its **person**: the canonical user
+key of the AlwyWatch account it belongs to (see [Linked identities](#linked-identities)). Every
+`user_key` the server returns or stores (`Me`, votes, rights, rooms, people, settings, Seerr
+link) is a canonical key; an alias key sent by a client (invitations, admin routes, avatar URLs)
+is resolved the same way. A user who never linked anything is a one-identity person whose
+canonical key is their own user key, so nothing changes for them.
+
 ## Errors
 
 JSON `{"error": "<message>"}` (`keep_service::ApiError`) with:
@@ -31,12 +38,12 @@ JSON `{"error": "<message>"}` (`keep_service::ApiError`) with:
 | Status | When |
 |---|---|
 | 400 | Invalid vote, setting too long or too many, malformed transfer, invalid display name, bad avatar (type, bytes, unknown preset), 0 or more than 20 invitations at once |
-| 401 | Missing bearer token or `X-AlwyWatch-Server`; token refused by the media server |
+| 401 | Missing bearer token or `X-AlwyWatch-Server`; token refused by the media server (also the second token of a link) |
 | 403 | Server not served here; not an admin; rights do not allow the vote; Seerr path not bridged; no Seerr account; read-only test mode (`dry_run`); in a room you are in: someone else's seat or a host-only action |
 | 404 | Unknown item, user, room or transfer code; a room you are neither in nor invited to; no custom avatar; Seerr bridge or webhooks off; wrong webhook secret |
-| 409 | Room full; transfer code already used |
+| 409 | Room full; transfer code already used; linking a second, different sign-in on a server the account already has one on; unlinking the canonical sign-in |
 | 413 | Avatar picture over 512 KiB |
-| 429 | Too many failed sign-ins, room creations, invitations, profile changes or transfer starts |
+| 429 | Too many failed sign-ins, room creations, invitations, profile changes, transfer starts or link attempts |
 | 500 | Internal error. The message is always "server error, try again later"; details go to the server log |
 | 502 | Media server or Seerr unreachable |
 | 503 | Too many rooms or pending transfers on the server |
@@ -50,7 +57,10 @@ A `/v1/...` path with no route gets a plain-text `404 not found` (the web app fa
 |---|---|---|---|
 | GET | `/healthz` | anyone | `ok` (text) |
 | GET | `/v1/servers` | anyone | → `[ServerEntry]` (allow-list: `id`, `kind` `jellyfin`/`plex`, `name`, `url` = public URL) |
-| GET | `/v1/me` | user | → `Me` (`user_key`, `name`, `media_name`, `name_is_custom`, `avatar`, `profile_set`, `server_id`, `is_admin`, `rights`, `forever_count`) |
+| GET | `/v1/me` | user | → `Me` (`user_key`, `name`, `media_name`, `name_is_custom`, `avatar`, `profile_set`, `server_id`, `is_admin`, `rights`, `forever_count`, `identities`) |
+| GET | `/v1/me/links` | user | → `[LinkedIdentity]` ([Linked identities](#linked-identities)) |
+| POST | `/v1/me/links` | user | `LinkRequest` → `[LinkedIdentity]` |
+| DELETE | `/v1/me/links/{user_key}` | user | → `[LinkedIdentity]` |
 | … | `/v1/me/name`, `/v1/me/avatar`, `/v1/me/profile-done`, `/v1/users/{user_key}/avatar` | user | [Profile](#profile-display-name-avatar-welcome-step) |
 | GET | `/v1/me/settings` | user | → `{key: value}` (see [Settings across devices](#settings-across-devices)) |
 | PUT | `/v1/me/settings` | user | `{key: value}` → 204 |
@@ -216,8 +226,9 @@ TogetherPerson  {user_key, name, media_name, avatar, server_name, last_together_
   changes in a way they can see (invited, uninvited, a room started, closed or emptied, title,
   host or members changed); playback alone does not change it. Order: invitations first, then
   the caller's rooms; newest first within each.
-* `TogetherPerson`: everyone who has signed in to this AlwyWatch server through a server still
-  in the allow-list, except the caller. `name` = display name, `media_name` = media-server name,
+* `TogetherPerson`: every person (once, by canonical key, however many sign-ins they linked)
+  who has signed in to this AlwyWatch server through a server still in the allow-list, except
+  the caller. `name` = display name, `media_name` = media-server name,
   `server_name` = allow-list name of their server (names are not unique: show them when two
   names match). Order: people the caller was in a **started** room with, most recent
   `last_together_at` (unix seconds) first; then everyone else by name, case-insensitive.
@@ -296,7 +307,9 @@ admin users, kept-forever stats, Seerr-link pickers and "Signed in as …". Type
 | POST | `/v1/me/profile-done` | → `Me` with `profile_set: true` (idempotent) |
 
 `Me` = `{user_key, name, media_name, name_is_custom, avatar, profile_set, server_id,
-is_admin, rights, forever_count}`. `name` is the chosen display name if set, else the
+is_admin, rights, forever_count, identities}` (`user_key` is the canonical key, `server_id` the
+server this request signed in to, `identities` = `[LinkedIdentity]`, see
+[Linked identities](#linked-identities)). `name` is the chosen display name if set, else the
 media-server name (`media_name`); every response that names a person follows the same rule.
 The media-server name is refreshed at each sign-in and never overwrites a chosen name.
 `Avatar` = `{preset: string?, custom_version: u32?}`, both null = default; it appears next to
@@ -387,3 +400,109 @@ The server holds at most 200 pending transfers (503 beyond).
 /v1/me/settings` upserts some of them (204). Values are opaque to the server (the apps store
 "change time ␟ value" and merge per key, newer wins). Limits: 20 000 keys per user, keys up to
 256 bytes, values up to 4 KiB (400 otherwise).
+
+## Linked identities
+
+One person, one AlwyWatch account, whatever they sign in with: a person's Plex user and Jellyfin
+user (or two Jellyfin users on two servers) can be **linked**. A person is a set of identities
+(media-server users); one is **canonical**: all of the account's data is stored under its user
+key, the others are aliases. Every request is resolved to the canonical key right after its
+token is validated (see [Authentication](#authentication)), so votes, profile, rights, settings,
+Seerr link, rooms and the people list are the person's on every device. Types:
+`keep_service::identity`. App flows: [identity-apps.md](identity-apps.md).
+
+### Routes
+
+| Method | Path | Body → answer |
+|---|---|---|
+| GET | `/v1/me/links` | → `[LinkedIdentity]` |
+| POST | `/v1/me/links` | `LinkRequest` → `[LinkedIdentity]` |
+| DELETE | `/v1/me/links/{user_key}` (percent-encoded) | → `[LinkedIdentity]` |
+
+```
+LinkRequest    {server_id, token}
+LinkedIdentity {user_key, server_id, server_name, kind: "jellyfin"|"plex", media_name,
+                canonical, current}
+```
+
+* `LinkedIdentity`: `server_name` is the allow-list name (the id when the server is no longer
+  served); `canonical`: the account's data is stored under this key (it is `Me.user_key`);
+  `current`: the sign-in this request was made with. Canonical first, then oldest link first.
+  `Me.identities` carries the same list (one entry: nothing linked).
+* **Link** (`POST`): signed in as identity A (the usual headers), the body names a second
+  allow-listed server and **that server's token for identity B** (Jellyfin access token, or
+  plex.tv account token), so the caller proves they hold both. The token is validated exactly
+  like a sign-in (same cache, a refusal counts towards the per-address failed sign-in limit) and
+  is never stored nor logged. Answers: 200 with the merged list; 401 the second token is refused
+  (nothing changes); 403 the server is not served here; 409 the two accounts each have a
+  different sign-in on the same server (unlink one first: two users of one server are never one
+  person); 429 more than **10 link attempts per person per ten minutes** (counted before the
+  media server is asked); 502 media server unreachable. **Idempotent**: when A and B already
+  are one person (or are the same user) nothing changes and the answer is 200. B may belong to
+  a person with other sign-ins: both persons merge. After a link, read `Me` again: `user_key`
+  may have changed.
+* **Unlink** (`DELETE`): the named sign-in (one of the caller's) leaves the account and becomes
+  its own account again, **with fresh, empty data** (no votes, name, avatar, settings, rights,
+  Seerr link or history). The canonical sign-in cannot be unlinked (409 with an explanation:
+  unlink the others instead); a key that is not one of the caller's: 404. The caller may unlink
+  the sign-in they are using.
+
+### Canonical rule
+
+When two persons merge, the canonical key is the first of: A's canonical key, then B's person's
+canonical key, then any other identity of the two, **that is a Jellyfin user on a server still
+served**; when none is, A's canonical key. Jellyfin (open source, the server people move to)
+holds the data whenever it can, so stopping the Plex server never strands an account. Data is
+moved to the new canonical key in the same transaction. Canonical-ness does not depend on the
+server still being served: a person whose canonical key is on a server removed from the
+allow-list keeps working through any alias still served (they keep their key, show in the
+people list under a served sign-in's server name, and can be invited).
+
+### Merge rules
+
+Everything happens in **one SQLite transaction** (all or nothing). A = the caller's person,
+B = the person of the proven sign-in.
+
+| Data | Result |
+|---|---|
+| Display name | A's chosen name, else B's |
+| Avatar | A's (built-in or custom picture) if A chose one, else B's; the custom picture file moves to the canonical key; `custom_version` becomes higher than both (caches by (user_key, version) never show a stale picture) |
+| Welcome step (`profile_set`) | done if done on either side |
+| Media-server name (`media_name`), `server_id` of admin lists | those of the canonical identity |
+| Rights | both set by an admin: the more permissive (`can_keep_forever` if either, the larger `max_*`, `null` = unlimited wins); only one set: that one (an admin's explicit restriction is never lifted by linking an untouched account); none: default |
+| Votes | one per item per person: the stronger — active keep forever > until watched > keep N days (the latest date) > "don't care" > a keep that is over (fulfilled, expired); A's on a tie. Votes over a `max_forever` stay (no new ones until under it) |
+| Seerr link | a link to a Seerr user that already existed beats one the bridge created (the person's real account and requests); then A's |
+| Settings across devices | union; per key the newer "time ␟ value" wins, A's on a tie |
+| Watch together history | re-pointed to the canonical key, latest `last_at` per pair, pairs with oneself dropped |
+| In-memory rooms | seats and invitations of B's keys become the canonical key (a room joined with one sign-in is "mine" with the other: join without invitation, host rights on every seat) |
+| Audit log | unchanged (old keys stay as they were) |
+
+**AlwyWatch admin** (never a media-server admin: nothing is written to Jellyfin or Plex) is
+decided per request: the signed-in identity's own rule (Jellyfin administrator / Plex server
+owner) OR the last known rule of a linked identity, counted only while that identity's server is
+still served and it signed in during the last 30 days. Linking needs a valid token for both
+users, so the person legitimately holds both admin rights already.
+
+Rate limits use the canonical key (one budget per person). "Keep until I have watched it" is
+fulfilled when **any** sign-in of the person has watched the item (Tautulli for Plex users, the
+Jellyfin played flag for Jellyfin users). The Seerr bridge links a person to an existing Seerr
+user matching any of their sign-ins (signed-in one first) before creating one.
+
+### Stopping the Plex server
+
+1. Each Plex user signs in once with their new Jellyfin user on a device where they are
+   still signed in with Plex, and accepts "Are these both you?" (or links from Settings): the
+   Jellyfin identity becomes canonical and their votes, name, avatar, rights, admin flag, Seerr
+   link and history move to it.
+2. Seerr and Maintainerr switch to Jellyfin mode (Maintainerr item keys change: votes on old
+   Plex ratingKeys need a mapping step then; out of scope here).
+3. Plex is removed from `[[servers]]`. Linked people keep everything; someone who never linked
+   keeps their old data under their Plex key, unreachable until an admin helps (a later admin
+   tool can link on their behalf).
+
+### Storage and migration
+
+Table `identities(user_key PK, person, server_id, kind, user_id, media_name, is_admin,
+last_seen, linked_at)`, indexed by `person`. Opening an older database creates it and adds
+every existing user as a one-identity person (idempotent). After a merge, aliases have no
+`users` row: every per-user table holds canonical keys only.

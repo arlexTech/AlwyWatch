@@ -19,7 +19,12 @@ const TTL: Duration = Duration::from_secs(600);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Identity {
+    /// The person's canonical user key (set per request by `api::Caller`; before that, the
+    /// signed-in user's own key). All data is stored under it.
     pub user_key: String,
+    /// The media-server user that signed in (`jellyfin:<server>:<id>` / `plex:<server>:<id>`).
+    pub signed_in_key: String,
+    /// User id on the signed-in media server.
     pub user_id: String,
     /// The name shown to others: the user's chosen display name, else `media_name` (filled in
     /// per request by `api::Caller`).
@@ -30,7 +35,10 @@ pub struct Identity {
     pub avatar: keep_service::Avatar,
     pub server_id: String,
     pub kind: ServerType,
+    /// AlwyWatch admin (per request: this sign-in's media-server rule, or a linked one's).
     pub is_admin: bool,
+    /// Every sign-in of the person, this one included (filled in per request by `api::Caller`).
+    pub identities: Vec<crate::db::IdentityRow>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -105,6 +113,8 @@ impl Auth {
         let me: Me = net::send_json(req).await.map_err(map)?;
         Ok(Identity {
             user_key: format!("jellyfin:{}:{}", server.id, me.id),
+            signed_in_key: format!("jellyfin:{}:{}", server.id, me.id),
+            identities: vec![],
             user_id: me.id,
             media_name: me.name.clone(),
             name: me.name,
@@ -155,6 +165,8 @@ impl Auth {
         };
         Ok(Identity {
             user_key: format!("plex:{}:{}", server.id, user.id),
+            signed_in_key: format!("plex:{}:{}", server.id, user.id),
+            identities: vec![],
             user_id: user.id.to_string(),
             media_name: name.clone(),
             name,

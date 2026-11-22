@@ -672,6 +672,35 @@ impl Rooms {
         Ok(room.view())
     }
 
+    /// Linked identities: the users `from` are now the person `to`. Their seats and
+    /// invitations become `to`'s, so a room joined with one sign-in is "mine" with the other.
+    pub fn rekey(&self, from: &[String], to: &str) {
+        let mut map = self.lock();
+        for room in map.values_mut() {
+            let mut changed = false;
+            for m in room.members.values_mut() {
+                if from.contains(&m.user_key) {
+                    m.user_key = to.to_owned();
+                    changed = true;
+                }
+            }
+            for old in from {
+                if let Some(g) = room.guests.remove(old) {
+                    changed = true;
+                    match room.guests.get_mut(to) {
+                        Some(have) => have.joined_before |= g.joined_before,
+                        None => {
+                            room.guests.insert(to.to_owned(), g);
+                        }
+                    }
+                }
+            }
+            if changed {
+                room.bump("");
+            }
+        }
+    }
+
     /// Leaves on purpose: the user's last seat going also ends their right to come back.
     pub fn leave(&self, code: &str, member: &str, user_key: &str) -> Result<(), TogetherError> {
         let mut map = self.lock();

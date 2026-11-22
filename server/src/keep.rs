@@ -54,6 +54,8 @@ pub struct Limits {
     pub profile_changes: crate::limit::Limiter,
     /// Rooms opened, per user.
     pub together_creates: crate::limit::Limiter,
+    /// Identity link attempts, per person (each validates a second token).
+    pub links: crate::limit::Limiter,
 }
 
 impl Default for Limits {
@@ -68,6 +70,7 @@ impl Default for Limits {
             together_invites: Limiter::new(60, min(10)),
             together_creates: Limiter::new(20, min(60)),
             profile_changes: Limiter::new(20, min(10)),
+            links: Limiter::new(10, min(10)),
         }
     }
 }
@@ -526,11 +529,30 @@ impl State {
             let Some(item) = self.db.item(&v.item_key).map_err(|e| e.to_string())? else {
                 continue;
             };
-            let watched = match v.user_key.split(':').collect::<Vec<_>>().as_slice() {
-                ["plex", _, uid] => self.plex_watched(uid, &item).await,
-                ["jellyfin", server, uid] => self.jellyfin_watched(server, uid, &item).await,
-                _ => None,
-            };
+            // Watched on any sign-in of the person counts.
+            let mut keys: Vec<String> = self
+                .db
+                .identities_of(&v.user_key)
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .map(|i| i.user_key)
+                .collect();
+            if keys.is_empty() {
+                keys.push(v.user_key.clone());
+            }
+            let mut watched = None;
+            for key in &keys {
+                let w = match key.split(':').collect::<Vec<_>>().as_slice() {
+                    ["plex", _, uid] => self.plex_watched(uid, &item).await,
+                    ["jellyfin", server, uid] => self.jellyfin_watched(server, uid, &item).await,
+                    _ => None,
+                };
+                if w == Some(true) {
+                    watched = w;
+                    break;
+                }
+                watched = watched.or(w);
+            }
             if watched == Some(true) {
                 self.db
                     .fulfill(&v.item_key, &v.user_key)

@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
-use keep_service::{AdminUser, Avatar, MyVote, Rights, VoteCounts, VoteKind};
+use keep_service::{AdminUser, Avatar, MyVote, Rights, ServerType, VoteCounts, VoteKind};
 use rusqlite::{Connection, OptionalExtension, params};
 
 pub fn now() -> i64 {
@@ -53,6 +53,12 @@ CREATE TABLE IF NOT EXISTS together_pairs (
     a TEXT NOT NULL, b TEXT NOT NULL, last_at INTEGER NOT NULL,
     PRIMARY KEY (a, b)
 );
+CREATE TABLE IF NOT EXISTS identities (
+    user_key TEXT PRIMARY KEY, person TEXT NOT NULL, server_id TEXT NOT NULL, kind TEXT NOT NULL,
+    user_id TEXT NOT NULL, media_name TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
+    last_seen INTEGER NOT NULL, linked_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS identities_person ON identities(person);
 CREATE TABLE IF NOT EXISTS log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, actor TEXT NOT NULL,
     action TEXT NOT NULL, detail TEXT NOT NULL
@@ -79,7 +85,241 @@ fn migrate(c: &Connection) -> rusqlite::Result<()> {
             c.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {ty}"))?;
         }
     }
+    backfill_identities(c)
+}
+
+/// Users from before linked identities each become a one-identity person (idempotent: only
+/// users without an identity row; after a merge the aliases have no `users` row left).
+fn backfill_identities(c: &Connection) -> rusqlite::Result<()> {
+    let legacy: Vec<(String, String, String, bool, i64)> = {
+        let mut st = c.prepare(
+            "SELECT u.user_key, u.name, u.server_id, u.is_admin, u.last_seen FROM users u
+             WHERE NOT EXISTS (SELECT 1 FROM identities i WHERE i.user_key = u.user_key)",
+        )?;
+        st.query_map([], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?
+    };
+    for (key, name, server_id, is_admin, last_seen) in legacy {
+        let (kind, user_id) = split_user_key(&key);
+        c.execute(
+            "INSERT OR IGNORE INTO identities(user_key, person, server_id, kind, user_id, media_name,
+                                              is_admin, last_seen, linked_at)
+             VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+            params![key, server_id, kind, user_id, name, is_admin, last_seen],
+        )?;
+    }
     Ok(())
+}
+
+/// `kind:server:user id` -> (kind, user id).
+fn split_user_key(key: &str) -> (String, String) {
+    let mut it = key.splitn(3, ':');
+    let kind = it.next().unwrap_or_default().to_owned();
+    let _server = it.next();
+    (kind, it.next().unwrap_or_default().to_owned())
+}
+
+fn kind_name(k: ServerType) -> &'static str {
+    match k {
+        ServerType::Jellyfin => "jellyfin",
+        ServerType::Plex => "plex",
+    }
+}
+
+fn parse_server_kind(s: &str) -> ServerType {
+    if s == "plex" {
+        ServerType::Plex
+    } else {
+        ServerType::Jellyfin
+    }
+}
+
+/// One media-server user (a sign-in) and the person (canonical user key) it belongs to.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IdentityRow {
+    pub user_key: String,
+    pub person: String,
+    pub server_id: String,
+    pub kind: ServerType,
+    pub user_id: String,
+    pub media_name: String,
+    /// Admin by the media server's rule, as of `last_seen`.
+    pub is_admin: bool,
+    pub last_seen: i64,
+    pub linked_at: i64,
+}
+
+const IDENTITY_COLS: &str =
+    "user_key, person, server_id, kind, user_id, media_name, is_admin, last_seen, linked_at";
+
+fn row_identity(r: &rusqlite::Row<'_>) -> rusqlite::Result<IdentityRow> {
+    Ok(IdentityRow {
+        user_key: r.get(0)?,
+        person: r.get(1)?,
+        server_id: r.get(2)?,
+        kind: parse_server_kind(&r.get::<_, String>(3)?),
+        user_id: r.get(4)?,
+        media_name: r.get(5)?,
+        is_admin: r.get(6)?,
+        last_seen: r.get(7)?,
+        linked_at: r.get(8)?,
+    })
+}
+
+/// A sign-in just validated by its media server.
+pub struct SignIn<'a> {
+    pub user_key: &'a str,
+    pub server_id: &'a str,
+    pub kind: ServerType,
+    pub user_id: &'a str,
+    pub media_name: &'a str,
+    pub is_admin: bool,
+}
+
+/// What a link did.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct LinkOutcome {
+    /// The person's user key after the link.
+    pub canonical: String,
+    /// Person keys merged into `canonical` (empty: nothing changed, already one person).
+    pub merged: Vec<String>,
+    /// The custom avatar picture kept is stored under this old key: move it to `canonical`.
+    pub avatar_from: Option<String>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum LinkError {
+    /// Both persons have a (different) sign-in on this server.
+    SameServer(String),
+    Db(String),
+}
+
+impl From<rusqlite::Error> for LinkError {
+    fn from(e: rusqlite::Error) -> Self {
+        LinkError::Db(e.to_string())
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum UnlinkError {
+    /// Not one of the caller's sign-ins.
+    NotFound,
+    /// The canonical sign-in (holds the data) cannot leave.
+    Canonical,
+    Db(String),
+}
+
+impl From<rusqlite::Error> for UnlinkError {
+    fn from(e: rusqlite::Error) -> Self {
+        UnlinkError::Db(e.to_string())
+    }
+}
+
+/// Order of strength of two votes of one person on one item: an active keep (forever > until
+/// watched > longest days), then "don't care", then keeps that are over (fulfilled, expired).
+fn vote_strength(v: &VoteRow, now: i64) -> (u8, u8, i64) {
+    if v.active_keep(now) {
+        let kind = match v.vote.kind {
+            VoteKind::KeepForever => 3,
+            VoteKind::KeepUntilWatched => 2,
+            _ => 1,
+        };
+        (2, kind, v.vote.until.unwrap_or(0))
+    } else if v.vote.kind == VoteKind::DontCare {
+        (1, 0, v.vote.created_at)
+    } else {
+        (0, 0, v.vote.created_at)
+    }
+}
+
+/// The more permissive of two explicit rights (an explicit admin choice beats an untouched
+/// default, so linking never lifts a restriction by itself).
+fn merge_rights(a: Option<Rights>, b: Option<Rights>) -> Option<Rights> {
+    let wider = |x: Option<u32>, y: Option<u32>| match (x, y) {
+        (Some(x), Some(y)) => Some(x.max(y)),
+        _ => None,
+    };
+    match (a, b) {
+        (Some(a), Some(b)) => Some(Rights {
+            can_keep_forever: a.can_keep_forever || b.can_keep_forever,
+            max_forever: wider(a.max_forever, b.max_forever),
+            max_keep_days: wider(a.max_keep_days, b.max_keep_days),
+        }),
+        (a, b) => a.or(b),
+    }
+}
+
+/// Settings values are "change time ␟ value" (the apps merge per key, newer wins).
+fn setting_time(v: &str) -> Option<i64> {
+    v.split_once('\u{241F}')?.0.trim().parse().ok()
+}
+
+/// One `users` row, everything a merge needs.
+#[derive(Debug, Clone, Default)]
+struct UserRow {
+    name: String,
+    server_id: String,
+    is_admin: bool,
+    last_seen: i64,
+    custom_name: Option<String>,
+    avatar_preset: Option<String>,
+    avatar_type: Option<String>,
+    avatar_version: u32,
+    profile_set: bool,
+}
+
+fn user_row(tx: &Connection, key: &str) -> rusqlite::Result<Option<UserRow>> {
+    tx.query_row(
+        "SELECT name, server_id, is_admin, last_seen, custom_name, avatar_preset, avatar_type,
+                avatar_version, profile_set FROM users WHERE user_key = ?1",
+        [key],
+        |r| {
+            Ok(UserRow {
+                name: r.get(0)?,
+                server_id: r.get(1)?,
+                is_admin: r.get(2)?,
+                last_seen: r.get(3)?,
+                custom_name: r.get(4)?,
+                avatar_preset: r.get(5)?,
+                avatar_type: r.get(6)?,
+                avatar_version: r.get(7)?,
+                profile_set: r.get(8)?,
+            })
+        },
+    )
+    .optional()
+}
+
+fn identities_in(tx: &Connection, person: &str) -> rusqlite::Result<Vec<IdentityRow>> {
+    let mut st = tx.prepare(&format!(
+        "SELECT {IDENTITY_COLS} FROM identities WHERE person = ?1 ORDER BY linked_at, user_key"
+    ))?;
+    st.query_map([person], row_identity)?.collect()
+}
+
+fn votes_of(tx: &Connection, user: &str) -> rusqlite::Result<Vec<VoteRow>> {
+    let mut st = tx.prepare(
+        "SELECT item_key, user_key, kind, until_ts, reminder_days, reason, created_at, fulfilled_at
+         FROM votes WHERE user_key = ?1",
+    )?;
+    st.query_map([user], row_vote)?.collect()
+}
+
+fn row_vote(r: &rusqlite::Row<'_>) -> rusqlite::Result<VoteRow> {
+    Ok(VoteRow {
+        item_key: r.get(0)?,
+        user_key: r.get(1)?,
+        vote: MyVote {
+            kind: parse_kind(&r.get::<_, String>(2)?),
+            until: r.get(3)?,
+            reminder_days: r.get(4)?,
+            reason: r.get(5)?,
+            created_at: r.get(6)?,
+        },
+        fulfilled_at: r.get(7)?,
+    })
 }
 
 /// Display name (chosen, else the media-server one) and avatar, as SQL over `users u`.
@@ -213,6 +453,24 @@ impl Db {
         c.execute_batch(SCHEMA)?;
         migrate(&c)?;
         Ok(Self(Mutex::new(c)))
+    }
+
+    #[cfg(test)]
+    pub fn exec(&self, sql: &str) {
+        self.c().execute_batch(sql).unwrap();
+    }
+
+    /// Every audit log line (actor action detail), oldest first.
+    #[cfg(test)]
+    pub fn log_lines(&self) -> Vec<String> {
+        let c = self.c();
+        let mut st = c
+            .prepare("SELECT actor || ' ' || action || ' ' || detail FROM log ORDER BY id")
+            .unwrap();
+        st.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
     }
 
     fn c(&self) -> MutexGuard<'_, Connection> {
@@ -475,6 +733,419 @@ impl Db {
             .optional()
     }
 
+    // ----- linked identities ----------------------------------------------------------------
+
+    /// Notes a validated sign-in and returns its person (canonical user key) with every
+    /// identity of that person. A first sign-in is its own one-identity person.
+    pub fn sign_in(&self, s: &SignIn<'_>) -> rusqlite::Result<(String, Vec<IdentityRow>)> {
+        let c = self.c();
+        let now = now();
+        c.execute(
+            "INSERT INTO identities(user_key, person, server_id, kind, user_id, media_name, is_admin,
+                                    last_seen, linked_at)
+             VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+             ON CONFLICT(user_key) DO UPDATE SET media_name = excluded.media_name,
+               is_admin = excluded.is_admin, last_seen = excluded.last_seen",
+            params![
+                s.user_key,
+                s.server_id,
+                kind_name(s.kind),
+                s.user_id,
+                s.media_name,
+                s.is_admin,
+                now
+            ],
+        )?;
+        let person: String = c.query_row(
+            "SELECT person FROM identities WHERE user_key = ?1",
+            [s.user_key],
+            |r| r.get(0),
+        )?;
+        let ids = identities_in(&c, &person)?;
+        Ok((person, ids))
+    }
+
+    /// Notes a request of `person` made with `signed_in` and returns its profile. Signed in
+    /// with the canonical identity, its media-server name is stored (as `touch_user`); with an
+    /// alias, the canonical's name stays.
+    pub fn touch_person(
+        &self,
+        person: &str,
+        signed_in: &SignIn<'_>,
+        is_admin: bool,
+    ) -> rusqlite::Result<Profile> {
+        if person == signed_in.user_key {
+            return self.touch_user(person, signed_in.media_name, signed_in.server_id, is_admin);
+        }
+        let n = self.c().execute(
+            "UPDATE users SET is_admin = ?2, last_seen = ?3 WHERE user_key = ?1",
+            params![person, is_admin, now()],
+        )?;
+        if n == 0 {
+            // Should not happen (a person always has its row); rebuild it from the canonical
+            // identity rather than failing the request.
+            let c = self.c();
+            let (name, server): (String, String) = c
+                .query_row(
+                    "SELECT media_name, server_id FROM identities WHERE user_key = ?1",
+                    [person],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?
+                .unwrap_or_else(|| (signed_in.media_name.into(), signed_in.server_id.into()));
+            c.execute(
+                "INSERT OR IGNORE INTO users(user_key, name, server_id, is_admin, last_seen)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![person, name, server, is_admin, now()],
+            )?;
+        }
+        Ok(self.profile(person)?.unwrap_or_default())
+    }
+
+    /// The person a user key belongs to: itself when it is a person or unknown.
+    pub fn person_of(&self, user_key: &str) -> rusqlite::Result<String> {
+        Ok(self
+            .c()
+            .query_row(
+                "SELECT person FROM identities WHERE user_key = ?1",
+                [user_key],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or_else(|| user_key.to_owned()))
+    }
+
+    /// Every identity of a person, oldest link first.
+    pub fn identities_of(&self, person: &str) -> rusqlite::Result<Vec<IdentityRow>> {
+        identities_in(&self.c(), person)
+    }
+
+    /// Every identity, by person.
+    pub fn all_identities(
+        &self,
+    ) -> rusqlite::Result<std::collections::HashMap<String, Vec<IdentityRow>>> {
+        let c = self.c();
+        let mut st = c.prepare(&format!(
+            "SELECT {IDENTITY_COLS} FROM identities ORDER BY linked_at, user_key"
+        ))?;
+        let mut out: std::collections::HashMap<String, Vec<IdentityRow>> = Default::default();
+        for r in st.query_map([], row_identity)? {
+            let r = r?;
+            out.entry(r.person.clone()).or_default().push(r);
+        }
+        Ok(out)
+    }
+
+    /// Makes `b` (a sign-in just validated, noted like a sign-in) one person with `a_person`,
+    /// in one transaction. Both persons' data move to the canonical key chosen by
+    /// `preferred_canonical` among the identities of the merged person (first match in the
+    /// order: `a_person`, `b`'s person, the other identities; else `a_person`). Merge rules:
+    /// docs/keep-protocol.md, "Linked identities". Already one person: nothing changes.
+    pub fn link(
+        &self,
+        a_person: &str,
+        b: &SignIn<'_>,
+        preferred_canonical: &dyn Fn(&IdentityRow) -> bool,
+    ) -> Result<LinkOutcome, LinkError> {
+        let mut c = self.c();
+        let tx = c.transaction()?;
+        let now = now();
+        tx.execute(
+            "INSERT INTO identities(user_key, person, server_id, kind, user_id, media_name, is_admin,
+                                    last_seen, linked_at)
+             VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+             ON CONFLICT(user_key) DO UPDATE SET media_name = excluded.media_name,
+               is_admin = excluded.is_admin, last_seen = excluded.last_seen",
+            params![
+                b.user_key,
+                b.server_id,
+                kind_name(b.kind),
+                b.user_id,
+                b.media_name,
+                b.is_admin,
+                now
+            ],
+        )?;
+        let b_person: String = tx.query_row(
+            "SELECT person FROM identities WHERE user_key = ?1",
+            [b.user_key],
+            |r| r.get(0),
+        )?;
+        if b_person == a_person {
+            return Ok(LinkOutcome {
+                canonical: a_person.to_owned(),
+                ..Default::default()
+            });
+        }
+        let a_ids = identities_in(&tx, a_person)?;
+        let b_ids = identities_in(&tx, &b_person)?;
+        if let Some(clash) = a_ids
+            .iter()
+            .find(|x| b_ids.iter().any(|y| y.server_id == x.server_id))
+        {
+            return Err(LinkError::SameServer(clash.server_id.clone()));
+        }
+        let first = |k: &str| a_ids.iter().chain(&b_ids).find(|i| i.user_key == k);
+        let canonical = [a_person, b_person.as_str()]
+            .into_iter()
+            .filter_map(first)
+            .chain(a_ids.iter().chain(&b_ids))
+            .find(|i| preferred_canonical(i))
+            .map(|i| i.user_key.clone())
+            .unwrap_or_else(|| a_person.to_owned());
+        let canon_id = first(&canonical).cloned();
+        let olds = [a_person.to_owned(), b_person.clone()];
+
+        // Profile: A's choices win, B fills what A never chose.
+        let ua = user_row(&tx, a_person)?.unwrap_or_default();
+        let ub = user_row(&tx, &b_person)?.unwrap_or_else(|| UserRow {
+            name: b.media_name.into(),
+            server_id: b.server_id.into(),
+            is_admin: b.is_admin,
+            last_seen: now,
+            ..Default::default()
+        });
+        let a_has_avatar = ua.avatar_preset.is_some() || ua.avatar_type.is_some();
+        let (avatar_src, preset, avatar_type) = if a_has_avatar {
+            (a_person, ua.avatar_preset.clone(), ua.avatar_type.clone())
+        } else {
+            (
+                b_person.as_str(),
+                ub.avatar_preset.clone(),
+                ub.avatar_type.clone(),
+            )
+        };
+        let avatar_from =
+            (avatar_type.is_some() && avatar_src != canonical).then(|| avatar_src.to_owned());
+        let (name, server_id) = match &canon_id {
+            Some(i) => (i.media_name.clone(), i.server_id.clone()),
+            None => (ua.name.clone(), ua.server_id.clone()),
+        };
+        for k in &olds {
+            tx.execute("DELETE FROM users WHERE user_key = ?1", [k])?;
+        }
+        tx.execute(
+            "INSERT INTO users(user_key, name, server_id, is_admin, last_seen, custom_name,
+                               avatar_preset, avatar_type, avatar_version, profile_set)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                canonical,
+                name,
+                server_id,
+                ua.is_admin || ub.is_admin,
+                ua.last_seen.max(ub.last_seen),
+                ua.custom_name.clone().or(ub.custom_name.clone()),
+                preset,
+                avatar_type,
+                // Above both: a cached (user key, version) never shows the wrong picture.
+                ua.avatar_version.max(ub.avatar_version) + 1,
+                ua.profile_set || ub.profile_set,
+            ],
+        )?;
+
+        // Rights: the more permissive of two explicit choices; one explicit choice stays.
+        let rights_of = |k: &str| -> rusqlite::Result<Option<Rights>> {
+            tx.query_row(
+                "SELECT can_keep_forever, max_forever, max_keep_days FROM rights WHERE user_key = ?1",
+                [k],
+                |r| {
+                    Ok(Rights {
+                        can_keep_forever: r.get(0)?,
+                        max_forever: r.get(1)?,
+                        max_keep_days: r.get(2)?,
+                    })
+                },
+            )
+            .optional()
+        };
+        let rights = merge_rights(rights_of(a_person)?, rights_of(&b_person)?);
+        for k in &olds {
+            tx.execute("DELETE FROM rights WHERE user_key = ?1", [k])?;
+        }
+        if let Some(r) = rights {
+            tx.execute(
+                "INSERT INTO rights(user_key, can_keep_forever, max_forever, max_keep_days)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    canonical,
+                    r.can_keep_forever,
+                    r.max_forever,
+                    r.max_keep_days
+                ],
+            )?;
+        }
+
+        // Votes: one per item, the stronger one (A's on a tie).
+        let mut votes: std::collections::BTreeMap<String, VoteRow> = Default::default();
+        for v in votes_of(&tx, a_person)?
+            .into_iter()
+            .chain(votes_of(&tx, &b_person)?)
+        {
+            match votes.get(&v.item_key) {
+                Some(have) if vote_strength(have, now) >= vote_strength(&v, now) => {}
+                _ => {
+                    votes.insert(v.item_key.clone(), v);
+                }
+            }
+        }
+        for k in &olds {
+            tx.execute("DELETE FROM votes WHERE user_key = ?1", [k])?;
+        }
+        for v in votes.values() {
+            tx.execute(
+                "INSERT INTO votes(item_key, user_key, kind, until_ts, reminder_days, reason,
+                                   created_at, fulfilled_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    v.item_key,
+                    canonical,
+                    kind_str(v.vote.kind),
+                    v.vote.until,
+                    v.vote.reminder_days,
+                    v.vote.reason,
+                    v.vote.created_at,
+                    v.fulfilled_at
+                ],
+            )?;
+        }
+
+        // Seerr: a Seerr user that existed (the person's real account, with their requests)
+        // beats one the bridge created; then A's.
+        let seerr_of = |k: &str| -> rusqlite::Result<Option<(i64, bool)>> {
+            tx.query_row(
+                "SELECT seerr_user_id, created FROM seerr_links WHERE user_key = ?1",
+                [k],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+        };
+        let seerr = match (seerr_of(a_person)?, seerr_of(&b_person)?) {
+            (Some(a), Some(b)) if a.1 && !b.1 => Some(b),
+            (a, b) => a.or(b),
+        };
+        for k in &olds {
+            tx.execute("DELETE FROM seerr_links WHERE user_key = ?1", [k])?;
+        }
+        if let Some((id, created)) = seerr {
+            tx.execute(
+                "INSERT INTO seerr_links(user_key, seerr_user_id, created) VALUES (?1, ?2, ?3)",
+                params![canonical, id, created],
+            )?;
+        }
+
+        // Settings: union, newer value per key (A's on a tie or without times).
+        let settings_of = |k: &str| -> rusqlite::Result<Vec<(String, String)>> {
+            let mut st = tx.prepare("SELECT key, value FROM settings WHERE user_key = ?1")?;
+            st.query_map([k], |r| Ok((r.get(0)?, r.get(1)?)))?.collect()
+        };
+        let mut settings: std::collections::BTreeMap<String, String> =
+            settings_of(a_person)?.into_iter().collect();
+        for (k, v) in settings_of(&b_person)? {
+            let newer = settings
+                .get(&k)
+                .is_none_or(|have| setting_time(&v) > setting_time(have));
+            if newer {
+                settings.insert(k, v);
+            }
+        }
+        for k in &olds {
+            tx.execute("DELETE FROM settings WHERE user_key = ?1", [k])?;
+        }
+        for (k, v) in &settings {
+            tx.execute(
+                "INSERT INTO settings(user_key, key, value) VALUES (?1, ?2, ?3)",
+                params![canonical, k, v],
+            )?;
+        }
+
+        // Watch together history: re-pointed, latest time per pair, no pair with oneself.
+        let pairs: Vec<(String, String, i64)> = {
+            let mut st = tx.prepare(
+                "SELECT a, b, last_at FROM together_pairs WHERE a IN (?1, ?2) OR b IN (?1, ?2)",
+            )?;
+            st.query_map(params![a_person, b_person], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })?
+            .collect::<rusqlite::Result<_>>()?
+        };
+        tx.execute(
+            "DELETE FROM together_pairs WHERE a IN (?1, ?2) OR b IN (?1, ?2)",
+            params![a_person, b_person],
+        )?;
+        let map = |k: String| {
+            if olds.contains(&k) {
+                canonical.clone()
+            } else {
+                k
+            }
+        };
+        for (a, b, at) in pairs {
+            let (a, b) = (map(a), map(b));
+            if a == b {
+                continue;
+            }
+            let (a, b) = if a <= b { (a, b) } else { (b, a) };
+            tx.execute(
+                "INSERT INTO together_pairs(a, b, last_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(a, b) DO UPDATE SET last_at = MAX(last_at, excluded.last_at)",
+                params![a, b, at],
+            )?;
+        }
+
+        tx.execute(
+            "UPDATE identities SET person = ?1 WHERE person IN (?2, ?3)",
+            params![canonical, a_person, b_person],
+        )?;
+        tx.execute(
+            "UPDATE identities SET linked_at = ?2 WHERE user_key = ?1",
+            params![b.user_key, now],
+        )?;
+        tx.commit()?;
+        Ok(LinkOutcome {
+            merged: olds.into_iter().filter(|k| *k != canonical).collect(),
+            canonical,
+            avatar_from,
+        })
+    }
+
+    /// `user_key` leaves `person` and becomes its own account again, with no data.
+    pub fn unlink(&self, person: &str, user_key: &str) -> Result<(), UnlinkError> {
+        let mut c = self.c();
+        let tx = c.transaction()?;
+        let id = tx
+            .query_row(
+                &format!("SELECT {IDENTITY_COLS} FROM identities WHERE user_key = ?1"),
+                [user_key],
+                row_identity,
+            )
+            .optional()?
+            .filter(|i| i.person == person)
+            .ok_or(UnlinkError::NotFound)?;
+        if user_key == person {
+            return Err(UnlinkError::Canonical);
+        }
+        for table in ["users", "rights", "votes", "seerr_links", "settings"] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE user_key = ?1"),
+                [user_key],
+            )?;
+        }
+        tx.execute(
+            "DELETE FROM together_pairs WHERE a = ?1 OR b = ?1",
+            [user_key],
+        )?;
+        tx.execute(
+            "UPDATE identities SET person = user_key, linked_at = ?2 WHERE user_key = ?1",
+            params![user_key, now()],
+        )?;
+        tx.execute(
+            "INSERT INTO users(user_key, name, server_id, is_admin, last_seen) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![user_key, id.media_name, id.server_id, id.is_admin, id.last_seen],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     // ----- watch together history -----------------------------------------------------------
 
     /// Notes that these pairs of users (each `(a, b)` with `a < b`) were just in a started
@@ -625,21 +1296,7 @@ impl Db {
         let mut st = c.prepare(
             "SELECT item_key, user_key, kind, until_ts, reminder_days, reason, created_at, fulfilled_at FROM votes",
         )?;
-        st.query_map([], |r| {
-            Ok(VoteRow {
-                item_key: r.get(0)?,
-                user_key: r.get(1)?,
-                vote: MyVote {
-                    kind: parse_kind(&r.get::<_, String>(2)?),
-                    until: r.get(3)?,
-                    reminder_days: r.get(4)?,
-                    reason: r.get(5)?,
-                    created_at: r.get(6)?,
-                },
-                fulfilled_at: r.get(7)?,
-            })
-        })?
-        .collect()
+        st.query_map([], row_vote)?.collect()
     }
 
     // ----- applied state and log ------------------------------------------------------------

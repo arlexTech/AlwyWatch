@@ -57,6 +57,12 @@ async fn env_at(db: Db, dry_run: bool) -> Env {
         name = "HomeJelly"
         public_url = "https://jf.example"
         internal_url = "{}"
+        [[servers]]
+        id = "jf2"
+        kind = "jellyfin"
+        name = "Second fin"
+        public_url = "https://jf2.example"
+        internal_url = "{}"
         [maintainerr]
         url = "{}"
         server = "plexsrv"
@@ -65,6 +71,7 @@ async fn env_at(db: Db, dry_run: bool) -> Env {
         [seerr]
         url = "{}"
         "#,
+        jf.uri(),
         jf.uri(),
         maint.uri(),
         tautulli.uri(),
@@ -143,6 +150,7 @@ impl Env {
         for (tok, id, name, admin) in [
             ("jf-alice", "ja", "alice", true),
             ("jf-bob", "jb", "bob", false),
+            ("jf-carol", "jc", "carol", false),
         ] {
             Mock::given(path("/Users/Me"))
                 // wiremock splits header values on commas, so match the token part only.
@@ -319,7 +327,7 @@ async fn authentication_against_allow_listed_servers() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(list.len(), 2);
+    assert_eq!(list.len(), 3);
 }
 
 #[tokio::test]
@@ -1956,4 +1964,846 @@ async fn the_welcome_step_is_once_per_account() {
     // Others start without it.
     let (_, me) = e.call("GET", "/v1/me", "jfsrv", "jf-alice", None).await;
     assert_eq!(me["profile_set"], false);
+}
+
+// ----- linked identities --------------------------------------------------------------------------
+
+const BOB_JF: &str = "jellyfin:jfsrv:jb";
+const BOB_PX: &str = "plex:plexsrv:2";
+
+fn my_vote(kind: VoteKind, until: Option<i64>, created_at: i64) -> MyVote {
+    MyVote {
+        kind,
+        until,
+        reminder_days: None,
+        reason: None,
+        created_at,
+    }
+}
+
+impl Env {
+    /// Signs `token` in on `server` (creates the user).
+    async fn me_as(&self, server: &str, token: &str) -> Value {
+        let (s, me) = self.call("GET", "/v1/me", server, token, None).await;
+        assert_eq!(s, StatusCode::OK, "{token} signs in");
+        me
+    }
+
+    /// Signed in as (server, token), links the other sign-in.
+    async fn link(&self, server: &str, token: &str, other: (&str, &str)) -> (StatusCode, Value) {
+        self.call(
+            "POST",
+            "/v1/me/links",
+            server,
+            token,
+            Some(json!({"server_id": other.0, "token": other.1})),
+        )
+        .await
+    }
+
+    fn vote_of(&self, item: &str, user: &str) -> Option<crate::db::VoteRow> {
+        self.state
+            .db
+            .votes()
+            .unwrap()
+            .into_iter()
+            .find(|v| v.item_key == item && v.user_key == user)
+    }
+}
+
+#[tokio::test]
+async fn linking_merges_two_accounts_into_one_jellyfin_person() {
+    let e = env().await;
+    e.state.sync().await.unwrap();
+    let alice = "jellyfin:jfsrv:ja";
+    e.me_as("jfsrv", "jf-alice").await;
+    e.me_as("plexsrv", "px-friend").await;
+    e.me_as("jfsrv", "jf-bob").await;
+    let now = now();
+    let db = &e.state.db;
+    // Profile: the Plex side (the caller) chose a name, the Jellyfin side an avatar and did
+    // the welcome step.
+    e.call(
+        "PUT",
+        "/v1/me/name",
+        "plexsrv",
+        "px-friend",
+        Some(json!({"name": "Bobby"})),
+    )
+    .await;
+    e.call(
+        "PUT",
+        "/v1/me/name",
+        "jfsrv",
+        "jf-bob",
+        Some(json!({"name": "Robert"})),
+    )
+    .await;
+    e.call(
+        "PUT",
+        "/v1/me/avatar",
+        "jfsrv",
+        "jf-bob",
+        Some(json!({"preset": "p03"})),
+    )
+    .await;
+    e.call("POST", "/v1/me/profile-done", "jfsrv", "jf-bob", None)
+        .await;
+    // Votes, each conflict case (A = Plex side, B = Jellyfin side).
+    let set = |item: &str, user: &str, v: MyVote| db.set_vote(item, user, &v).unwrap();
+    set(
+        "100",
+        BOB_PX,
+        my_vote(VoteKind::KeepDays, Some(now + 10 * DAY), 1),
+    );
+    set("100", BOB_JF, my_vote(VoteKind::KeepForever, None, 2)); // B forever > A days
+    set("101", BOB_PX, my_vote(VoteKind::KeepForever, None, 3));
+    set("101", BOB_JF, my_vote(VoteKind::KeepUntilWatched, None, 4)); // A forever > B watched
+    set("200", BOB_PX, my_vote(VoteKind::DontCare, None, 5));
+    set("200", BOB_JF, my_vote(VoteKind::KeepUntilWatched, None, 6)); // watched > don't care
+    set(
+        "d1",
+        BOB_PX,
+        my_vote(VoteKind::KeepDays, Some(now + 5 * DAY), 7),
+    );
+    set(
+        "d1",
+        BOB_JF,
+        my_vote(VoteKind::KeepDays, Some(now + 50 * DAY), 8),
+    ); // longest days
+    set(
+        "d2",
+        BOB_PX,
+        my_vote(VoteKind::KeepDays, Some(now - DAY), 9),
+    ); // expired
+    set("d2", BOB_JF, my_vote(VoteKind::DontCare, None, 10)); // don't care > an expired keep
+    set("w1", BOB_PX, my_vote(VoteKind::KeepUntilWatched, None, 11));
+    db.fulfill("w1", BOB_PX).unwrap(); // watched already
+    set(
+        "w1",
+        BOB_JF,
+        my_vote(VoteKind::KeepDays, Some(now + 3 * DAY), 12),
+    ); // active > fulfilled
+    set("t1", BOB_PX, my_vote(VoteKind::KeepForever, None, 13));
+    set("t1", BOB_JF, my_vote(VoteKind::KeepForever, None, 14)); // tie: A's
+    set("only-b", BOB_JF, my_vote(VoteKind::KeepForever, None, 15));
+    // Rights: an admin restricted the Jellyfin side only; that choice stays.
+    let (s, _) = e
+        .call(
+            "PUT",
+            &format!("/v1/admin/users/{}/rights", BOB_JF.replace(':', "%3A")),
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"can_keep_forever": true, "max_forever": null, "max_keep_days": 60})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    // Seerr: the Plex side got a bridge-made user, the Jellyfin side is linked to a real one.
+    db.set_seerr_link(BOB_PX, 9, true).unwrap();
+    db.set_seerr_link(BOB_JF, 7, false).unwrap();
+    // Settings: newer value per key.
+    db.set_settings(
+        BOB_PX,
+        &[
+            ("a".into(), "5\u{241F}x".into()),
+            ("b".into(), "1\u{241F}old".into()),
+        ],
+    )
+    .unwrap();
+    db.set_settings(
+        BOB_JF,
+        &[
+            ("b".into(), "9\u{241F}new".into()),
+            ("c".into(), "1\u{241F}y".into()),
+        ],
+    )
+    .unwrap();
+    // Watch together history with alice from both sides, and with oneself.
+    db.record_together(&[(BOB_PX.into(), alice.into())], 100)
+        .unwrap();
+    db.record_together(&[(BOB_JF.into(), alice.into())], 200)
+        .unwrap();
+    db.record_together(&[(BOB_PX.into(), BOB_JF.into())], 300)
+        .unwrap();
+
+    // Signed in with Plex, prove the Jellyfin sign-in.
+    let (s, links) = e.link("plexsrv", "px-friend", ("jfsrv", "jf-bob")).await;
+    assert_eq!(s, StatusCode::OK, "{links}");
+    let links: Vec<LinkedIdentity> = serde_json::from_value(links).unwrap();
+    assert_eq!(links.len(), 2);
+    assert_eq!(
+        (
+            links[0].user_key.as_str(),
+            links[0].canonical,
+            links[0].current
+        ),
+        (BOB_JF, true, false),
+        "Jellyfin holds the data, listed first"
+    );
+    assert_eq!(
+        (
+            links[1].user_key.as_str(),
+            links[1].canonical,
+            links[1].current
+        ),
+        (BOB_PX, false, true)
+    );
+    assert_eq!(links[1].server_name, "HomePlex");
+
+    // Both sign-ins are now the same account.
+    for (server, token) in [("plexsrv", "px-friend"), ("jfsrv", "jf-bob")] {
+        let me = e.me_as(server, token).await;
+        assert_eq!(me["user_key"], BOB_JF);
+        assert_eq!(me["name"], "Bobby", "the caller's chosen name wins");
+        assert_eq!(
+            me["avatar"]["preset"], "p03",
+            "the other side fills the avatar"
+        );
+        assert_eq!(me["profile_set"], true);
+        assert_eq!(
+            me["server_id"], server,
+            "the server this device signed in to"
+        );
+        assert_eq!(me["rights"]["max_keep_days"], 60);
+        assert_eq!(me["identities"].as_array().unwrap().len(), 2);
+        assert_eq!(me["is_admin"], false);
+    }
+    let kind = |item: &str| e.vote_of(item, BOB_JF).map(|v| v.vote.kind);
+    assert_eq!(kind("100"), Some(VoteKind::KeepForever));
+    assert_eq!(kind("101"), Some(VoteKind::KeepForever));
+    assert_eq!(kind("200"), Some(VoteKind::KeepUntilWatched));
+    assert_eq!(
+        e.vote_of("d1", BOB_JF).unwrap().vote.until,
+        Some(now + 50 * DAY)
+    );
+    assert_eq!(kind("d2"), Some(VoteKind::DontCare));
+    assert_eq!(kind("w1"), Some(VoteKind::KeepDays));
+    assert_eq!(
+        e.vote_of("t1", BOB_JF).unwrap().vote.created_at,
+        13,
+        "tie: the caller's"
+    );
+    assert_eq!(kind("only-b"), Some(VoteKind::KeepForever));
+    assert!(
+        db.votes().unwrap().iter().all(|v| v.user_key != BOB_PX),
+        "nothing left under the alias"
+    );
+    // One vote per person in the counts, seen from either sign-in.
+    let (_, list) = e
+        .call("GET", "/v1/leaving-soon", "plexsrv", "px-friend", None)
+        .await;
+    let item = |k: &str| {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["key"] == k)
+            .cloned()
+            .unwrap()
+    };
+    assert_eq!(item("100")["my_vote"]["kind"], "keep_forever");
+    assert_eq!(
+        item("100")["counts"],
+        json!({"forever": 1, "until_watched": 0, "days": 0, "dont_care": 0})
+    );
+    assert_eq!(item("200")["my_vote"]["kind"], "keep_until_watched");
+    assert_eq!(
+        item("200")["server_item_id"],
+        "200",
+        "ids of the server signed in to (Plex)"
+    );
+    let (_, list) = e
+        .call("GET", "/v1/leaving-soon", "jfsrv", "jf-bob", None)
+        .await;
+    let show = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["key"] == "200")
+        .unwrap();
+    assert_eq!(
+        show["server_item_id"], "jf-show",
+        "mapped for the Jellyfin sign-in"
+    );
+    assert_eq!(show["my_vote"]["kind"], "keep_until_watched");
+
+    assert_eq!(
+        db.seerr_link(BOB_JF).unwrap(),
+        Some(7),
+        "the real Seerr user wins"
+    );
+    assert_eq!(db.seerr_link(BOB_PX).unwrap(), None);
+    let settings: std::collections::HashMap<String, String> =
+        db.settings(BOB_JF).unwrap().into_iter().collect();
+    assert_eq!(settings["a"], "5\u{241F}x");
+    assert_eq!(settings["b"], "9\u{241F}new");
+    assert_eq!(settings["c"], "1\u{241F}y");
+
+    // Alice sees Bob once, with the latest time they watched together.
+    let (_, people) = e
+        .call("GET", "/v1/together/people", "jfsrv", "jf-alice", None)
+        .await;
+    let people = people.as_array().unwrap();
+    assert_eq!(people.len(), 1, "{people:?}");
+    assert_eq!(people[0]["user_key"], BOB_JF);
+    assert_eq!(people[0]["name"], "Bobby");
+    assert_eq!(people[0]["last_together_at"], 200);
+    assert_eq!(people[0]["server_name"], "HomeJelly");
+    let (_, people) = e
+        .call("GET", "/v1/together/people", "plexsrv", "px-friend", None)
+        .await;
+    let people = people.as_array().unwrap();
+    assert_eq!(people.len(), 1, "only alice, never oneself: {people:?}");
+    assert_eq!(people[0]["last_together_at"], 200);
+    let (_, users) = e
+        .call("GET", "/v1/admin/users", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(users.as_array().unwrap().len(), 2, "alice and bob: {users}");
+    // Admin calls naming the alias reach the person.
+    let (s, u) = e
+        .call(
+            "PUT",
+            &format!("/v1/admin/users/{}/seerr", BOB_PX.replace(':', "%3A")),
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"seerr_user_id": 12})),
+        )
+        .await;
+    assert_eq!((s, u["user_key"].clone()), (StatusCode::OK, json!(BOB_JF)));
+
+    // Idempotent: again, and from the other side.
+    let (s, again) = e.link("plexsrv", "px-friend", ("jfsrv", "jf-bob")).await;
+    assert_eq!((s, again.as_array().unwrap().len()), (StatusCode::OK, 2));
+    let (s, _) = e.link("jfsrv", "jf-bob", ("plexsrv", "px-friend")).await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, _) = e.link("jfsrv", "jf-bob", ("jfsrv", "jf-bob")).await;
+    assert_eq!(s, StatusCode::OK, "linking yourself is a no-op");
+    assert_eq!(e.vote_of("t1", BOB_JF).unwrap().vote.created_at, 13);
+    assert_eq!(db.settings(BOB_JF).unwrap().len(), 3);
+
+    // Tokens never reach the log.
+    let log = db.log_lines();
+    assert!(log.iter().any(|l| l.contains(" link ")), "{log:?}");
+    assert!(
+        log.iter()
+            .all(|l| !l.contains("jf-bob") && !l.contains("px-friend"))
+    );
+}
+
+#[tokio::test]
+async fn link_refusals_change_nothing() {
+    let e = env().await;
+    e.me_as("plexsrv", "px-friend").await;
+    e.me_as("jfsrv", "jf-bob").await;
+    let unchanged = |e: &Env| {
+        assert_eq!(e.state.db.identities_of(BOB_PX).unwrap().len(), 1);
+        assert_eq!(e.state.db.identities_of(BOB_JF).unwrap().len(), 1);
+    };
+    for (other, status) in [
+        (("jfsrv", "tok-zz9-expired"), StatusCode::UNAUTHORIZED),
+        (("jfsrv", ""), StatusCode::UNAUTHORIZED),
+        (("plexsrv", "px-stranger"), StatusCode::UNAUTHORIZED),
+        (("elsewhere", "jf-bob"), StatusCode::FORBIDDEN),
+    ] {
+        let (s, body) = e.link("plexsrv", "px-friend", other).await;
+        assert_eq!(s, status, "{other:?}");
+        assert!(
+            !body.to_string().contains("tok-zz9"),
+            "the token is never echoed"
+        );
+        unchanged(&e);
+    }
+    // Two different users of one server never become one person.
+    e.link("plexsrv", "px-friend", ("jfsrv", "jf-bob")).await;
+    let (s, body) = e.link("jfsrv", "jf-alice", ("plexsrv", "px-friend")).await;
+    assert_eq!(s, StatusCode::CONFLICT, "{body}");
+    assert!(body["error"].as_str().unwrap().contains("HomeJelly"));
+    assert_eq!(e.state.db.identities_of(BOB_JF).unwrap().len(), 2);
+    assert_eq!(
+        e.state.db.identities_of("jellyfin:jfsrv:ja").unwrap().len(),
+        1
+    );
+    // Not signed in: nothing.
+    let (s, _) = e.link("jfsrv", "nope", ("plexsrv", "px-friend")).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let tokens_in_log = e
+        .state
+        .db
+        .log_lines()
+        .into_iter()
+        .any(|l| l.contains("tok-zz9") || l.contains("px-stranger"));
+    assert!(!tokens_in_log);
+}
+
+#[tokio::test]
+async fn link_attempts_are_rate_limited_per_person() {
+    let e = env().await;
+    for _ in 0..10 {
+        let (s, _) = e.link("jfsrv", "jf-carol", ("plexsrv", "wrong")).await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED);
+    }
+    // Even a good token now waits, and the media server is not asked.
+    let (s, _) = e.link("jfsrv", "jf-carol", ("plexsrv", "px-friend")).await;
+    assert_eq!(s, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        e.state.db.identities_of("jellyfin:jfsrv:jc").unwrap().len(),
+        1
+    );
+    // Someone else is not affected.
+    let (s, _) = e.link("jfsrv", "jf-bob", ("plexsrv", "px-friend")).await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn admin_follows_the_person_but_only_from_fresh_served_sign_ins() {
+    let e = env().await;
+    // Bob's Jellyfin user is not an admin; the Plex owner is.
+    assert_eq!(e.me_as("jfsrv", "jf-bob").await["is_admin"], false);
+    let (s, links) = e.link("jfsrv", "jf-bob", ("plexsrv", "px-owner")).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        links[0]["user_key"], BOB_JF,
+        "the Jellyfin side stays canonical"
+    );
+    assert_eq!(e.me_as("jfsrv", "jf-bob").await["is_admin"], true);
+    let (s, _) = e
+        .call("GET", "/v1/admin/users", "jfsrv", "jf-bob", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    // The Plex sign-in has not been used for long: its admin flag no longer counts.
+    e.state
+        .db
+        .exec("UPDATE identities SET last_seen = 0 WHERE user_key = 'plex:plexsrv:1'");
+    assert_eq!(e.me_as("jfsrv", "jf-bob").await["is_admin"], false);
+    assert_eq!(
+        e.call("GET", "/v1/admin/users", "jfsrv", "jf-bob", None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    // Signing in with Plex again refreshes it.
+    assert_eq!(e.me_as("plexsrv", "px-owner").await["is_admin"], true);
+    assert_eq!(e.me_as("jfsrv", "jf-bob").await["is_admin"], true);
+}
+
+#[tokio::test]
+async fn linking_into_a_person_with_several_sign_ins_merges_both_persons() {
+    let e = env().await;
+    e.me_as("jfsrv", "jf-bob").await;
+    e.link("jfsrv", "jf-bob", ("plexsrv", "px-friend")).await;
+    e.state
+        .db
+        .set_vote("100", BOB_JF, &my_vote(VoteKind::KeepForever, None, 1))
+        .unwrap();
+    // Carol on the second Jellyfin is the same person, with data of her own.
+    let carol = "jellyfin:jf2:jc";
+    e.me_as("jf2", "jf-carol").await;
+    e.state
+        .db
+        .set_vote("101", carol, &my_vote(VoteKind::DontCare, None, 2))
+        .unwrap();
+    // From the second Jellyfin, prove the Plex sign-in (it belongs to Bob's person).
+    let (s, links) = e.link("jf2", "jf-carol", ("plexsrv", "px-friend")).await;
+    assert_eq!(s, StatusCode::OK, "{links}");
+    let keys: Vec<&str> = links
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["user_key"].as_str().unwrap())
+        .collect();
+    assert_eq!(keys.len(), 3);
+    assert_eq!(
+        keys[0], carol,
+        "the caller's canonical Jellyfin key holds everything"
+    );
+    assert!(keys.contains(&BOB_JF) && keys.contains(&BOB_PX));
+    for (server, token) in [
+        ("jfsrv", "jf-bob"),
+        ("plexsrv", "px-friend"),
+        ("jf2", "jf-carol"),
+    ] {
+        assert_eq!(e.me_as(server, token).await["user_key"], carol);
+    }
+    assert!(e.vote_of("100", carol).is_some() && e.vote_of("101", carol).is_some());
+    assert!(
+        e.state
+            .db
+            .votes()
+            .unwrap()
+            .iter()
+            .all(|v| v.user_key == carol)
+    );
+}
+
+#[tokio::test]
+async fn rooms_of_one_sign_in_are_mine_with_the_other() {
+    let e = env().await;
+    e.me_as("jfsrv", "jf-alice").await;
+    e.me_as("jfsrv", "jf-bob").await;
+    // Before linking: a lobby opened with Plex, and an invitation from alice to the Plex side.
+    let (_, joined) = e
+        .call(
+            "POST",
+            "/v1/together",
+            "plexsrv",
+            "px-friend",
+            Some(json!({"media": arrival()})),
+        )
+        .await;
+    let own = joined["state"]["code"].as_str().unwrap().to_owned();
+    let (_, a) = e
+        .call(
+            "POST",
+            "/v1/together",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"media": arrival()})),
+        )
+        .await;
+    let theirs = a["state"]["code"].as_str().unwrap().to_owned();
+    let (s, _) = e
+        .call(
+            "POST",
+            &format!("/v1/together/{theirs}/invites"),
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"member_id": a["member_id"], "user_keys": [BOB_PX]})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, rooms) = e.call("GET", "/v1/together", "jfsrv", "jf-bob", None).await;
+    assert!(rooms["rooms"].as_array().unwrap().is_empty());
+
+    e.link("jfsrv", "jf-bob", ("plexsrv", "px-friend")).await;
+    let (_, rooms) = e.call("GET", "/v1/together", "jfsrv", "jf-bob", None).await;
+    let rooms = rooms["rooms"].as_array().unwrap();
+    assert_eq!(rooms.len(), 2, "{rooms:?}");
+    let room = |code: &str| rooms.iter().find(|r| r["code"] == code).unwrap();
+    assert_eq!(
+        (room(&own)["mine"].clone(), room(&own)["hosting"].clone()),
+        (json!(true), json!(true))
+    );
+    assert_eq!(room(&theirs)["invited"], true);
+    // Join the own room from the other sign-in without an invitation, as the host.
+    let (s, j) = e
+        .call(
+            "POST",
+            &format!("/v1/together/{own}/join"),
+            "jfsrv",
+            "jf-bob",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let users: Vec<&str> = j["state"]["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["user_key"].as_str().unwrap())
+        .collect();
+    assert_eq!(users, [BOB_JF, BOB_JF], "one person on two devices");
+    let (s, _) = e
+        .call(
+            "POST",
+            &format!("/v1/together/{theirs}/join"),
+            "plexsrv",
+            "px-friend",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "the invitation follows the person");
+    // Inviting an alias key invites the person; already in: nothing new.
+    let (_, st) = e
+        .call(
+            "POST",
+            &format!("/v1/together/{theirs}/invites"),
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"member_id": a["member_id"], "user_keys": [BOB_PX]})),
+        )
+        .await;
+    assert!(st["invited"].as_array().unwrap().is_empty(), "{st}");
+}
+
+#[tokio::test]
+async fn unlinking_gives_back_a_fresh_account() {
+    let e = env().await;
+    e.me_as("plexsrv", "px-friend").await;
+    e.call(
+        "PUT",
+        "/v1/me/name",
+        "plexsrv",
+        "px-friend",
+        Some(json!({"name": "Bobby"})),
+    )
+    .await;
+    e.link("plexsrv", "px-friend", ("jfsrv", "jf-bob")).await;
+    e.state
+        .db
+        .set_vote("100", BOB_JF, &my_vote(VoteKind::KeepForever, None, 1))
+        .unwrap();
+    let path = |k: &str| format!("/v1/me/links/{}", k.replace(':', "%3A"));
+    // The canonical sign-in cannot go; someone else's is unknown.
+    let (s, body) = e
+        .call("DELETE", &path(BOB_JF), "plexsrv", "px-friend", None)
+        .await;
+    assert_eq!(s, StatusCode::CONFLICT);
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("cannot be unlinked")
+    );
+    let (s, _) = e
+        .call(
+            "DELETE",
+            &path("jellyfin:jfsrv:ja"),
+            "plexsrv",
+            "px-friend",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    // The Plex side leaves (asked from that very sign-in).
+    let (s, left) = e
+        .call("DELETE", &path(BOB_PX), "plexsrv", "px-friend", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(left.as_array().unwrap().len(), 1);
+    assert_eq!(left[0]["user_key"], BOB_JF);
+    let me = e.me_as("plexsrv", "px-friend").await;
+    assert_eq!(me["user_key"], BOB_PX);
+    assert_eq!(
+        (me["name"].clone(), me["name_is_custom"].clone()),
+        (json!("User 2"), json!(false))
+    );
+    assert_eq!(me["identities"].as_array().unwrap().len(), 1);
+    assert!(e.vote_of("100", BOB_PX).is_none());
+    let me = e.me_as("jfsrv", "jf-bob").await;
+    assert_eq!(
+        (me["user_key"].clone(), me["name"].clone()),
+        (json!(BOB_JF), json!("Bobby"))
+    );
+    assert!(
+        e.vote_of("100", BOB_JF).is_some(),
+        "the data stays with the canonical sign-in"
+    );
+    // Alone: nothing to unlink.
+    let (s, _) = e
+        .call("DELETE", &path(BOB_PX), "plexsrv", "px-friend", None)
+        .await;
+    assert_eq!(s, StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn watched_on_any_linked_sign_in_fulfils_the_vote() {
+    let e = env().await;
+    e.state.sync().await.unwrap();
+    Mock::given(method("POST"))
+        .and(path("/api/rules/exclusion"))
+        .respond_with(ResponseTemplate::new(201))
+        .mount(&e.maint)
+        .await;
+    e.me_as("jfsrv", "jf-bob").await;
+    e.link("jfsrv", "jf-bob", ("plexsrv", "px-friend")).await;
+    let (s, _) = e
+        .call(
+            "PUT",
+            "/v1/votes/100",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"kind": "keep_until_watched"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    // Not played on Jellyfin, nor yet on Plex.
+    Mock::given(path("/Items/jf-arrival"))
+        .and(query_param("userId", "jb"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"Id": "jf-arrival", "UserData": {"Played": false}})),
+        )
+        .mount(&e.jf)
+        .await;
+    let plex = Mock::given(path("/api/v2"))
+        .and(query_param("user_id", "2"))
+        .and(query_param("rating_key", "100"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"response": {"result": "success", "data": {"data": [{"watched_status": 0.2}]}}}),
+        ))
+        .mount_as_scoped(&e.tautulli)
+        .await;
+    assert_eq!(e.state.check_watched().await.unwrap(), 0);
+    drop(plex);
+    // Watched on Plex: fulfilled for the person.
+    Mock::given(path("/api/v2"))
+        .and(query_param("user_id", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"response": {"result": "success", "data": {"data": [{"watched_status": 1}]}}}),
+        ))
+        .mount(&e.tautulli)
+        .await;
+    assert_eq!(e.state.check_watched().await.unwrap(), 1);
+    assert!(e.vote_of("100", BOB_JF).unwrap().fulfilled_at.is_some());
+}
+
+#[tokio::test]
+async fn seerr_link_reuses_the_seerr_user_of_any_linked_sign_in() {
+    let e = env().await;
+    // Seerr (Plex mode) knows Plex user 2 as Seerr user 7.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/user"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(
+                json!({"results": [{"id": 7, "plexId": 2, "displayName": "friend"}]}),
+            ),
+        )
+        .mount(&e.seerr)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/user"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"id": 99})))
+        .expect(0)
+        .mount(&e.seerr)
+        .await;
+    Mock::given(path("/api/v1/auth/me"))
+        .and(header("x-api-user", "7"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"id": 7, "displayName": "friend"})),
+        )
+        .mount(&e.seerr)
+        .await;
+    e.me_as("jfsrv", "jf-bob").await;
+    e.link("jfsrv", "jf-bob", ("plexsrv", "px-friend")).await;
+    let (s, info) = e.call("GET", "/v1/seerr", "jfsrv", "jf-bob", None).await;
+    assert_eq!(
+        (s, info["seerr_user_id"].clone()),
+        (StatusCode::OK, json!(7))
+    );
+    e.seerr.verify().await;
+}
+
+#[tokio::test]
+async fn custom_avatar_follows_the_merge() {
+    let e = env().await;
+    e.me_as("jfsrv", "jf-bob").await;
+    let png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3].to_vec();
+    // The Plex side (the caller) has a custom picture; the Jellyfin side will hold the data.
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/v1/me/avatar")
+        .header("content-type", "image/png")
+        .header(SERVER_HEADER, "plexsrv")
+        .header("authorization", "Bearer px-friend");
+    let res = crate::api::router(e.state.clone())
+        .oneshot(req.body(Body::from(png.clone())).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let before = e.me_as("plexsrv", "px-friend").await["avatar"]["custom_version"]
+        .as_u64()
+        .unwrap();
+    e.link("plexsrv", "px-friend", ("jfsrv", "jf-bob")).await;
+    let me = e.me_as("jfsrv", "jf-bob").await;
+    let v = me["avatar"]["custom_version"].as_u64().unwrap();
+    assert!(v > before, "a new version: no stale cached picture");
+    let (s, _, bytes) = e
+        .call_raw(
+            "GET",
+            &format!("/v1/users/{}/avatar?v={v}", BOB_JF.replace(':', "%3A")),
+            Some("jf-bob"),
+            "",
+            vec![],
+        )
+        .await;
+    assert_eq!((s, bytes.clone()), (StatusCode::OK, png.clone()));
+    // An old link naming the alias still finds the picture.
+    let (s, _, bytes) = e
+        .call_raw(
+            "GET",
+            &format!("/v1/users/{}/avatar?v={v}", BOB_PX.replace(':', "%3A")),
+            Some("jf-bob"),
+            "",
+            vec![],
+        )
+        .await;
+    assert_eq!((s, bytes), (StatusCode::OK, png));
+}
+
+#[tokio::test]
+async fn older_databases_get_identities_and_keep_their_users() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("keep.sqlite");
+    // The schema before linked identities, with a user who chose a name and voted.
+    rusqlite::Connection::open(&file)
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE users (user_key TEXT PRIMARY KEY, name TEXT NOT NULL, server_id TEXT NOT NULL,
+               is_admin INTEGER NOT NULL DEFAULT 0, last_seen INTEGER NOT NULL,
+               custom_name TEXT, avatar_preset TEXT, avatar_type TEXT,
+               avatar_version INTEGER NOT NULL DEFAULT 0, profile_set INTEGER NOT NULL DEFAULT 0);
+             CREATE TABLE votes (item_key TEXT NOT NULL, user_key TEXT NOT NULL, kind TEXT NOT NULL,
+               until_ts INTEGER, reminder_days INTEGER, reason TEXT, created_at INTEGER NOT NULL,
+               fulfilled_at INTEGER, PRIMARY KEY (item_key, user_key));
+             INSERT INTO users(user_key, name, server_id, last_seen, custom_name, profile_set)
+               VALUES ('plex:plexsrv:2', 'User 2', 'plexsrv', 5, 'Bobby', 1);
+             INSERT INTO votes VALUES ('100', 'plex:plexsrv:2', 'keep_forever', NULL, NULL, NULL, 1, NULL);",
+        )
+        .unwrap();
+    drop(Db::open(&file).unwrap());
+    let e = env_at(Db::open(&file).unwrap(), false).await; // opening twice is a no-op
+    let (s, links) = e
+        .call("GET", "/v1/me/links", "plexsrv", "px-friend", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        links,
+        json!([{"user_key": BOB_PX, "server_id": "plexsrv", "server_name": "HomePlex",
+                "kind": "plex", "media_name": "User 2", "canonical": true, "current": true}])
+    );
+    let me = e.me_as("plexsrv", "px-friend").await;
+    assert_eq!(
+        (me["user_key"].clone(), me["name"].clone()),
+        (json!(BOB_PX), json!("Bobby"))
+    );
+    let (s, _) = e.link("plexsrv", "px-friend", ("jfsrv", "jf-bob")).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        e.vote_of("100", BOB_JF).unwrap().vote.kind,
+        VoteKind::KeepForever
+    );
+    assert_eq!(e.me_as("jfsrv", "jf-bob").await["name"], "Bobby");
+}
+
+#[tokio::test]
+async fn a_person_whose_canonical_server_is_no_longer_served_keeps_working() {
+    // Before Jellyfin preference existed (or with two Plex servers), a Plex key may be
+    // canonical; with Plex gone from the allow-list the person still signs in with Jellyfin.
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("keep.sqlite");
+    let db = Db::open(&file).unwrap();
+    db.touch_user("plex:oldplex:5", "Ann", "oldplex", false)
+        .unwrap();
+    db.set_custom_name("plex:oldplex:5", Some("Annie")).unwrap();
+    db.exec(
+        "INSERT INTO identities VALUES ('plex:oldplex:5', 'plex:oldplex:5', 'oldplex', 'plex', '5', 'Ann', 0, 1, 1);
+         INSERT INTO identities VALUES ('jellyfin:jfsrv:jb', 'plex:oldplex:5', 'jfsrv', 'jellyfin', 'jb', 'bob', 0, 1, 2);",
+    );
+    let e = env_at(db, false).await;
+    let me = e.me_as("jfsrv", "jf-bob").await;
+    assert_eq!(
+        (me["user_key"].clone(), me["name"].clone()),
+        (json!("plex:oldplex:5"), json!("Annie"))
+    );
+    let links = me["identities"].as_array().unwrap().clone();
+    assert_eq!(
+        links[0]["server_name"], "oldplex",
+        "no longer served: its id"
+    );
+    // Others still find and invite them.
+    e.me_as("jfsrv", "jf-alice").await;
+    let (_, people) = e
+        .call("GET", "/v1/together/people", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(people[0]["user_key"], "plex:oldplex:5");
+    assert_eq!(people[0]["server_name"], "HomeJelly");
 }

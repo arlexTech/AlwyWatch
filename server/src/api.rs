@@ -9,7 +9,8 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post, put};
 use axum::{Json, Router};
 use keep_service::{
-    ApiError, CountdownRequest, Me, Rights, SERVER_HEADER, ServerEntry, VoteRequest,
+    ApiError, CountdownRequest, LinkRequest, LinkedIdentity, Me, MeWithIdentities, Rights,
+    SERVER_HEADER, ServerEntry, ServerType, VoteRequest,
 };
 use serde::Deserialize;
 
@@ -22,6 +23,11 @@ pub fn router(state: Shared) -> Router {
         .route("/healthz", get(|| async { "ok" }))
         .route("/v1/servers", get(servers))
         .route("/v1/me", get(me))
+        .route("/v1/me/links", get(my_links).post(link_identity))
+        .route(
+            "/v1/me/links/{user}",
+            axum::routing::delete(unlink_identity),
+        )
         .route("/v1/me/settings", get(my_settings).put(set_my_settings))
         .route("/v1/me/name", put(set_my_name).delete(reset_my_name))
         .route("/v1/me/profile-done", post(profile_done))
@@ -140,17 +146,50 @@ impl FromRequestParts<Shared> for Caller {
                     Error(StatusCode::BAD_GATEWAY, "media server unreachable".into())
                 }
             })?;
-        let mut id = id;
-        // The media server's name is stored as such; others see the chosen one if any.
-        if let Ok(p) = state
-            .db
-            .touch_user(&id.user_key, &id.media_name, &id.server_id, id.is_admin)
-        {
-            id.name = p.name;
-            id.avatar = p.avatar;
-        }
-        Ok(Caller(id))
+        resolve(state, id).map(Caller)
     }
+}
+
+/// A stored admin flag of a linked sign-in counts this long after that sign-in was last used
+/// (the media server decides again at its next sign-in).
+const LINKED_ADMIN_FRESH: i64 = 30 * 86_400;
+
+fn sign_in_of(id: &Identity) -> crate::db::SignIn<'_> {
+    crate::db::SignIn {
+        user_key: &id.signed_in_key,
+        server_id: &id.server_id,
+        kind: id.kind,
+        user_id: &id.user_id,
+        media_name: &id.media_name,
+        is_admin: id.is_admin,
+    }
+}
+
+/// The resolution point: a validated sign-in becomes its person (canonical user key, linked
+/// identities, admin flag, profile). Everything after this sees one user per person.
+fn resolve(state: &Shared, mut id: Identity) -> Result<Identity, Error> {
+    let (person, ids) = state.db.sign_in(&sign_in_of(&id)).map_err(internal)?;
+    let now = crate::db::now();
+    // Admin of AlwyWatch only (never of a media server): this sign-in's own rule, or a linked
+    // sign-in's last known one on a server still served.
+    id.is_admin = id.is_admin
+        || ids.iter().any(|i| {
+            i.user_key != id.signed_in_key
+                && i.is_admin
+                && now - i.last_seen < LINKED_ADMIN_FRESH
+                && state.config.server(&i.server_id).is_some()
+        });
+    id.user_key = person;
+    id.identities = ids;
+    // The media server's name is stored as such; others see the chosen one if any.
+    if let Ok(p) = state
+        .db
+        .touch_person(&id.user_key, &sign_in_of(&id), id.is_admin)
+    {
+        id.name = p.name;
+        id.avatar = p.avatar;
+    }
+    Ok(id)
 }
 
 pub struct Admin(pub Identity);
@@ -229,12 +268,20 @@ async fn together_people(
     State(s): State<Shared>,
     Caller(id): Caller,
 ) -> Result<Json<Vec<keep_service::together::TogetherPerson>>, Error> {
+    let identities = s.db.all_identities().map_err(internal)?;
     let mut people: Vec<keep_service::together::TogetherPerson> =
         s.db.together_people(&id.user_key)
             .map_err(internal)?
             .into_iter()
             .filter_map(|(user_key, server_id, last, p)| {
-                let server = s.config.server(&server_id)?;
+                // A person shows once, named after their canonical server if still served,
+                // else another served sign-in; hidden when none is served.
+                let server = s.config.server(&server_id).or_else(|| {
+                    identities
+                        .get(&user_key)?
+                        .iter()
+                        .find_map(|i| s.config.server(&i.server_id))
+                })?;
                 Some(keep_service::together::TogetherPerson {
                     user_key,
                     name: crate::together::clean_name(&p.name),
@@ -281,16 +328,18 @@ async fn together_invite(
     }
     let mut people = Vec::with_capacity(inv.user_keys.len());
     for key in &inv.user_keys {
-        match s.db.user_profile(key).map_err(internal)? {
-            Some((p, server)) if s.config.server(&server).is_some() => {
-                people.push(keep_service::together::TogetherInvitee {
-                    user_key: key.clone(),
-                    name: p.name,
-                    avatar: p.avatar,
-                })
-            }
-            _ => return Err(Error(StatusCode::NOT_FOUND, "unknown user".into())),
-        }
+        let unknown = || Error(StatusCode::NOT_FOUND, "unknown user".into());
+        // An alias key (a list fetched before a link) invites the person.
+        let person = served_person(&s, key)?.ok_or_else(unknown)?;
+        let (p, _) =
+            s.db.user_profile(&person)
+                .map_err(internal)?
+                .ok_or_else(unknown)?;
+        people.push(keep_service::together::TogetherInvitee {
+            user_key: person,
+            name: p.name,
+            avatar: p.avatar,
+        });
     }
     s.rooms
         .invite(&code, &inv.member_id, &id.user_key, &people)
@@ -318,6 +367,7 @@ async fn together_uninvite(
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
     let member = q.member.unwrap_or_default();
+    let user = s.db.person_of(&user).map_err(internal)?;
     s.rooms
         .uninvite(&code, &member, &id.user_key, &user)
         .map(|st| Json(st).into_response())
@@ -474,28 +524,191 @@ async fn servers(State(s): State<Shared>) -> Json<Vec<ServerEntry>> {
     )
 }
 
-async fn me(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<Me>, Error> {
+async fn me(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<MeWithIdentities>, Error> {
     me_of(&s, id).map(Json)
 }
 
-/// The caller's `Me`, read again from the database (after a profile change).
-fn me_of(s: &Shared, id: Identity) -> Result<Me, Error> {
+/// The caller's `Me` (with their linked sign-ins), read again from the database (after a
+/// profile change).
+fn me_of(s: &Shared, id: Identity) -> Result<MeWithIdentities, Error> {
     let p =
         s.db.profile(&id.user_key)
             .map_err(internal)?
             .unwrap_or_default();
-    Ok(Me {
-        rights: s.rights_of(&id),
-        forever_count: s.db.forever_count(&id.user_key).map_err(internal)?,
-        name: if p.name.is_empty() { id.name } else { p.name },
-        media_name: id.media_name,
-        name_is_custom: p.name_is_custom,
-        avatar: p.avatar,
-        profile_set: p.profile_set,
-        user_key: id.user_key,
-        server_id: id.server_id,
-        is_admin: id.is_admin,
+    let identities = links_view(s, &id.identities, &id.signed_in_key);
+    Ok(MeWithIdentities {
+        me: Me {
+            rights: s.rights_of(&id),
+            forever_count: s.db.forever_count(&id.user_key).map_err(internal)?,
+            name: if p.name.is_empty() { id.name } else { p.name },
+            media_name: if p.media_name.is_empty() {
+                id.media_name
+            } else {
+                p.media_name
+            },
+            name_is_custom: p.name_is_custom,
+            avatar: p.avatar,
+            profile_set: p.profile_set,
+            user_key: id.user_key,
+            server_id: id.server_id,
+            is_admin: id.is_admin,
+        },
+        identities,
     })
+}
+
+// ----- linked identities ------------------------------------------------------------------------
+
+fn server_name(s: &Shared, server_id: &str) -> String {
+    s.config
+        .server(server_id)
+        .map(|c| c.name.clone())
+        .unwrap_or_else(|| server_id.to_owned())
+}
+
+fn links_view(s: &Shared, ids: &[crate::db::IdentityRow], current: &str) -> Vec<LinkedIdentity> {
+    let mut out: Vec<LinkedIdentity> = ids
+        .iter()
+        .map(|i| LinkedIdentity {
+            user_key: i.user_key.clone(),
+            server_name: server_name(s, &i.server_id),
+            server_id: i.server_id.clone(),
+            kind: i.kind,
+            media_name: crate::together::clean_name(&i.media_name),
+            canonical: i.user_key == i.person,
+            current: i.user_key == current,
+        })
+        .collect();
+    // Canonical first, then oldest link first (as stored).
+    out.sort_by_key(|i| !i.canonical);
+    out
+}
+
+async fn my_links(State(s): State<Shared>, Caller(id): Caller) -> Json<Vec<LinkedIdentity>> {
+    Json(links_view(&s, &id.identities, &id.signed_in_key))
+}
+
+/// Proves a second sign-in of the same person (its token is validated like any sign-in,
+/// never stored nor logged) and makes both one AlwyWatch account.
+async fn link_identity(
+    State(s): State<Shared>,
+    headers: HeaderMap,
+    Caller(id): Caller,
+    Json(r): Json<LinkRequest>,
+) -> Result<Json<Vec<LinkedIdentity>>, Error> {
+    if !s.limits.links.allow(&id.user_key) {
+        return Err(too_many());
+    }
+    let server = s.config.server(&r.server_id).ok_or(Error(
+        StatusCode::FORBIDDEN,
+        "this server is not served here".into(),
+    ))?;
+    let ip = crate::limit::client(&headers);
+    if s.limits.failed_auth.blocked(&ip) {
+        return Err(too_many());
+    }
+    let refused = || {
+        Error(
+            StatusCode::UNAUTHORIZED,
+            "the other sign-in was refused (wrong or expired token, or no access to that server)"
+                .into(),
+        )
+    };
+    if r.token.is_empty() {
+        return Err(refused());
+    }
+    let other = s
+        .auth
+        .identify(server, &r.token)
+        .await
+        .map_err(|e| match e {
+            AuthError::Denied => {
+                s.limits.failed_auth.hit(&ip);
+                refused()
+            }
+            AuthError::Unavailable => {
+                Error(StatusCode::BAD_GATEWAY, "media server unreachable".into())
+            }
+        })?;
+    // Jellyfin (open source, the server everyone moves to) holds the data when it can, so
+    // stopping Plex later never strands an account.
+    let prefer = |i: &crate::db::IdentityRow| {
+        i.kind == ServerType::Jellyfin && s.config.server(&i.server_id).is_some()
+    };
+    let outcome =
+        s.db.link(&id.user_key, &sign_in_of(&other), &prefer)
+            .map_err(|e| match e {
+                crate::db::LinkError::SameServer(server) => Error(
+                    StatusCode::CONFLICT,
+                    format!(
+                        "your AlwyWatch account already has another sign-in on {}; unlink it first",
+                        server_name(&s, &server)
+                    ),
+                ),
+                crate::db::LinkError::Db(e) => internal(e),
+            })?;
+    if !outcome.merged.is_empty() {
+        if let Some(from) = &outcome.avatar_from {
+            let to = avatar_path(&s, &outcome.canonical);
+            if let Err(e) = tokio::fs::rename(avatar_path(&s, from), &to).await {
+                eprintln!("[link] could not move a custom avatar: {e}");
+            }
+        }
+        for old in &outcome.merged {
+            forget_avatar_file(&s, old).await;
+        }
+        s.rooms.rekey(&outcome.merged, &outcome.canonical);
+        s.db.log(
+            &outcome.canonical,
+            "link",
+            &format!(
+                "{} + {} (merged {})",
+                id.signed_in_key,
+                other.signed_in_key,
+                outcome.merged.join(", ")
+            ),
+        );
+        // Votes may have merged: re-apply.
+        s.reconcile.notify_one();
+    }
+    let ids = s.db.identities_of(&outcome.canonical).map_err(internal)?;
+    Ok(Json(links_view(&s, &ids, &id.signed_in_key)))
+}
+
+/// Separates one sign-in from the caller's account: it starts over as its own empty account.
+async fn unlink_identity(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(user): Path<String>,
+) -> Result<Json<Vec<LinkedIdentity>>, Error> {
+    use crate::db::UnlinkError as E;
+    s.db.unlink(&id.user_key, &user).map_err(|e| match e {
+        E::NotFound => Error(StatusCode::NOT_FOUND, "not one of your sign-ins".into()),
+        E::Canonical => Error(
+            StatusCode::CONFLICT,
+            "this sign-in holds your AlwyWatch account's data and cannot be unlinked; unlink the other sign-ins instead"
+                .into(),
+        ),
+        E::Db(e) => internal(e),
+    })?;
+    s.db.log(&id.user_key, "unlink", &user);
+    let ids = s.db.identities_of(&id.user_key).map_err(internal)?;
+    Ok(Json(links_view(&s, &ids, &id.signed_in_key)))
+}
+
+/// The person behind a user key (an alias resolves to its canonical key) if they can be
+/// reached: one of their sign-ins is on a server still served.
+fn served_person(s: &Shared, key: &str) -> Result<Option<String>, Error> {
+    let person = s.db.person_of(key).map_err(internal)?;
+    let ids = s.db.identities_of(&person).map_err(internal)?;
+    let served = if ids.is_empty() {
+        s.db.user_profile(&person)
+            .map_err(internal)?
+            .is_some_and(|(_, server)| s.config.server(&server).is_some())
+    } else {
+        ids.iter().any(|i| s.config.server(&i.server_id).is_some())
+    };
+    Ok(served.then_some(person))
 }
 
 // ----- profile: display name and avatar ---------------------------------------------------------
@@ -504,7 +717,7 @@ async fn set_my_name(
     State(s): State<Shared>,
     Caller(id): Caller,
     Json(r): Json<keep_service::DisplayNameRequest>,
-) -> Result<Json<Me>, Error> {
+) -> Result<Json<MeWithIdentities>, Error> {
     let name = keep_service::profile::clean_display_name(&r.name)
         .map_err(|m| Error(StatusCode::BAD_REQUEST, m))?;
     if !s.limits.profile_changes.allow(&id.user_key) {
@@ -517,12 +730,18 @@ async fn set_my_name(
 
 /// The one-time welcome step (name + avatar) was done or skipped, for this account on every
 /// device. Idempotent; names and avatars set on their own do not count.
-async fn profile_done(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<Me>, Error> {
+async fn profile_done(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+) -> Result<Json<MeWithIdentities>, Error> {
     s.db.mark_profile_set(&id.user_key).map_err(internal)?;
     me_of(&s, id).map(Json)
 }
 
-async fn reset_my_name(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<Me>, Error> {
+async fn reset_my_name(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+) -> Result<Json<MeWithIdentities>, Error> {
     if !s.limits.profile_changes.allow(&id.user_key) {
         return Err(too_many());
     }
@@ -548,7 +767,7 @@ async fn set_my_avatar(
     Caller(id): Caller,
     headers: HeaderMap,
     body: axum::body::Body,
-) -> Result<Json<Me>, Error> {
+) -> Result<Json<MeWithIdentities>, Error> {
     let bad = |m: &str| Error(StatusCode::BAD_REQUEST, m.into());
     let ct = headers
         .get(axum::http::header::CONTENT_TYPE)
@@ -607,7 +826,10 @@ async fn set_my_avatar(
     me_of(&s, id).map(Json)
 }
 
-async fn remove_my_avatar(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<Me>, Error> {
+async fn remove_my_avatar(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+) -> Result<Json<MeWithIdentities>, Error> {
     if !s.limits.profile_changes.allow(&id.user_key) {
         return Err(too_many());
     }
@@ -625,6 +847,7 @@ async fn user_avatar(
     Path(user): Path<String>,
 ) -> Result<Response, Error> {
     let none = || Error(StatusCode::NOT_FOUND, "no picture".into());
+    let user = s.db.person_of(&user).map_err(internal)?;
     let (ct, _) =
         s.db.avatar_custom(&user)
             .map_err(internal)?
@@ -784,6 +1007,7 @@ async fn admin_link_seerr(
     Path(user): Path<String>,
     Json(r): Json<keep_service::SeerrLinkRequest>,
 ) -> Result<impl IntoResponse, Error> {
+    let user = s.db.person_of(&user).map_err(internal)?;
     if !s.db.user_exists(&user).map_err(internal)? {
         return Err(Error(StatusCode::NOT_FOUND, "unknown user".into()));
     }
@@ -811,6 +1035,7 @@ async fn admin_rights(
     Path(user): Path<String>,
     Json(r): Json<Rights>,
 ) -> Result<impl IntoResponse, Error> {
+    let user = s.db.person_of(&user).map_err(internal)?;
     if !s.db.user_exists(&user).map_err(internal)? {
         return Err(Error(StatusCode::NOT_FOUND, "unknown user".into()));
     }

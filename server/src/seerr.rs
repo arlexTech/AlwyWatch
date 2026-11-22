@@ -70,11 +70,15 @@ fn same_jellyfin_id(a: &str, b: &str) -> bool {
 /// Email of a user the bridge creates (Seerr requires a unique one; it is never mailed since
 /// an explicit password is set).
 fn synthetic_email(id: &Identity) -> String {
-    let kind = match id.kind {
+    synthetic_email_of(id.kind, &id.user_id)
+}
+
+fn synthetic_email_of(kind: ServerType, user_id: &str) -> String {
+    let kind = match kind {
         ServerType::Jellyfin => "jellyfin",
         ServerType::Plex => "plex",
     };
-    format!("{kind}-{}@alwywatch.local", id.user_id.to_ascii_lowercase())
+    format!("{kind}-{}@alwywatch.local", user_id.to_ascii_lowercase())
 }
 
 /// The Seerr endpoints the apps use. Everything else (settings, users, admin) is refused here,
@@ -176,19 +180,31 @@ impl Bridge {
         let page: Page = net::send_json(self.req(Method::GET, "user?take=5000&skip=0", None))
             .await
             .map_err(Self::unavailable)?;
+        // Any sign-in of the person may already have a Seerr user (this one first).
+        let mut ids: Vec<(ServerType, &str)> = vec![(id.kind, id.user_id.as_str())];
+        for i in &id.identities {
+            if i.user_key != id.signed_in_key {
+                ids.push((i.kind, i.user_id.as_str()));
+            }
+        }
         let email = synthetic_email(id);
-        let found = page.results.iter().find(|u| match id.kind {
-            ServerType::Plex => u.plex_id.is_some_and(|p| p.to_string() == id.user_id),
-            ServerType::Jellyfin => u
-                .jellyfin_user_id
-                .as_deref()
-                .is_some_and(|j| same_jellyfin_id(j, &id.user_id)),
-        });
-        let found = found.or_else(|| {
-            page.results.iter().find(|u| {
-                u.email
+        let by_media_id = ids.iter().find_map(|(kind, user_id)| {
+            page.results.iter().find(|u| match kind {
+                ServerType::Plex => u.plex_id.is_some_and(|p| p.to_string() == *user_id),
+                ServerType::Jellyfin => u
+                    .jellyfin_user_id
                     .as_deref()
-                    .is_some_and(|e| e.eq_ignore_ascii_case(&email))
+                    .is_some_and(|j| same_jellyfin_id(j, user_id)),
+            })
+        });
+        let found = by_media_id.or_else(|| {
+            ids.iter().find_map(|(kind, user_id)| {
+                let email = synthetic_email_of(*kind, user_id);
+                page.results.iter().find(|u| {
+                    u.email
+                        .as_deref()
+                        .is_some_and(|e| e.eq_ignore_ascii_case(&email))
+                })
             })
         });
         let (seerr_id, created) = match found {

@@ -9,10 +9,12 @@
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!();
 
+pub mod identity;
 pub mod profile;
 pub mod together;
 pub mod transfer;
 
+pub use identity::{LinkRequest, LinkedIdentity, MeWithIdentities};
 pub use profile::{Avatar, AvatarChoice, AvatarPreset, DisplayNameRequest};
 
 use net::Result;
@@ -574,6 +576,36 @@ impl KeepClient {
 
     pub async fn me(&self) -> Result<Me> {
         net::send_json(self.req(Method::GET, "/me")).await
+    }
+
+    /// `me` with the account's linked sign-ins ("Also signed in as …").
+    pub async fn me_with_identities(&self) -> Result<MeWithIdentities> {
+        net::send_json(self.req(Method::GET, "/me")).await
+    }
+
+    /// The sign-ins of my AlwyWatch account (one entry: nothing linked).
+    pub async fn links(&self) -> Result<Vec<LinkedIdentity>> {
+        net::send_json(self.req(Method::GET, "/me/links")).await
+    }
+
+    /// Makes my account and the account of `token` on `server_id` (another served server, the
+    /// same person) one AlwyWatch account. Idempotent. Afterwards read [`KeepClient::me`]
+    /// again: `user_key` may have changed (see `docs/identity-apps.md`).
+    pub async fn link(&self, server_id: &str, token: &str) -> Result<Vec<LinkedIdentity>> {
+        net::send_json(self.req(Method::POST, "/me/links").json(&LinkRequest {
+            server_id: server_id.to_owned(),
+            token: token.to_owned(),
+        }))
+        .await
+    }
+
+    /// Separates one of my sign-ins (not the canonical one): it becomes a new, empty account.
+    pub async fn unlink(&self, user_key: &str) -> Result<Vec<LinkedIdentity>> {
+        net::send_json(self.req(
+            Method::DELETE,
+            &format!("/me/links/{}", net::percent_encode(user_key)),
+        ))
+        .await
     }
 
     /// My settings shared across my devices (opaque key/values, see the core's settings sync).
