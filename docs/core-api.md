@@ -250,11 +250,30 @@ app flows: [together-apps.md](together-apps.md)):
 | Function | Notes |
 |---|---|
 | `transfer_start(url, device)` | New device: registers a one-time key; returns `TransferCode { code, check, handle, ... }`. No sign-in |
-| `transfer_receive(url, handle)` | New device: the opened bundle once approved, `None` while waiting |
+| `transfer_receive(url, handle)` | New device: `TransferReceived { bundle, account_token }` once approved, `None` while waiting. `bundle`: another device's setup (as before); `account_token`: an AlwyWatch account session (store it, then `account_use_token`) |
 | `transfer_peer(code)`, `transfer_send(code, bundle)` | Signed-in device: the asking device and its check number, then send the sealed bundle |
 | `export_config(setting_keys)`, `import_config(json)` | The bundle: accounts, AlwyWatch server and Seerr connections, chosen settings. Tokens are added and stored by the platform |
 
 Protocol and crypto: [keep-protocol.md](keep-protocol.md#device-transfer).
+
+## AlwyWatch accounts and Quick Connect
+
+An account signs a device in to the AlwyWatch server without a media server (profile, synced
+settings, the user's server list); the platform keeps its token in secure storage under
+`alwywatch_account`. Server side: [keep-protocol.md](keep-protocol.md#alwywatch-accounts).
+
+| Function | Notes |
+|---|---|
+| `account_login(url, username, password, device)` | → `AccountSignedIn { account, token }` |
+| `account_use_token(url, token)` | After Quick Connect brought an `account_token` |
+| `account_activate(token)`, `account()`, `account_sign_out()` | Start-up (no network), the saved account, sign out |
+| `account_link_media(account_id, token)` | After a Jellyfin/Plex sign-in: it joins the account (false: not a served server) |
+| `account_approve(code)` | Quick Connect from this device without sending its setup |
+| `known_servers()` | Servers in the synced list (`account.servers`, filled from every device's accounts) not signed in here |
+| `qr_code(text)`, `quick_connect_url(url, code)` | The QR code of `<url>/q/<code>` shown next to the code |
+
+Settings sync goes through the account session when no media sign-in is linked to the
+AlwyWatch server.
 
 ## Watch history copy
 

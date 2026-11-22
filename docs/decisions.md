@@ -49,6 +49,7 @@ then **small APK** (see CLAUDE.md). This file states why each one is here and wh
 | `leptos` 0.8 (csr), `leptos_router` | web | Fine-grained reactive UI rendered in the browser; real URLs | No server functions |
 | `wasm-bindgen` (pinned `=`), `wasm-bindgen-futures`, `js-sys`, `web-sys` | web | Browser APIs from Rust; the pin must equal the installed `wasm-bindgen-cli` | Only the `web-sys` features used |
 | `ring` | keep-service, server | X25519, HKDF, ChaCha20-Poly1305 for device transfer; already in the tree through rustls. Server: also passkey signatures (P-256, Ed25519, RSA) | Browser random source on wasm32. `webauthn-rs` rejected: needs OpenSSL, the server image is static (`scratch`) |
+| `qrcodegen` | core | QR code of the Quick Connect address on the new device (Nayuki's encoder, no dependencies, a few KB in the APK) | Drawn by each UI from the module grid |
 | `argon2` (+ `rand_core` with `getrandom` for salts) | server | AlwyWatch account passwords (Argon2id, pure Rust; alwymail's choice) | Server only, not in the apps |
 | `wiremock`, `tempfile`, `tower` | tests only | Mock HTTP servers, temp dirs, router `oneshot` in server tests | Dev-dependencies |
 

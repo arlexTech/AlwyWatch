@@ -988,6 +988,7 @@ impl App {
     }
 
     fn refresh_keep_settings(&self) {
+        self.refresh_account_settings();
         let ui = self.ui();
         self.apply_services();
         ui.set_keep_active(self.core.keep_active());
@@ -3812,6 +3813,7 @@ impl App {
         // Leaving soon + Seerr through the AlwyWatch server the user started from (if any).
         if let Some(token) = self.keep_token(&s.account.id) {
             let (core, this, id) = (self.core.clone(), Rc::downgrade(self), s.account.id.clone());
+            let (id2, token2) = (id.clone(), token.clone());
             slint::spawn_local(async move {
                 if let Ok(Some(_)) = core.keep_onboard(id, token).await
                     && let Some(t) = this.upgrade()
@@ -3821,6 +3823,8 @@ impl App {
                     t.check_welcome();
                     t.start_rooms_poll();
                 }
+                // Signed in to an AlwyWatch account: this sign-in joins it.
+                let _ = core.account_link_media(id2, token2).await;
                 // A new account may be the same person as the synced one.
                 if let Some(t) = this.upgrade() {
                     t.check_links(true);
@@ -3869,7 +3873,7 @@ impl App {
         self.state.borrow_mut().poll_gen += 1;
         let step = ui.get_add_step();
         let which = match which.as_str() {
-            "back" if step == "receive" => "alwywatch".into(),
+            "back" if step == "receive" || step == "account" => "alwywatch".into(),
             "back" if step == "alwywatch" || step == "direct" || step == "choose" => String::new(),
             "back" if ui.get_add_from_keep() => String::new(),
             "back" if self.state.borrow().preset_url.is_empty() => "direct".into(),
@@ -3888,6 +3892,10 @@ impl App {
                 ui.set_add_step("direct".into());
             }
             "jellyfin" => ui.set_add_step("jellyfin-url".into()),
+            "account" => {
+                ui.set_transfer_status(SharedString::new());
+                ui.set_add_step("account".into());
+            }
             "plex" => {
                 ui.set_add_step("plex".into());
                 ui.set_plex_code("…".into());
@@ -4192,6 +4200,73 @@ impl App {
         Ok(current.or_else(|| ids.into_iter().next()))
     }
 
+    /// Signed in to an AlwyWatch account (no media server yet): its server's list, to sign in
+    /// to the server the user watches on.
+    fn account_ready(self: &Rc<Self>, url: String, name: String) {
+        let ui = self.ui();
+        ui.set_account_note(sstr(format!(
+            "Signed in as {name}. Now sign in to the server you watch on."
+        )));
+        ui.set_add_step("alwywatch".into());
+        ui.set_keep_address(sstr(&url));
+        self.add_keep_servers(url);
+        self.refresh_account_settings();
+        // The account's settings (and server list) arrive.
+        let core = self.core.clone();
+        slint::spawn_local(async move {
+            let _ = core.sync_settings().await;
+        })
+        .ok();
+    }
+
+    /// "AlwyWatch account" step: username and password.
+    fn account_login(self: &Rc<Self>, url: String, user: String, pass: String) {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        self.ui().set_transfer_status(SharedString::new());
+        slint::spawn_local(async move {
+            let url = match normalize_server_url(url) {
+                Ok(u) => u,
+                Err(e) => return report(&this, e),
+            };
+            let r = core
+                .account_login(url.clone(), user, pass, crate::hostname())
+                .await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(s) => {
+                    if let Err(e) = t.tokens.put(ACCOUNT_TOKEN, &s.token) {
+                        return t
+                            .ui()
+                            .set_transfer_status(sstr(format!("could not store the token: {e}")));
+                    }
+                    t.account_ready(url, s.account.name);
+                }
+                Err(e) => t.ui().set_transfer_status(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
+    /// Settings: the AlwyWatch account row.
+    fn refresh_account_settings(&self) {
+        self.ui().set_alwy_account(sstr(
+            self.core.account().map(|a| a.name).unwrap_or_default(),
+        ));
+    }
+
+    /// Settings: signs this device out of the AlwyWatch account.
+    fn account_sign_out(self: &Rc<Self>) {
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let _ = core.account_sign_out().await;
+            if let Some(t) = this.upgrade() {
+                let _ = t.tokens.remove(ACCOUNT_TOKEN);
+                t.refresh_account_settings();
+            }
+        })
+        .ok();
+    }
+
     /// New device, from the AlwyWatch server step: shows a code to type on a signed-in device
     /// and waits for the accounts (end-to-end encrypted: the server only relays them).
     fn transfer_receive(self: &Rc<Self>, url: String) {
@@ -4236,6 +4311,9 @@ impl App {
                     )));
                     ui.set_transfer_check(sstr(&c.check));
                     ui.set_transfer_status(SharedString::new());
+                    let page = alwywatch_core::quick_connect_url(url.clone(), c.code.clone());
+                    ui.set_transfer_qr(qr_image(&page));
+                    ui.set_transfer_url(sstr(page.trim_start_matches("https://")));
                 }
                 let until = std::time::Instant::now() + Duration::from_secs(c.expires_in);
                 // Until it expires (then a new code).
@@ -4244,12 +4322,30 @@ impl App {
                     if !waiting(&this) {
                         return;
                     }
-                    let Ok(Some(bundle)) =
-                        core.transfer_receive(url.clone(), c.handle.clone()).await
+                    let Ok(Some(got)) = core.transfer_receive(url.clone(), c.handle.clone()).await
                     else {
                         continue;
                     };
                     let Some(t) = this.upgrade() else { return };
+                    let mut account = None;
+                    if let Some(token) = &got.account_token
+                        && t.tokens.put(ACCOUNT_TOKEN, token).is_ok()
+                    {
+                        account = core
+                            .account_use_token(url.clone(), token.clone())
+                            .await
+                            .ok();
+                    }
+                    let Some(bundle) = got.bundle else {
+                        match account {
+                            Some(a) => t.account_ready(url.clone(), a.name),
+                            None => t.ui().set_transfer_status(
+                                "Nothing to copy: that device has no accounts.".into(),
+                            ),
+                        }
+                        return;
+                    };
+                    t.refresh_account_settings();
                     match t.restore_bundle(&bundle) {
                         Ok(Some(account)) => {
                             let _ = t
@@ -4330,6 +4426,8 @@ impl App {
             ui.set_add_step("receive".into());
             ui.set_transfer_code("482 913".into());
             ui.set_transfer_check("7261".into());
+            ui.set_transfer_qr(qr_image("https://watch.example.org/q/482913"));
+            ui.set_transfer_url("watch.example.org/q/482913".into());
         } else {
             self.navigate(Route::Settings);
             ui.set_keep_active(true);
@@ -4810,6 +4908,12 @@ impl App {
         });
         on!(on_seerr_request, |a, all| a.seerr_request(all));
         on!(on_transfer_receive, |a, url| a.transfer_receive(url.into()));
+        on!(on_account_login, |a, url, u, p| a.account_login(
+            url.into(),
+            u.into(),
+            p.into()
+        ));
+        on!(on_account_sign_out, |a| a.account_sign_out());
         on!(on_send_lookup, |a, code| a.send_lookup(code.into()));
         on!(on_send_confirm, |a| a.send_confirm());
         on!(on_send_start, |a| {
@@ -4870,6 +4974,28 @@ impl App {
     }
 }
 
+/// The AlwyWatch account token, in the token store like media tokens.
+const ACCOUNT_TOKEN: &str = "alwywatch_account";
+
+/// A QR code as a picture (one pixel per module plus a quiet zone; the UI scales it up
+/// without smoothing).
+fn qr_image(text: &str) -> slint::Image {
+    let Ok(q) = alwywatch_core::qr_code(text.to_owned()) else {
+        return slint::Image::default();
+    };
+    let n = q.size as usize;
+    let side = n + 2;
+    let mut buf = slint::SharedPixelBuffer::<slint::Rgb8Pixel>::new(side as u32, side as u32);
+    let px = buf.make_mut_slice();
+    for (i, p) in px.iter_mut().enumerate() {
+        let (x, y) = (i % side, i / side);
+        let dark = x >= 1 && y >= 1 && x <= n && y <= n && q.modules[(y - 1) * n + (x - 1)];
+        let v = if dark { 0 } else { 255 };
+        *p = slint::Rgb8Pixel { r: v, g: v, b: v };
+    }
+    slint::Image::from_rgb8(buf)
+}
+
 /// Signs the saved accounts and connections in with their stored tokens (start-up, and after
 /// accounts arrived from another device).
 pub fn activate_saved(core: &AlwyWatch, tokens: &Tokens) {
@@ -4884,6 +5010,11 @@ pub fn activate_saved(core: &AlwyWatch, tokens: &Tokens) {
         {
             core.set_plex_account_token(a.id.clone(), t);
         }
+    }
+    if core.account().is_some()
+        && let Some(t) = tokens.get(ACCOUNT_TOKEN)
+    {
+        let _ = core.account_activate(t);
     }
     if core.seerr_connection().is_some()
         && let Some(cookie) = tokens.get("seerr")

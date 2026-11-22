@@ -25,6 +25,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "macr
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# QR code of the Quick Connect address (Nayuki's encoder: no dependencies, ~30 KB of code).
+qrcodegen = "1.8"
 
 [dev-dependencies]
 tempfile = { workspace = true }

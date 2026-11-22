@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package be.alwyapps.watch.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -73,14 +76,62 @@ private fun restoreBundle(
     return core.getSetting("current_account")?.takeIf { it in ids } ?: ids.firstOrNull()
 }
 
+/** The AlwyWatch account token, in secure storage like media tokens. */
+const val ACCOUNT_TOKEN = "alwywatch_account"
+
+/** A QR code drawn from the core's modules (dark on white, with a quiet zone). */
+@Composable
+fun QrImage(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val qr =
+        remember(text) {
+            runCatching {
+                be.alwyapps.watch.core
+                    .qrCode(text)
+            }.getOrNull()
+        } ?: return
+    androidx.compose.foundation.Canvas(
+        modifier
+            .size(200.dp)
+            .background(
+                androidx.compose.ui.graphics.Color.White,
+                androidx.compose.foundation.shape
+                    .RoundedCornerShape(12.dp),
+            ).padding(12.dp),
+    ) {
+        val n = qr.size.toInt()
+        val cell = size.minDimension / n
+        for (y in 0 until n) {
+            for (x in 0 until n) {
+                if (qr.modules[y * n + x]) {
+                    drawRect(
+                        androidx.compose.ui.graphics.Color.Black,
+                        topLeft =
+                            androidx.compose.ui.geometry
+                                .Offset(x * cell, y * cell),
+                        size =
+                            androidx.compose.ui.geometry
+                                .Size(cell + 0.5f, cell + 0.5f),
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
- * New device, from the AlwyWatch server step: shows a code to type on a signed-in device and
- * waits for the accounts (end-to-end encrypted: the server only relays them).
+ * New device, from the AlwyWatch server step ("Sign in with a code", like Jellyfin's Quick
+ * Connect): shows a code and its QR code. Approved from the web (the QR code opens the
+ * approval page) the device joins the approver's AlwyWatch account ([onAccount]); approved
+ * from a signed-in device it also gets that device's accounts, end-to-end encrypted ([onDone]).
  */
 @Composable
 fun ReceiveFromDevice(
     url: String,
     onDone: (String) -> Unit,
+    onAccount: () -> Unit = {},
 ) {
     val core = LocalCore.current
     val ctx = LocalContext.current
@@ -95,12 +146,19 @@ fun ReceiveFromDevice(
                 val until = System.currentTimeMillis() + c.expiresIn.toLong() * 1000
                 while (System.currentTimeMillis() < until) {
                     delay(2000)
-                    val bundle = runCatching { core.transferReceive(url, c.handle) }.getOrNull() ?: continue
-                    val account = restoreBundle(core, ctx.services.tokens, bundle)
+                    val got = runCatching { core.transferReceive(url, c.handle) }.getOrNull() ?: continue
+                    got.accountToken?.let { token ->
+                        ctx.services.tokens.put(ACCOUNT_TOKEN, token)
+                        runCatching { core.accountUseToken(url, token) }
+                    }
+                    val account = got.bundle?.let { restoreBundle(core, ctx.services.tokens, it) }
                     ctx.services.activate(core)
                     if (account != null) {
                         core.setSetting("current_account", account)
                         onDone(account)
+                    } else if (got.accountToken != null) {
+                        runCatching { core.syncSettings() }
+                        onAccount()
                     } else {
                         error = "Nothing to copy: that device has no accounts."
                     }
@@ -113,15 +171,30 @@ fun ReceiveFromDevice(
             }
         }
     }
+    val page =
+        code?.let {
+            be.alwyapps.watch.core
+                .quickConnectUrl(url, it.code)
+        }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("COPY FROM ANOTHER DEVICE", style = MaterialTheme.typography.labelSmall, color = Accent)
-        Text(code?.code?.chunked(3)?.joinToString(" ") ?: "…", style = MaterialTheme.typography.displayLarge)
+        Text("SIGN IN WITH A CODE", style = MaterialTheme.typography.labelSmall, color = Accent)
+        androidx.compose.foundation.layout.Row(
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            page?.let { QrImage(it) }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(code?.code?.chunked(3)?.joinToString(" ") ?: "…", style = MaterialTheme.typography.displayLarge)
+                Text("Scan with your phone, or open", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                page?.let { Text(it.removePrefix("https://"), style = MaterialTheme.typography.titleMedium) }
+            }
+        }
         Text(
-            "On a device where you're signed in: Settings → AlwyWatch server → Add a device, and type this code.",
+            "Or on a device where you're signed in: Settings → AlwyWatch server → Add a device, and type this code.",
             color = Muted,
             style = MaterialTheme.typography.bodyMedium,
         )
-        code?.let { Text("Check number: ${it.check}. It must match the one shown on the other device.", color = Subtle) }
+        code?.let { Text("Check number: ${it.check}. It must match if the other device shows one.", color = Subtle) }
         Text("Waiting for the other device…", style = MaterialTheme.typography.bodySmall, color = Subtle)
         error?.let { Text(it, color = Danger) }
     }

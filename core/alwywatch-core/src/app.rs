@@ -216,13 +216,15 @@ pub fn bucket_width(w: u32) -> u32 {
 
 pub struct Core {
     keep: RwLock<Option<keep_service::KeepClient>>,
+    /// The AlwyWatch account session (no media server), see `account.rs`.
+    pub(crate) account: RwLock<Option<keep_service::KeepClient>>,
     seerr: RwLock<Option<seerr::SeerrClient>>,
     downloads: downloads::Downloads,
     downloads_running: std::sync::atomic::AtomicBool,
     /// Owner of the downloads this profile asks for (see `downloads::Download::owners`).
     profile: String,
     client: ClientInfo,
-    http: net::reqwest::Client,
+    pub(crate) http: net::reqwest::Client,
     pub(crate) store: Arc<Store>,
     images: ImageCache,
     image_permits: Semaphore,
@@ -881,7 +883,7 @@ impl Core {
 
 #[derive(uniffi::Object)]
 pub struct AlwyWatch {
-    core: Arc<Core>,
+    pub(crate) core: Arc<Core>,
     rt: Runtime,
 }
 
@@ -961,6 +963,7 @@ impl AlwyWatch {
         Ok(Arc::new(Self {
             core: Arc::new(Core {
                 keep: RwLock::new(None),
+                account: RwLock::new(None),
                 seerr: RwLock::new(None),
                 downloads,
                 downloads_running: std::sync::atomic::AtomicBool::new(false),
@@ -2381,6 +2384,15 @@ pub struct TransferCode {
     pub expires_in: u64,
 }
 
+/// New device: what an approval brought. `bundle`: another device's accounts and settings
+/// (to restore as before); `account_token`: a session of the approver's AlwyWatch account
+/// (store it and call `account_use_token`). Either may be missing.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TransferReceived {
+    pub bundle: Option<String>,
+    pub account_token: Option<String>,
+}
+
 /// Signed-in device: who asks for the accounts.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct TransferRequest {
@@ -2484,8 +2496,13 @@ impl AlwyWatch {
         .await
     }
 
-    /// New device: the bundle once approved (None while waiting). Opening it consumes the key.
-    pub async fn transfer_receive(&self, url: String, handle: String) -> Result<Option<String>> {
+    /// New device: what the approval brought, once approved (None while waiting). Opening it
+    /// consumes the key.
+    pub async fn transfer_receive(
+        &self,
+        url: String,
+        handle: String,
+    ) -> Result<Option<TransferReceived>> {
         self.run(|c| async move {
             let base = net::normalize_base_url(&url)?;
             let Some(sealed) =
@@ -2499,19 +2516,25 @@ impl AlwyWatch {
                 .unwrap_or_else(|e| e.into_inner())
                 .remove(&handle)
                 .ok_or(CoreError::NotFound)?;
-            let bytes = keep_service::transfer::from_hex(&sealed.sealed).ok_or_else(|| {
-                CoreError::Invalid {
+            let bundle = if sealed.sealed.is_empty() {
+                None
+            } else {
+                let bytes = keep_service::transfer::from_hex(&sealed.sealed).ok_or_else(|| {
+                    CoreError::Invalid {
+                        detail: "corrupted transfer".into(),
+                    }
+                })?;
+                let plain = key.open(&bytes).map_err(|e| CoreError::Invalid {
+                    detail: e.to_string(),
+                })?;
+                Some(String::from_utf8(plain).map_err(|_| CoreError::Invalid {
                     detail: "corrupted transfer".into(),
-                }
-            })?;
-            let plain = key.open(&bytes).map_err(|e| CoreError::Invalid {
-                detail: e.to_string(),
-            })?;
-            String::from_utf8(plain)
-                .map(Some)
-                .map_err(|_| CoreError::Invalid {
-                    detail: "corrupted transfer".into(),
-                })
+                })?)
+            };
+            Ok(Some(TransferReceived {
+                bundle,
+                account_token: sealed.account_token,
+            }))
         })
         .await
     }
@@ -2519,7 +2542,7 @@ impl AlwyWatch {
     /// Signed-in device: who asks with this code, and the check number to compare.
     pub async fn transfer_peer(&self, code: String) -> Result<TransferRequest> {
         self.run(|c| async move {
-            let peer = c.keep()?.transfer_peer(code.trim()).await?;
+            let peer = c.person_client()?.transfer_peer(code.trim()).await?;
             let key = keep_service::transfer::from_hex(&peer.public_key).ok_or_else(|| {
                 CoreError::Invalid {
                     detail: "invalid key".into(),

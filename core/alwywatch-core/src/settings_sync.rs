@@ -44,6 +44,7 @@ pub(crate) fn synced(key: &str) -> bool {
         "ui.menu_hidden",
         "ui.menu_libs",
         "current_account",
+        keep_service::account::SERVERS_SETTING,
         "together.others_title",
         "together.others_play",
         "together.others_seek",
@@ -124,7 +125,13 @@ impl Core {
         // the Jellyfin user's app preferences.
         // An AlwyWatch server that can't be reached (down, not deployed yet) falls back to
         // Jellyfin; change times keep both consistent once it is back.
-        let mut keep = self.keep().ok();
+        // This device's servers join the synced list.
+        if self.remember_servers().unwrap_or(false) {
+            let mut meta = self.settings_meta();
+            meta.insert(keep_service::account::SERVERS_SETTING.into(), now_ms());
+            self.save_settings_meta(&meta);
+        }
+        let mut keep = self.person_client().ok();
         let from_keep = match &keep {
             Some(k) => match k.settings().await {
                 Ok(m) => Some(m),

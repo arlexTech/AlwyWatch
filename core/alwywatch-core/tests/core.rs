@@ -800,11 +800,11 @@ fn accounts_move_to_a_new_device_sealed_end_to_end() {
         .block(app.transfer_receive(keep.uri(), code.handle))
         .unwrap()
         .unwrap();
-    assert_eq!(got, bundle);
+    assert_eq!(got.bundle.as_deref(), Some(bundle.as_str()));
     let other = Env::new();
     let fresh = other.app();
     assert_eq!(
-        fresh.import_config(got).unwrap(),
+        fresh.import_config(got.bundle.unwrap()).unwrap(),
         vec![s.account.id.clone()]
     );
     assert_eq!(fresh.accounts().unwrap()[0].id, s.account.id);

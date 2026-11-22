@@ -328,6 +328,23 @@ fun AlwyWatchServerGroup(
             )
         }
         error?.let { Text(it, Modifier.padding(16.dp), color = Danger, style = MaterialTheme.typography.bodySmall) }
+        // An AlwyWatch account (no media server) signed in on this device.
+        val account = remember(version) { core.account() }
+        if (account != null) {
+            Divider()
+            ListRow(
+                "AlwyWatch account: ${account.name}",
+                subtitle = "Sign this device out of the account (passwords, passkeys and devices: on the web)",
+                icon = Icons.Person,
+                onClick = {
+                    scope.launch {
+                        runCatching { core.accountSignOut() }
+                        ctx.services.tokens.remove(ACCOUNT_TOKEN)
+                        onChanged()
+                    }
+                },
+            )
+        }
     }
 }
 

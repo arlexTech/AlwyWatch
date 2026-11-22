@@ -1243,6 +1243,11 @@ export component AppWindow inherits Window {
     in property <string> transfer-code;
     in property <string> transfer-check;
     in property <string> transfer-status;
+    in property <image> transfer-qr;
+    // The Quick Connect page the QR code opens (shown without "https://").
+    in property <string> transfer-url;
+    // Signed in to an AlwyWatch account (no media server yet): said above the server list.
+    in property <string> account-note;
     // Signed-in device, "Add a device": "" | code | confirm | sent.
     in property <string> send-step;
     in property <string> send-code;
@@ -1290,6 +1295,8 @@ export component AppWindow inherits Window {
     in property <KeepPanel> detail-keep;
     in property <bool> keep-admin;
     in property <string> keep-label;
+    // The AlwyWatch account (no media server) this device is signed in to: its name, or "".
+    in property <string> alwy-account;
     in property <string> keep-message;
     in property <[LeavingRow]> leaving;
     in property <[TogetherRow]> together-rooms;
@@ -1423,6 +1430,7 @@ export component AppWindow inherits Window {
     callback seerr-open-saga();
     callback detail-open-saga();
     callback transfer-receive(string); // AlwyWatch server address
+    callback account-login(string, string, string); // AlwyWatch server address, username, password
     callback send-start();
     callback send-lookup(string);
     callback send-confirm();
@@ -1434,6 +1442,7 @@ export component AppWindow inherits Window {
     callback keep-sync(string);
     callback keep-choose();
     callback keep-disconnect();
+    callback account-sign-out();
     callback keep-vote(string, string); // key, choice
     callback watch-together(string); // item: a new room (lobby) with it
     callback together-open(string); // room code: join an invitation, or open my room
@@ -1959,7 +1968,8 @@ export component AppWindow inherits Window {
                                     IconButton { icon: @image-url("icons/arrow_back.svg"); clicked => { root.add-choose("back"); } }
                                     Text {
                                         text: root.add-step == "alwywatch" ? "AlwyWatch server"
-                                            : root.add-step == "receive" ? "Copy from another device"
+                                            : root.add-step == "receive" ? "Sign in with a code"
+                                            : root.add-step == "account" ? "AlwyWatch account"
                                             : root.add-step == "direct" ? "Sign in"
                                             : root.add-step == "plex" || root.add-step == "plex-servers" ? "Plex" : "Jellyfin";
                                         color: Palette.text;
@@ -1995,7 +2005,8 @@ export component AppWindow inherits Window {
                                 }
                                 if root.add-step == "alwywatch" : VerticalLayout {
                                     spacing: 12px;
-                                    Text { text: "Enter the address your server's owner gave you, then pick the server you watch on."; color: Palette.muted; wrap: word-wrap; }
+                                    if root.account-note == "" : Text { text: "Enter the address your server's owner gave you, then pick the server you watch on."; color: Palette.muted; wrap: word-wrap; }
+                                    if root.account-note != "" : Text { text: root.account-note; color: Palette.text; font-size: 17px; font-weight: 700; wrap: word-wrap; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         kserver := Field { placeholder: "watch.example.org"; text <=> root.keep-address; accepted(t) => { root.add-keep-servers(t); } }
@@ -2007,23 +2018,59 @@ export component AppWindow inherits Window {
                                         icon: s.plex ? @image-url("icons/play_arrow_fill1.svg") : @image-url("icons/video_library.svg");
                                         clicked => { root.add-keep-pick(s.id); }
                                     }
-                                    if root.keep-address != "" : ChoiceCard {
-                                        title: "Copy from another device";
-                                        subtitle: "Signed in on your phone or TV? Bring its accounts and settings here.";
+                                    if root.keep-address != "" && root.account-note == "" : ChoiceCard {
+                                        title: "Sign in with a code";
+                                        subtitle: "Scan a QR code with your phone, or approve on a device where you're signed in.";
                                         icon: @image-url("icons/download.svg");
                                         clicked => { root.transfer-receive(root.keep-address); }
                                     }
+                                    if root.keep-address != "" && root.account-note == "" : ChoiceCard {
+                                        title: "AlwyWatch account";
+                                        subtitle: "Username and password";
+                                        icon: @image-url("icons/person.svg");
+                                        clicked => { root.add-choose("account"); }
+                                    }
+                                }
+                                if root.add-step == "account" : VerticalLayout {
+                                    spacing: 12px;
+                                    Text { text: "Your AlwyWatch account keeps your profile, settings and server list. To watch, you then sign in to your server."; color: Palette.muted; wrap: word-wrap; }
+                                    auser := Field { placeholder: "Username"; }
+                                    apass := Field {
+                                        placeholder: "Password";
+                                        input-type: password;
+                                        accepted => { root.account-login(root.keep-address, auser.text, apass.text); }
+                                    }
+                                    HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.account-login(root.keep-address, auser.text, apass.text); } } }
+                                    Text { text: "Passkey or Pocket ID? Use “Sign in with a code” and approve it on your phone."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                    if root.transfer-status != "" : Text { text: root.transfer-status; color: Palette.danger; wrap: word-wrap; }
                                 }
                                 if root.add-step == "receive" : VerticalLayout {
                                     spacing: 12px;
-                                    Text { text: root.transfer-code; color: Palette.text; font-size: 56px; font-weight: 800; letter-spacing: 4px; }
+                                    HorizontalLayout {
+                                        spacing: 28px;
+                                        alignment: start;
+                                        Rectangle {
+                                            width: 200px;
+                                            height: 200px;
+                                            border-radius: 12px;
+                                            background: white;
+                                            Image { x: 12px; y: 12px; width: 176px; height: 176px; source: root.transfer-qr; image-rendering: pixelated; }
+                                        }
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 8px;
+                                            Text { text: root.transfer-code; color: Palette.text; font-size: 56px; font-weight: 800; letter-spacing: 4px; }
+                                            Text { text: "Scan with your phone, or open"; color: Palette.muted; }
+                                            Text { text: root.transfer-url; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                        }
+                                    }
                                     Text {
-                                        text: "On a device where you're signed in: Settings → AlwyWatch server → Add a device, and type this code.";
+                                        text: "Or on a device where you're signed in: Settings → AlwyWatch server → Add a device, and type this code.";
                                         color: Palette.muted;
                                         wrap: word-wrap;
                                     }
                                     if root.transfer-check != "" : Text {
-                                        text: "Check number: " + root.transfer-check + ". It must match the one shown on the other device.";
+                                        text: "Check number: " + root.transfer-check + ". It must match if the other device shows one.";
                                         color: Palette.muted;
                                         wrap: word-wrap;
                                     }
@@ -2774,6 +2821,11 @@ export component AppWindow inherits Window {
                             }
                             Group {
                                 title: "ALWYWATCH SERVER";
+                                if root.alwy-account != "" : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: "AlwyWatch account: " + root.alwy-account; color: Palette.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                    Button { label: "Sign out of the account"; clicked => { root.account-sign-out(); } }
+                                }
                                 if root.keep-active : HorizontalLayout {
                                     spacing: 10px;
                                     Text { text: root.keep-label; color: Palette.text; vertical-alignment: center; }
@@ -2783,7 +2835,7 @@ export component AppWindow inherits Window {
                                 }
                                 if root.keep-active && root.send-step == "code" : VerticalLayout {
                                     spacing: 10px;
-                                    Text { text: "On the new device, choose \"Copy from another device\" and type its code here."; color: Palette.muted; wrap: word-wrap; }
+                                    Text { text: "On the new device, choose \"Sign in with a code\" and type its code here."; color: Palette.muted; wrap: word-wrap; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         scode := Field { placeholder: "123456"; accepted(t) => { root.send-lookup(t); } }

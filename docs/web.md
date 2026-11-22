@@ -52,8 +52,14 @@ Routes in `web/src/main.rs`:
 | `/leaving`, `/leaving/sort` | Leaving soon with keep votes; one-at-a-time sorting |
 | `/admin`, `/admin/forever` | Admins: rights, Seerr user links, countdown; who keeps what forever |
 | `/play/:acc/:id` | Player |
+| `/account`, `/account/signed-in` | AlwyWatch account: password, passkeys, Pocket ID, devices, invitations (admins); landing after Pocket ID |
+| `/join`, `/join/:code` | Create an AlwyWatch account with an invitation (or Pocket ID) |
+| `/q/:code` | Quick Connect: approve a device showing this code (its QR code opens this page) |
 
-`:acc` is `jf|px.<server id>.<user id>`. Without any account, every page shows the sign-in.
+`:acc` is `jf|px.<server id>.<user id>`. Without any Jellyfin/Plex account, every page except
+the sign-in, settings, account, join and Quick Connect pages shows the sign-in. Passkeys use
+`navigator.credentials` through a small inline JS module (`web/src/passkey.rs`, emitted by
+wasm-bindgen under `snippets/`).
 
 ## Playback
 

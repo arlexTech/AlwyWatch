@@ -111,6 +111,9 @@ class Services(
                 if (account?.kind == be.alwyapps.watch.core.media.ServerKind.PLEX) tokens.get("${k.accountId}:plextv") else tokens.get(k.accountId)
             token?.let { runCatching { core.keepActivate(it) } }
         }
+        if (core.account() != null) {
+            tokens.get(be.alwyapps.watch.ui.screens.ACCOUNT_TOKEN)?.let { runCatching { core.accountActivate(it) } }
+        }
         val seerr = core.seerrConnection()
         val bridgeAccount = seerr?.bridgeAccount?.let { id -> core.accounts().firstOrNull { it.id == id } }
         if (bridgeAccount != null) {

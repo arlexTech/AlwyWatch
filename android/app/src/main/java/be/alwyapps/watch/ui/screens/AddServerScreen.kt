@@ -77,6 +77,16 @@ private sealed interface Step {
         val url: String,
     ) : Step
 
+    /** Signing in to an AlwyWatch account with username and password. */
+    data class AccountLogin(
+        val url: String,
+    ) : Step
+
+    /** Signed in to an AlwyWatch account: its servers to sign in to on this device. */
+    data class Known(
+        val url: String,
+    ) : Step
+
     /** "I don't have one": Jellyfin or Plex directly. */
     data object Direct : Step
 
@@ -143,7 +153,11 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
         core.setSetting("current_account", s.account.id)
         // Leaving soon + Seerr through the AlwyWatch server the user started from (if any).
         val keepToken = s.plexAccountToken ?: s.token
-        ctx.services.scope.launch { runCatching { core.keepOnboard(s.account.id, keepToken) } }
+        ctx.services.scope.launch {
+            runCatching { core.keepOnboard(s.account.id, keepToken) }
+            // Signed in to an AlwyWatch account: this sign-in joins it.
+            runCatching { core.accountLinkMedia(s.account.id, keepToken) }
+        }
         onSignedIn(s.account.id)
     }
 
@@ -229,7 +243,8 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 Text(
                     when (step) {
                         Step.AlwyWatch -> "AlwyWatch server"
-                        is Step.Receive -> "Copy from a device"
+                        is Step.Receive -> "Sign in with a code"
+                        is Step.AccountLogin, is Step.Known -> "AlwyWatch account"
                         Step.Direct -> "Sign in"
                         Step.Plex, is Step.PlexServers, is Step.PlexUsers -> "Plex"
                         else -> "Jellyfin"
@@ -266,9 +281,79 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     onPick = { url, entry -> pick(url, entry) },
                     onError = { error = it },
                     onCopy = { url -> go(Step.Receive(url)) },
+                    onAccount = { url -> go(Step.AccountLogin(url)) },
                 )
 
-            is Step.Receive -> ReceiveFromDevice(s.url, onDone = onSignedIn)
+            is Step.Receive ->
+                ReceiveFromDevice(s.url, onDone = onSignedIn, onAccount = {
+                    history = history.dropLast(1) + Step.Known(s.url)
+                })
+
+            is Step.AccountLogin -> {
+                var user by remember { mutableStateOf("") }
+                var pass by remember { mutableStateOf("") }
+                val submit = {
+                    attempt {
+                        val r = core.accountLogin(s.url, user, pass, android.os.Build.MODEL ?: "Android")
+                        ctx.services.tokens.put(ACCOUNT_TOKEN, r.token)
+                        runCatching { core.syncSettings() }
+                        history = history.dropLast(1) + Step.Known(s.url)
+                    }
+                }
+                Text(
+                    "Your AlwyWatch account keeps your profile, settings and server list. To watch, you then sign in to your server.",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Field(
+                    user,
+                    { user = it },
+                    label = { Text("Username") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
+                )
+                Field(
+                    pass,
+                    { pass = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
+                    modifier = Modifier.fillMaxWidth().dpadEscape(),
+                )
+                ActionButton(if (busy) "Signing in…" else "Sign in", { submit() }, primary = true)
+                Text(
+                    "Passkey or Pocket ID? Use “Sign in with a code” and approve it on your phone.",
+                    color = Subtle,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            is Step.Known -> {
+                val me = remember { core.account() }
+                var served by remember { mutableStateOf<List<ServerEntry>?>(null) }
+                LaunchedEffect(s.url) { served = runCatching { core.keepServers(s.url) }.getOrDefault(emptyList()) }
+                Text(
+                    "Signed in as ${me?.name ?: "you"}. Now sign in to the server you watch on.",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                served?.forEach { e -> ServerCard(e) { if (!busy) pick(s.url, e) } }
+                val known = remember(served) { core.knownServers().filter { k -> served.orEmpty().none { it.url.trimEnd('/') == k.url.trimEnd('/') } } }
+                known.forEach { k ->
+                    ChoiceCard(k.name.ifEmpty { k.url }, "${if (k.kind == "plex") "Plex" else "Jellyfin"} · from your other devices", Icons.Library, {
+                        if (k.kind == "plex") {
+                            go(Step.Plex)
+                        } else {
+                            attempt {
+                                val quick = runCatching { core.jellyfinQuickConnectStart(k.url) }.getOrNull()
+                                go(Step.Jellyfin(k.url, quick))
+                            }
+                        }
+                    })
+                }
+                ChoiceCard("Another server", "Jellyfin or Plex by its address", Icons.Add, { go(Step.Direct) })
+            }
             Step.Direct -> {
                 // No AlwyWatch server on this path: forget one picked earlier then backed out of.
                 LaunchedEffect(Unit) {
@@ -474,6 +559,7 @@ private fun AlwyWatchServerPicker(
     onPick: (url: String, entry: ServerEntry) -> Unit,
     onError: (String?) -> Unit,
     onCopy: (url: String) -> Unit = {},
+    onAccount: (url: String) -> Unit = {},
 ) {
     val core = LocalCore.current
     val scope = rememberCoroutineScope()
@@ -513,9 +599,10 @@ private fun AlwyWatchServerPicker(
         list.forEach { e -> ServerCard(e) { if (!busy) onPick(base, e) } }
         // Already signed in elsewhere: copy everything instead of signing in again.
         Text("Already using AlwyWatch on another device?", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
-        ChoiceCard("Copy from another device", "Your accounts and settings, approved on a device where you're signed in", Icons.Download, {
+        ChoiceCard("Sign in with a code", "Scan a QR code with your phone, or approve on a device where you're signed in", Icons.Download, {
             onCopy(base)
         })
+        ChoiceCard("AlwyWatch account", "Username and password", Icons.Person, { onAccount(base) })
     }
 }
 
