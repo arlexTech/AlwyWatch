@@ -124,7 +124,9 @@ A title's page offers the same choices when the title is in no deletion list. Th
 `TitleLookup` (`item_id` on the caller's server, `kind` `movie`/`show`, `title`, `tmdb_id`,
 `tvdb_id`); the server finds the title on the server Maintainerr manages: by `item_id` when the
 caller uses that server (checked with Maintainerr's `GET /api/media-server/meta/{id}`), else by
-TMDB/TVDB id among `GET /api/media-server/search/{title}`. It remembers the item and answers its
+TMDB/TVDB id in that server's libraries (`GET /api/media-server/libraries`, then
+`library/{id}/content` page by page, kept an hour; not by name: the same film is "Sœurs…" on
+one server and "Soeurs…" on the other). It remembers the item and answers its
 `LeavingItem` (`listed: false`, no date), whose `key` takes votes like any other.
 
 - *Forever* and *until watched* add the usual global exclusion, so the title never enters a list.

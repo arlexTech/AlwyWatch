@@ -486,19 +486,29 @@ async fn a_title_in_no_deletion_list_can_be_kept_ahead() {
     let e = env().await;
     e.state.sync().await.unwrap();
     // A Jellyfin user: the title is found on Maintainerr's server by its TMDB id.
+    // (Not by its name: it is "Sœurs…" on Jellyfin and "Soeurs…" on Plex.)
     Mock::given(method("GET"))
-        .and(path("/api/media-server/search/Primetime"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            {"id": "900", "title": "Primetime", "type": "show", "year": 2020,
-             "providerIds": {"tmdb": ["77"]}},
-            {"id": "901", "title": "Primetime", "type": "movie", "year": 2026,
-             "providerIds": {"tmdb": ["77"], "imdb": ["tt1"]}}
-        ])))
+        .and(path("/api/media-server/libraries"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!([{"id": "1", "type": "movie"}])),
+        )
         .expect(1)
         .mount(&e.maint)
         .await;
-    let lookup =
-        json!({"item_id": "jf-primetime", "kind": "movie", "title": "Primetime", "tmdb_id": "77"});
+    Mock::given(method("GET"))
+        .and(path("/api/media-server/library/1/content"))
+        .and(query_param("page", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "totalSize": 2, "offset": 0, "limit": 500, "items": [
+            {"id": "900", "title": "Primetime", "type": "show", "year": 2020,
+             "providerIds": {"tmdb": ["77"]}},
+            {"id": "901", "title": "Soeurs de sort", "type": "movie", "year": 2026,
+             "providerIds": {"tmdb": ["77"], "imdb": ["tt1"]}}
+        ]})))
+        .expect(1)
+        .mount(&e.maint)
+        .await;
+    let lookup = json!({"item_id": "jf-primetime", "kind": "movie", "title": "Sœurs de sort", "tmdb_id": "77"});
     let (s, item) = e
         .call(
             "POST",
@@ -513,7 +523,7 @@ async fn a_title_in_no_deletion_list_can_be_kept_ahead() {
         item["key"], "901",
         "the movie, not the show of the same name"
     );
-    assert_eq!(item["title"], "Primetime");
+    assert_eq!(item["title"], "Soeurs de sort");
     assert_eq!(item["listed"], false);
     assert_eq!(item["protection"], "none");
     assert_eq!(item["effective_deletion_date"], Value::Null);
@@ -627,11 +637,7 @@ async fn a_title_in_no_deletion_list_can_be_kept_ahead() {
         )
         .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
-    Mock::given(method("GET"))
-        .and(path("/api/media-server/search/Nowhere"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
-        .mount(&e.maint)
-        .await;
+    // (Asked within the minute: the library isn't read again for it.)
     let (s, _) = e
         .call(
             "POST",

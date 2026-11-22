@@ -31,6 +31,9 @@ pub struct State {
     pub watch: Notify,
     /// Per Jellyfin server: ("movie"|"show", provider:id) -> Jellyfin item id.
     jf_index: Mutex<HashMap<String, (Instant, ProviderIndex)>>,
+    /// The titles of the library Maintainerr manages, by provider id (to keep a title that is
+    /// in no deletion list).
+    library: tokio::sync::Mutex<Option<(Instant, Arc<LibraryIndex>)>>,
     /// Serialises Maintainerr writes (it has its own lock and answers 409 when busy).
     write_lock: tokio::sync::Mutex<()>,
     /// Pending device-to-device transfers (in memory only).
@@ -92,6 +95,9 @@ pub type Shared = Arc<State>;
 /// ("movie"|"show", "provider:id") -> Jellyfin item id.
 type ProviderIndex = HashMap<(String, String), String>;
 
+/// ("movie"|"show", "provider:id") -> the title on the server Maintainerr manages.
+type LibraryIndex = HashMap<(String, String), maintainerr::Meta>;
+
 #[derive(Debug)]
 pub enum VoteError {
     NotFound,
@@ -122,6 +128,7 @@ impl State {
             reconcile: Notify::new(),
             watch: Notify::new(),
             jf_index: Mutex::new(HashMap::new()),
+            library: Default::default(),
             transfers: Default::default(),
             rooms: Default::default(),
             passkeys: Default::default(),
@@ -314,7 +321,7 @@ impl State {
 
     /// The keep entry of a movie or show that is in no deletion list, so it can be kept
     /// before it gets there. The title is found on the server Maintainerr manages: by its id
-    /// when the caller uses that server, else by its TMDB/TVDB id among the titles of that name.
+    /// when the caller uses that server, else by its TMDB/TVDB id in that server's libraries.
     pub async fn keep_entry(
         &self,
         who: &Identity,
@@ -336,20 +343,12 @@ impl State {
         let key = match known {
             Some(row) => row.key,
             None => {
-                let same = |a: &Option<String>, b: Option<&str>| matches!((a.as_deref(), b), (Some(x), Some(y)) if !y.is_empty() && x == y);
                 let found = if same_server {
                     self.maintainerr.meta(&req.item_id).await.ok()
-                } else if tmdb.is_none() && tvdb.is_none() {
-                    None
                 } else {
-                    self.maintainerr
-                        .search(&req.title)
+                    self.library_title(&req.kind, tmdb, tvdb)
                         .await
-                        .map_err(|e| internal(e.to_string()))?
-                        .into_iter()
-                        .find(|m| {
-                            m.kind == req.kind && (same(&m.tmdb_id, tmdb) || same(&m.tvdb_id, tvdb))
-                        })
+                        .map_err(internal)?
                 }
                 .filter(|m| m.kind == req.kind)
                 .ok_or(VoteError::NotFound)?;
@@ -750,6 +749,61 @@ impl State {
             .header("Accept", "application/json");
         let it: It = net::send_json(req).await.ok()?;
         Some(it.user_data.is_some_and(|u| u.played))
+    }
+
+    /// A title of the library Maintainerr manages, by provider id (TVDB first for shows). The
+    /// index is read from Maintainerr at most once an hour, and once more for a title it
+    /// doesn't know (added since), a minute apart at most.
+    async fn library_title(
+        &self,
+        kind: &str,
+        tmdb: Option<&str>,
+        tvdb: Option<&str>,
+    ) -> Result<Option<maintainerr::Meta>, String> {
+        let ids: Vec<String> = {
+            let (t, v) = (
+                tmdb.filter(|v| !v.is_empty()).map(|v| format!("tmdb:{v}")),
+                tvdb.filter(|v| !v.is_empty()).map(|v| format!("tvdb:{v}")),
+            );
+            let order = if kind == "show" { [v, t] } else { [t, v] };
+            order.into_iter().flatten().collect()
+        };
+        if ids.is_empty() {
+            return Ok(None);
+        }
+        let find = |index: &LibraryIndex| {
+            ids.iter()
+                .find_map(|id| index.get(&(kind.to_owned(), id.clone())))
+                .cloned()
+        };
+        let mut cache = self.library.lock().await;
+        if let Some((at, index)) = cache.as_ref() {
+            let age = at.elapsed();
+            if age < Duration::from_secs(3600)
+                && let Some(found) = find(index)
+            {
+                return Ok(Some(found));
+            }
+            if age < Duration::from_secs(60) {
+                return Ok(None);
+            }
+        }
+        let mut index = LibraryIndex::new();
+        for m in self
+            .maintainerr
+            .library_titles()
+            .await
+            .map_err(|e| e.to_string())?
+        {
+            for (provider, id) in [("tmdb", &m.tmdb_id), ("tvdb", &m.tvdb_id)] {
+                if let Some(id) = id.as_ref().filter(|v| !v.is_empty()) {
+                    index.insert((m.kind.clone(), format!("{provider}:{id}")), m.clone());
+                }
+            }
+        }
+        let found = find(&index);
+        *cache = Some((Instant::now(), Arc::new(index)));
+        Ok(found)
     }
 
     // ----- id mapping -----------------------------------------------------------------------

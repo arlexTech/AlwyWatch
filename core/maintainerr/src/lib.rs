@@ -264,9 +264,23 @@ impl Maintainerr {
         })
     }
 
-    /// Library titles matching a text (`GET /api/media-server/search/{query}`): ids, titles and
-    /// provider ids, to find the item of a title known by its TMDB/TVDB id.
-    pub async fn search(&self, query: &str) -> Result<Vec<Meta>> {
+    /// Every movie and show of the media server's libraries, with their provider ids
+    /// (`GET /api/media-server/libraries`, then `library/{id}/content` page by page): to find
+    /// the item of a title known by its TMDB/TVDB id. Titles can't be searched by name for
+    /// that: the same film is "Sœurs…" on one server and "Soeurs…" on the other.
+    pub async fn library_titles(&self) -> Result<Vec<Meta>> {
+        #[derive(Deserialize)]
+        struct Library {
+            id: serde_json::Value,
+        }
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Page {
+            #[serde(default)]
+            items: Vec<M>,
+            #[serde(default)]
+            total_size: usize,
+        }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct M {
@@ -280,29 +294,45 @@ impl Maintainerr {
             #[serde(default)]
             provider_ids: std::collections::HashMap<String, Vec<String>>,
         }
-        let list: Vec<M> = net::send_json(self.req(
-            Method::GET,
-            &format!("/api/media-server/search/{}", net::percent_encode(query)),
-        ))
-        .await?;
-        Ok(list
-            .into_iter()
-            .map(|m| {
-                let first = |k: &str| m.provider_ids.get(k).and_then(|v| v.first()).cloned();
-                Meta {
-                    id: match &m.id {
-                        serde_json::Value::String(s) => s.clone(),
-                        other => other.to_string(),
-                    },
-                    tmdb_id: first("tmdb"),
-                    tvdb_id: first("tvdb"),
-                    imdb_id: first("imdb"),
-                    title: m.title,
-                    year: m.year,
-                    kind: m.kind,
+        let text = |v: &serde_json::Value| match v {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        let libraries: Vec<Library> =
+            net::send_json(self.req(Method::GET, "/api/media-server/libraries")).await?;
+        let mut out = Vec::new();
+        for library in libraries {
+            let id = net::percent_encode(&text(&library.id));
+            let mut seen = 0;
+            // (Bounded: a library of a hundred thousand titles.)
+            for page in 1..=200 {
+                let p: Page = net::send_json(self.req(
+                    Method::GET,
+                    &format!("/api/media-server/library/{id}/content?page={page}&limit=500"),
+                ))
+                .await?;
+                if p.items.is_empty() {
+                    break;
                 }
-            })
-            .collect())
+                seen += p.items.len();
+                out.extend(p.items.into_iter().map(|m| {
+                    let first = |k: &str| m.provider_ids.get(k).and_then(|v| v.first()).cloned();
+                    Meta {
+                        id: text(&m.id),
+                        tmdb_id: first("tmdb"),
+                        tvdb_id: first("tvdb"),
+                        imdb_id: first("imdb"),
+                        title: m.title,
+                        year: m.year,
+                        kind: m.kind,
+                    }
+                }));
+                if seen >= p.total_size {
+                    break;
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Children of an item (seasons of a show, episodes of a season), ordered by index.
