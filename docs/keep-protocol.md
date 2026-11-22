@@ -165,7 +165,10 @@ database changes. With `dry_run` on, bridged writes get 403.
 People on different servers (Plex or Jellyfin) watch the same title in sync, in a **private
 room** on the AlwyWatch server. A room starts as a **lobby** (title chosen, nothing playing);
 its host invites people from the server's user list; invited people join directly (the
-invitation is the approval) or decline; the host starts playback when ready. Nobody else can
+invitation is the approval) or decline; the host starts playback when ready. When the host
+leaves the player the room goes back to the lobby and everyone stays in it: the host picks
+another title and starts again. Each start waits until every player has loaded the title,
+then plays at the same server instant everywhere. Nobody else can
 learn that a room exists. Rooms live in the server's memory only; the "who watched with whom"
 history used to order the people list is kept in SQLite. Types: `keep_service::together`. App
 flows: [together-apps.md](together-apps.md).
@@ -187,6 +190,8 @@ All signed in like every other call. `{code}` is the room's six digits; `{member
 | POST | `/v1/together/{code}/join` | invited user, or a member's other device | → `TogetherJoined` |
 | PUT | `/v1/together/{code}` | member (lobby: host) | `TogetherUpdate` → `TogetherState` |
 | GET | `/v1/together/{code}/wait?after={seq}&member={member}` | member | → `TogetherState` as soon as `seq` > `after`, else after ~25 s |
+| POST | `/v1/together/{code}/ready` | member | `TogetherReady` → `TogetherState`: this seat has loaded the round's title |
+| GET | `/v1/together/clock` | anyone (no sign-in) | → `TogetherClock`: the server clock, for the clock sync |
 | DELETE | `/v1/together/{code}/members/{member}` | member | → 204 |
 
 "Host" = any seat of the host's **user** (the host on their phone and TV both have the host's
@@ -200,9 +205,12 @@ TogetherMedia   {kind: "movie"|"episode", title, year?, tmdb?, imdb?, tvdb?,
 TogetherCreate  {media, rights = all true}
 TogetherRights  {change_title, play_pause, seek}
 TogetherInvite  {member_id, user_keys: [user_key]}            // 1 to 20 at once
-TogetherUpdate  {member_id, playing, position_ms, media?, started = false}
+TogetherUpdate  {member_id, playing, position_ms, media?, started = false, lobby = false}
+TogetherReady   {member_id, round}
+TogetherClock   {now_ms}
 TogetherJoined  {member_id, state}
-TogetherState   {code, seq, media, started, playing, position_ms, at_ms, now_ms, by,
+TogetherState   {code, seq, media, started, playing, position_ms, at_ms, now_ms,
+                 round, loading: [member id], ready_by_ms, by,
                  members: [TogetherMember], host, invited: [TogetherInvitee], rights}
 TogetherMember  {id, name, user_key, avatar}
 TogetherInvitee {user_key, name, avatar}
@@ -222,10 +230,16 @@ TogetherPerson  {user_key, name, media_name, avatar, server_name, last_together_
   `episode`) so each member plays their own server's copy. Text is cut to 200 characters, ids
   to 40, control characters removed.
 * `TogetherState`: `seq` grows on every change (playback, title, start, joins, leaves,
-  invitations, declines, host handover). `started` is false in a lobby and, once true, never
-  goes back. `playing` is always false in a lobby. `position_ms` is the position at `at_ms`
-  (server clock, Unix ms); clients add the time elapsed since (`now_ms` is the server clock when
-  the answer was made, `TogetherState::position_at`) and follow it continuously: slightly faster or slower for small drifts, a seek past 2 s (`together_correction`).
+  invitations, declines, host handover, loading). `started` is false in a lobby (at first, and
+  again after the host's `lobby: true`). `playing` is always false in a lobby and while
+  `loading` is not empty. `position_ms` is the position at `at_ms` (server clock, Unix ms);
+  `at_ms` may be up to a second ahead (a start every seat hears before it plays: hold the
+  position until then, `TogetherState::starts_in`). Clients read the server's clock through
+  `ClockSync` (a few `GET /v1/together/clock` round trips, the quickest one wins, again every
+  two minutes; within a few ms) and follow `TogetherState::position_at(server_now)`
+  continuously: slightly faster or slower from 60 ms apart until under 20 ms, a seek past 2 s
+  (`together_correction`). `round` grows at each start; `loading` lists the seats still
+  loading it (see Lifecycle 5).
   `by` = member id that made the change, empty for the server's changes (joins, leaves,
   invitations): a player ignores its own echo by comparing `by` with its member id. `members`
   is sorted by name (a user on two devices appears twice, same `user_key`); `host` is the
@@ -264,19 +278,31 @@ TogetherPerson  {user_key, name, media_name, avatar, server_name, last_together_
    (`media`) and the start position; `playing` is stored as false. A `PUT` from any other
    member → 403.
 5. **Start.** The host sends `PUT {member_id, playing: true, position_ms, started: true}`
-   (`started: false` never changes anything). From then on every member may play, pause,
-   seek or change the title (`media`), as in a normal synced session. Starting with two or more
-   distinct users in the room, and every later join of a started room, records the pairs of
-   users in the history (`last_together_at`).
-6. **Leave.** `DELETE …/members/{member}`. When a user's last seat leaves on purpose, their
+   (`started: false` never changes anything). That begins a **round**: `round` + 1, `loading`
+   = every seat (and anyone joining meanwhile), `playing: false`, `ready_by_ms` = now + 20 s.
+   Each player loads the title paused at `position_ms` and, once `READY_BUFFER_MS` (5 s) of it
+   is buffered (or the rest of it), sends `POST …/ready {member_id, round}`. When the last
+   seat is ready, or at `ready_by_ms`, the room plays from `at_ms` = now + 1 s for everyone at
+   once (each app presses play at that instant on the server's clock). Another title while
+   the room plays (`media` in a `PUT`) is a new round the same way. Any other `PUT` during the
+   wait ends it (`playing` as sent). From then on every member may play, pause, seek or change
+   the title, within the host's `rights`. Starting with two or more distinct users in the
+   room, and every later join of a started room, records the pairs of users in the history
+   (`last_together_at`).
+6. **Back to the lobby.** The host closing their player sends `PUT {lobby: true}`: `started`
+   false, nothing plays, everyone stays (the others' players close and show the Room screen).
+   The host may then change the title (`media`, `playing: false`) and start again: a new
+   round, which opens everyone's player wherever they are in the app. Non-hosts sending
+   `lobby` → 403. Members closing their own player stay in the room.
+7. **Leave.** `DELETE …/members/{member}`. When a user's last seat leaves on purpose, their
    right to come back goes too (a new invitation is needed). When the host leaves, the
    longest-present member becomes host (lobby included: they can then invite and start);
    invitations stay valid.
-7. **Heartbeat.** The room's `wait` doubles as the seat's heartbeat: a seat that does not poll
+8. **Heartbeat.** The room's `wait` doubles as the seat's heartbeat: a seat that does not poll
    for 60 s is **dropped** (not "left": that user may `join` again, even while the room is
    empty, for five minutes). On a 404 from `wait`/`PUT` with a seat that used to work, call
    `join` once; if that is 404 too, the room is gone.
-8. **Closing.** A room with nobody in it is hidden from every list at once and cannot be
+9. **Closing.** A room with nobody in it is hidden from every list at once and cannot be
    joined by invitees. It is removed as soon as nobody may come back (everyone left on
    purpose: e.g. a lobby whose host leaves alone closes immediately, its invitations vanish
    from the invitees' lists), else after five minutes empty. Any room closes after twelve
