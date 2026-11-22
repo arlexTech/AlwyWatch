@@ -10,13 +10,16 @@
 //! current while an account is linked, for the invitation banner.
 //!
 //! Same sync rules as the apps: each member plays their own server's copy (found by provider
-//! ids), applies what others do, seeks when more than 1.5 s apart, and tells the room about
-//! their own play, pause, seek and title changes (a title chosen here is announced; one chosen
-//! by the room is followed).
+//! ids), applies what others do, stays in step on the server's clock (measured from here, see
+//! [`Room::server_now`]), and tells the room about their own play, pause, seek and title
+//! changes (a title chosen here is announced; one chosen by the room is followed). Each start
+//! waits until every player has loaded the title, then plays at the same instant everywhere.
+//! The host leaving the player takes the room back to the waiting room: everyone stays in it,
+//! and each start opens the player wherever the app is.
 
 use keep_service::together::{
-    TogetherCreate, TogetherInvite, TogetherJoined, TogetherMedia, TogetherMember, TogetherPerson,
-    TogetherRoom, TogetherRooms, TogetherState, TogetherUpdate,
+    ClockSync, TogetherCreate, TogetherInvite, TogetherJoined, TogetherMedia, TogetherMember,
+    TogetherPerson, TogetherRoom, TogetherRooms, TogetherState, TogetherUpdate,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -41,11 +44,50 @@ pub fn now_ms() -> f64 {
     js_sys::Date::now()
 }
 
-/// Where playback should be now, from a room state received at `received_at_ms` (local
-/// clock): the server's position moved on by the time since, while playing.
-pub fn expected_position(s: &TogetherState, received_at_ms: f64, now_ms: f64) -> u64 {
-    let since = (now_ms - received_at_ms).max(0.0) as i64;
-    s.position_at(s.now_ms + since)
+/// How the room stands for a player now (see [`Room::phase`]).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Phase {
+    /// Waiting for players to load the title (`me`: this one too); the others still loading.
+    Loading { me: bool, others: Vec<String> },
+    /// Everyone loaded: it plays in this many ms, for everyone at once.
+    StartsIn(i64),
+    /// Playing or paused as usual.
+    Live,
+}
+
+/// The phase of `s` for seat `me` at `server_now`.
+pub fn phase_of(s: &TogetherState, me: &str, server_now: i64) -> Phase {
+    if !s.loading.is_empty() {
+        let mut others: Vec<String> = s
+            .loading
+            .iter()
+            .filter(|id| *id != me)
+            .filter_map(|id| s.members.iter().find(|m| &m.id == id))
+            .map(|m| m.name.clone())
+            .collect();
+        others.sort();
+        others.dedup();
+        return Phase::Loading {
+            me: s.is_loading(me),
+            others,
+        };
+    }
+    match s.starts_in(server_now) {
+        Some(ms) => Phase::StartsIn(ms),
+        None => Phase::Live,
+    }
+}
+
+/// What a player shows while the room waits (None: it doesn't).
+pub fn waiting_text(p: &Phase, ready_sent: bool) -> Option<String> {
+    match p {
+        Phase::Loading { me: true, .. } if !ready_sent => Some("Loading for everyone…".into()),
+        Phase::Loading { others, .. } if !others.is_empty() => {
+            Some(format!("Waiting for {}…", others.join(", ")))
+        }
+        Phase::Loading { .. } | Phase::StartsIn(_) => Some("Starting…".into()),
+        Phase::Live => None,
+    }
 }
 
 pub fn drifted(local_ms: u64, expected_ms: u64) -> bool {
@@ -79,7 +121,8 @@ pub fn on_remote(
     if s.by == me || sending {
         return Remote::Own;
     }
-    if known.is_some_and(|k| *k != s.media) {
+    let restarted = before.is_some_and(|b| b.started && s.started && b.round != s.round);
+    if known.is_some_and(|k| *k != s.media) || restarted {
         return Remote::NewTitle;
     }
     let Some(b) = before.filter(|b| b.seq != s.seq) else {
@@ -94,7 +137,9 @@ pub fn on_remote(
     };
     let note = if let Some(who) = s.members.iter().find(|m| m.id == s.by) {
         let who = &who.name;
-        Some(if !b.started && s.started {
+        Some(if b.started && !s.started {
+            format!("{who} went back to the waiting room")
+        } else if !b.started && s.started {
             format!("{who} started")
         } else if b.playing && !s.playing {
             format!("{who} paused")
@@ -368,8 +413,16 @@ pub struct Room {
     pub incoming: RwSignal<Option<(bool, TogetherState)>>,
     /// The title chosen here (next episode…): tell the room once it starts.
     pub announce: StoredValue<bool>,
+    /// The room waits before playing ("Waiting for Sam…"), for the player to show.
+    pub waiting: RwSignal<Option<String>>,
+    /// The last start (`round`) the player opened for (or that this tab chose to skip): every
+    /// later one opens it again.
+    pub handled_round: StoredValue<u64>,
+    /// The start we said we loaded.
+    ready_round: StoredValue<u64>,
+    /// The server's clock seen from here, and when it was measured (local ms).
+    clock: StoredValue<(ClockSync, f64)>,
     seq: StoredValue<u64>,
-    received_at: StoredValue<f64>,
     media: StoredValue<Option<TogetherMedia>>,
     /// Our updates on their way: room answers in between are older than them.
     sending: StoredValue<u32>,
@@ -387,8 +440,11 @@ impl Room {
             closed: RwSignal::new(None),
             incoming: RwSignal::new(None),
             announce: StoredValue::new(false),
+            waiting: RwSignal::new(None),
+            handled_round: StoredValue::new(0),
+            ready_round: StoredValue::new(0),
+            clock: StoredValue::new((ClockSync::default(), f64::NEG_INFINITY)),
             seq: StoredValue::new(0),
-            received_at: StoredValue::new(0.0),
             media: StoredValue::new(None),
             sending: StoredValue::new(0),
             generation: StoredValue::new(0),
@@ -413,11 +469,19 @@ impl Room {
         self.sending.try_get_value().unwrap_or(0) > 0
     }
 
-    fn ids(&self) -> Option<(String, String)> {
+    /// This tab's seat: (room code, member id).
+    pub fn ids(&self) -> Option<(String, String)> {
         Some((
             self.code.try_get_untracked().flatten()?,
             self.member.try_get_untracked().flatten()?,
         ))
+    }
+
+    /// This seat has the host's rights (not tracked).
+    pub fn hosting_untracked(&self) -> bool {
+        let me = self.member.get_untracked();
+        self.state
+            .with_untracked(|s| s.as_ref().zip(me).is_some_and(|(s, m)| s.is_host(&m)))
     }
 
     /// This seat has the host's rights (reactive).
@@ -428,20 +492,125 @@ impl Room {
     }
 
     fn accept(&self, s: TogetherState) {
-        self.received_at.set_value(now_ms());
         if s.seq > self.seq.get_value() {
             self.seq.set_value(s.seq);
         }
         self.state.set(Some(s));
     }
 
-    /// Where the room's playback is now, and whether it plays.
+    /// The server's clock now (Unix ms): measured from here, else this device's.
+    pub fn server_now(&self) -> i64 {
+        let local = now_ms() as i64;
+        self.clock
+            .try_with_value(|(c, _)| c.server_now(local))
+            .flatten()
+            .unwrap_or(local)
+    }
+
+    /// Measures the server clock when it never was or a couple of minutes ago.
+    async fn sync_clock(&self, k: &keep_service::KeepClient) {
+        let fresh = self
+            .clock
+            .try_with_value(|(_, at)| now_ms() - at < 120_000.0)
+            .unwrap_or(true);
+        if fresh {
+            return;
+        }
+        let mut sync = ClockSync::default();
+        for _ in 0..5 {
+            let sent = now_ms() as i64;
+            if let Ok(c) = k.together_clock().await {
+                sync.add(sent, c.now_ms, now_ms() as i64);
+            }
+        }
+        if sync.offset().is_some() {
+            let _ = self.clock.try_set_value((sync, now_ms()));
+        }
+    }
+
+    /// Where the room's playback is now, and whether it plays (not while it waits for
+    /// players to load, nor before a start everyone heard).
     pub fn expected(&self) -> Option<(u64, bool)> {
-        let at = self.received_at.try_get_value()?;
+        let now = self.server_now();
+        self.state.try_with_untracked(|s| {
+            s.as_ref().map(|s| {
+                (
+                    s.position_at(now),
+                    s.playing && s.loading.is_empty() && s.starts_in(now).is_none(),
+                )
+            })
+        })?
+    }
+
+    /// The room's phase for this seat, where it stands (or will start), and its start.
+    pub fn phase(&self) -> Option<(Phase, u64, u64)> {
+        let me = self.member.try_get_untracked().flatten()?;
+        let now = self.server_now();
         self.state.try_with_untracked(|s| {
             s.as_ref()
-                .map(|s| (expected_position(s, at, now_ms()), s.playing))
+                .map(|s| (phase_of(s, &me, now), s.position_at(now), s.round))
         })?
+    }
+
+    /// Whether we already said we loaded the current start.
+    pub fn ready_sent(&self) -> bool {
+        let round = self
+            .state
+            .try_with_untracked(|s| s.as_ref().map(|s| s.round))
+            .flatten();
+        round.is_some() && round == self.ready_round.try_get_value()
+    }
+
+    /// This player has loaded the title: tell the room (once per start).
+    pub fn ready(self) {
+        let Some((code, me)) = self.ids() else { return };
+        let Some(round) = self
+            .state
+            .with_untracked(|s| s.as_ref().filter(|s| s.is_loading(&me)).map(|s| s.round))
+        else {
+            return;
+        };
+        if self.ready_round.get_value() == round {
+            return;
+        }
+        self.ready_round.set_value(round);
+        let Some(k) = state::ctx().keep_client() else {
+            return;
+        };
+        spawn_local(async move {
+            let r = k
+                .together_ready(
+                    &code,
+                    &keep_service::together::TogetherReady {
+                        member_id: me,
+                        round,
+                    },
+                )
+                .await;
+            match r {
+                Ok(s) => self.on_state(s),
+                Err(_) => {
+                    let _ = self.ready_round.try_update_value(|r| {
+                        if *r == round {
+                            *r = 0;
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    /// The host leaves the player: back to the waiting room for everyone (they stay).
+    pub fn lobby(self, position_ms: u64) {
+        let Some((code, me)) = self.ids() else { return };
+        let Some(k) = state::ctx().keep_client() else {
+            return;
+        };
+        spawn_local(async move {
+            if let Ok(s) = k.together_lobby(&code, &me, position_ms).await {
+                self.on_state(s);
+            }
+        });
     }
 
     /// Whether the room's title is this one (episodes by show, season and number).
@@ -478,6 +647,8 @@ impl Room {
             self.state.set(None);
             self.seq.set_value(0);
             self.media.set_value(None);
+            self.handled_round.set_value(0);
+            self.ready_round.set_value(0);
         }
         self.closed.set(None);
         self.code.set(Some(code.clone()));
@@ -506,6 +677,7 @@ impl Room {
                 let Some(k) = state::ctx().keep_client() else {
                     break;
                 };
+                self.sync_clock(&k).await;
                 let after = self.seq.get_value();
                 match k.together_wait(&code, &me, after).await {
                     Ok(s) => {
@@ -695,8 +867,10 @@ pub async fn enter(j: TogetherJoined, navigate: impl Fn(&str, NavigateOptions) +
         room.leave("", true);
     }
     let started = j.state.started;
+    let round = j.state.round;
     room.open(code.clone(), j.member_id, Some(j.state));
     if started {
+        room.handled_round.set_value(round);
         go_play(room, navigate, || true).await;
     } else {
         navigate(&room_href(&code), Default::default());
@@ -861,7 +1035,32 @@ fn room_status(started: bool) -> &'static str {
     if started { "Watching" } else { "Lobby" }
 }
 
-/// "Watch together" on a title page: opens a lobby, then its Room page.
+/// Hosting a room: this title becomes the room's (everyone stays; a playing room loads it).
+pub async fn retitle_room(srv: AnyServer, item: Item) -> Result<String, String> {
+    let c = state::ctx();
+    let k = c.keep_client().ok_or(NO_KEEP)?;
+    let (code, me) = c.room.ids().ok_or("You're not in a room.")?;
+    let media = media_of(&srv, &item).await;
+    let s = k
+        .together_update(
+            &code,
+            &TogetherUpdate {
+                member_id: me,
+                playing: false,
+                position_ms: item.user.position_ms,
+                media: Some(media),
+                started: false,
+                lobby: false,
+            },
+        )
+        .await
+        .map_err(|e| plain_together(&e))?;
+    c.room.on_state(s);
+    Ok(code)
+}
+
+/// "Watch together" on a title page: opens a lobby, then its Room page. Hosting a room
+/// already: the title becomes that room's.
 #[component]
 pub fn TogetherButton(srv: AnyServer, item: Item) -> impl IntoView {
     let busy = RwSignal::new(false);
@@ -875,8 +1074,13 @@ pub fn TogetherButton(srv: AnyServer, item: Item) -> impl IntoView {
         busy.set(true);
         error.set(None);
         let (srv, item, navigate) = (srv.clone(), item.clone(), navigate.clone());
+        let hosting = state::ctx().room.active() && state::ctx().room.hosting_untracked();
         spawn_local(async move {
-            let res = create_room(srv, item).await;
+            let res = if hosting {
+                retitle_room(srv, item).await
+            } else {
+                create_room(srv, item).await
+            };
             if alive.try_get_value().is_none() {
                 return;
             }
@@ -889,7 +1093,13 @@ pub fn TogetherButton(srv: AnyServer, item: Item) -> impl IntoView {
     };
     view! {
         <button on:click=click disabled=move || busy.get()>
-            {move || if busy.get() { "Opening a room…" } else { "Watch together" }}
+            {move || if busy.get() {
+                "Opening a room…"
+            } else if state::ctx().room.code.get().is_some() && state::ctx().room.hosting() {
+                "Watch in your room"
+            } else {
+                "Watch together"
+            }}
         </button>
         {move || error.get().map(|e| view! { <span class="error small">{e}</span> })}
     }
@@ -1059,21 +1269,7 @@ fn Lobby(room: Room) -> impl IntoView {
     let error = RwSignal::new(None::<String>);
     let alive = StoredValue::new(());
     let alive = move || alive.try_get_value().is_some();
-    // The host starts while this page is open: everyone goes to the player.
-    let seen_lobby = StoredValue::new(false);
-    let nav = navigate.clone();
-    Effect::new(move |_| {
-        let Some(started) = room.state.with(|s| s.as_ref().map(|s| s.started)) else {
-            return;
-        };
-        if !started {
-            seen_lobby.set_value(true);
-        } else if seen_lobby.get_value() {
-            seen_lobby.set_value(false);
-            let nav = nav.clone();
-            spawn_local(async move { go_play(room, nav, alive).await });
-        }
-    });
+    // Each start opens the player by itself, wherever the app is (see `SeatBanner`).
     // The title on my servers (a poster; or a word that it can't be played here).
     let media = Memo::new(move |_| room.state.with(|s| s.as_ref().map(|s| s.media.clone())));
     let found = LocalResource::new(move || {
@@ -1114,9 +1310,14 @@ fn Lobby(room: Room) -> impl IntoView {
             }
         });
     };
+    // Back in the waiting room after a title: again from where the host stopped.
     let start = move |_| {
-        call(Box::new(|k, code, member| {
-            Box::pin(async move { k.together_start(&code, &member, 0).await })
+        let from = room
+            .state
+            .with_untracked(|s| s.as_ref().filter(|s| s.round > 0).map(|s| s.position_ms))
+            .unwrap_or(0);
+        call(Box::new(move |k, code, member| {
+            Box::pin(async move { k.together_start(&code, &member, from).await })
         }))
     };
     let nav2 = navigate.clone();
@@ -1153,6 +1354,7 @@ fn Lobby(room: Room) -> impl IntoView {
                         (false, true) => view! {
                             <button class="primary" disabled=move || busy.get() on:click=start>"Start watching"</button>
                         }.into_any(),
+                        (false, false) if s.round > 0 => view! { <p class="accent waiting">{format!("{host} is picking what to watch next")}</p> }.into_any(),
                         (false, false) => view! { <p class="accent waiting">{format!("Waiting for {host} to start")}</p> }.into_any(),
                     }}
                     {hosting.then(|| view! { <button on:click=move |_| picking.set(true)>"Invite"</button> })}
@@ -1200,7 +1402,10 @@ fn Lobby(room: Room) -> impl IntoView {
                         }).collect_view()}
                     </section>
                 })}
-                {(hosting && !s.started && s.invited.is_empty() && s.members.len() < 2).then(|| view! {
+                {(hosting && !s.started && s.round > 0).then(|| view! {
+                    <p class="muted">"Back in the waiting room: start this again, or open another title and choose Watch in your room. Everyone stays here."</p>
+                })}
+                {(hosting && !s.started && s.round == 0 && s.invited.is_empty() && s.members.len() < 2).then(|| view! {
                     <p class="muted">"Invite people: they join right away, then start when everyone's here."</p>
                 })}
             }
@@ -1213,7 +1418,10 @@ type CallFut = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Togethe
 
 /// The host picks people to invite: recent partners first, a filter, several at once.
 #[component]
-fn PeoplePicker(room: Room, on_close: impl Fn() + Clone + Send + Sync + 'static) -> impl IntoView {
+pub fn PeoplePicker(
+    room: Room,
+    on_close: impl Fn() + Clone + Send + Sync + 'static,
+) -> impl IntoView {
     /// The server takes at most this many at once.
     const MAX: usize = 20;
     let people = LocalResource::new(|| async {
@@ -1376,6 +1584,27 @@ pub fn InviteBanner(#[prop(optional)] compact: bool) -> impl IntoView {
 pub fn SeatBanner() -> impl IntoView {
     let room = state::ctx().room;
     let location = use_location();
+    // Each start of the room opens the player, wherever the app is (the host may have picked
+    // the title from any page). A player of the room already open follows by itself.
+    let navigate = use_navigate();
+    Effect::new(move |_| {
+        let Some((started, round)) = room
+            .state
+            .with(|s| s.as_ref().map(|s| (s.started, s.round)))
+        else {
+            return;
+        };
+        if !started || round <= room.handled_round.get_value() {
+            return;
+        }
+        room.handled_round.set_value(round);
+        let in_player = location.pathname.get_untracked().starts_with("/play/")
+            && location.search.get_untracked().contains("room=");
+        if !in_player {
+            let nav = navigate.clone();
+            spawn_local(async move { go_play(room, nav, || true).await });
+        }
+    });
     move || {
         let code = room.code.get()?;
         let href = room_href(&code);
@@ -1478,13 +1707,26 @@ mod tests {
     }
 
     #[test]
-    fn position_moves_with_local_time_while_playing() {
-        let s = state(1, true, "a");
-        assert_eq!(expected_position(&s, 500.0, 2_500.0), 62_000);
-        // A local clock going backwards never rewinds.
-        assert_eq!(expected_position(&s, 500.0, 100.0), 60_000);
-        let paused = state(1, false, "a");
-        assert_eq!(expected_position(&paused, 500.0, 9_500.0), 60_000);
+    fn phases_of_a_start() {
+        let mut s = state(3, false, "");
+        s.members = vec![member("a", "Ana"), member("b", "Bo")];
+        s.loading = vec!["a".into(), "b".into()];
+        assert_eq!(
+            phase_of(&s, "a", 0),
+            Phase::Loading {
+                me: true,
+                others: vec!["Bo".into()]
+            }
+        );
+        assert_eq!(
+            waiting_text(&phase_of(&s, "a", 0), true),
+            Some("Waiting for Bo…".into())
+        );
+        s.loading.clear();
+        s.playing = true;
+        s.at_ms = 5_000;
+        assert_eq!(phase_of(&s, "a", 4_000), Phase::StartsIn(1_000));
+        assert_eq!(phase_of(&s, "a", 5_000), Phase::Live);
     }
 
     #[test]

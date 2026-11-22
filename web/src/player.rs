@@ -791,7 +791,19 @@ fn PlayerView(
         convert(v, sub_pick.get_untracked(), false);
     };
 
+    // Leaving the player of a room: the host takes everyone back to the waiting room (to pick
+    // something else; nobody leaves). Not when the page makes way for the room's next title.
+    let switching = StoredValue::new(false);
     on_cleanup(move || {
+        if switching.try_get_value() == Some(false)
+            && joined()
+            && room.hosting_untracked()
+            && room
+                .state
+                .with_untracked(|s| s.as_ref().is_some_and(|s| s.started))
+        {
+            room.lobby(room.expected().map_or(0, |(p, _)| p));
+        }
         stop();
         destroy_hls(hls);
         // Stop downloading: a removed video keeps its connection until collected.
@@ -806,6 +818,10 @@ fn PlayerView(
 
     // This title isn't the room's (the room moved to one we don't have): don't send.
     let off_title = StoredValue::new(false);
+    // "Watch together" pressed while watching alone: the room dialog, where it starts from.
+    let dialog = RwSignal::new(false);
+    let dialog_at = RwSignal::new(0u64);
+    let picking = RwSignal::new(false);
     let started = StoredValue::new(false);
     let on_meta = move |_| {
         if !alive() {
@@ -854,9 +870,85 @@ fn PlayerView(
     // False once a speed change didn't close the gap: seeks only.
     let rate_works = StoredValue::new(true);
     let rate_check = StoredValue::new((0.0f64, 0u64));
+    // A start: paused at the room's position until every player has loaded the title, then
+    // play at the instant the room says (the same for everyone, on the server's clock).
+    let loaded_since = StoredValue::new(None::<f64>);
+    let start_timer = StoredValue::new(0i64);
+    let wait_start = move |v: web_sys::HtmlVideoElement, phase: together::Phase, at: u64| {
+        if !v.paused() {
+            let _ = v.pause();
+        }
+        if (v.playback_rate() - 1.0).abs() > 0.0001 {
+            v.set_playback_rate(1.0);
+        }
+        let cur = (v.current_time() * 1000.0) as u64;
+        if !v.seeking() && v.ready_state() >= 1 && cur.abs_diff(at) > 300 {
+            v.set_current_time(at as f64 / 1000.0);
+        }
+        match &phase {
+            together::Phase::StartsIn(ms) => {
+                let key = room
+                    .state
+                    .with_untracked(|s| s.as_ref().map_or(0, |s| s.at_ms));
+                if start_timer.get_value() != key {
+                    start_timer.set_value(key);
+                    let delay = std::time::Duration::from_millis((*ms).max(0) as u64);
+                    set_timeout(
+                        move || {
+                            if !alive() || !joined() {
+                                return;
+                            }
+                            if let (Some(v), Some((_, true))) =
+                                (video.get_untracked(), room.expected())
+                            {
+                                play(&v);
+                            }
+                            room.waiting.try_set(None);
+                        },
+                        delay,
+                    );
+                }
+            }
+            together::Phase::Loading { me: true, .. } if !room.ready_sent() => {
+                let here = v.ready_state() >= 3 && !v.seeking() && cur.abs_diff(at) <= 500;
+                let now = together::now_ms();
+                if !here {
+                    loaded_since.set_value(None);
+                } else if loaded_since.get_value().is_none() {
+                    loaded_since.set_value(Some(now));
+                }
+                let t = v.current_time();
+                let b = v.buffered();
+                let end = (0..b.length())
+                    .filter_map(|i| Some((b.start(i).ok()?, b.end(i).ok()?)))
+                    .find(|(s, e)| *s <= t + 0.5 && t <= *e)
+                    .map_or(t, |(_, e)| e);
+                let d = v.duration();
+                let enough = (end - t) * 1000.0 >= keep_service::together::READY_BUFFER_MS as f64
+                    || (d.is_finite() && end >= d - 1.0)
+                    || loaded_since.get_value().is_some_and(|s| now - s > 8_000.0);
+                if here && enough {
+                    room.ready();
+                }
+            }
+            _ => {}
+        }
+        let text = together::waiting_text(&phase, room.ready_sent());
+        if room.waiting.get_untracked() != text {
+            room.waiting.set(text);
+        }
+    };
     let follow = move || {
         if !alive() || !joined() || room.busy() || off_title.get_value() {
             return;
+        }
+        if let (Some(v), Some((phase, at, _))) = (video.get_untracked(), room.phase())
+            && phase != together::Phase::Live
+        {
+            return wait_start(v, phase, at);
+        }
+        if room.waiting.get_untracked().is_some() {
+            room.waiting.set(None);
         }
         let now = together::now_ms();
         if now < own_hold.get_value() || now < seek_hold.get_value() {
@@ -1035,6 +1127,7 @@ fn PlayerView(
             Some(n) => {
                 let href = match room.code.get_untracked().filter(|_| joined()) {
                     Some(code) => {
+                        switching.set_value(true);
                         room.announce.set_value(true);
                         together::play_href(&acc2, &n.id, 0, &code)
                     }
@@ -1077,6 +1170,13 @@ fn PlayerView(
             return;
         }
         match incoming {
+            // The host went back to the waiting room: so do we (the room stays).
+            Some((false, s)) if !s.started => {
+                if !room.hosting_untracked() {
+                    switching.set_value(true);
+                    nav3(&together::room_href(&s.code), Default::default());
+                }
+            }
             Some((false, _)) => sync(),
             // The room moved to another title: find it on our servers and play it.
             Some((true, s)) => {
@@ -1101,6 +1201,7 @@ fn PlayerView(
                                 return;
                             };
                             stop();
+                            let _ = switching.try_set_value(true);
                             room.announce.set_value(false);
                             let at = room.expected().map_or(0, |(p, _)| p);
                             nav(
@@ -1164,18 +1265,23 @@ fn PlayerView(
                     None => {
                         let can = state::ctx().keep.get().is_some() && loaded.with(|l| matches!(l, Some(Ok(l))
                             if matches!(l.item.kind, ItemKind::Movie | ItemKind::Episode)));
-                        let nav = nav5.clone();
+                        let _ = &nav5;
                         (can && room.code.get().is_none()).then(|| view! {
                             <button class="small" on:click=move |_| {
                                 let Some(Ok(l)) = loaded.get_untracked() else { return };
-                                let nav = nav.clone();
-                                room.note.set(Some("Opening a room…".into()));
-                                // A lobby, then its Room page (this player stops there).
+                                // Paused, the room over the video: invite, then start from here.
+                                if let Some(v) = video.get_untracked() {
+                                    let _ = v.pause();
+                                    dialog_at.set((v.current_time() * 1000.0) as u64);
+                                }
+                                dialog.set(true);
                                 spawn_local(async move {
-                                    match together::create_room(l.srv.clone(), l.item.clone()).await {
-                                        Ok(code) if alive() => nav(&together::room_href(&code), Default::default()),
-                                        Ok(_) => {}
-                                        Err(e) => { room.note.try_set(Some(format!("Watch together unavailable: {e}"))); }
+                                    if let Err(e) = together::create_room(l.srv.clone(), l.item.clone()).await {
+                                        dialog.try_set(false);
+                                        room.note.try_set(Some(format!("Watch together unavailable: {e}")));
+                                    } else if !dialog.try_get_untracked().unwrap_or(false) {
+                                        // Cancelled meanwhile.
+                                        room.leave("", true);
                                     }
                                 });
                             }>"Watch together"</button>
@@ -1215,7 +1321,78 @@ fn PlayerView(
                     </div>
                 })
             }}
-            {move || room.note.get().map(|n| view! { <div class="toast" role="status">{n}</div> })}
+            {move || room.waiting.get().filter(|_| joined()).or_else(|| room.note.get()).map(|n| view! { <div class="toast" role="status">{n}</div> })}
+            {move || dialog.get().then(|| {
+                let start = move |_| {
+                    let Some((code, me)) = room.ids() else { return };
+                    let Some(k) = state::ctx().keep_client() else { return };
+                    let from = video.get_untracked().map_or(dialog_at.get_untracked(), |v| (v.current_time() * 1000.0) as u64);
+                    spawn_local(async move {
+                        match k.together_start(&code, &me, from).await {
+                            Ok(s) => {
+                                if !alive() {
+                                    return;
+                                }
+                                room.handled_round.set_value(s.round);
+                                room_code.set_value(Some(code));
+                                dialog.set(false);
+                                room.on_state(s);
+                                follow();
+                            }
+                            Err(e) => {
+                                room.note.try_set(Some(together::plain_together(&e)));
+                            }
+                        }
+                    });
+                };
+                let cancel = move |_| {
+                    dialog.set(false);
+                    picking.set(false);
+                    room.leave("", true);
+                    if let Some(v) = video.get_untracked() {
+                        play(&v);
+                    }
+                };
+                view! {
+                    <div class="dialog-back">
+                        <div class="dialog room-dialog" role="dialog" aria-modal="true" aria-labelledby="room-dialog-title">
+                            <p class="muted small">"WATCH TOGETHER"</p>
+                            <h2 id="room-dialog-title">{move || room.state.with(|s| s.as_ref().map(|s| together::media_label(&s.media))).unwrap_or_else(|| "Opening a room…".into())}</h2>
+                            <p class="muted">{move || format!(
+                                "Paused for now. Invite people, then start: everyone starts at {} at the same moment, once all of them have loaded it.",
+                                fmt_time(dialog_at.get())
+                            )}</p>
+                            {move || room.state.get().map(|s| {
+                                let people = together::group_members(&s);
+                                view! {
+                                    {people.into_iter().map(|p| view! {
+                                        <div class="person-row">
+                                            <Avatar user_key=p.member.user_key.clone() name=p.member.name.clone() avatar=p.member.avatar.clone() size=32 />
+                                            <span class="pname">{p.member.name.clone()}</span>
+                                            <span class="muted small">"In the room"</span>
+                                        </div>
+                                    }).collect_view()}
+                                    {s.invited.iter().map(|i| view! {
+                                        <div class="person-row">
+                                            <Avatar user_key=i.user_key.clone() name=i.name.clone() avatar=i.avatar.clone() size=32 />
+                                            <span class="pname">{i.name.clone()}</span>
+                                            <span class="muted small">"Invited"</span>
+                                        </div>
+                                    }).collect_view()}
+                                }
+                            })}
+                            <div class="actions">
+                                <button disabled=move || room.state.with(|s| s.is_none()) on:click=move |_| picking.set(true)>"Invite people"</button>
+                                <button class="primary" disabled=move || room.state.with(|s| s.is_none()) on:click=start>
+                                    {move || format!("Start at {}", fmt_time(dialog_at.get()))}
+                                </button>
+                                <button class="subtle" on:click=cancel>"Cancel"</button>
+                            </div>
+                        </div>
+                    </div>
+                    {move || picking.get().then(|| view! { <together::PeoplePicker room=room on_close=move || picking.set(false) /> })}
+                }
+            })}
             <Show when=move || state::ctx().keep.get().is_some()>
                 <together::InviteBanner compact=true />
             </Show>
