@@ -549,6 +549,14 @@ fn me_of(s: &Shared, id: Identity) -> Result<MeWithIdentities, Error> {
             name_is_custom: p.name_is_custom,
             avatar: p.avatar,
             profile_set: p.profile_set,
+            services: keep_service::Services {
+                // Until the first sync has run, assume it works (no flicker at start).
+                leaving_soon: s
+                    .maintainerr_state
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                    != 2,
+                requests: s.seerr.is_some(),
+            },
             user_key: id.user_key,
             server_id: id.server_id,
             is_admin: id.is_admin,

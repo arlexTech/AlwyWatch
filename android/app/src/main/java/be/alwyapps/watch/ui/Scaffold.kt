@@ -71,6 +71,29 @@ fun Route.isTopLevel(rail: Boolean): Boolean =
         else -> false
     }
 
+/**
+ * What works behind the AlwyWatch server (Maintainerr, its Seerr link): the last answer at once,
+ * then asked again once per screen set-up.
+ */
+@Composable
+fun keepServices(): be.alwyapps.watch.core.keep.Services {
+    val core = LocalCore.current
+    val initial = androidx.compose.runtime.remember { core.keepServices() }
+    val state =
+        androidx.compose.runtime.produceState(initial) {
+            if (core.keepActive()) runCatching { core.refreshKeepServices() }.onSuccess { value = it }
+        }
+    return state.value
+}
+
+/** Seerr is connected, and when it goes through the AlwyWatch server, the server has it. */
+fun requestsAvailable(
+    core: be.alwyapps.watch.core.AlwyWatch,
+    services: be.alwyapps.watch.core.keep.Services,
+): Boolean =
+    runCatching { core.seerrActive() }.getOrDefault(false) &&
+        (core.seerrConnection()?.viaKeep != true || services.requests)
+
 /** TV and wide screens navigate with a side rail; phones with the top bar and a bottom bar. */
 @Composable
 fun usesRail(): Boolean = LocalDimens.current.isTv || androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840
@@ -80,6 +103,7 @@ fun tabs(): List<Tab> {
     val core = LocalCore.current
     val d = LocalDimens.current
     val rail = usesRail()
+    val services = keepServices()
     val out = mutableListOf(Tab(Route.Home, "Home", Icons.Home, Icons.HomeFilled))
     if (rail) out += Tab(Route.Watchlist, "My list", Icons.Bookmark, Icons.BookmarkFilled)
     if (rail) out += Tab(Route.Search, "Search", Icons.Search)
@@ -93,11 +117,12 @@ fun tabs(): List<Tab> {
             out += Tab(Route.Library(lib.id, lib.title), lib.title, icon)
         }
     }
-    if (core.keepActive()) out += Tab(Route.LeavingSoon, "Leaving", Icons.Hourglass)
+    // Leaving soon needs Maintainerr behind the AlwyWatch server.
+    if (core.keepActive() && services.leavingSoon) out += Tab(Route.LeavingSoon, "Leaving", Icons.Hourglass)
     // Watch together goes through the AlwyWatch server.
     if (core.keepActive()) out += Tab(Route.Together, "Together", Icons.Group)
     // Requests (Seerr), when connected: with the other pages (phones reach it from Settings).
-    if (rail && runCatching { core.seerrActive() }.getOrDefault(false)) out += Tab(Route.Requests, "Requests", Icons.Add)
+    if (rail && requestsAvailable(core, services)) out += Tab(Route.Requests, "Requests", Icons.Add)
     if (rail && !d.isTv) out += Tab(Route.Downloads, "Downloads", Icons.Download)
     if (rail) out += Tab(Route.Settings, "Settings", Icons.Settings)
     return out

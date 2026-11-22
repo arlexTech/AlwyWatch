@@ -628,6 +628,7 @@ mod tests {
                     max_keep_days: None,
                 },
                 forever_count: 0,
+                services: Default::default(),
             },
             identities: vec![],
         }

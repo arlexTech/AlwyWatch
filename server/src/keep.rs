@@ -39,6 +39,8 @@ pub struct State {
     pub rooms: crate::together::Rooms,
     /// Attempt limits (see `limit.rs`).
     pub limits: Limits,
+    /// Maintainerr's state from the last sync: 0 not tried yet, 1 answered, 2 failed.
+    pub maintainerr_state: std::sync::atomic::AtomicU8,
 }
 
 pub struct Limits {
@@ -113,6 +115,7 @@ impl State {
             transfers: Default::default(),
             rooms: Default::default(),
             limits: Default::default(),
+            maintainerr_state: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),
         }
     }
@@ -774,9 +777,15 @@ pub fn spawn_jobs(state: Shared) {
     let s = state.clone();
     tokio::spawn(async move {
         loop {
-            if let Err(e) = s.sync().await {
-                eprintln!("[keep] sync failed: {e}");
-            }
+            let ok = match s.sync().await {
+                Ok(_) => true,
+                Err(e) => {
+                    eprintln!("[keep] sync failed: {e}");
+                    false
+                }
+            };
+            s.maintainerr_state
+                .store(if ok { 1 } else { 2 }, std::sync::atomic::Ordering::Relaxed);
             tokio::time::sleep(Duration::from_secs(s.config.sync_minutes.max(1) * 60)).await;
         }
     });

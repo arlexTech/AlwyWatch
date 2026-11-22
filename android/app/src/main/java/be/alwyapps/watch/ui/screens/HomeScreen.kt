@@ -213,7 +213,13 @@ private fun Rails(
     if (core.keepActive() && !offline) {
         // Invitations to watch together waiting for an answer (nothing when there are none).
         TogetherRail()
-        LeavingSoonRail(onLeavingFocus)
+        // Not when Maintainerr doesn't answer the AlwyWatch server.
+        if (be.alwyapps.watch.ui
+                .keepServices()
+                .leavingSoon
+        ) {
+            LeavingSoonRail(onLeavingFocus)
+        }
     }
     val account = LocalAccount.current
     val servers = remember(account) { runCatching { core.accounts() }.getOrDefault(emptyList()).associate { it.id to it.serverName } }

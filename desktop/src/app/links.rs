@@ -711,6 +711,7 @@ impl App {
             is_admin: false,
             rights: rights.clone(),
             forever_count: 0,
+            services: Default::default(),
         };
         (
             Side {
@@ -822,6 +823,7 @@ mod tests {
                     max_keep_days: None,
                 },
                 forever_count: 0,
+                services: Default::default(),
             },
             identities: vec![],
         }

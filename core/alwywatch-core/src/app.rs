@@ -2393,6 +2393,7 @@ const KEEP_KEY: &str = "keep.connection";
 /// AlwyWatch server address entered on the add-server screen, connected after sign-in.
 const KEEP_PRESET_KEY: &str = "keep.preset_url";
 const LEAVING_KEY: &str = "keep/leaving-soon";
+const SERVICES_KEY: &str = "keep/services";
 
 impl Core {
     pub(crate) fn keep(&self) -> Result<keep_service::KeepClient> {
@@ -2693,7 +2694,29 @@ impl AlwyWatch {
     }
 
     pub async fn keep_me(&self) -> Result<Me> {
-        self.run(|c| async move { Ok(c.keep()?.me().await?) }).await
+        self.run(|c| async move {
+            let me = c.keep()?.me().await?;
+            let _ = c.store.cache_put(SERVICES_KEY, &me.services);
+            Ok(me)
+        })
+        .await
+    }
+
+    /// What works behind the AlwyWatch server (Leaving soon: Maintainerr; Requests through it:
+    /// Seerr), as last seen; everything until known. Apps hide the pages that don't work.
+    pub fn keep_services(&self) -> keep_service::Services {
+        self.core
+            .store
+            .cache_get::<keep_service::Services>(SERVICES_KEY)
+            .ok()
+            .flatten()
+            .map(|c| c.value)
+            .unwrap_or_default()
+    }
+
+    /// Asks the AlwyWatch server again (see [`Self::keep_services`]).
+    pub async fn refresh_keep_services(&self) -> Result<keep_service::Services> {
+        Ok(self.keep_me().await?.services)
     }
 
     /// The sign-ins (Plex user, Jellyfin user…) that are my one AlwyWatch account; a single

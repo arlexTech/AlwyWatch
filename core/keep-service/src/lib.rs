@@ -182,6 +182,29 @@ record! {
         pub is_admin: bool,
         pub rights: Rights,
         pub forever_count: u32,
+        /// What works behind this server right now (apps hide the pages that don't). Missing
+        /// from older servers: everything is assumed to work.
+        #[serde(default)]
+        pub services: Services,
+    }
+}
+
+record! {
+    /// The parts of the AlwyWatch server that depend on another service.
+    pub struct Services {
+        /// Leaving soon and keep choices: Maintainerr answers (its last sync worked).
+        pub leaving_soon: bool,
+        /// Requests through this server: its Seerr link is configured.
+        pub requests: bool,
+    }
+}
+
+impl Default for Services {
+    fn default() -> Self {
+        Self {
+            leaving_soon: true,
+            requests: true,
+        }
     }
 }
 

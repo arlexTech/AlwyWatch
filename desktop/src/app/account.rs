@@ -818,6 +818,7 @@ impl App {
                 max_keep_days: None,
             },
             forever_count: 0,
+            services: Default::default(),
         });
     }
 

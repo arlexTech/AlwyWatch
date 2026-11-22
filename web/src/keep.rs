@@ -261,7 +261,10 @@ pub fn KeepPanel(item: media_api::Item) -> impl IntoView {
         media_api::ItemKind::Series => "show",
         _ => return ().into_any(),
     };
-    if state::ctx().keep.get_untracked().is_none() {
+    let c = state::ctx();
+    // Not without the AlwyWatch server, nor when Maintainerr doesn't answer it.
+    let maintainerr = c.me.get_untracked().is_none_or(|m| m.services.leaving_soon);
+    if c.keep.get_untracked().is_none() || !maintainerr {
         return ().into_any();
     }
     let list = RwSignal::new(state::load::<Vec<LeavingItem>>(state::LEAVING));

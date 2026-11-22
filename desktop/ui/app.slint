@@ -814,6 +814,9 @@ export component AppWindow inherits Window {
     in property <[Card]> seerr-parts;
     // Keep service
     in property <bool> keep-active;
+    // What works behind the AlwyWatch server: Maintainerr (Leaving soon), its Seerr link.
+    in property <bool> leaving-available: true;
+    in property <bool> requests-available: true;
     in property <KeepPanel> detail-keep;
     in property <bool> keep-admin;
     in property <string> keep-label;
@@ -1078,7 +1081,7 @@ export component AppWindow inherits Window {
                         selected: root.page == Page.library && root.library-id == lib.id;
                         clicked => { root.open-library(lib.id, lib.title); }
                     }
-                    if root.keep-active : NavItem {
+                    if root.keep-active && root.leaving-available : NavItem {
                         label: "Leaving soon";
                         icon: @image-url("icons/hourglass_bottom.svg");
                         selected: root.page == Page.leaving || root.page == Page.triage || root.page == Page.keepadmin;
@@ -1090,7 +1093,7 @@ export component AppWindow inherits Window {
                         selected: root.page == Page.together || root.page == Page.room;
                         clicked => { root.go(Page.together); }
                     }
-                    if root.seerr-active : NavItem { label: "Requests"; icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
+                    if root.seerr-active && root.requests-available : NavItem { label: "Requests"; icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
                     NavItem { label: "Downloads"; icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
                     NavItem { label: "Settings"; icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings || root.page == Page.profiles || root.page == Page.historycopy; clicked => { root.go(Page.settings); } }
                 }

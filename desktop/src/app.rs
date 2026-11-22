@@ -321,6 +321,7 @@ impl App {
         app.wire(ui);
         app.refresh_seerr_settings();
         app.refresh_keep_settings();
+        app.check_services();
         app.show_reminders();
         app.start_download_runner();
         let first = if app.state.borrow().account.is_some() {
@@ -943,8 +944,35 @@ impl App {
         }
     }
 
+    /// Hides Leaving soon (Maintainerr not answering the AlwyWatch server) and Requests (Seerr
+    /// through a server without it): the last answer, then asked again.
+    fn apply_services(&self) {
+        let ui = self.ui();
+        let s = self.core.keep_services();
+        ui.set_leaving_available(s.leaving_soon);
+        let via_keep = self.core.seerr_connection().is_some_and(|c| c.via_keep);
+        ui.set_requests_available(!via_keep || s.requests);
+    }
+
+    fn check_services(self: &Rc<Self>) {
+        self.apply_services();
+        if !self.core.keep_active() {
+            return;
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            if core.refresh_keep_services().await.is_ok()
+                && let Some(this) = this.upgrade()
+            {
+                this.apply_services();
+            }
+        })
+        .ok();
+    }
+
     fn refresh_keep_settings(&self) {
         let ui = self.ui();
+        self.apply_services();
         ui.set_keep_active(self.core.keep_active());
         ui.set_keep_can_switch(self.core.accounts().map(|a| a.len() > 1).unwrap_or(false));
         if let Some(k) = self.core.keep_connection() {
@@ -1537,6 +1565,7 @@ impl App {
 
     fn refresh_seerr_settings(&self) {
         let ui = self.ui();
+        self.apply_services();
         ui.set_seerr_active(self.core.seerr_active());
         if let Some(c) = self.core.seerr_connection() {
             ui.set_seerr_label(sstr(if c.via_keep {
@@ -2122,6 +2151,7 @@ impl App {
             .collect();
         // Leaving soon (from the keep service cache), after what the user is watching.
         if self.core.keep_active()
+            && self.core.keep_services().leaving_soon
             && let Ok(Some(list)) = self.core.cached_leaving_soon()
         {
             let leaving: Vec<&LeavingItem> = list
@@ -3344,6 +3374,7 @@ impl App {
     fn render_keep_panel(&self, i: &Item) {
         let ui = self.ui();
         let known = self.core.keep_active()
+            && self.core.keep_services().leaving_soon
             && matches!(i.kind, ItemKind::Movie | ItemKind::Series)
             && matches!(self.core.cached_leaving_soon(), Ok(Some(_)));
         if !known {

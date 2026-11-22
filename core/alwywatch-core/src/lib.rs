@@ -34,7 +34,7 @@ pub use keep_service::together::{
 };
 pub use keep_service::{
     AdminUser, Avatar, AvatarPreset, CountdownResult, LeavingItem, Me, MyVote, Protection, Rights,
-    ServerEntry, ServerType, VoteCounts, VoteKind, VoteRequest,
+    ServerEntry, ServerType, Services, VoteCounts, VoteKind, VoteRequest,
 };
 pub use media_api::jellyfin::QuickConnectCode;
 pub use media_api::model::*;

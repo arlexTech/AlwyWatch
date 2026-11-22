@@ -128,9 +128,14 @@ fn App() -> impl IntoView {
 #[component]
 fn Shell(children: ChildrenFn) -> impl IntoView {
     let c = state::ctx();
-    let (accounts, keep, welcome, link_dialog) = (c.accounts, c.keep, c.welcome, c.links.dialog);
+    let (accounts, keep, welcome, link_dialog, me) =
+        (c.accounts, c.keep, c.welcome, c.links.dialog, c.me);
     let signed_in = move || !accounts.get().is_empty();
     let keep_on = move || keep.get().is_some();
+    // What works behind the AlwyWatch server: Maintainerr (Leaving soon), Seerr (Requests).
+    let services = move || me.get().map(|m| m.services).unwrap_or_default();
+    let requests_on = move || keep_on() && services().requests;
+    let leaving_on = move || keep_on() && services().leaving_soon;
     let admin = move || keep.get().is_some_and(|k| k.is_admin);
     view! {
         <div class="shell">
@@ -140,9 +145,9 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                     <A href="/">"Home"</A>
                     <A href="/search">"Search"</A>
                     <A href="/list">"My list"</A>
-                    <Show when=keep_on><A href="/requests">"Requests"</A></Show>
+                    <Show when=requests_on><A href="/requests">"Requests"</A></Show>
                     <Show when=keep_on><A href="/together">"Together"</A></Show>
-                    <Show when=keep_on><A href="/leaving">"Leaving soon"</A></Show>
+                    <Show when=leaving_on><A href="/leaving">"Leaving soon"</A></Show>
                     <Show when=admin><A href="/admin/forever">"Kept forever"</A></Show>
                     <Show when=admin><A href="/admin">"Admin"</A></Show>
                 </Show>

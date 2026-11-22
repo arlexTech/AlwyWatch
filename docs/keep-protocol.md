@@ -57,7 +57,12 @@ A `/v1/...` path with no route gets a plain-text `404 not found` (the web app fa
 |---|---|---|---|
 | GET | `/healthz` | anyone | `ok` (text) |
 | GET | `/v1/servers` | anyone | → `[ServerEntry]` (allow-list: `id`, `kind` `jellyfin`/`plex`, `name`, `url` = public URL) |
-| GET | `/v1/me` | user | → `Me` (`user_key`, `name`, `media_name`, `name_is_custom`, `avatar`, `profile_set`, `server_id`, `is_admin`, `rights`, `forever_count`, `identities`) |
+| GET | `/v1/me` | user | → `Me` (`user_key`, `name`, `media_name`, `name_is_custom`, `avatar`, `profile_set`, `server_id`, `is_admin`, `rights`, `forever_count`, `services`, `identities`) |
+
+`services` = `{leaving_soon, requests}`: `leaving_soon` is false once a Maintainerr sync has
+failed (true until the first one runs), `requests` is false when the server has no Seerr link.
+Apps hide Leaving soon (and the keep panel) and the Requests page they reach through this
+server accordingly. Missing (older servers): both true.
 | GET | `/v1/me/links` | user | → `[LinkedIdentity]` ([Linked identities](#linked-identities)) |
 | POST | `/v1/me/links` | user | `LinkRequest` → `[LinkedIdentity]` |
 | DELETE | `/v1/me/links/{user_key}` | user | → `[LinkedIdentity]` |

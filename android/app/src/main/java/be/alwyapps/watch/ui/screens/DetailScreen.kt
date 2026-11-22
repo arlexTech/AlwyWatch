@@ -291,7 +291,11 @@ fun DetailScreen(
         }
     }
     // Keep status (Leaving soon): from the cached list at once, then refreshed.
-    val keepOn = remember { runCatching { core.keepActive() }.getOrDefault(false) }
+    val keepOn =
+        remember { runCatching { core.keepActive() }.getOrDefault(false) } &&
+            be.alwyapps.watch.ui
+                .keepServices()
+                .leavingSoon
     var keepEntry by remember(itemId) { mutableStateOf<be.alwyapps.watch.core.keep.LeavingItem?>(null) }
     var keepKnown by remember(itemId) { mutableStateOf(false) }
     if (keepOn && item != null && (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES)) {
