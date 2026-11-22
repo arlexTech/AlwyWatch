@@ -49,9 +49,10 @@ fun friendly(e: CoreException): String {
 }
 
 /**
- * The watch together room this device sits in (one at a time), shared by the Room screen and
- * the player so the seat never goes silent between them. Its `wait` loop is the seat's
- * heartbeat (a seat silent for a minute is dropped): it runs while something shows the room.
+ * The watch together room this device sits in (one at a time), shared by the Room screen, the
+ * player and the rest of the app: the room stays open while the host picks another title, and
+ * every start opens the player (see [handledRound]). Its `wait` loop is the seat's heartbeat (a
+ * seat silent for a minute is dropped): it runs while the app is in the foreground.
  */
 object TogetherSession {
     data class Seat(
@@ -78,6 +79,15 @@ object TogetherSession {
     /** Where the host starts playback (their resume point when they opened the room). */
     var startAt = 0L
 
+    /**
+     * The last start (`round`) this device opened the player for, or chose not to (left the
+     * player): the app opens the player for every later one.
+     */
+    var handledRound = 0uL
+
+    /** Why the last start didn't open the player here (the title isn't on my servers). */
+    var problem by mutableStateOf<String?>(null)
+
     private val answers = MutableSharedFlow<TogetherState>(extraBufferCapacity = 16)
 
     /** Every answer of the room (also the unchanged ones every ~25 s: they correct drift). */
@@ -99,6 +109,7 @@ object TogetherSession {
             loop?.cancel()
             loop = null
             state = null
+            handledRound = 0uL
         }
         seat = Seat(joined.state.code, joined.memberId)
         this.startAt = startAt
@@ -118,6 +129,7 @@ object TogetherSession {
         seat = Seat(code, memberId)
         state = null
         ended = null
+        handledRound = 0uL
     }
 
     /** A newer state of this room (from `wait`, `update`, `invite`…). */
@@ -140,9 +152,9 @@ object TogetherSession {
             .togetherIsHost(s, me)
     }
 
-    /** Something shows the room (Room screen, player): keep the seat alive. */
-    fun attach(core: AlwyWatch) {
-        this.core = core
+    /** Something shows the room (the app's activities): keep the seat alive. */
+    fun attach(core: AlwyWatch?) {
+        if (core != null) this.core = core
         users++
         stopping?.cancel()
         stopping = null
@@ -252,8 +264,12 @@ object TogetherInbox {
     /** An invitation to offer with Join / Not now. */
     var prompt by mutableStateOf<TogetherRoom?>(null)
 
-    /** A room to open in the main app (from the player's "Watch together"). */
+    /** A room to open in the main app (the player closed while in it). */
     var openRoom by mutableStateOf<String?>(null)
+
+    /** The player is in front (the app doesn't open it again for a start). */
+    var playerVisible by mutableStateOf(false)
+        private set
 
     private val noteFlow = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val notes: SharedFlow<String> = noteFlow
@@ -277,12 +293,16 @@ object TogetherInbox {
         if (core != null) this.core = core
         started++
         if (player) playerStarted++
+        playerVisible = playerStarted > 0
+        TogetherSession.attach(core ?: this.core)
         ensure()
     }
 
     fun activityStopped(player: Boolean) {
         started = (started - 1).coerceAtLeast(0)
         if (player) playerStarted = (playerStarted - 1).coerceAtLeast(0)
+        playerVisible = playerStarted > 0
+        TogetherSession.detach()
         if (started == 0) {
             job?.cancel()
             job = null
@@ -292,6 +312,8 @@ object TogetherInbox {
     /** The core became available after the activity started. */
     fun setCore(core: AlwyWatch) {
         this.core = core
+        TogetherSession.attach(core)
+        TogetherSession.detach()
         ensure()
     }
 

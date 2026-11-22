@@ -502,7 +502,21 @@ fun DetailScreen(
                                         )
                                     }
                                     fromStart?.let { ActionButton("From start", it, Modifier.rememberFocus(focusKey, "start")) }
-                                    watchTogether?.let { IconAction(Icons.Group, "Watch together", it, Modifier.rememberFocus(focusKey, "together")) }
+                                    watchTogether?.let {
+                                        IconAction(
+                                            Icons.Group,
+                                            if (be.alwyapps.watch.together.TogetherSession.seat != null &&
+                                                be.alwyapps.watch.together.TogetherSession
+                                                    .isHost()
+                                            ) {
+                                                "Watch in your room"
+                                            } else {
+                                                "Watch together"
+                                            },
+                                            it,
+                                            Modifier.rememberFocus(focusKey, "together"),
+                                        )
+                                    }
                                     if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
                                         IconAction(
                                             if (watchlisted) Icons.BookmarkFilled else Icons.Bookmark,

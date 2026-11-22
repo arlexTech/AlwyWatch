@@ -128,6 +128,12 @@ class PlayerUi {
     /** A short line about the room ("Ana paused"), shown a few seconds even with hidden controls. */
     var togetherNote by mutableStateOf<String?>(null)
 
+    /** The room waits before playing ("Waiting for Bo…"): shown as long as it lasts. */
+    var togetherWaiting by mutableStateOf<String?>(null)
+
+    /** "Watch together" pressed while watching alone: the room dialog over the paused video. */
+    var roomDialog by mutableStateOf(false)
+
     /** Seeking with ←/→ while the controls are hidden: where it goes, and a counter per press. */
     var seekTarget by mutableStateOf<Long?>(null)
     var seekFlash by mutableIntStateOf(0)
@@ -504,8 +510,9 @@ fun PlayerOverlay(
                 if (ui.togetherNote == note) ui.togetherNote = null
             }
         }
+        val waiting = ui.togetherWaiting
         AnimatedVisibility(
-            !note.isNullOrEmpty(),
+            !note.isNullOrEmpty() || !waiting.isNullOrEmpty(),
             Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(top = if (tv) 28.dp else 16.dp),
             enter = fadeIn(),
             exit = fadeOut(),
@@ -519,7 +526,7 @@ fun PlayerOverlay(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 androidx.compose.material3.Icon(be.alwyapps.watch.ui.Icons.Group, null, Modifier.size(16.dp), tint = Color.White)
-                Text(note ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White)
+                Text(waiting ?: note ?: "", style = MaterialTheme.typography.bodySmall, color = Color.White)
             }
         }
         // With the controls open, loading is the ring around play/pause instead (no overlap).

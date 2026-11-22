@@ -106,8 +106,22 @@ class PlayerActivity : ComponentActivity() {
     private val room: String? get() = if (together) TogetherSession.seat?.code else null
     private val member: String? get() = if (together) TogetherSession.seat?.memberId else null
     private val roomState: be.alwyapps.watch.core.keep.TogetherState? get() = if (together) TogetherSession.state else null
-    private val roomReceivedAt: Long get() = TogetherSession.receivedAt
     private var roomMedia: be.alwyapps.watch.core.keep.TogetherMedia? = null
+
+    /** The room's start (`round`) this player plays, and the last one we said we loaded. */
+    private var roomRound = 0uL
+    private var readySent = 0uL
+
+    /** Since when the player could start, while the room waits for everyone to load. */
+    private var readySince = 0L
+
+    /** The start (server time) a timer presses play for, and that timer. */
+    private var scheduledStart = 0L
+    private var startJob: Job? = null
+
+    /** Where the player was when "Watch together" opened the room dialog. */
+    private var dialogPosition = 0L
+    private var roomAttached = false
 
     /** The last room state handled here (to say who did what). */
     private var lastSeen: be.alwyapps.watch.core.keep.TogetherState? = null
@@ -173,6 +187,15 @@ class PlayerActivity : ComponentActivity() {
                                 player?.play()
                             },
                         )
+                        if (ui.roomDialog && ::core.isInitialized) {
+                            androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalCore provides core) {
+                                be.alwyapps.watch.ui.screens.PlayerRoomDialog(
+                                    dialogPosition,
+                                    onStart = { startFromDialog() },
+                                    onCancel = { cancelRoomDialog() },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -435,7 +458,13 @@ class PlayerActivity : ComponentActivity() {
         val from = if (rewind && room == null && startMs > 0) (startMs - settings.resumeRewindS * 1000L).coerceAtLeast(0) else startMs
         p.setMediaItem(item, from)
         p.prepare()
-        p.playWhenReady = true
+        // In a room that waits for everyone to load (or starts in a moment): paused until then.
+        p.playWhenReady = roomState?.let {
+            it.playing &&
+                it.loading.isEmpty() &&
+                be.alwyapps.watch.core
+                    .togetherStartsIn(it, core.togetherNowMs()) == null
+        } ?: true
         applyingRoom = false
         view.player = p
         player = p
@@ -921,25 +950,54 @@ class PlayerActivity : ComponentActivity() {
     // ----- watch together ------------------------------------------------------------------
 
     /**
-     * "Watch together" while watching alone: opens a private room with this title and shows it
-     * in the app (the host invites people there, then starts for everyone).
+     * "Watch together" while watching alone: pauses and opens a private room with this title in
+     * a dialog over the video (the host invites people there, then starts for everyone from
+     * here, without leaving the player).
      */
     private fun watchTogether() {
-        if (together) return
+        if (together || ui.roomDialog) return
+        val p = player
+        p?.pause()
+        dialogPosition = p?.currentPosition?.coerceAtLeast(0) ?: 0L
+        ui.roomDialog = true
         lifecycleScope.launch {
             try {
                 val joined = core.togetherCreate(account, itemId)
-                if (TogetherSession.seat != null) TogetherSession.leave()
-                TogetherSession.begin(core, joined, startAt = player?.currentPosition?.coerceAtLeast(0) ?: 0L)
-                startActivity(
-                    be.alwyapps.watch.MainActivity
-                        .openRoom(this@PlayerActivity, joined.state.code),
-                )
-                finish()
+                if (TogetherSession.seat != null && TogetherSession.seat?.code != joined.state.code) TogetherSession.leave()
+                TogetherSession.begin(core, joined, startAt = dialogPosition)
+            } catch (e: CoreException) {
+                ui.roomDialog = false
+                ui.togetherNote = friendly(e)
+            }
+        }
+    }
+
+    /** The dialog's "Start": everyone loads this title here, then it plays for all at once. */
+    private fun startFromDialog() {
+        val seat = TogetherSession.seat ?: return
+        val pos = player?.currentPosition?.coerceAtLeast(0) ?: dialogPosition
+        lifecycleScope.launch {
+            try {
+                val s = core.togetherStart(seat.code, seat.memberId, pos.toULong())
+                TogetherSession.accept(s)
+                TogetherSession.handledRound = maxOf(TogetherSession.handledRound, s.round)
+                together = true
+                roomRound = s.round
+                ui.roomDialog = false
+                ui.canWatchTogether = false
+                followRoom()
+                syncToRoom(s)
             } catch (e: CoreException) {
                 ui.togetherNote = friendly(e)
             }
         }
+    }
+
+    /** The dialog's "Cancel": the room closes, playback goes on alone. */
+    private fun cancelRoomDialog() {
+        ui.roomDialog = false
+        TogetherSession.leave()
+        player?.play()
     }
 
     private fun showRoom(s: be.alwyapps.watch.core.keep.TogetherState) {
@@ -951,11 +1009,16 @@ class PlayerActivity : ComponentActivity() {
     private fun followRoom() {
         val code = room ?: return
         roomJob?.cancel()
-        TogetherSession.attach(core)
+        if (!roomAttached) {
+            roomAttached = true
+            TogetherSession.attach(core)
+        }
         roomState?.let {
             showRoom(it)
             lastSeen = it
             roomMedia = it.media
+            roomRound = it.round
+            TogetherSession.handledRound = maxOf(TogetherSession.handledRound, it.round)
         }
         ui.togetherCode = code
         roomJob =
@@ -980,13 +1043,30 @@ class PlayerActivity : ComponentActivity() {
         val before = lastSeen
         lastSeen = s
         showRoom(s)
+        // The host went back to the waiting room (to pick something else): so do we.
+        if (!s.started) {
+            if (!TogetherSession.isHost()) {
+                val host = s.members.firstOrNull { it.id == s.host }?.name ?: "The host"
+                TogetherSession.problem = null
+                exitRoomPlayer()
+                android.widget.Toast
+                    .makeText(this, "$host went back to the waiting room", android.widget.Toast.LENGTH_SHORT)
+                    .show()
+                finish()
+            }
+            return
+        }
+        val newRound = roomRound != 0uL && s.round != roomRound
+        roomRound = s.round
+        TogetherSession.handledRound = maxOf(TogetherSession.handledRound, s.round)
         if (s.by == member || roomSending > 0) {
             roomMedia = s.media
+            if (s.loading.isNotEmpty()) syncToRoom(s)
             return
         }
         val known = roomMedia
         roomMedia = s.media
-        if (known != null && known != s.media) {
+        if (newRound || (known != null && known != s.media)) {
             followTitle(s)
             return
         }
@@ -1034,11 +1114,21 @@ class PlayerActivity : ComponentActivity() {
     private fun syncToRoom(s: be.alwyapps.watch.core.keep.TogetherState) {
         val p = player ?: return
         val now = android.os.SystemClock.elapsedRealtime()
+        val serverNow = core.togetherNowMs()
+        if (roomSending > 0) return
+        if (s.loading.isNotEmpty() ||
+            be.alwyapps.watch.core
+                .togetherStartsIn(s, serverNow) != null
+        ) {
+            waitForStart(p, s, serverNow)
+            return
+        }
+        ui.togetherWaiting = null
         val expected =
             be.alwyapps.watch.core
-                .togetherPosition(s, roomReceivedAt, now)
+                .togetherPositionAt(s, serverNow)
                 .toLong()
-        if (roomSending > 0 || now < ownHoldUntil) return
+        if (now < ownHoldUntil) return
         applyingRoom = true
         try {
             if (p.playWhenReady != s.playing) p.playWhenReady = s.playing
@@ -1078,6 +1168,103 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * A start: every seat loads the title paused at the room's position and says when it has
+     * enough ([be.alwyapps.watch.core.togetherReadyBufferMs]); once all have, the room plays from
+     * a moment ahead and a timer presses play right then, here as everywhere else.
+     */
+    private fun waitForStart(
+        p: Player,
+        s: be.alwyapps.watch.core.keep.TogetherState,
+        serverNow: Long,
+    ) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val me = member ?: return
+        val at = s.positionMs.toLong()
+        applyingRoom = true
+        try {
+            if (p.playWhenReady) p.playWhenReady = false
+            if (roomRate != 1.0) {
+                roomRate = 1.0
+                p.setPlaybackSpeed(1f)
+            }
+            if (now >= seekHoldUntil && p.playbackState == Player.STATE_READY && abs(p.currentPosition - at) > 150) {
+                p.seekTo(at)
+                seekHoldUntil = now + 500
+            }
+        } finally {
+            applyingRoom = false
+        }
+        val startsIn =
+            be.alwyapps.watch.core
+                .togetherStartsIn(s, serverNow)
+        if (startsIn != null) {
+            ui.togetherWaiting = "Starting…"
+            if (scheduledStart != s.atMs) {
+                scheduledStart = s.atMs
+                startJob?.cancel()
+                startJob =
+                    lifecycleScope.launch {
+                        delay(startsIn)
+                        val st = roomState ?: return@launch
+                        if (st.atMs != s.atMs || !st.playing) return@launch
+                        applyingRoom = true
+                        player?.play()
+                        applyingRoom = false
+                        ui.togetherWaiting = null
+                    }
+            }
+            return
+        }
+        val mine =
+            be.alwyapps.watch.core
+                .togetherIsLoading(s, me)
+        if (mine && readySent != s.round) {
+            val ready = p.playbackState == Player.STATE_READY && abs(p.currentPosition - at) <= 500
+            if (!ready) {
+                readySince = 0L
+            } else if (readySince == 0L) {
+                readySince = now
+            }
+            val ahead = p.bufferedPosition - p.currentPosition
+            val dur = p.duration
+            val enough =
+                ready &&
+                    (
+                        ahead >=
+                            be.alwyapps.watch.core
+                                .togetherReadyBufferMs()
+                                .toLong() ||
+                            (dur > 0 && p.bufferedPosition >= dur - 1_000) ||
+                            now - readySince > 8_000
+                    )
+            if (enough) {
+                val round = s.round
+                readySent = round
+                val code = room ?: return
+                lifecycleScope.launch {
+                    try {
+                        TogetherSession.accept(core.togetherReady(code, me, round))
+                    } catch (e: CoreException) {
+                        android.util.Log.w(TAG, "together ready: ${e.javaClass.simpleName}")
+                        if (readySent == round) readySent = 0uL
+                    }
+                }
+            }
+        }
+        val others =
+            s.loading
+                .filter { it != me }
+                .mapNotNull { id -> s.members.firstOrNull { it.id == id }?.name }
+                .distinct()
+        ui.togetherWaiting =
+            when {
+                mine && readySent != s.round -> "Loading for everyone…"
+                others.isEmpty() -> "Starting…"
+                else -> "Waiting for ${others.joinToString(", ")}…"
+            }
+    }
+
     /** The room moved to another title: find it on our servers and play it. */
     private fun followTitle(s: be.alwyapps.watch.core.keep.TogetherState) {
         val m = s.media
@@ -1104,7 +1291,7 @@ class PlayerActivity : ComponentActivity() {
             announceTitle = false
             val start =
                 be.alwyapps.watch.core
-                    .togetherPosition(s, roomReceivedAt, android.os.SystemClock.elapsedRealtime())
+                    .togetherPositionAt(s, core.togetherNowMs())
                     .toLong()
             load(found.itemId, start)
         }
@@ -1156,13 +1343,51 @@ class PlayerActivity : ComponentActivity() {
         together = false
         roomJob?.cancel()
         roomJob = null
-        TogetherSession.detach()
+        startJob?.cancel()
+        ui.togetherWaiting = null
+        if (roomAttached) {
+            roomAttached = false
+            TogetherSession.detach()
+        }
         roomMedia = null
         lastSeen = null
         ui.togetherCode = null
         ui.togetherMembers = emptyList()
         ui.togetherNote = note
         if (tellServer) TogetherSession.leave()
+    }
+
+    /**
+     * The player closes while in a room: we stay in it (the app shows the Room screen). The
+     * host closing it takes everyone back to the waiting room, to pick something else.
+     */
+    private fun exitRoomPlayer() {
+        if (!together) return
+        val seat = TogetherSession.seat
+        val s = TogetherSession.state
+        val hosting = TogetherSession.isHost()
+        val pos = player?.currentPosition?.coerceAtLeast(0) ?: 0L
+        together = false
+        roomJob?.cancel()
+        roomJob = null
+        startJob?.cancel()
+        ui.togetherWaiting = null
+        if (roomAttached) {
+            roomAttached = false
+            TogetherSession.detach()
+        }
+        if (seat == null || s == null) return
+        TogetherSession.handledRound = maxOf(TogetherSession.handledRound, s.round)
+        if (hosting && s.started) {
+            TogetherSession.startAt = pos
+            val c = core
+            services.scope.launch {
+                runCatching { c.togetherLobby(seat.code, seat.memberId, pos.toULong()) }.onSuccess {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { TogetherSession.accept(it) }
+                }
+            }
+        }
+        TogetherInbox.openRoom = seat.code
     }
 
     // Another title started while this one plays (e.g. from the app behind a PiP window).
@@ -1355,7 +1580,12 @@ class PlayerActivity : ComponentActivity() {
                 services.syncDownloads(core)
             }
         }
-        leaveTogether("")
+        exitRoomPlayer()
+        // "Watch together" pressed, never started: that room closes.
+        if (ui.roomDialog) {
+            ui.roomDialog = false
+            TogetherSession.leave()
+        }
         progressJob?.cancel()
         segmentJob?.cancel()
         player?.release()

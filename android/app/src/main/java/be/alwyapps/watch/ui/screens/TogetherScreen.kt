@@ -2,7 +2,6 @@
 package be.alwyapps.watch.ui.screens
 
 import android.content.Context
-import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,7 +97,8 @@ import kotlinx.coroutines.launch
 
 /**
  * "Watch together" on a title: opens a private waiting room with it and shows the Room screen
- * (never the player: the host starts when everyone is there).
+ * (never the player: the host starts when everyone is there). Hosting a room already: this
+ * title becomes the room's (everyone stays in it).
  */
 suspend fun createRoom(
     core: AlwyWatch,
@@ -107,6 +107,14 @@ suspend fun createRoom(
     itemId: String,
     resumeMs: Long,
 ) {
+    val mine = TogetherSession.seat
+    if (mine != null && TogetherSession.isHost()) {
+        val s = core.togetherUpdate(mine.code, mine.memberId, false, resumeMs.coerceAtLeast(0).toULong(), account, itemId)
+        TogetherSession.accept(s)
+        TogetherSession.startAt = resumeMs
+        if (nav.current != Route.Room(mine.code)) nav.push(Route.Room(mine.code))
+        return
+    }
     val joined = core.togetherCreate(account, itemId)
     // One room at a time on a device.
     if (TogetherSession.seat?.code != joined.state.code) TogetherSession.seat?.let { leaveCurrentRoom() }
@@ -137,6 +145,7 @@ suspend fun openRoomPlayer(
 ): String? {
     val s = TogetherSession.state ?: return null
     val seat = TogetherSession.seat ?: return null
+    TogetherSession.handledRound = maxOf(TogetherSession.handledRound, s.round)
     val accounts = runCatching { core.accounts() }.getOrDefault(emptyList()).map { it.id }
     val found =
         runCatching { core.togetherFind(preferredFirst(core, accounts), s.media) }.getOrNull()
@@ -144,7 +153,7 @@ suspend fun openRoomPlayer(
     val now = TogetherSession.state ?: s
     val start =
         be.alwyapps.watch.core
-            .togetherPosition(now, TogetherSession.receivedAt, SystemClock.elapsedRealtime())
+            .togetherPositionAt(now, core.togetherNowMs())
             .toLong()
     ctx.startActivity(PlayerActivity.intent(ctx, found.accountId, found.itemId, start, seat.code, seat.memberId))
     return null
@@ -557,15 +566,10 @@ fun RoomScreen(code: String) {
             if (why != null) problem = why else nav.pop()
         }
     }
-    // Started: the player, in sync (once per visit; back from it, we have left the room).
-    var opened by remember(code) { mutableStateOf(false) }
+    // Each start opens the player by itself, wherever the app is (MainActivity).
     val started = state?.started == true
-    LaunchedEffect(started) {
-        if (started && !opened) {
-            opened = true
-            openRoomPlayer(ctx, core)?.let { problem = it }
-        }
-    }
+    // Back in the waiting room after watching something together.
+    val again = (state?.round ?: 0uL) > 0uL
     var inviting by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -645,10 +649,13 @@ fun RoomScreen(code: String) {
                     )
                     if (!started) {
                         Text(
-                            if (isHost) {
-                                "Invite people, then start when everyone is here. Play, pause and seeking follow everyone."
-                            } else {
-                                "Waiting for $hostName to start"
+                            when {
+                                isHost && again ->
+                                    "Start this again, or pick another title: open a movie or an episode and " +
+                                        "choose Watch in your room. Everyone stays here."
+                                isHost -> "Invite people, then start when everyone is here. Play, pause and seeking follow everyone."
+                                again -> "$hostName is picking what to watch next"
+                                else -> "Waiting for $hostName to start"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (isHost) Muted else OnSurface,
@@ -719,7 +726,7 @@ fun RoomScreen(code: String) {
                         icon = Icons.Close,
                     )
                 }
-                problem?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodyMedium) }
+                (problem ?: TogetherSession.problem.takeIf { started })?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodyMedium) }
             }
         }
         item(key = "members") {
@@ -777,7 +784,7 @@ fun RoomScreen(code: String) {
  * name. Several at once, then one "Send" (TV: OK ticks a row).
  */
 @Composable
-private fun InvitePeopleDialog(
+internal fun InvitePeopleDialog(
     state: TogetherState,
     memberId: String,
     onClose: () -> Unit,
@@ -943,4 +950,89 @@ private fun Tick(on: Boolean) {
             )
         }
     }
+}
+
+/**
+ * "Watch together" from the player: the room for what's playing, over the paused video. The
+ * host invites people and starts from where they are, without leaving the player.
+ */
+@Composable
+fun PlayerRoomDialog(
+    positionMs: Long,
+    onStart: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val d = LocalDimens.current
+    val state = TogetherSession.state
+    val seat = TogetherSession.seat
+    var inviting by remember { mutableStateOf(false) }
+    if (inviting && state != null && seat != null) {
+        InvitePeopleDialog(state, seat.memberId) { inviting = false }
+        return
+    }
+    val myKey = state?.members?.firstOrNull { it.id == seat?.memberId }?.userKey
+    val alone = state == null || (state.members.all { it.userKey == myKey } && state.invited.isEmpty())
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCancel,
+        containerColor = Background,
+        title = { Text("Watch together") },
+        text = {
+            CompositionLocalProvider(LocalInitialFocusDone provides null) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        state?.media?.label() ?: "Opening a room…",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "Paused for now. Invite people, then start: everyone starts at ${formatTime(positionMs)} at the same moment.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (state != null) {
+                        androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = if (d.isTv) 300.dp else 360.dp)) {
+                            state.members.people().forEach { (m, _) ->
+                                item(key = "m" + m.id) {
+                                    ListRow(
+                                        m.name + if (m.userKey == myKey) " (you)" else "",
+                                        subtitle = "In the room",
+                                        leading = { Avatar(m.avatar, m.name, m.userKey, 40.dp) },
+                                    )
+                                }
+                            }
+                            state.invited.forEach { p ->
+                                item(key = "i" + p.userKey) {
+                                    ListRow(
+                                        p.name,
+                                        subtitle = "Invited",
+                                        leading = { Avatar(p.avatar, p.name, p.userKey, 40.dp) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        ActionButton(
+                            "Invite people",
+                            { inviting = true },
+                            if (alone) Modifier.initialFocus() else Modifier,
+                            primary = alone,
+                            icon = Icons.Add,
+                        )
+                        ActionButton(
+                            "Start at ${formatTime(positionMs)}",
+                            onStart,
+                            if (alone) Modifier else Modifier.initialFocus(),
+                            primary = !alone,
+                            icon = Icons.Play,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { ActionButton("Cancel", onCancel, icon = Icons.Close) },
+    )
 }

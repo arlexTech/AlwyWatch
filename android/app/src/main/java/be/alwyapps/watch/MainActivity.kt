@@ -229,8 +229,24 @@ private fun Root(core: AlwyWatch) {
                 androidx.compose.runtime.LaunchedEffect(openRoom) {
                     if (openRoom != null) {
                         be.alwyapps.watch.together.TogetherInbox.openRoom = null
-                        nav.push(Route.Room(openRoom))
+                        if (nav.current != Route.Room(openRoom)) nav.push(Route.Room(openRoom))
                     }
+                }
+                // Watch together: every start of the room this device sits in opens the player,
+                // wherever the app is (the host may have picked the title from any screen).
+                val roomState = be.alwyapps.watch.together.TogetherSession.state
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                androidx.compose.runtime.LaunchedEffect(roomState?.code, roomState?.round, roomState?.started) {
+                    val s = roomState ?: return@LaunchedEffect
+                    val session = be.alwyapps.watch.together.TogetherSession
+                    if (!s.started || s.round <= session.handledRound) return@LaunchedEffect
+                    if (be.alwyapps.watch.together.TogetherInbox.playerVisible) return@LaunchedEffect
+                    be.alwyapps.watch.ui.screens
+                        .openRoomPlayer(ctx, core)
+                        ?.let { problem ->
+                            if (nav.current != Route.Room(s.code)) nav.push(Route.Room(s.code))
+                            session.problem = problem
+                        }
                 }
                 AppScaffold {
                     // One initial focus per screen visit (see initialFocus).
