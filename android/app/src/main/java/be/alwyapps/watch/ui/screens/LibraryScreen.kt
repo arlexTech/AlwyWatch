@@ -133,6 +133,7 @@ private enum class LibTab(
 fun LibraryScreen(
     id: String,
     title: String,
+    recent: Boolean = false,
 ) {
     val core = LocalCore.current
     val account = LocalAccount.current
@@ -148,7 +149,11 @@ fun LibraryScreen(
                 .forget("lib.$id")
         }
         mutableStateOf(
-            if (back) runCatching { LibTab.valueOf(core.getSetting(tabKey) ?: "") }.getOrDefault(LibTab.RECOMMENDED) else LibTab.RECOMMENDED,
+            when {
+                back -> runCatching { LibTab.valueOf(core.getSetting(tabKey) ?: "") }.getOrDefault(LibTab.RECOMMENDED)
+                recent -> LibTab.BROWSE
+                else -> LibTab.RECOMMENDED
+            },
         )
     }
     Column(Modifier.fillMaxSize()) {
@@ -170,7 +175,7 @@ fun LibraryScreen(
         }
         when (tab) {
             LibTab.RECOMMENDED -> Recommended(id, title)
-            LibTab.BROWSE -> LibraryGrid(id, title, null, null, header = false)
+            LibTab.BROWSE -> LibraryGrid(id, title, null, null, header = false, initialSort = if (recent) SortBy.DATE_ADDED else SortBy.TITLE)
             LibTab.COLLECTIONS -> Collections(id)
             LibTab.CATEGORIES -> Categories(id, title)
         }
@@ -218,7 +223,17 @@ private fun Recommended(
             item {
                 Column {
                     be.alwyapps.watch.ui
-                        .Rail("Continue watching", h.continueWatching.filter(keep), open, focusKey = "lib.$id", continueWatching = true)
+                        .Rail(
+                            "Continue watching",
+                            h.continueWatching.filter(keep),
+                            open,
+                            focusKey = "lib.$id",
+                            continueWatching = true,
+                            onSeeAll = {
+                                ContinueWatchingList.items = h.continueWatching.filter(keep).map { account to it }
+                                nav.push(Route.ContinueWatching)
+                            },
+                        )
                     h.latest.firstOrNull { it.library.id == id }?.let { rail ->
                         // A show card says what is new and opens it (its new episode, or the
                         // show on the season concerned), like on the home.
@@ -238,6 +253,8 @@ private fun Recommended(
                                 openNoted,
                                 focusKey = "lib.$id",
                                 labels = remember(notes) { notes.mapValues { it.value.label } },
+                                // Browse, newest first.
+                                onSeeAll = { nav.push(Route.Library(id, title, account, recent = true)) },
                             )
                     }
                 }
@@ -345,13 +362,14 @@ fun LibraryGrid(
     genreId: String?,
     collectionId: String?,
     header: Boolean = true,
+    initialSort: SortBy = SortBy.TITLE,
 ) {
     val core = LocalCore.current
     val account = LocalAccount.current
     val nav = LocalNavigator.current
     val d = LocalDimens.current
     // A collection keeps its own order (saga order); libraries and genres sort.
-    var sort by remember { mutableStateOf(SortBy.TITLE) }
+    var sort by remember { mutableStateOf(initialSort) }
     val sortable = collectionId == null
     val pager =
         remember(id, sort, genreId, collectionId) {

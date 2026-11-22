@@ -208,7 +208,20 @@ private fun Rails(
         }
     // Like Plex: in progress and next episodes together, most recently watched first, as
     // posters with progress (an episode shows its show's poster), on TV too.
-    Rail("Continue watching", h.continueWatching, open, onFocus, focusKey = "home", defaultFocus = first == "resume", continueWatching = true)
+    val account = LocalAccount.current
+    Rail(
+        "Continue watching",
+        h.continueWatching,
+        open,
+        onFocus,
+        focusKey = "home",
+        defaultFocus = first == "resume",
+        continueWatching = true,
+        onSeeAll = {
+            ContinueWatchingList.items = h.continueWatching.map { (owners[it.id] ?: account) to it }
+            nav.push(Route.ContinueWatching)
+        },
+    )
     // After what the user is watching, before the "new" rails.
     if (core.keepActive() && !offline) {
         // Invitations to watch together waiting for an answer (nothing when there are none).
@@ -221,7 +234,6 @@ private fun Rails(
             LeavingSoonRail(onLeavingFocus)
         }
     }
-    val account = LocalAccount.current
     val servers = remember(account) { runCatching { core.accounts() }.getOrDefault(emptyList()).associate { it.id to it.serverName } }
     for (rail in h.latest) {
         // A show card says what is new for it and opens that: its one new episode, or the show
@@ -252,7 +264,12 @@ private fun Rails(
                 ).mapNotNull { servers[it] }
                     .joinToString(" · ")
                     .takeIf { !d.isTv && it.isNotEmpty() },
-            onSeeAll = if (offline) null else ({ nav.push(Route.Library(rail.library.id, rail.library.title, owners[rail.library.id])) }),
+            onSeeAll =
+                if (offline) {
+                    null
+                } else {
+                    { nav.push(Route.Library(rail.library.id, rail.library.title, owners[rail.library.id], recent = true)) }
+                },
             labels = remember(notes) { notes.mapValues { it.value.label } },
         )
     }

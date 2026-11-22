@@ -319,7 +319,10 @@ private fun Root(core: AlwyWatch) {
                                 Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
                                 // Combined home: a page of another account's server runs as that account.
                                 is Route.Library ->
-                                    CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { LibraryScreen(r.id, r.title) }
+                                    CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) { LibraryScreen(r.id, r.title, r.recent) }
+                                Route.ContinueWatching ->
+                                    be.alwyapps.watch.ui.screens
+                                        .ContinueWatchingScreen()
                                 is Route.Filtered ->
                                     CompositionLocalProvider(LocalAccount provides (r.account ?: acct)) {
                                         LibraryGrid(r.libraryId, r.title, r.genreId, r.collectionId)

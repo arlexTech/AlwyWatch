@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -712,6 +713,33 @@ fun Rail(
                         )
                     }
                 }
+                // "See all" at the end of the row: reachable with → on TV, a tap on phones.
+                if (onSeeAll != null) {
+                    item(key = "see-all") {
+                        SeeAllTile(
+                            if (landscape) d.landscapeWidth else d.posterWidth,
+                            if (landscape) d.landscapeWidth * 9f / 16f else d.posterWidth * 1.5f,
+                            onSeeAll,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The last tile of a row: opens everything the row is a sample of. */
+@Composable
+fun SeeAllTile(
+    width: androidx.compose.ui.unit.Dp,
+    height: androidx.compose.ui.unit.Dp,
+    onClick: () -> Unit,
+) {
+    FocusCard(onClick = onClick, modifier = Modifier.size(width, height)) {
+        Box(Modifier.fillMaxSize().background(SurfaceHigh), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.ChevronRight, null, Modifier.size(36.dp))
+                Text("See all", style = MaterialTheme.typography.titleSmall)
             }
         }
     }

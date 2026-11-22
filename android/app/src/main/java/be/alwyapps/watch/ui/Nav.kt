@@ -54,7 +54,12 @@ sealed interface Route {
         val id: String,
         val title: String,
         val account: String? = null,
+        /** Opened from a "New in …" row's See all: Browse, newest first. */
+        val recent: Boolean = false,
     ) : Route
+
+    /** Everything in Continue watching (its row's See all). */
+    data object ContinueWatching : Route
 
     /** [season]: for a show, the season to open (from an episode's "Season N" link). */
     data class Detail(
@@ -113,6 +118,8 @@ sealed interface Route {
             Together -> "together"
             is Room -> "room\u001f$code"
             Watchlist -> "watchlist"
+            // Its list lives in memory only: restored as the home.
+            ContinueWatching -> "home"
             HistoryCopy -> "history-copy"
             is SettingsSection -> "settings-section\u001f$id"
             is Library -> "lib\u001f$id\u001f$title\u001f${account.orEmpty()}"

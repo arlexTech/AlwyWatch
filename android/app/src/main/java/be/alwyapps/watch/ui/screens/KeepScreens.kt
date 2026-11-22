@@ -295,6 +295,10 @@ fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
                         }
                     }
                 }
+                item(key = "see-all") {
+                    be.alwyapps.watch.ui
+                        .SeeAllTile(d.posterWidth, d.posterWidth * 1.5f) { nav.push(Route.LeavingSoon) }
+                }
             }
         }
     }
