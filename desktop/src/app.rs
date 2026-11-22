@@ -57,6 +57,10 @@ enum Route {
     Together,
     /// The watch together room I'm in.
     Room,
+    /// Everything in Continue watching (a row's "See all").
+    Continue,
+    /// A library's Browse tab, newest first ("New in …" → "See all"): library, title.
+    Recent(String, String),
     Profiles,
     HistoryCopy,
 }
@@ -135,6 +139,8 @@ struct State {
     player_notes: Option<std::sync::mpsc::Sender<String>>,
     /// The playing mpv, for the in-window controls.
     player_mpv: Option<Arc<crate::mpv::Mpv>>,
+    /// The home's Continue watching, for its "See all" page.
+    continue_items: Vec<Item>,
     admin_users: Vec<AdminUser>,
     armed: Option<(String, i32)>,
     poll_gen: u64,
@@ -284,6 +290,7 @@ impl App {
                 forever: None,
                 player_notes: None,
                 player_mpv: None,
+                continue_items: vec![],
                 mark_pending: None,
                 admin_users: vec![],
                 armed: None,
@@ -1896,7 +1903,27 @@ impl App {
             }
             Route::MyList => {
                 ui.set_page(Page::Mylist);
+                ui.set_list_title("My list".into());
                 self.load_watchlist();
+            }
+            Route::Continue => {
+                ui.set_page(Page::Mylist);
+                ui.set_list_title("Continue watching".into());
+                ui.set_status(SharedString::new());
+                let items = self.state.borrow().continue_items.clone();
+                let model = self.state.borrow().grid_model.clone();
+                model.set_vec(vec![]);
+                let badges = self.home_accounts().len() > 1;
+                self.fill(&model, &items, ImageKind::SeriesPrimary, POSTER_PX, 0, badges);
+            }
+            Route::Recent(library, title) => {
+                ui.set_page(Page::Library);
+                ui.set_library_id(sstr(&library));
+                ui.set_grid_title(sstr(&title));
+                ui.set_library_tab("browse".into());
+                self.state.borrow_mut().grid = None;
+                self.state.borrow().grid_model.set_vec(vec![]);
+                self.open_grid(GridKey::library(library, SortBy::DateAdded));
             }
             Route::Leaving => {
                 ui.set_page(Page::Leaving);
@@ -2125,12 +2152,20 @@ impl App {
         } else {
             home.continue_watching.clone()
         };
+        self.state.borrow_mut().continue_items = cw.clone();
         let mut rails: Vec<(String, Vec<Item>)> = vec![("Continue watching".into(), cw)];
         rails.extend(
             home.latest
                 .iter()
                 .map(|r| (format!("New in {}", r.library.title), r.items.clone())),
         );
+        // "See all" keys, by title.
+        let mut keys: HashMap<String, String> = home
+            .latest
+            .iter()
+            .map(|r| (format!("New in {}", r.library.title), format!("lib:{}", r.library.id)))
+            .collect();
+        keys.insert("Continue watching".into(), "continue".into());
         self.keep_notes(home.latest.iter().flat_map(|r| &r.notes));
         rails.retain(|(_, items)| !items.is_empty());
         let models: Vec<Rc<VecModel<Card>>> =
@@ -2151,6 +2186,7 @@ impl App {
                 title: sstr(t),
                 items: ModelRc::from(m.clone()),
                 landscape: false,
+                see_all: sstr(keys.get(t).cloned().unwrap_or_default()),
             })
             .collect();
         // Leaving soon (from the keep service cache), after what the user is watching.
@@ -2203,6 +2239,7 @@ impl App {
                         title: "Leaving soon".into(),
                         items: ModelRc::from(model),
                         landscape: false,
+                        see_all: "leaving".into(),
                     },
                 );
             }
@@ -2389,6 +2426,11 @@ impl App {
                     title: sstr(title),
                     items: ModelRc::from(m),
                     landscape,
+                    see_all: if title == "Recently added" {
+                        sstr(format!("lib:{library}"))
+                    } else {
+                        "continue".into()
+                    },
                 });
             }
             this.ui().set_lib_rails(ModelRc::new(VecModel::from(rails)));
@@ -4603,6 +4645,21 @@ impl App {
             .history_pick(side.into(), id.into()));
         on!(on_history_check, |a| a.history_check());
         on!(on_player_cmd, |a, cmd, arg| a.player_cmd(&cmd, &arg));
+        on!(on_rail_see_all, |a, key, title| {
+            match key.as_str() {
+                "continue" => a.navigate(Route::Continue),
+                "leaving" => a.navigate(Route::Leaving),
+                k => {
+                    if let Some(lib) = k.strip_prefix("lib:") {
+                        let name = title
+                            .strip_prefix("New in ")
+                            .unwrap_or(&title)
+                            .to_owned();
+                        a.navigate(Route::Recent(lib.to_owned(), name));
+                    }
+                }
+            }
+        });
         on!(on_history_copy, |a| a.history_copy());
         on!(on_history_toggle_missing, |a| a.history_toggle_missing());
         on!(on_jellyfin_url, |a, url| a.jellyfin_url(url.into()));

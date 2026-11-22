@@ -24,6 +24,8 @@ export struct Rail {
     title: string,
     items: [Card],
     landscape: bool,
+    /// What "See all" opens: "continue", "leaving", "lib:<library id>"; empty: no link.
+    see-all: string,
 }
 
 export struct ServerChoice {
@@ -904,9 +906,35 @@ component RailView {
     property <length> h: root.rail.landscape ? 181px : 304px;
     callback open(string);
     callback hovered(string);
+    callback see-all(string);
     VerticalLayout {
         spacing: 10px;
-        Text { text: root.rail.title; color: Palette.text; font-size: 20px; font-weight: 700; }
+        HorizontalLayout {
+            spacing: 14px;
+            Text { text: root.rail.title; color: Palette.text; font-size: 20px; font-weight: 700; vertical-alignment: center; }
+            if root.rail.see-all != "" : Rectangle {
+                width: sa-row.preferred-width;
+                height: 30px;
+                border-radius: 15px;
+                background: sa-ta.has-hover || sa-fs.has-focus ? Palette.surface-high : transparent;
+                sa-row := HorizontalLayout {
+                    alignment: start;
+                    padding-left: 10px;
+                    padding-right: 4px;
+                    spacing: 2px;
+                    Text { text: "See all"; color: sa-ta.has-hover || sa-fs.has-focus ? Palette.text : Palette.muted; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+                    Image { source: @image-url("icons/chevron_right.svg"); width: 18px; height: 18px; y: 6px; colorize: sa-ta.has-hover || sa-fs.has-focus ? Palette.text : Palette.muted; }
+                }
+                sa-fs := FocusScope {
+                    key-pressed(e) => {
+                        if (e.text == Key.Return || e.text == " ") { root.see-all(root.rail.see-all); return accept; }
+                        return reject;
+                    }
+                }
+                sa-ta := TouchArea { mouse-cursor: pointer; clicked => { root.see-all(root.rail.see-all); } }
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
         Rectangle {
             height: root.h + 8px;
             // No scrollbar (it covered the second line under the cards): the wheel or trackpad
@@ -1429,6 +1457,10 @@ export component AppWindow inherits Window {
     in property <string> player-subtitle-label;
     in property <bool> player-fullscreen;
     callback player-cmd(string, string);
+    // A row's "See all" (key from Rail.see-all, the row's title).
+    callback rail-see-all(string, string);
+    // The poster grid page's title when it isn't My list ("Continue watching").
+    in property <string> list-title: "My list";
 
     // Arrow keys and Escape not consumed by a focused element end up here.
     FocusScope {
@@ -1471,7 +1503,7 @@ export component AppWindow inherits Window {
                     Rectangle { height: 22px; }
                     NavItem { label: "Home"; icon: @image-url("icons/home.svg"); selected: root.page == Page.home; clicked => { root.go(Page.home); } }
                     NavItem { label: "Search"; icon: @image-url("icons/search.svg"); selected: root.page == Page.search; clicked => { root.go(Page.search); } }
-                    NavItem { label: "My list"; icon: @image-url("icons/bookmark.svg"); selected: root.page == Page.mylist; clicked => { root.go(Page.mylist); } }
+                    NavItem { label: "My list"; icon: @image-url("icons/bookmark.svg"); selected: root.page == Page.mylist && root.list-title == "My list"; clicked => { root.go(Page.mylist); } }
                     for lib in root.libraries : NavItem {
                         label: lib.title;
                         icon: @image-url("icons/movie.svg");
@@ -1527,6 +1559,7 @@ export component AppWindow inherits Window {
                                     rail: rail;
                                     open(id) => { root.open-item(id); }
                                     hovered(id) => { root.prefetch(id); }
+                                    see-all(key) => { root.rail-see-all(key, rail.title); }
                                 }
                                 if root.rails.length == 0 : Text { text: root.status; color: Palette.muted; }
                             }
@@ -1576,6 +1609,7 @@ export component AppWindow inherits Window {
                                     rail: rail;
                                     open(id) => { root.open-item(id); }
                                     hovered(id) => { root.prefetch(id); }
+                                    see-all(key) => { root.rail-see-all(key, root.grid-title); }
                                 }
                                 if root.lib-rails.length == 0 : Text { text: "Nothing in progress or recently added."; color: Palette.muted; }
                             }
@@ -1595,7 +1629,7 @@ export component AppWindow inherits Window {
                             text: root.status;
                             color: Palette.muted;
                         }
-                        if root.page == Page.mylist : PageTitle { title: "My list"; }
+                        if root.page == Page.mylist : PageTitle { title: root.list-title; }
                         if root.page == Page.mylist && root.grid.length == 0 : Text { text: root.status; color: Palette.muted; wrap: word-wrap; }
                         if root.page == Page.search : VerticalLayout {
                             spacing: 14px;
