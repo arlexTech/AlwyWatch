@@ -1,11 +1,12 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Installs the desktop app for the current user only (no root): ~/.local/bin + app menu entry.
-# Needs libmpv from the system. Run from the repository root after `cargo build --release`.
+# Needs libmpv from the system. Builds the release first (an older build was installed silently
+# when this step was left to the caller).
 set -eu
 here=$(dirname "$0")
+cargo build --release -p alwywatch-desktop --manifest-path "$here/../../Cargo.toml"
 bin="$here/../../target/release/alwywatch"
-[ -x "$bin" ] || { echo "Build first: cargo build --release -p alwywatch-desktop" >&2; exit 1; }
 data=${XDG_DATA_HOME:-$HOME/.local/share}
 install -Dm755 "$bin" "$HOME/.local/bin/alwywatch"
 install -Dm644 "$here/alwywatch.svg" "$data/icons/hicolor/scalable/apps/alwywatch.svg"
