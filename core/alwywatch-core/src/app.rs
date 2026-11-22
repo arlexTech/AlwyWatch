@@ -95,6 +95,11 @@ pub struct SignedIn {
 pub struct LibraryRail {
     pub library: MediaLibrary,
     pub items: Vec<Item>,
+    /// Shows libraries: what is new for each show card ("S1 · E6 · Edenia", "New show"…) and
+    /// what opening it shows (see [`media_api::recently_added`]). Cards without one (movies)
+    /// show their usual text and open themselves.
+    #[serde(default)]
+    pub notes: Vec<RailNote>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -490,7 +495,13 @@ impl Core {
         {
             let srv = srv.clone();
             set.spawn(async move {
-                let items = srv.latest(&lib.id, 20).await;
+                // Shows come episode by episode: more entries for ~20 shows once grouped.
+                let fetch = if lib.kind == LibraryKind::Shows {
+                    LATEST_SHOWS_FETCH
+                } else {
+                    LATEST_CARDS
+                };
+                let items = srv.latest(&lib.id, fetch).await;
                 (i, lib, items)
             });
         }
@@ -501,11 +512,13 @@ impl Core {
             })?;
             // A failing library rail should not hide the rest of the home screen.
             if let Ok(items) = items {
+                let r = media_api::recently_added(items, LATEST_CARDS as usize);
                 latest.push((
                     i,
                     LibraryRail {
                         library,
-                        items: shows_not_episodes(items),
+                        items: r.items,
+                        notes: r.notes,
                     },
                 ));
             }
@@ -2861,57 +2874,19 @@ impl AlwyWatch {
     }
 }
 
-/// "Recently added" of a shows library: the shows, once each, not their new episodes or seasons
-/// (Jellyfin groups them as a season, Plex lists every episode).
+/// Cards in a home "recently added" row.
+const LATEST_CARDS: u32 = 20;
+/// Entries asked of a shows library: they come episode by episode (a season of 20 episodes is
+/// 20 entries), grouped per show into at most [`LATEST_CARDS`] cards.
+const LATEST_SHOWS_FETCH: u32 = 100;
+
+/// Search results: matching episodes or seasons count as their show, once each.
 fn shows_not_episodes(items: Vec<Item>) -> Vec<Item> {
     let mut seen = std::collections::HashSet::new();
     items
         .into_iter()
-        .filter_map(|i| {
-            let item = match (i.kind, i.series_id.clone()) {
-                (ItemKind::Episode | ItemKind::Season, Some(series_id)) => {
-                    // The show's poster becomes the primary image (an episode's is a still).
-                    let poster = i
-                        .images
-                        .iter()
-                        .find(|im| im.kind == ImageKind::SeriesPrimary)
-                        .or_else(|| i.images.iter().find(|im| im.kind == ImageKind::Primary))
-                        .cloned()
-                        .map(|im| ImageRef {
-                            kind: ImageKind::Primary,
-                            ..im
-                        });
-                    let images = poster
-                        .into_iter()
-                        .chain(
-                            i.images
-                                .iter()
-                                .filter(|im| im.kind == ImageKind::Backdrop)
-                                .cloned(),
-                        )
-                        .collect();
-                    Item {
-                        id: series_id.clone(),
-                        kind: ItemKind::Series,
-                        title: i.series_title.clone().unwrap_or(i.title),
-                        series_id: None,
-                        series_title: None,
-                        season_id: None,
-                        season_number: None,
-                        episode_number: None,
-                        child_count: None,
-                        // The episode's ids are not the show's: matching falls back to the title.
-                        provider_ids: ProviderIds::default(),
-                        overview: None,
-                        runtime_ms: None,
-                        images,
-                        ..i
-                    }
-                }
-                _ => i,
-            };
-            seen.insert(item.id.clone()).then_some(item)
-        })
+        .map(|i| media_api::show_card(&i))
+        .filter(|i| seen.insert(i.id.clone()))
         .collect()
 }
 

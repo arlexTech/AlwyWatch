@@ -401,6 +401,8 @@ fun PosterCard(
     showTitle: Boolean = !LocalDimens.current.isTv,
     badge: (@Composable BoxScope.() -> Unit)? = null,
     inContinueWatching: Boolean = false,
+    // "Recently added": what is new for this show ("S1 · E6 · Edenia"), as the second line.
+    label: String? = null,
 ) {
     var menu by remember { mutableStateOf(false) }
     if (menu) ItemMenu(item, inContinueWatching) { menu = false }
@@ -430,10 +432,11 @@ fun PosterCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (item.kind == ItemKind.EPISODE && item.seasonNumber != null && item.episodeNumber != null) {
-                    "S${item.seasonNumber} · E${item.episodeNumber}"
-                } else {
-                    item.subtitle()
+                when {
+                    label != null -> label
+                    item.kind == ItemKind.EPISODE && item.seasonNumber != null && item.episodeNumber != null ->
+                        "S${item.seasonNumber} · E${item.episodeNumber}"
+                    else -> item.subtitle()
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = Muted,
@@ -605,6 +608,8 @@ fun Rail(
     onSeeAll: (() -> Unit)? = null,
     // The Continue watching row (its items' menu can remove them from it).
     continueWatching: Boolean = false,
+    // "Recently added": what is new, by card id (shown under the poster on phones).
+    labels: Map<String, String> = emptyMap(),
 ) {
     if (items.isEmpty()) return
     val d = LocalDimens.current
@@ -677,6 +682,7 @@ fun Rail(
                             onFocus = focus,
                             cardModifier = cardMod,
                             inContinueWatching = continueWatching,
+                            label = labels[item.id],
                         )
                     }
                 }

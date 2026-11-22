@@ -138,6 +138,10 @@ struct State {
     trailer: Option<(String, String, Trailer)>,
     /// Copy watch history: kept while away from its page.
     history: history::HistoryJob,
+    /// "Recently added" show cards: what is new and what opening them shows, by card id.
+    notes: HashMap<String, RailNote>,
+    /// The season a show's page opens on (a card's note): (show, season).
+    pending_season: Option<(String, String)>,
 }
 
 thread_local! {
@@ -277,6 +281,8 @@ impl App {
                 transfer_gen: 0,
                 trailer: None,
                 history: Default::default(),
+                notes: HashMap::new(),
+                pending_season: None,
             }),
             images: RefCell::new(HashMap::new()),
             faces: RefCell::new(HashMap::new()),
@@ -1731,6 +1737,40 @@ impl App {
         }
     }
 
+    fn own_ids<'a>(&self, ids: impl Iterator<Item = &'a String>, account: &str) {
+        let mut st = self.state.borrow_mut();
+        for id in ids {
+            st.owners.insert(id.clone(), account.to_owned());
+        }
+    }
+
+    /// Remembers "recently added" notes (what is new for a show card, what it opens).
+    fn keep_notes<'a>(&self, notes: impl IntoIterator<Item = &'a RailNote>) {
+        let mut st = self.state.borrow_mut();
+        for n in notes {
+            st.notes.insert(n.item_id.clone(), n.clone());
+        }
+    }
+
+    /// Cards with a note say what is new ("S1 · E6 · Edenia") instead of year and seasons.
+    fn label_noted(&self, model: &Rc<VecModel<Card>>) {
+        for row in 0..model.row_count() {
+            let Some(mut c) = model.row_data(row) else {
+                continue;
+            };
+            let label = self
+                .state
+                .borrow()
+                .notes
+                .get(c.id.as_str())
+                .map(|n| n.label.clone());
+            if let Some(label) = label {
+                c.subtitle = sstr(&label);
+                model.set_row_data(row, c);
+            }
+        }
+    }
+
     fn set_error(&self, e: Option<CoreError>) {
         self.ui()
             .set_error(sstr(e.map(|e| e.to_string()).unwrap_or_default()));
@@ -2042,6 +2082,7 @@ impl App {
                 .iter()
                 .map(|r| (format!("New in {}", r.library.title), r.items.clone())),
         );
+        self.keep_notes(home.latest.iter().flat_map(|r| &r.notes));
         rails.retain(|(_, items)| !items.is_empty());
         let models: Vec<Rc<VecModel<Card>>> =
             rails.iter().map(|_| Rc::new(VecModel::default())).collect();
@@ -2051,6 +2092,7 @@ impl App {
                 self.fill(m, items, ImageKind::SeriesPrimary, POSTER_PX, 0, badges);
             } else {
                 self.fill(m, items, ImageKind::Primary, POSTER_PX, 0, badges);
+                self.label_noted(m);
             }
         }
         let mut rail_vec: Vec<Rail> = rails
@@ -2277,12 +2319,16 @@ impl App {
                 .filter(|i| keep(i))
                 .cloned()
                 .collect();
-            let added = home
-                .latest
-                .iter()
-                .find(|r| &r.library.id == library)
-                .map(|r| r.items.clone())
-                .unwrap_or_default();
+            let rail = home.latest.iter().find(|r| &r.library.id == library);
+            let added = rail.map(|r| r.items.clone()).unwrap_or_default();
+            if let Some(r) = rail {
+                this.keep_notes(&r.notes);
+                // What a note opens is on this account too.
+                for n in &r.notes {
+                    let ids = std::iter::once(&n.open_id).chain(&n.open_season_id);
+                    this.own_ids(ids, account);
+                }
+            }
             this.own(&cw, account);
             this.own(&added, account);
             let mut rails = vec![];
@@ -2296,6 +2342,9 @@ impl App {
                 let m = Rc::new(VecModel::default());
                 // Posters, an episode showing its show's.
                 this.fill(&m, &items, ImageKind::SeriesPrimary, POSTER_PX, 0, false);
+                if title == "Recently added" {
+                    this.label_noted(&m);
+                }
                 rails.push(Rail {
                     title: sstr(title),
                     items: ModelRc::from(m),
@@ -2581,6 +2630,14 @@ impl App {
             return;
         }
         let mut h = Self::detail_of(i);
+        // A "recently added" show says what is new for it first.
+        if let Some(n) = self.state.borrow().notes.get(&i.id) {
+            let mut meta = vec![n.label.clone()];
+            meta.extend(i.official_rating.clone());
+            meta.extend(i.community_rating.map(|r| format!("★ {r:.1}")));
+            meta.extend(i.genres.first().cloned());
+            h.meta = sstr(meta.join("  ·  "));
+        }
         // Keep the previous artwork until the new one is decoded (no flash to black).
         let prev = ui.get_hero();
         h.backdrop = prev.backdrop;
@@ -2711,13 +2768,24 @@ impl App {
     }
 
     fn render_seasons(self: &Rc<Self>, seasons: &[Item]) {
-        let selected = self.state.borrow().season.clone().or_else(|| {
-            seasons
-                .iter()
-                .find(|s| !s.user.played)
-                .or(seasons.first())
-                .map(|s| s.id.clone())
-        });
+        // Opened from a "recently added" card: on the season concerned.
+        let pending = {
+            let mut st = self.state.borrow_mut();
+            let series = st.series.clone();
+            st.pending_season
+                .take_if(|(show, _)| Some(&*show) == series.as_ref())
+                .map(|(_, season)| season)
+                .filter(|p| seasons.iter().any(|s| &s.id == p))
+        };
+        let selected = pending
+            .or_else(|| self.state.borrow().season.clone())
+            .or_else(|| {
+                seasons
+                    .iter()
+                    .find(|s| !s.user.played)
+                    .or(seasons.first())
+                    .map(|s| s.id.clone())
+            });
         self.ui().set_seasons(ModelRc::new(VecModel::from(
             seasons
                 .iter()
@@ -4169,6 +4237,7 @@ impl App {
                 latest: vec![LibraryRail {
                     library,
                     items: movies,
+                    notes: vec![],
                 }],
                 fetched_at: 0,
             }
@@ -4308,8 +4377,19 @@ impl App {
                 .get(id.as_str())
                 .filter(|i| i.kind == ItemKind::Collection)
                 .map(|i| i.title.clone());
+            // A "recently added" show card: its new episode, or the show on the season concerned.
+            // Only from the rows that carry notes (the same show elsewhere opens itself).
+            let note = matches!(a.ui().get_page(), Page::Home | Page::Library)
+                .then(|| a.state.borrow().notes.get(id.as_str()).cloned())
+                .flatten();
             if id.starts_with("leaving:") {
                 a.navigate(Route::Leaving);
+            } else if let Some(n) = note {
+                a.state.borrow_mut().pending_season = n
+                    .open_season_id
+                    .filter(|_| n.open_id == n.item_id)
+                    .map(|s| (n.item_id.clone(), s));
+                a.navigate(Route::Detail(n.open_id));
             } else if let Some(title) = collection {
                 let library = a.ui().get_library_id().to_string();
                 a.navigate(Route::Filtered(library, title, None, Some(id.into())));

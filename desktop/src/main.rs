@@ -101,6 +101,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             rail.library.title,
                             titles.join(" | ")
                         );
+                        // Each show card: what is new, and what opening it shows.
+                        for i in &rail.items {
+                            if let Some(n) = rail.notes.iter().find(|n| n.item_id == i.id) {
+                                let target = if n.open_id == n.item_id {
+                                    format!(
+                                        "show page{}",
+                                        n.open_season_id
+                                            .as_ref()
+                                            .map(|_| ", on its season")
+                                            .unwrap_or_default()
+                                    )
+                                } else {
+                                    "episode page".to_owned()
+                                };
+                                eprintln!("    {} — {} → {target}", i.title, n.label);
+                            }
+                        }
                         // The library page's "Recently added" order, for comparison.
                         let mut q =
                             alwywatch_core::ItemQuery::library(rail.library.id.clone(), 0, 8);

@@ -9,14 +9,21 @@ use leptos::task::spawn_local;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_params_map, use_query_map};
 use media_api::{
-    AnyServer, ImageKind, Item, ItemKind, ItemQuery, LibraryKind, MediaServer, SortBy,
+    AnyServer, ImageKind, Item, ItemKind, ItemQuery, LibraryKind, MediaServer, RailNote, SortBy,
 };
 use seerr::{Availability, SeerrMediaType, SeerrResult};
 
 use crate::state::{self, fmt_time};
 use crate::ui::{Card, ErrorText, Grid, Loading, Rail};
 
-type Rails = Vec<(String, Vec<(String, Item)>, bool)>;
+/// Rows of the home: title, (account, item) cards, 16:9 cards, notes of "recently added" show
+/// cards (what is new, what opening them shows).
+type Rails = Vec<(String, Vec<(String, Item)>, bool, Vec<RailNote>)>;
+
+/// Cards in a "recently added" row, and entries asked of a shows library (they come episode
+/// by episode and are grouped per show, like the apps).
+const LATEST_CARDS: u32 = 20;
+const LATEST_SHOWS_FETCH: u32 = 100;
 
 /// One per title across servers (the first server's copy wins).
 fn same_as(i: &Item) -> String {
@@ -69,7 +76,15 @@ async fn load_server(c: &state::Ctx, acc: String, srv: AnyServer) -> ServerHome 
         .into_iter()
         .filter(|l| l.kind != LibraryKind::Other)
         .collect();
-    let latest = state::join_all(libs.iter().map(|l| srv.latest(&l.id, 20))).await;
+    let latest = state::join_all(libs.iter().map(|l| {
+        let fetch = if l.kind == LibraryKind::Shows {
+            LATEST_SHOWS_FETCH
+        } else {
+            LATEST_CARDS
+        };
+        srv.latest(&l.id, fetch)
+    }))
+    .await;
     let tag = |l: Vec<Item>| l.into_iter().map(|i| (acc.clone(), i)).collect::<Vec<_>>();
     let server = srv.session().server_name.clone();
     ServerHome {
@@ -79,8 +94,13 @@ async fn load_server(c: &state::Ctx, acc: String, srv: AnyServer) -> ServerHome 
             .iter()
             .zip(latest)
             .filter_map(|(lib, l)| {
-                let l = l.ok()?;
-                Some((format!("Recently added · {}", lib.title), tag(l), false))
+                let r = media_api::recently_added(l.ok()?, LATEST_CARDS as usize);
+                Some((
+                    format!("Recently added · {}", lib.title),
+                    tag(r.items),
+                    false,
+                    r.notes,
+                ))
             })
             .collect(),
         libs: libs
@@ -129,7 +149,7 @@ async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
     watching.extend(dedupe(next).into_iter().filter(|(_, i)| {
         !started.contains(&i.id) && i.series_id.as_ref().is_none_or(|s| !started.contains(s))
     }));
-    let mut rails: Rails = vec![("Continue watching".into(), watching, true)];
+    let mut rails: Rails = vec![("Continue watching".into(), watching, true, vec![])];
     rails.extend(latest);
     Some((rails, libs))
 }
@@ -173,10 +193,10 @@ pub fn Home() -> impl IntoView {
         })}
         {move || match rails.get() {
             None => view! { <Loading /> }.into_any(),
-            Some(r) if r.iter().all(|(_, items, _)| items.is_empty()) && !offline.get() => view! {
+            Some(r) if r.iter().all(|(_, items, _, _)| items.is_empty()) && !offline.get() => view! {
                 <p class="muted">"Nothing here yet. Your libraries are above."</p>
             }.into_any(),
-            Some(r) => r.into_iter().map(|(t, items, wide)| view! { <Rail title=t items=items wide=wide /> }).collect_view().into_any(),
+            Some(r) => r.into_iter().map(|(t, items, wide, notes)| view! { <Rail title=t items=items wide=wide notes=notes /> }).collect_view().into_any(),
         }}
     }
 }
@@ -395,6 +415,8 @@ fn Seasons(acc: String, series: String, show: String, tmdb: Option<i64>) -> impl
         }
     });
     let picked = RwSignal::new(None::<String>);
+    // Opened from a "recently added" card: on the season concerned (`?season=`).
+    let asked = use_query_map().with_untracked(|q| q.get("season"));
     // The season numbers shown, for "More seasons" (Seerr may follow another media server).
     let have = Signal::derive(move || {
         seasons
@@ -412,7 +434,8 @@ fn Seasons(acc: String, series: String, show: String, tmdb: Option<i64>) -> impl
         {move || seasons.get().flatten().map(|list| {
             // The first season not fully watched, else the first.
             if picked.get_untracked().is_none() {
-                let first = list.iter().find(|s| !s.user.played).or(list.first()).map(|s| s.id.clone());
+                let first = list.iter().find(|s| Some(&s.id) == asked.as_ref())
+                    .or_else(|| list.iter().find(|s| !s.user.played)).or(list.first()).map(|s| s.id.clone());
                 picked.set(first);
             }
             view! {

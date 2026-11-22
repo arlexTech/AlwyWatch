@@ -11,11 +11,13 @@ uniffi::setup_scaffolding!();
 pub mod jellyfin;
 pub mod model;
 pub mod plex;
+pub mod recent;
 
 use std::future::Future;
 
 pub use model::*;
 pub use net::{Error, Result};
+pub use recent::{RailNote, RecentlyAdded, recently_added, show_card};
 
 /// `Send` on native (the core runs requests on a multi-threaded runtime); nothing in a browser,
 /// where futures are single-threaded (fetch promises are never `Send`).

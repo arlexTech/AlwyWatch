@@ -668,3 +668,42 @@ async fn watch_history_and_setting_watch_state() {
     };
     c.set_watch_state("e1", &st).await.unwrap();
 }
+
+#[tokio::test]
+async fn latest_lists_episodes_one_by_one_and_groups_per_show() {
+    let s = MockServer::start().await;
+    let ep = |id: &str, show: &str, name: &str, s: u32, e: u32| {
+        json!({
+            "Id": id, "Name": name, "Type": "Episode", "SeriesId": format!("{show}-id"),
+            "SeriesName": show, "SeasonId": format!("{show}-s{s}"), "ParentIndexNumber": s,
+            "IndexNumber": e, "SeriesPrimaryImageTag": "stag"
+        })
+    };
+    Mock::given(path("/Items/Latest"))
+        .and(query_param("parentId", "shows"))
+        .and(query_param("groupItems", "false"))
+        .and(query_param("limit", "100"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            ep("e1", "Dreamland", "Edenia", 1, 6),
+            ep("e2", "Percy", "Two", 3, 2),
+            ep("e3", "Percy", "One", 3, 1),
+        ])))
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    let r = recently_added(c.latest("shows", 100).await.unwrap(), 20);
+    let labels: Vec<(&str, &str, &str)> = r
+        .notes
+        .iter()
+        .map(|n| (n.item_id.as_str(), n.label.as_str(), n.open_id.as_str()))
+        .collect();
+    assert_eq!(
+        labels,
+        [
+            ("Dreamland-id", "S1 · E6 · Edenia", "e1"),
+            ("Percy-id", "S3 · E1–E2", "Percy-id"),
+        ]
+    );
+    assert_eq!(r.items[0].kind, ItemKind::Series);
+    assert_eq!(r.items[0].title, "Dreamland");
+}

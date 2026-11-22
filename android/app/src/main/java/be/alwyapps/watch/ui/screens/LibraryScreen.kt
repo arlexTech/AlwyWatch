@@ -219,8 +219,25 @@ private fun Recommended(
                     be.alwyapps.watch.ui
                         .Rail("Continue watching", h.continueWatching.filter(keep), open, focusKey = "lib.$id", continueWatching = true)
                     h.latest.firstOrNull { it.library.id == id }?.let { rail ->
+                        // A show card says what is new and opens it (its new episode, or the
+                        // show on the season concerned), like on the home.
+                        val notes = remember(rail.notes) { rail.notes.associateBy { it.itemId } }
+                        val openNoted: (Item) -> Unit = { item ->
+                            val n = notes[item.id]
+                            when {
+                                n == null -> open(item)
+                                n.openId != n.itemId -> nav.push(Route.Detail(n.openId, account = account))
+                                else -> nav.push(Route.Detail(item.id, season = n.openSeasonId, account = account))
+                            }
+                        }
                         be.alwyapps.watch.ui
-                            .Rail("Recently added", rail.items, open, focusKey = "lib.$id")
+                            .Rail(
+                                "Recently added",
+                                rail.items,
+                                openNoted,
+                                focusKey = "lib.$id",
+                                labels = remember(notes) { notes.mapValues { it.value.label } },
+                            )
                     }
                 }
             }

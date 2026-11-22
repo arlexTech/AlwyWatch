@@ -38,6 +38,7 @@ pub use keep_service::{
 pub use media_api::jellyfin::QuickConnectCode;
 pub use media_api::model::*;
 pub use media_api::plex::{PlexHomeUser, PlexPin, PlexServerResource};
+pub use media_api::recent::{RailNote, recently_added};
 pub use merge::{AccountHome, MergedHome, merge_homes, same_as};
 pub use playback::{PlaybackPrompt, playback_prompt};
 pub use seerr::{

@@ -705,3 +705,62 @@ async fn watch_history_and_setting_watch_state() {
     };
     c.set_watch_state("20", &started).await.unwrap();
 }
+
+#[tokio::test]
+async fn recently_added_episodes_and_a_whole_season_per_show() {
+    let s = MockServer::start().await;
+    let ep = |key: &str, show: &str, title: &str, season: u32, e: u32| {
+        json!({"ratingKey": key, "type": "episode", "title": title,
+               "grandparentRatingKey": format!("{show}-key"), "grandparentTitle": show,
+               "parentRatingKey": format!("{show}-s{season}"), "parentIndex": season,
+               "index": e, "thumb": "/still", "grandparentThumb": format!("/{show}/poster")})
+    };
+    Mock::given(path("/library/sections/2/recentlyAdded"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"MediaContainer": {"Metadata": [
+                ep("1", "Scrubs", "c", 2, 3),
+                ep("2", "Scrubs", "a", 2, 1),
+                ep("3", "Dreamland", "Edenia", 1, 6),
+                ep("4", "Scrubs", "b", 2, 2),
+                {"ratingKey": "50", "type": "season", "title": "Season 10", "index": 10,
+                 "parentRatingKey": "naruto-key", "parentTitle": "Naruto", "leafCount": 26,
+                 "thumb": "/naruto/s10", "parentThumb": "/naruto/poster"},
+                ep("5", "Greys", "x", 3, 1),
+                ep("6", "Greys", "y", 2, 27),
+            ]}}),
+        ))
+        .mount(&s)
+        .await;
+    let c = PlexClient::new(session(&s.uri()), client_info(), http());
+    let r = recently_added(c.latest("2", 100).await.unwrap(), 20);
+    let notes: Vec<(&str, &str, &str, Option<&str>)> = r
+        .notes
+        .iter()
+        .map(|n| {
+            (
+                n.item_id.as_str(),
+                n.label.as_str(),
+                n.open_id.as_str(),
+                n.open_season_id.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        notes,
+        [
+            ("Scrubs-key", "S2 · E1–E3", "Scrubs-key", Some("Scrubs-s2")),
+            (
+                "Dreamland-key",
+                "S1 · E6 · Edenia",
+                "3",
+                Some("Dreamland-s1")
+            ),
+            ("naruto-key", "Season 10", "naruto-key", Some("50")),
+            ("Greys-key", "2 new episodes", "Greys-key", Some("Greys-s2")),
+        ]
+    );
+    // Every card is the show, with the show's poster.
+    assert!(r.items.iter().all(|i| i.kind == ItemKind::Series));
+    assert_eq!(r.items[0].images[0].path, "/Scrubs/poster");
+    assert_eq!(r.items[2].title, "Naruto");
+}

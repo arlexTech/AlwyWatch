@@ -50,7 +50,7 @@ The web app links `media-api`, `seerr`, `keep-service` and `net` directly, witho
 
 | Function | Notes |
 |---|---|
-| `cached_home` / `refresh_home(account, force)` | Rails: continue watching, next up, latest per library. Partial failures keep the other rails |
+| `cached_home` / `refresh_home(account, force)` | Rails: continue watching, next up, latest per library. Partial failures keep the other rails. A shows library's "recently added" is one card per show (newest arrival first, ≤ 20) with a `RailNote` in `LibraryRail.notes`: `label` ("S1 · E6 · Edenia", "S2 · E3–E5", "S2 · 3 new episodes", "Season 2", "2 new seasons", "5 new episodes", "New show · 8 episodes") and what opening the card shows (`open_id`: the episode when only one arrived, else the show; `open_season_id`: the season concerned). Grouping is `media_api::recently_added`, shared with the web |
 | `cached_items` / `refresh_items(account, ItemQuery)` | Paged library grids |
 | `cached_item` / `refresh_item`, `cached_seasons` / `refresh_seasons`, `cached_episodes` / `refresh_episodes` | Details |
 | `cached_genres` / `refresh_genres`, `cached_collections` / `refresh_collections` | Library "Categories" and "Collections" tabs |
@@ -80,7 +80,7 @@ session). Sign-in is not on the trait: `JellyfinAuth` (password, Quick Connect) 
 | `seasons(series)`, `episodes(series, season)` | Children of a show |
 | `resume(limit)` | Partly watched items, most recent first |
 | `next_up(limit)` | Next unwatched episode of shows in progress |
-| `latest(library, limit)` | Recently added |
+| `latest(library, limit)` | Recently added, episode by episode (Jellyfin `groupItems=false`, like Plex); `recently_added(items, max)` groups them per show with a label |
 | `search(query, limit)` | Movies, shows and episodes |
 | `shows_last_watched(series_ids)` | When each show last had an episode finished (orders "continue watching") |
 | `remove_from_continue_watching(id)` | `false` when the server has no such thing (the caller hides it locally) |

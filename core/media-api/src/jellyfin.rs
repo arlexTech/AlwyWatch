@@ -974,6 +974,9 @@ impl MediaServer for JellyfinClient {
         let mut p = self.list_params();
         p.push(("parentId", library_id.to_owned()));
         p.push(("limit", limit.to_string()));
+        // Episode by episode, like Plex (grouped, several new episodes come as their show or
+        // season with nothing saying which): the apps group them per show with a label.
+        p.push(("groupItems", "false".into()));
         let items: Vec<BaseItemDto> =
             net::send_json(self.req(Method::GET, "/Items/Latest").query(&p)).await?;
         Ok(self.convert_all(items))

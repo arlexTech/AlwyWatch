@@ -217,10 +217,21 @@ private fun Rails(
     val account = LocalAccount.current
     val servers = remember(account) { runCatching { core.accounts() }.getOrDefault(emptyList()).associate { it.id to it.serverName } }
     for (rail in h.latest) {
+        // A show card says what is new for it and opens that: its one new episode, or the show
+        // on the season concerned (offline, notes are dropped: the show's downloads open).
+        val notes = remember(rail.notes) { rail.notes.associateBy { it.itemId } }
+        val openNoted: (Item) -> Unit = { item ->
+            val n = notes[item.id]
+            when {
+                n == null -> open(item)
+                n.openId != n.itemId -> nav.push(Route.Detail(n.openId, account = owners[item.id]))
+                else -> nav.push(Route.Detail(item.id, season = n.openSeasonId, account = owners[item.id]))
+            }
+        }
         Rail(
             if (d.isTv) "New in ${rail.library.title}" else "Recently added in ${rail.library.title}",
             rail.items,
-            open,
+            openNoted,
             onFocus,
             focusKey = "home",
             defaultFocus = first == rail.library.id,
@@ -235,6 +246,7 @@ private fun Rails(
                     .joinToString(" · ")
                     .takeIf { !d.isTv && it.isNotEmpty() },
             onSeeAll = if (offline) null else ({ nav.push(Route.Library(rail.library.id, rail.library.title, owners[rail.library.id])) }),
+            labels = remember(notes) { notes.mapValues { it.value.label } },
         )
     }
 }
@@ -377,7 +389,7 @@ private fun offlineHome(
                     kind == LibraryKind.SHOWS -> shows
                     else -> emptyList()
                 }
-            rail.copy(items = items)
+            rail.copy(items = items, notes = emptyList())
         }
     return h.copy(continueWatching = h.continueWatching.filter { it.id in ids }, latest = latest) to owners
 }
@@ -598,10 +610,15 @@ fun TitleArt(
 }
 
 @Composable
-fun HeroMeta(item: Item) {
+fun HeroMeta(
+    item: Item,
+    label: String? = null,
+) {
     val parts =
         listOfNotNull(
-            if (item.kind == ItemKind.EPISODE) {
+            if (label != null) {
+                label
+            } else if (item.kind == ItemKind.EPISODE) {
                 listOfNotNull(
                     if (item.seasonNumber != null && item.episodeNumber != null) "S${item.seasonNumber} · E${item.episodeNumber}" else null,
                     item.runtimeMs?.let {
@@ -676,7 +693,16 @@ private fun TvHome(
                     .graphicsLayer()
                     .padding(start = d.gutter, top = 36.dp, end = d.gutter),
             ) {
-                HeroText(hero)
+                // A "recently added" show says what is new for it in the hero's line.
+                val labels =
+                    remember(h) {
+                        h
+                            ?.latest
+                            ?.flatMap { it.notes }
+                            ?.associate { it.itemId to it.label }
+                            .orEmpty()
+                    }
+                HeroText(hero, labels)
             }
             // Focused row pinned just below the hero (room for its title).
             be.alwyapps.watch.ui.TvScrollSpec(leading = 58.dp) {
@@ -716,7 +742,10 @@ private fun HeroArt(
 }
 
 @Composable
-private fun HeroText(hero: androidx.compose.runtime.State<Item?>) {
+private fun HeroText(
+    hero: androidx.compose.runtime.State<Item?>,
+    labels: Map<String, String>,
+) {
     Crossfade(hero.value, animationSpec = tween(250), label = "heroText") { item ->
         if (item != null) {
             Column(Modifier.fillMaxWidth(0.48f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -726,7 +755,7 @@ private fun HeroText(hero: androidx.compose.runtime.State<Item?>) {
                 Box(Modifier.height(130.dp).fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
                     TitleArt(item, 400.dp, big = true)
                 }
-                HeroMeta(item)
+                HeroMeta(item, labels[item.id])
                 item.overview?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }

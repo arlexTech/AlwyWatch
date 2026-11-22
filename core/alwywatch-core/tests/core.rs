@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use alwywatch_core::*;
 use serde_json::json;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 struct Env {
@@ -148,6 +148,79 @@ fn home_is_cache_first_with_ttl_and_partial_failures() {
     env.block(app.refresh_home(s.account.id.clone(), true))
         .unwrap();
     env.block(env.server.verify());
+}
+
+#[test]
+fn shows_rail_is_one_card_per_show_saying_what_is_new() {
+    let env = Env::new();
+    let s = env.sign_in();
+    let app = env.app();
+    env.mount(Mock::given(path("/UserViews")).respond_with(
+        ResponseTemplate::new(200).set_body_json(json!({"Items": [
+            {"Id": "m", "Name": "Films", "CollectionType": "movies"},
+            {"Id": "tv", "Name": "Shows", "CollectionType": "tvshows"}
+        ]})),
+    ));
+    env.mount(
+        Mock::given(path("/UserItems/Resume"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": []}))),
+    );
+    env.mount(
+        Mock::given(path("/Shows/NextUp"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": []}))),
+    );
+    // Movies: 20 entries as before; shows: more, episode by episode.
+    env.mount(
+        Mock::given(path("/Items/Latest"))
+            .and(query_param("parentId", "m"))
+            .and(query_param("limit", "20"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"Id": "l1", "Name": "New", "Type": "Movie"}
+            ]))),
+    );
+    let ep = |id: &str, show: &str, name: &str, s: u32, e: u32| {
+        json!({"Id": id, "Name": name, "Type": "Episode", "SeriesId": show,
+               "SeriesName": show.to_uppercase(), "SeasonId": format!("{show}-s{s}"),
+               "ParentIndexNumber": s, "IndexNumber": e, "SeriesPrimaryImageTag": "p"})
+    };
+    env.mount(
+        Mock::given(path("/Items/Latest"))
+            .and(query_param("parentId", "tv"))
+            .and(query_param("limit", "100"))
+            .and(query_param("groupItems", "false"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                ep("e6", "dreamland", "Edenia", 1, 6),
+                ep("s5", "silo", "c", 2, 5),
+                ep("s3", "silo", "a", 2, 3),
+                ep("s4", "silo", "b", 2, 4),
+            ]))),
+    );
+    let home = env
+        .block(app.refresh_home(s.account.id.clone(), true))
+        .unwrap();
+    assert_eq!(home.latest.len(), 2);
+    assert_eq!(home.latest[0].items[0].id, "l1");
+    assert!(home.latest[0].notes.is_empty(), "movies are unchanged");
+    let shows = &home.latest[1];
+    let ids: Vec<&str> = shows.items.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, ["dreamland", "silo"]);
+    assert!(shows.items.iter().all(|i| i.kind == ItemKind::Series));
+    let notes: Vec<(&str, &str, &str)> = shows
+        .notes
+        .iter()
+        .map(|n| (n.item_id.as_str(), n.label.as_str(), n.open_id.as_str()))
+        .collect();
+    assert_eq!(
+        notes,
+        [
+            ("dreamland", "S1 · E6 · Edenia", "e6"),
+            ("silo", "S2 · E3–E5", "silo"),
+        ]
+    );
+    assert_eq!(shows.notes[1].open_season_id.as_deref(), Some("silo-s2"));
+    // The cached copy keeps the notes.
+    let cached = app.cached_home(s.account.id.clone()).unwrap().unwrap();
+    assert_eq!(cached.latest[1].notes, shows.notes);
 }
 
 #[test]

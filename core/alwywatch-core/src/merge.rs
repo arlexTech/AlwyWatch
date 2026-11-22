@@ -98,6 +98,9 @@ pub fn merge_homes(homes: Vec<AccountHome>) -> MergedHome {
         for l in &h.libraries {
             owners.insert(l.id.clone(), a.clone());
         }
+        for n in h.latest.iter().flat_map(|r| &r.notes) {
+            note_owner(n, a, &mut owners);
+        }
         return MergedHome {
             home: h.clone(),
             owners,
@@ -129,6 +132,9 @@ pub fn merge_homes(homes: Vec<AccountHome>) -> MergedHome {
                 for i in &r.items {
                     owners.insert(i.id.clone(), a.to_owned());
                 }
+                for n in &r.notes {
+                    note_owner(n, a, &mut owners);
+                }
                 latest.push(r.clone());
             }
             continue;
@@ -141,6 +147,18 @@ pub fn merge_homes(homes: Vec<AccountHome>) -> MergedHome {
             .collect();
         let mut rail = lead.clone();
         rail.items = interleave(&lists, &mut owners);
+        // Each card keeps the note of the copy chosen (notes go by item id).
+        rail.notes = Vec::new();
+        for (a, r) in &rails {
+            for n in &r.notes {
+                let chosen = owners.get(&n.item_id).is_some_and(|o| o == a)
+                    && rail.items.iter().any(|i| i.id == n.item_id);
+                if chosen && !rail.notes.iter().any(|m| m.item_id == n.item_id) {
+                    note_owner(n, a, &mut owners);
+                    rail.notes.push(n.clone());
+                }
+            }
+        }
         latest.push(rail);
     }
     // Library buttons: the preferred server's, plus kinds only another server has.
@@ -163,6 +181,13 @@ pub fn merge_homes(homes: Vec<AccountHome>) -> MergedHome {
             ..first.home.clone()
         },
         owners,
+    }
+}
+
+/// What a card's note opens (an episode, a season) is on the card's server.
+fn note_owner(n: &crate::RailNote, account: &str, owners: &mut HashMap<String, String>) {
+    for id in std::iter::once(&n.open_id).chain(&n.open_season_id) {
+        owners.insert(id.clone(), account.to_owned());
     }
 }
 
@@ -283,6 +308,7 @@ mod tests {
             latest: vec![LibraryRail {
                 library: lib(movies_lib, LibraryKind::Movies),
                 items: movies,
+                notes: vec![],
             }],
             fetched_at: 100,
         }
@@ -330,6 +356,61 @@ mod tests {
         assert_eq!(m.owners["p-dune"], "plex");
         assert_eq!(m.owners["p-movies"], "plex");
         assert_eq!(m.home.fetched_at, 100);
+    }
+
+    #[test]
+    fn show_cards_keep_the_note_of_the_copy_chosen() {
+        let note = |show: &str, label: &str, open: &str| crate::RailNote {
+            item_id: show.into(),
+            label: label.into(),
+            open_id: open.into(),
+            open_season_id: Some(format!("{open}-season")),
+        };
+        let shows = |acc: &str, items: Vec<Item>, notes: Vec<crate::RailNote>| AccountHome {
+            account_id: acc.into(),
+            home: Home {
+                latest: vec![LibraryRail {
+                    library: lib(&format!("{acc}-shows"), LibraryKind::Shows),
+                    items,
+                    notes,
+                }],
+                ..home(vec![], "x", vec![])
+            },
+        };
+        let plex = shows(
+            "plex",
+            vec![item("p-dream", ItemKind::Series, "Dreamland", None, None)],
+            vec![note("p-dream", "S1 · E6 · Edenia", "p-e6")],
+        );
+        let jelly = shows(
+            "jelly",
+            vec![
+                item("j-dream", ItemKind::Series, "Dreamland", None, None),
+                item("j-silo", ItemKind::Series, "Silo", None, None),
+            ],
+            vec![
+                note("j-dream", "S1 · E6 · Edenia", "j-e6"),
+                note("j-silo", "S2 · E3–E5", "j-silo"),
+            ],
+        );
+        let m = merge_homes(vec![plex, jelly]);
+        let rail = m
+            .home
+            .latest
+            .iter()
+            .find(|r| r.library.kind == LibraryKind::Shows)
+            .unwrap();
+        let notes: Vec<(&str, &str)> = rail
+            .notes
+            .iter()
+            .map(|n| (n.item_id.as_str(), n.open_id.as_str()))
+            .collect();
+        assert_eq!(notes, [("p-dream", "p-e6"), ("j-silo", "j-silo")]);
+        // What a note opens is on the card's server.
+        assert_eq!(m.owners["p-e6"], "plex");
+        assert_eq!(m.owners["p-e6-season"], "plex");
+        assert_eq!(m.owners["j-silo-season"], "jelly");
+        assert!(!m.owners.contains_key("j-e6"));
     }
 
     #[test]

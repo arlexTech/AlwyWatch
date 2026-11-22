@@ -3,7 +3,7 @@
 
 use leptos::prelude::*;
 use leptos_router::components::A;
-use media_api::{AnyServer, ImageKind, Item, ItemKind};
+use media_api::{AnyServer, ImageKind, Item, ItemKind, RailNote};
 
 use crate::state;
 
@@ -26,7 +26,13 @@ fn subtitle(item: &Item) -> String {
 
 /// A poster (or a 16:9 thumbnail for episodes in "continue watching") with its progress.
 #[component]
-pub fn Card(acc: String, item: Item, #[prop(optional)] wide: bool) -> impl IntoView {
+pub fn Card(
+    acc: String,
+    item: Item,
+    #[prop(optional)] wide: bool,
+    // A "recently added" show: what is new (the second line) and what opening it shows.
+    #[prop(optional_no_strip)] note: Option<RailNote>,
+) -> impl IntoView {
     let c = state::ctx();
     let srv: Option<AnyServer> = c.server(&acc);
     let kinds: &[ImageKind] = if wide {
@@ -44,8 +50,17 @@ pub fn Card(acc: String, item: Item, #[prop(optional)] wide: bool) -> impl IntoV
         .filter(|&r| r > 0 && item.user.position_ms > 0)
         .map(|r| (item.user.position_ms * 100 / r).min(100));
     let title = item.title.clone();
-    let sub = subtitle(&item);
-    let href = item_href(&acc, &item);
+    let (sub, href) = match note {
+        Some(n) => {
+            let season = n
+                .open_season_id
+                .filter(|_| n.open_id == n.item_id)
+                .map(|s| format!("?season={s}"))
+                .unwrap_or_default();
+            (n.label, format!("/item/{acc}/{}{season}", n.open_id))
+        }
+        None => (subtitle(&item), item_href(&acc, &item)),
+    };
     view! {
         <A href=href attr:class=if wide { "card wide" } else { "card" }>
             <div class="art">
@@ -65,13 +80,17 @@ pub fn Rail(
     title: String,
     items: Vec<(String, Item)>,
     #[prop(optional)] wide: bool,
+    #[prop(optional)] notes: Vec<RailNote>,
 ) -> impl IntoView {
     (!items.is_empty()).then(|| {
         view! {
             <section class="rail">
                 <h2>{title}</h2>
                 <div class="rail-row">
-                    {items.into_iter().map(|(acc, i)| view! { <Card acc=acc item=i wide=wide /> }).collect_view()}
+                    {items.into_iter().map(|(acc, i)| {
+                        let note = notes.iter().find(|n| n.item_id == i.id).cloned();
+                        view! { <Card acc=acc item=i wide=wide note=note /> }
+                    }).collect_view()}
                 </div>
             </section>
         }
