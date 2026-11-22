@@ -54,6 +54,25 @@ export struct Detail {
     has-trailer: bool,
     /// "Directed by …".
     crew: string,
+    /// A movie's saga (TMDB collection, through Seerr): its id, and its button's label.
+    saga-id: string,
+    saga-label: string,
+}
+
+/// Where a title stands in Leaving soon, on its page.
+export struct KeepPanel {
+    /// The keep server is connected and the list was loaded at least once.
+    shown: bool,
+    /// In a deletion list (else nothing more than the title and the note).
+    listed: bool,
+    key: string,
+    /// "Kept forever", "Leaves in 12 days", "Not scheduled for deletion"…
+    title: string,
+    /// Muted line: which list, why nothing happens yet, who keeps it.
+    detail: string,
+    /// "You keep it forever (love it)", "You haven't chosen anything"…
+    choice: string,
+    voted: bool,
 }
 
 export struct AccountRow {
@@ -307,6 +326,22 @@ component ChoiceCard inherits Focusable {
         }
         Icon { source: @image-url("icons/chevron_right.svg"); tint: Palette.subtle; y: (parent.height - self.height) / 2; }
     }
+}
+
+// The keep choices of a Leaving soon title (its row, and the title page's keep panel).
+component KeepChoices inherits HorizontalLayout {
+    in property <string> key;
+    in property <bool> voted;
+    callback vote(string, string); // key, choice
+    spacing: 6px;
+    alignment: start;
+    Button { label: "Until I watch it"; primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.vote(root.key, "watched"); } }
+    Button { label: "Keep 30 days"; clicked => { root.vote(root.key, "days30"); } }
+    Button { label: "Keep 7 days"; clicked => { root.vote(root.key, "days7"); } }
+    Button { label: "I love it"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.vote(root.key, "love"); } }
+    Button { label: "A classic"; clicked => { root.vote(root.key, "classic"); } }
+    Button { label: "Don't care"; clicked => { root.vote(root.key, "dontcare"); } }
+    if root.voted : Button { label: "Remove my choice"; clicked => { root.vote(root.key, "remove"); } }
 }
 
 component IconButton inherits Focusable {
@@ -779,6 +814,7 @@ export component AppWindow inherits Window {
     in property <[Card]> seerr-parts;
     // Keep service
     in property <bool> keep-active;
+    in property <KeepPanel> detail-keep;
     in property <bool> keep-admin;
     in property <string> keep-label;
     in property <string> keep-message;
@@ -907,6 +943,7 @@ export component AppWindow inherits Window {
     callback seerr-toggle-season(string);
     callback seerr-request(bool); // all seasons?
     callback seerr-open-saga();
+    callback detail-open-saga();
     callback transfer-receive(string); // AlwyWatch server address
     callback send-start();
     callback send-lookup(string);
@@ -1291,10 +1328,6 @@ export component AppWindow inherits Window {
                                             icon: @image-url("icons/group.svg");
                                             clicked => { root.watch-together(root.detail.id); }
                                         }
-                                        if root.detail.has-trailer : IconButton {
-                                            icon: @image-url("icons/movie.svg");
-                                            clicked => { root.play-trailer(root.detail.id); }
-                                        }
                                         if root.detail.can-watchlist : IconButton {
                                             icon: root.detail.watchlisted ? @image-url("icons/bookmark_fill1.svg") : @image-url("icons/bookmark.svg");
                                             clicked => { root.toggle-watchlist(root.detail.id); }
@@ -1317,6 +1350,57 @@ export component AppWindow inherits Window {
                                 spacing: 14px;
                                 Text { text: root.detail.overview; color: #f4f4f6d9; font-size: 16px; wrap: word-wrap; }
                                 if root.detail.genres != "" : Text { text: root.detail.genres; color: Palette.subtle; }
+                                // About the title rather than actions on it: the trailer and the saga.
+                                if root.detail.has-trailer || root.detail.saga-id != "" : HorizontalLayout {
+                                    spacing: 10px;
+                                    alignment: start;
+                                    if root.detail.has-trailer : Button {
+                                        label: "Trailer";
+                                        has-icon: true;
+                                        icon: @image-url("icons/movie.svg");
+                                        clicked => { root.play-trailer(root.detail.id); }
+                                    }
+                                    if root.detail.saga-id != "" : Button {
+                                        label: root.detail.saga-label;
+                                        has-icon: true;
+                                        icon: @image-url("icons/video_library.svg");
+                                        clicked => { root.detail-open-saga(); }
+                                    }
+                                }
+                                // Where the title stands in Leaving soon, my choice, the keep choices on demand.
+                                if root.detail-keep.shown : Rectangle {
+                                    background: Palette.surface;
+                                    border-radius: 16px;
+                                    VerticalLayout {
+                                        padding: 16px;
+                                        spacing: 6px;
+                                        HorizontalLayout {
+                                            spacing: 10px;
+                                            alignment: start;
+                                            Icon { source: @image-url("icons/hourglass_bottom.svg"); tint: root.detail-keep.listed ? Palette.accent : Palette.muted; width: 20px; height: 20px; y: (parent.height - self.height) / 2; }
+                                            Text { text: root.detail-keep.title; color: Palette.text; font-size: 16px; font-weight: 700; vertical-alignment: center; }
+                                        }
+                                        if !root.detail-keep.listed : Text { text: "It is in none of the server's deletion lists."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                        if root.detail-keep.listed && root.detail-keep.detail != "" : Text { text: root.detail-keep.detail; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                        if root.detail-keep.listed : Text { text: root.detail-keep.choice; color: Palette.text; font-size: 14px; wrap: word-wrap; }
+                                        if root.detail-keep.listed && root.leaving-open != root.detail-keep.key : HorizontalLayout {
+                                            alignment: start;
+                                            padding-top: 6px;
+                                            Button {
+                                                label: root.detail-keep.voted ? "Change my choice" : "Keep it";
+                                                has-icon: true;
+                                                icon: @image-url("icons/schedule.svg");
+                                                clicked => { root.leaving-open = root.detail-keep.key; }
+                                            }
+                                        }
+                                        if root.detail-keep.listed && root.leaving-open == root.detail-keep.key : KeepChoices {
+                                            padding-top: 6px;
+                                            key: root.detail-keep.key;
+                                            voted: root.detail-keep.voted;
+                                            vote(k, c) => { root.keep-vote(k, c); }
+                                        }
+                                    }
+                                }
                                 if root.detail.crew != "" : Text { text: root.detail.crew; color: Palette.muted; }
                                 if root.detail.is-series : Text { text: "Episodes"; color: Palette.text; font-size: 20px; font-weight: 700; }
                                 if root.detail.is-series : HorizontalLayout {
@@ -1774,16 +1858,10 @@ export component AppWindow inherits Window {
                                             Icon { source: @image-url("icons/chevron_right.svg"); tint: Palette.subtle; y: (parent.height - self.height) / 2; }
                                         }
                                     }
-                                    if root.leaving-open == row.key : HorizontalLayout {
-                                        spacing: 6px;
-                                        alignment: start;
-                                        Button { label: "Until I watch it"; primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.keep-vote(row.key, "watched"); } }
-                                        Button { label: "Keep 30 days"; clicked => { root.keep-vote(row.key, "days30"); } }
-                                        Button { label: "Keep 7 days"; clicked => { root.keep-vote(row.key, "days7"); } }
-                                        Button { label: "I love it"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.keep-vote(row.key, "love"); } }
-                                        Button { label: "A classic"; clicked => { root.keep-vote(row.key, "classic"); } }
-                                        Button { label: "Don't care"; clicked => { root.keep-vote(row.key, "dontcare"); } }
-                                        if row.voted : Button { label: "Remove my choice"; clicked => { root.keep-vote(row.key, "remove"); } }
+                                    if root.leaving-open == row.key : KeepChoices {
+                                        key: row.key;
+                                        voted: row.voted;
+                                        vote(k, c) => { root.keep-vote(k, c); }
                                     }
                                 }
                                 }

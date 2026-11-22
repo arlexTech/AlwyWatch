@@ -23,8 +23,8 @@ mod profiles;
 mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
 use crate::{
-    AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, ForeverRow, LeavingRow, NamedId,
-    Page, Rail, SeerrPage, SeerrPanel, ServerChoice,
+    AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, ForeverRow, KeepPanel, LeavingRow,
+    NamedId, Page, Rail, SeerrPage, SeerrPanel, ServerChoice,
 };
 use together::TogetherPlay;
 
@@ -139,6 +139,8 @@ struct State {
     transfer_gen: u64,
     /// The title page's first trailer: (title id, account, trailer).
     trailer: Option<(String, String, Trailer)>,
+    /// The title page whose saga was looked up (once per page).
+    saga_for: Option<String>,
     /// Copy watch history: kept while away from its page.
     history: history::HistoryJob,
     /// "Recently added" show cards: what is new and what opening them shows, by card id.
@@ -284,6 +286,7 @@ impl App {
                 poll_gen: 0,
                 transfer_gen: 0,
                 trailer: None,
+                saga_for: None,
                 history: Default::default(),
                 notes: HashMap::new(),
                 pending_season: None,
@@ -624,10 +627,14 @@ impl App {
             match r {
                 Ok(_) => {
                     t.ui().set_leaving_open(SharedString::new());
-                    if let Ok(Some(list)) = t.core.cached_leaving_soon() {
+                    if t.ui().get_page() == Page::Detail {
+                        t.render_keep_panel_of_page();
+                    } else if let Ok(Some(list)) = t.core.cached_leaving_soon() {
                         t.render_leaving(&list);
                     }
                 }
+                // The title page has no keep message line: its error banner says it.
+                Err(e) if t.ui().get_page() == Page::Detail => t.set_error(Some(e)),
                 Err(e) => t.ui().set_keep_message(sstr(e.to_string())),
             }
         })
@@ -2626,6 +2633,8 @@ impl App {
             watchlisted: i.user.favorite,
             has_trailer: false,
             crew: SharedString::default(),
+            saga_id: SharedString::default(),
+            saga_label: SharedString::default(),
         }
     }
 
@@ -2694,11 +2703,20 @@ impl App {
             d.logo = prev.logo;
             d.has_trailer = prev.has_trailer;
             d.crew = prev.crew;
+            d.saga_id = prev.saga_id;
+            d.saga_label = prev.saga_label;
+        } else {
+            ui.set_leaving_open(SharedString::new());
         }
         ui.set_detail(d);
         if !same && i.kind != ItemKind::Episode {
             self.load_extras(account, i.id.clone());
         }
+        self.render_keep_panel(i);
+        if !same {
+            self.refresh_keep_panel(i.id.clone());
+        }
+        self.load_saga(i);
         let id = i.id.clone();
         if i.kind != ItemKind::Episode && image_ref(i, ImageKind::Logo).is_some() {
             let id = id.clone();
@@ -3276,6 +3294,114 @@ impl App {
         } else if let Some(url) = t.url {
             platform::open_url(&url);
         }
+    }
+
+    /// A movie's saga (TMDB collection, through Seerr), once per page. Seerr may connect a
+    /// moment after start (through the AlwyWatch server): looks again for a few seconds.
+    fn load_saga(self: &Rc<Self>, i: &Item) {
+        let Some(tmdb) = (i.kind == ItemKind::Movie)
+            .then(|| i.provider_ids.tmdb.as_deref()?.parse::<i64>().ok())
+            .flatten()
+        else {
+            return;
+        };
+        {
+            let mut st = self.state.borrow_mut();
+            if st.saga_for.as_deref() == Some(i.id.as_str()) {
+                return;
+            }
+            st.saga_for = Some(i.id.clone());
+        }
+        let (core, this, id) = (self.core.clone(), Rc::downgrade(self), i.id.clone());
+        slint::spawn_local(async move {
+            for _ in 0..10 {
+                if core.seerr_active() {
+                    break;
+                }
+                async_sleep(Duration::from_secs(1)).await;
+            }
+            if !core.seerr_active() {
+                return;
+            }
+            let Ok(t) = core.seerr_title(SeerrMediaType::Movie, tmdb).await else {
+                return;
+            };
+            let (Some(c), Some(this)) = (t.collection, this.upgrade()) else {
+                return;
+            };
+            let ui = this.ui();
+            let mut d = ui.get_detail();
+            if d.id.as_str() == id {
+                d.saga_id = sstr(c.id.to_string());
+                d.saga_label = sstr(saga_label(&c.name));
+                ui.set_detail(d);
+            }
+        })
+        .ok();
+    }
+
+    /// The title page's keep panel, from the cached Leaving soon list (instant).
+    fn render_keep_panel(&self, i: &Item) {
+        let ui = self.ui();
+        let known = self.core.keep_active()
+            && matches!(i.kind, ItemKind::Movie | ItemKind::Series)
+            && matches!(self.core.cached_leaving_soon(), Ok(Some(_)));
+        if !known {
+            ui.set_detail_keep(KeepPanel::default());
+            return;
+        }
+        ui.set_detail_keep(match self.core.keep_status_of(i.clone()) {
+            None => KeepPanel {
+                shown: true,
+                title: "Not scheduled for deletion".into(),
+                ..Default::default()
+            },
+            Some(e) => {
+                let row = Self::leaving_row(&e);
+                KeepPanel {
+                    shown: true,
+                    listed: true,
+                    key: sstr(&e.key),
+                    title: sstr(keep_policy(&e, &row.when)),
+                    detail: sstr(keep_detail(&e)),
+                    choice: if row.vote.is_empty() {
+                        "You haven't chosen anything".into()
+                    } else {
+                        row.vote
+                    },
+                    voted: e.my_vote.is_some(),
+                }
+            }
+        });
+    }
+
+    /// The keep panel of the title page on screen (after a vote or a refresh).
+    fn render_keep_panel_of_page(&self) {
+        let id = self.ui().get_detail().id.to_string();
+        let item = self.state.borrow().items.get(&id).cloned();
+        if let Some(i) = item {
+            self.render_keep_panel(&i);
+        }
+    }
+
+    /// Refreshes the Leaving soon list, then the title page's keep panel (errors stay quiet:
+    /// the cached answer is still shown).
+    fn refresh_keep_panel(self: &Rc<Self>, id: String) {
+        if !self.core.keep_active() {
+            return;
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let ok = core.refresh_leaving_soon(false).await.is_ok();
+            if let Some(t) = this.upgrade()
+                && ok
+                && t.ui().get_page() == Page::Detail
+                && t.ui().get_detail().id.as_str() == id
+            {
+                t.render_keep_panel_of_page();
+            }
+        })
+        .ok();
     }
 
     /// Adds to or removes from My list (Plex watchlist, Jellyfin favorites); the button
@@ -4182,7 +4308,18 @@ impl App {
             watchlisted: true,
             has_trailer: true,
             crew: sstr("Directed by Chris Williams, Byron Howard"),
+            saga_id: sstr("1"),
+            saga_label: sstr(saga_label("Bolt")),
             ..Default::default()
+        });
+        ui.set_detail_keep(KeepPanel {
+            shown: true,
+            listed: true,
+            key: sstr("t"),
+            title: sstr("Kept until 2 people have watched it"),
+            detail: sstr("In “Old movies” · date 23 Nov 2026 · kept by 2 until watched"),
+            choice: sstr("You haven't chosen anything"),
+            voted: false,
         });
         let cast = ["John", "Miley", "Susie", "Mark"]
             .iter()
@@ -4613,6 +4750,13 @@ impl App {
         on!(on_send_cancel, |a| a
             .ui()
             .set_send_step(SharedString::new()));
+        on!(on_detail_open_saga, |a| {
+            let d = a.ui().get_detail();
+            // The label stands for the name until the saga's own arrives.
+            if let Ok(id) = d.saga_id.parse() {
+                a.navigate(Route::SeerrSaga(id, d.saga_label.into()));
+            }
+        });
         on!(on_seerr_open_saga, |a| {
             let t = a.ui().get_seerr_title();
             if let Ok(id) = t.saga_id.parse() {
@@ -4707,6 +4851,97 @@ fn report(this: &std::rc::Weak<App>, e: CoreError) {
 }
 
 /// A timer-based sleep usable inside `slint::spawn_local` futures.
+/// "Saga · Alien", or the name alone when it already says so ("Very Bad Trip - Saga").
+fn saga_label(name: &str) -> String {
+    let lower = name.to_lowercase();
+    if lower.contains("saga") || lower.contains("collection") {
+        name.to_owned()
+    } else {
+        format!("Saga · {name}")
+    }
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Past its date while deletion is off: listed, but nothing is planned.
+fn keep_paused(e: &LeavingItem, now: i64) -> bool {
+    !e.collection_active
+        && e.protection == Protection::None
+        && e.effective_deletion_date.is_some_and(|d| d < now)
+}
+
+/// "Kept forever", "Kept until 2 people have watched it", "Leaves in 12 days"… (`leaves`: the
+/// Leaving soon row's label).
+fn keep_policy(e: &LeavingItem, leaves: &str) -> String {
+    match e.protection {
+        Protection::Forever => "Kept forever".into(),
+        Protection::UntilWatched => match e.counts.until_watched {
+            ..=1 => "Kept until the person who asked has watched it".into(),
+            n => format!("Kept until {n} people have watched it"),
+        },
+        _ if keep_paused(e, now_secs()) => "On the deletion list".into(),
+        _ => leaves.to_owned(),
+    }
+}
+
+/// Which list it is in and why nothing happens yet, plus who keeps it.
+fn keep_detail(e: &LeavingItem) -> String {
+    let mut parts = vec![];
+    if let Some(t) = &e.collection_title {
+        parts.push(format!("In “{t}”"));
+    }
+    if e.protection == Protection::None && !e.collection_active {
+        parts.push("deletion isn't turned on yet".to_owned());
+    }
+    if let Some(d) = e.effective_deletion_date
+        && !keep_paused(e, now_secs())
+    {
+        parts.push(format!("date {}", medium_date(d)));
+    }
+    let c = &e.counts;
+    let keepers: Vec<String> = [
+        (c.forever, "forever"),
+        (c.until_watched, "until watched"),
+        (c.days, "for a while"),
+    ]
+    .into_iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(n, what)| format!("{n} {what}"))
+    .collect();
+    if !keepers.is_empty() {
+        parts.push(format!("kept by {}", keepers.join(", ")));
+    }
+    let s = parts.join(" · ");
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(f) => f.to_uppercase().chain(chars).collect(),
+        None => s,
+    }
+}
+
+/// "22 Nov 2026" (UTC; the day is what matters).
+fn medium_date(ts: i64) -> String {
+    // Civil from days (Howard Hinnant's algorithm).
+    let z = ts.div_euclid(86_400) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    format!("{day} {} {year}", MONTHS[(month - 1) as usize])
+}
+
 async fn async_sleep(d: Duration) {
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
     slint::Timer::single_shot(d, move || {
@@ -4751,5 +4986,64 @@ mod clock_tests {
         assert_eq!(super::clock(552_000), "9:12");
         assert_eq!(super::clock(3_723_000), "1:02:03");
         assert_eq!(super::clock(0), "0:00");
+    }
+}
+
+#[cfg(test)]
+mod keep_panel_tests {
+    use super::*;
+
+    fn entry(protection: Protection, active: bool, date: Option<i64>) -> LeavingItem {
+        LeavingItem {
+            key: "k".into(),
+            title: "T".into(),
+            year: None,
+            kind: "movie".into(),
+            poster_url: None,
+            tmdb_id: None,
+            tvdb_id: None,
+            server_item_id: None,
+            collection_id: Some(1),
+            collection_title: Some("Old movies".into()),
+            collection_active: active,
+            deletion_date: date,
+            effective_deletion_date: date,
+            protection,
+            my_vote: None,
+            counts: VoteCounts::default(),
+        }
+    }
+
+    #[test]
+    fn dates_and_saga_labels() {
+        assert_eq!(medium_date(0), "1 Jan 1970");
+        assert_eq!(medium_date(1_795_392_000), "23 Nov 2026");
+        assert_eq!(saga_label("Alien"), "Saga · Alien");
+        assert_eq!(saga_label("Very Bad Trip - Saga"), "Very Bad Trip - Saga");
+        assert_eq!(saga_label("Star Wars Collection"), "Star Wars Collection");
+    }
+
+    #[test]
+    fn policy_and_detail_like_android() {
+        let mut e = entry(
+            Protection::UntilWatched,
+            true,
+            Some(now_secs() + 86_400 * 20),
+        );
+        e.counts.until_watched = 2;
+        e.counts.forever = 1;
+        assert_eq!(keep_policy(&e, "x"), "Kept until 2 people have watched it");
+        assert!(keep_detail(&e).starts_with("In “Old movies” · date "));
+        assert!(keep_detail(&e).ends_with(" · kept by 1 forever, 2 until watched"));
+        let paused = entry(Protection::None, false, Some(10));
+        assert_eq!(keep_policy(&paused, "x"), "On the deletion list");
+        assert_eq!(
+            keep_detail(&paused),
+            "In “Old movies” · deletion isn't turned on yet"
+        );
+        let mut plain = entry(Protection::None, true, Some(now_secs() + 86_400 * 5));
+        plain.collection_title = None;
+        assert_eq!(keep_policy(&plain, "Leaves in 4 days"), "Leaves in 4 days");
+        assert!(keep_detail(&plain).starts_with("Date "));
     }
 }
