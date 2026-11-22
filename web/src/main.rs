@@ -141,7 +141,8 @@ fn open_page(path: &str) -> bool {
     matches!(
         path,
         "/signin" | "/settings" | "/account" | "/account/signed-in" | "/join"
-    ) || path.starts_with("/join/")
+    ) || path.starts_with("/settings/")
+        || path.starts_with("/join/")
         || path.starts_with("/q/")
 }
 
