@@ -144,6 +144,8 @@ fun KeepActions(
     onVoted: (LeavingItem) -> Unit,
     modifier: Modifier = Modifier,
     focusFirst: Boolean = false,
+    /** Given the first choice, to move the focus there when the choices appear. */
+    firstFocus: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     val core = LocalCore.current
     val scope = rememberCoroutineScope()
@@ -165,7 +167,8 @@ fun KeepActions(
                 ActionButton(
                     "Until I watch it",
                     { send(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u)) },
-                    if (focusFirst) Modifier.initialFocus() else Modifier,
+                    (if (focusFirst) Modifier.initialFocus() else Modifier)
+                        .then(firstFocus?.let { Modifier.focusRequester(it) } ?: Modifier),
                     primary = true,
                     icon = be.alwyapps.watch.ui.Icons.Schedule,
                 )

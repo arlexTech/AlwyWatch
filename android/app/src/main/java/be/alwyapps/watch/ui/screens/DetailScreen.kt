@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -268,14 +269,38 @@ fun DetailScreen(
     var seerrSeasons by remember(itemId) { mutableStateOf<List<be.alwyapps.watch.core.seerr.SeerrSeasonInfo>?>(null) }
     if (showTmdb != null) {
         LaunchedEffect(showTmdb) {
-            // Seerr may connect a moment after start (through the AlwyWatch server): look again
-            // for a few seconds before giving up on the button.
-            repeat(10) {
-                if (runCatching { core.seerrActive() }.getOrDefault(false)) {
-                    seerrSeasons = runCatching { core.seerrSeasonInfo(showTmdb) }.getOrNull()
-                    return@LaunchedEffect
-                }
-                kotlinx.coroutines.delay(1_000)
+            if (awaitSeerr(core)) seerrSeasons = runCatching { core.seerrSeasonInfo(showTmdb) }.getOrNull()
+        }
+    }
+    // A movie's saga (TMDB collection, through Seerr): its link under the overview.
+    val movieTmdb =
+        item
+            ?.takeIf { it.kind == ItemKind.MOVIE }
+            ?.providerIds
+            ?.tmdb
+            ?.toLongOrNull()
+    var saga by remember(itemId) { mutableStateOf<be.alwyapps.watch.core.seerr.SeerrCollectionRef?>(null) }
+    if (movieTmdb != null) {
+        LaunchedEffect(movieTmdb) {
+            if (awaitSeerr(core)) {
+                saga =
+                    runCatching {
+                        core.seerrTitle(be.alwyapps.watch.core.seerr.SeerrMediaType.MOVIE, movieTmdb).collection
+                    }.getOrNull()
+            }
+        }
+    }
+    // Keep status (Leaving soon): from the cached list at once, then refreshed.
+    val keepOn = remember { runCatching { core.keepActive() }.getOrDefault(false) }
+    var keepEntry by remember(itemId) { mutableStateOf<be.alwyapps.watch.core.keep.LeavingItem?>(null) }
+    var keepKnown by remember(itemId) { mutableStateOf(false) }
+    if (keepOn && item != null && (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES)) {
+        LaunchedEffect(item.id) {
+            keepEntry = core.keepStatusOf(item)
+            keepKnown = runCatching { core.cachedLeavingSoon() }.getOrNull() != null
+            runCatching { core.refreshLeavingSoon(false) }.onSuccess {
+                keepEntry = core.keepStatusOf(item)
+                keepKnown = true
             }
         }
     }
@@ -474,7 +499,6 @@ fun DetailScreen(
                                     }
                                     fromStart?.let { ActionButton("From start", it, Modifier.rememberFocus(focusKey, "start")) }
                                     watchTogether?.let { IconAction(Icons.Group, "Watch together", it, Modifier.rememberFocus(focusKey, "together")) }
-                                    playTrailer?.let { IconAction(Icons.Movie, "Trailer", it, Modifier.rememberFocus(focusKey, "trailer")) }
                                     if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
                                         IconAction(
                                             if (watchlisted) Icons.BookmarkFilled else Icons.Bookmark,
@@ -511,9 +535,6 @@ fun DetailScreen(
                                     }
                                     watchTogether?.let {
                                         CaptionAction("Together", it) { Icon(Icons.Group, null, Modifier.size(22.dp)) }
-                                    }
-                                    playTrailer?.let {
-                                        CaptionAction("Trailer", it) { Icon(Icons.Movie, null, Modifier.size(22.dp)) }
                                     }
                                     if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
                                         CaptionAction(if (watchlisted) "In my list" else "My list", toggleList, highlighted = watchlisted) {
@@ -569,6 +590,21 @@ fun DetailScreen(
                             ) {
                                 for (g in item.genres.take(5)) Chip(g)
                             }
+                        }
+                        // About the title rather than actions on it: the trailer and the saga.
+                        if (playTrailer != null || saga != null) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                playTrailer?.let { ActionButton("Trailer", it, Modifier.rememberFocus(focusKey, "trailer"), icon = Icons.Movie) }
+                                saga?.let { c ->
+                                    ActionButton(sagaLabel(c.name), { nav.push(Route.SeerrSaga(c.id, c.name)) }, icon = Icons.Library)
+                                }
+                            }
+                        }
+                        if (keepOn && keepKnown) {
+                            KeepPanel(keepEntry) { keepEntry = it }
                         }
                         // "Directed by …", like Plex.
                         people
@@ -1446,3 +1482,125 @@ private fun EpisodeRow(
         }
     }
 }
+
+/** Seerr may connect a moment after start (through the AlwyWatch server): waits a few seconds. */
+private suspend fun awaitSeerr(core: be.alwyapps.watch.core.AlwyWatch): Boolean {
+    repeat(10) {
+        if (runCatching { core.seerrActive() }.getOrDefault(false)) return true
+        kotlinx.coroutines.delay(1_000)
+    }
+    return false
+}
+
+/**
+ * The title's keep policy (Leaving soon) and my own choice, with the keep choices on demand.
+ * [entry] null: in no deletion list.
+ */
+@Composable
+private fun KeepPanel(
+    entry: be.alwyapps.watch.core.keep.LeavingItem?,
+    onVoted: (be.alwyapps.watch.core.keep.LeavingItem) -> Unit,
+) {
+    var choosing by remember(entry?.key) { mutableStateOf(false) }
+    // Closing the choices (Back or a choice made) puts the focus back on the keep button.
+    val keepButton =
+        remember {
+            androidx.compose.ui.focus
+                .FocusRequester()
+        }
+    var refocus by remember { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(be.alwyapps.watch.ui.SurfaceColor, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Hourglass, null, Modifier.size(20.dp), tint = if (entry == null) Muted else be.alwyapps.watch.ui.Accent)
+            Text(entry?.let { keepPolicy(it) } ?: "Not scheduled for deletion", style = MaterialTheme.typography.titleSmall)
+        }
+        if (entry == null) {
+            Text("It is in none of the server's deletion lists.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            return@Column
+        }
+        keepDetail(entry)?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
+        Text(entry.voteLabel() ?: "You haven't chosen anything", style = MaterialTheme.typography.bodyMedium)
+        if (choosing) {
+            val first =
+                remember {
+                    androidx.compose.ui.focus
+                        .FocusRequester()
+                }
+            KeepActions(entry, {
+                onVoted(it)
+                choosing = false
+                refocus = true
+            }, Modifier.padding(top = 6.dp), firstFocus = first)
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+            androidx.activity.compose.BackHandler {
+                choosing = false
+                refocus = true
+            }
+        } else {
+            ActionButton(
+                if (entry.myVote == null) "Keep it" else "Change my choice",
+                { choosing = true },
+                Modifier.padding(top = 6.dp).focusRequester(keepButton),
+                icon = Icons.Schedule,
+            )
+            LaunchedEffect(refocus) {
+                if (refocus) {
+                    runCatching { keepButton.requestFocus() }
+                    refocus = false
+                }
+            }
+        }
+    }
+}
+
+/** "Kept forever", "Kept until 2 people have watched it", "Leaves in 12 days"… */
+private fun keepPolicy(e: be.alwyapps.watch.core.keep.LeavingItem): String =
+    when (e.protection) {
+        be.alwyapps.watch.core.keep.Protection.FOREVER -> "Kept forever"
+        be.alwyapps.watch.core.keep.Protection.UNTIL_WATCHED -> {
+            val n = e.counts.untilWatched.toInt()
+            if (n <= 1) "Kept until the person who asked has watched it" else "Kept until $n people have watched it"
+        }
+        // Past its date while deletion is off: listed, but nothing is planned.
+        else -> if (e.paused()) "On the deletion list" else e.leavesLabel()
+    }
+
+/** Which list it is in and why nothing happens yet, plus who keeps it. */
+private fun keepDetail(e: be.alwyapps.watch.core.keep.LeavingItem): String? {
+    val parts = mutableListOf<String>()
+    e.collectionTitle?.let { parts += "In “$it”" }
+    if (e.protection == be.alwyapps.watch.core.keep.Protection.NONE && !e.collectionActive) parts += "deletion isn't turned on yet"
+    e.effectiveDeletionDate?.takeIf { !e.paused() }?.let {
+        parts += "date " +
+            java.text.DateFormat
+                .getDateInstance(java.text.DateFormat.MEDIUM)
+                .format(java.util.Date(it * 1000))
+    }
+    val c = e.counts
+    val keepers =
+        listOfNotNull(
+            c.forever
+                .toInt()
+                .takeIf { it > 0 }
+                ?.let { "$it forever" },
+            c.untilWatched
+                .toInt()
+                .takeIf { it > 0 }
+                ?.let { "$it until watched" },
+            c.days
+                .toInt()
+                .takeIf { it > 0 }
+                ?.let { "$it for a while" },
+        )
+    if (keepers.isNotEmpty()) parts += "kept by " + keepers.joinToString(", ")
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")?.replaceFirstChar { it.uppercase() }
+}
+
+/** "Saga · Alien", or the name alone when it already says so ("Very Bad Trip - Saga"). */
+private fun sagaLabel(name: String): String = if (listOf("saga", "collection").any { name.contains(it, ignoreCase = true) }) name else "Saga · $name"

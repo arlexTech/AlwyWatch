@@ -764,3 +764,77 @@ impl KeepClient {
         .await
     }
 }
+
+/// The Leaving soon entry of a title page's item: the same item on the caller's server, else
+/// the same TMDB or TVDB id with the same kind ("movie" or "show"). Items not in the list are
+/// not scheduled for deletion.
+pub fn leaving_entry<'a>(
+    list: &'a [LeavingItem],
+    item_id: &str,
+    kind: &str,
+    tmdb: Option<&str>,
+    tvdb: Option<&str>,
+) -> Option<&'a LeavingItem> {
+    let same = |a: &Option<String>, b: Option<&str>| matches!((a.as_deref(), b), (Some(x), Some(y)) if !x.is_empty() && x == y);
+    list.iter()
+        .find(|i| i.server_item_id.as_deref() == Some(item_id))
+        .or_else(|| {
+            list.iter()
+                .find(|i| i.kind == kind && (same(&i.tmdb_id, tmdb) || same(&i.tvdb_id, tvdb)))
+        })
+}
+
+#[cfg(test)]
+mod leaving_entry_tests {
+    use super::*;
+
+    fn item(key: &str, kind: &str, server: Option<&str>, tmdb: Option<&str>) -> LeavingItem {
+        LeavingItem {
+            key: key.into(),
+            title: key.into(),
+            year: None,
+            kind: kind.into(),
+            poster_url: None,
+            tmdb_id: tmdb.map(Into::into),
+            tvdb_id: None,
+            server_item_id: server.map(Into::into),
+            collection_id: None,
+            collection_title: None,
+            collection_active: false,
+            deletion_date: None,
+            effective_deletion_date: None,
+            protection: Protection::None,
+            my_vote: None,
+            counts: VoteCounts::default(),
+        }
+    }
+
+    #[test]
+    fn by_server_item_then_provider_id_of_the_same_kind() {
+        let list = vec![
+            item("a", "movie", Some("jf1"), Some("10")),
+            item("b", "show", None, Some("20")),
+            item("c", "movie", None, Some("20")),
+        ];
+        assert_eq!(
+            leaving_entry(&list, "jf1", "movie", None, None)
+                .unwrap()
+                .key,
+            "a"
+        );
+        assert_eq!(
+            leaving_entry(&list, "x", "movie", Some("20"), None)
+                .unwrap()
+                .key,
+            "c"
+        );
+        assert_eq!(
+            leaving_entry(&list, "x", "show", Some("20"), None)
+                .unwrap()
+                .key,
+            "b"
+        );
+        assert!(leaving_entry(&list, "x", "movie", Some(""), None).is_none());
+        assert!(leaving_entry(&list, "x", "movie", None, None).is_none());
+    }
+}

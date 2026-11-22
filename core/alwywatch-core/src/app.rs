@@ -2737,6 +2737,25 @@ impl AlwyWatch {
             .map(|c| c.value))
     }
 
+    /// The keep status of a movie or show page (from the cached Leaving soon list, instant).
+    /// None: not in the list, so not scheduled for deletion (or the list isn't loaded yet).
+    pub fn keep_status_of(&self, item: Item) -> Option<LeavingItem> {
+        let kind = match item.kind {
+            ItemKind::Movie => "movie",
+            ItemKind::Series => "show",
+            _ => return None,
+        };
+        let list = self.cached_leaving_soon().ok().flatten()?;
+        keep_service::leaving_entry(
+            &list,
+            &item.id,
+            kind,
+            item.provider_ids.tmdb.as_deref(),
+            item.provider_ids.tvdb.as_deref(),
+        )
+        .cloned()
+    }
+
     pub async fn refresh_leaving_soon(&self, force: bool) -> Result<Vec<LeavingItem>> {
         self.run(|c| async move {
             let client = c.keep()?;
