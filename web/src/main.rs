@@ -111,6 +111,7 @@ fn App() -> impl IntoView {
                 <Route path=path!("/list") view=|| view! { <Shell><extra::MyList /></Shell> } />
                 <Route path=path!("/requests") view=|| view! { <Shell><request::Requests /></Shell> } />
                 <Route path=path!("/request/:kind/:tmdb") view=|| view! { <Shell><request::SeerrTitle /></Shell> } />
+                <Route path=path!("/saga/:id") view=|| view! { <Shell><request::Saga /></Shell> } />
                 <Route path=path!("/together") view=|| view! { <Shell><together::Together /></Shell> } />
                 <Route path=path!("/together/:code") view=|| view! { <Shell><together::RoomPage /></Shell> } />
                 <Route path=path!("/leaving") view=|| view! { <Shell><keep::Leaving /></Shell> } />

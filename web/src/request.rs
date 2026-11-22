@@ -27,6 +27,55 @@ pub fn title_href(kind: SeerrMediaType, tmdb_id: i64) -> String {
     format!("/request/{kind}/{tmdb_id}")
 }
 
+/// Where a saga's page is.
+pub fn saga_href(id: i64) -> String {
+    format!("/saga/{id}")
+}
+
+/// "Saga · Alien", or the name alone when it already says so ("Very Bad Trip - Saga").
+pub fn saga_label(name: &str) -> String {
+    let lower = name.to_lowercase();
+    if lower.contains("saga") || lower.contains("collection") {
+        name.to_owned()
+    } else {
+        format!("Saga · {name}")
+    }
+}
+
+/// A saga (TMDB collection): its films with their state; each opens its page.
+#[component]
+pub fn Saga() -> impl IntoView {
+    let params = use_params_map();
+    let id = Memo::new(move |_| {
+        params
+            .read()
+            .get("id")
+            .and_then(|t| t.parse::<i64>().ok())
+            .unwrap_or(0)
+    });
+    let saga = LocalResource::new(move || {
+        let id = id.get();
+        async move {
+            let s = state::ctx().seerr().ok_or(NO_SEERR.to_string())?;
+            s.collection(id).await.map_err(|e| plain_error(&e))
+        }
+    });
+    view! {
+        {move || match saga.get() {
+            None => view! { <Loading /> }.into_any(),
+            Some(Err(e)) => view! { <ErrorText text=e /> }.into_any(),
+            Some(Ok(c)) => view! {
+                <h1>{c.name.clone()}</h1>
+                <p class="muted">{format!("{} films", c.parts.len())}</p>
+                {c.overview.clone().map(|o| view! { <p class="overview">{o}</p> })}
+                <div class="grid">
+                    {c.parts.into_iter().map(|r| view! { <crate::browse::Requestable r=r /> }).collect_view()}
+                </div>
+            }.into_any(),
+        }}
+    }
+}
+
 /// The state of a title as one label, like the apps ("Requested", "Downloading 42%"…).
 pub fn availability_label(a: Availability, progress: Option<f32>) -> Option<String> {
     if let Some(p) = progress {
@@ -643,5 +692,9 @@ mod tests {
         assert_eq!(seasons_button(2, true), "Request 2 seasons");
         assert!(request_error(&Error::Unauthorized).contains("no requests left"));
         assert_eq!(title_href(SeerrMediaType::Tv, 12), "/request/tv/12");
+        assert_eq!(saga_href(9), "/saga/9");
+        assert_eq!(saga_label("Alien"), "Saga · Alien");
+        assert_eq!(saga_label("Harry Potter - Saga"), "Harry Potter - Saga");
+        assert_eq!(saga_label("Toy Story Collection"), "Toy Story Collection");
     }
 }

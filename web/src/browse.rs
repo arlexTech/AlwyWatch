@@ -383,6 +383,10 @@ pub fn Detail() -> impl IntoView {
                                         what=format!("{} of {}", i.title, i.series_title.clone().unwrap_or_default()) watched=i.user.played />
                                 })}
                                 <p class="overview">{i.overview.clone().unwrap_or_default()}</p>
+                                {(i.kind == ItemKind::Movie).then(|| view! {
+                                    <SagaLink tmdb=i.provider_ids.tmdb.as_deref().and_then(|t| t.parse().ok()) />
+                                })}
+                                <crate::keep::KeepPanel item=i.clone() />
                             </div>
                         </div>
                     </div>
@@ -397,6 +401,25 @@ pub fn Detail() -> impl IntoView {
                 }.into_any()
             }
         }}
+    }
+}
+
+/// A movie's saga (TMDB collection, through Seerr): a link to its page under the overview.
+/// Nothing without Seerr or on an error.
+#[component]
+fn SagaLink(tmdb: Option<i64>) -> impl IntoView {
+    let saga = LocalResource::new(move || async move {
+        let s = state::ctx().seerr()?;
+        s.title(SeerrMediaType::Movie, tmdb?).await.ok()?.collection
+    });
+    move || {
+        saga.get().flatten().map(|c| {
+            view! {
+                <div class="actions title-links">
+                    <A href=crate::request::saga_href(c.id) attr:class="button">{crate::request::saga_label(&c.name)}</A>
+                </div>
+            }
+        })
     }
 }
 
@@ -585,7 +608,7 @@ pub fn Search() -> impl IntoView {
 
 /// A title Seerr knows but the servers don't: opens its page (to request it there).
 #[component]
-fn Requestable(r: SeerrResult) -> impl IntoView {
+pub fn Requestable(r: SeerrResult) -> impl IntoView {
     let label = crate::request::availability_label(r.availability, r.download_progress);
     let show = r.media_type == SeerrMediaType::Tv;
     view! {

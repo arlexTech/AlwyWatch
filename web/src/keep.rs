@@ -123,6 +123,34 @@ pub fn Leaving() -> impl IntoView {
 
 #[component]
 fn LeavingRow(item: LeavingItem, items: RwSignal<Option<Vec<LeavingItem>>>) -> impl IntoView {
+    let keepers = item.counts.forever + item.counts.until_watched + item.counts.days;
+    let on_voted = Callback::new(move |updated: LeavingItem| {
+        items.update(|l| {
+            if let Some(l) = l {
+                if let Some(x) = l.iter_mut().find(|x| x.key == updated.key) {
+                    *x = updated;
+                }
+                state::save(state::LEAVING, l);
+            }
+        })
+    });
+    view! {
+        <div class="leaving-row">
+            {item.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
+            <div class="leaving-info">
+                <strong>{item.title.clone()}</strong>
+                <span class="muted">{item.year.map(|y| y.to_string())}" · "{status(&item)}</span>
+                {(keepers > 0).then(|| view! { <span class="muted small">{format!("{keepers} keep it")}</span> })}
+                {mine(&item).map(|m| view! { <span class="accent small">{m}</span> })}
+                <KeepChoices item=item.clone() on_voted=on_voted />
+            </div>
+        </div>
+    }
+}
+
+/// The keep choices of a Leaving soon title (its row, and the title page's keep panel).
+#[component]
+fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoView {
     let key = item.key.clone();
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
@@ -139,17 +167,12 @@ fn LeavingRow(item: LeavingItem, items: RwSignal<Option<Vec<LeavingItem>>>) -> i
                 None => k.unvote(&key).await,
             };
             match res {
-                Ok(updated) => items.update(|l| {
-                    if let Some(l) = l {
-                        if let Some(x) = l.iter_mut().find(|x| x.key == updated.key) {
-                            *x = updated;
-                        }
-                        state::save(state::LEAVING, l);
-                    }
-                }),
-                Err(e) => error.set(Some(state::plain_keep(&e))),
+                Ok(updated) => on_voted.run(updated),
+                Err(e) => {
+                    error.try_set(Some(state::plain_keep(&e)));
+                }
             }
-            busy.set(false);
+            busy.try_set(false);
         });
     };
     let req = |kind, days| VoteRequest {
@@ -159,28 +182,156 @@ fn LeavingRow(item: LeavingItem, items: RwSignal<Option<Vec<LeavingItem>>>) -> i
         reason: None,
     };
     let (v1, v2, v3, v4, v5) = (vote.clone(), vote.clone(), vote.clone(), vote.clone(), vote);
-    let keepers = item.counts.forever + item.counts.until_watched + item.counts.days;
     view! {
-        <div class="leaving-row">
-            {item.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
-            <div class="leaving-info">
-                <strong>{item.title.clone()}</strong>
-                <span class="muted">{item.year.map(|y| y.to_string())}" · "{status(&item)}</span>
-                {(keepers > 0).then(|| view! { <span class="muted small">{format!("{keepers} keep it")}</span> })}
-                {mine(&item).map(|m| view! { <span class="accent small">{m}</span> })}
-                <div class="actions">
-                    <button class="small" disabled=move || busy.get() on:click=move |_| v1(Some(req(VoteKind::KeepUntilWatched, None)))>"Until I watch it"</button>
-                    <button class="small" disabled=move || busy.get() on:click=move |_| v2(Some(req(VoteKind::KeepForever, None)))>"Forever"</button>
-                    <button class="small" disabled=move || busy.get() on:click=move |_| v3(Some(req(VoteKind::KeepDays, Some(30))))>"30 more days"</button>
-                    <button class="small" disabled=move || busy.get() on:click=move |_| v4(Some(req(VoteKind::DontCare, None)))>"Don't care"</button>
-                    {item.my_vote.is_some().then(|| view! {
-                        <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>"Undo"</button>
-                    })}
-                </div>
-                {move || error.get().map(|e| view! { <ErrorText text=e /> })}
-            </div>
+        <div class="actions">
+            <button class="small" disabled=move || busy.get() on:click=move |_| v1(Some(req(VoteKind::KeepUntilWatched, None)))>"Until I watch it"</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v2(Some(req(VoteKind::KeepForever, None)))>"Forever"</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v3(Some(req(VoteKind::KeepDays, Some(30))))>"30 more days"</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v4(Some(req(VoteKind::DontCare, None)))>"Don't care"</button>
+            {item.my_vote.is_some().then(|| view! {
+                <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>"Undo"</button>
+            })}
         </div>
+        {move || error.get().map(|e| view! { <ErrorText text=e /> })}
     }
+}
+
+/// "Kept forever", "Kept until 2 people have watched it", "Leaves 3 Dec 2026"… (as Android).
+fn keep_policy(e: &LeavingItem, now: i64) -> String {
+    match e.protection {
+        Protection::Forever => "Kept forever".into(),
+        Protection::UntilWatched => match e.counts.until_watched {
+            ..=1 => "Kept until the person who asked has watched it".into(),
+            n => format!("Kept until {n} people have watched it"),
+        },
+        _ if paused(e, now) => "On the deletion list".into(),
+        _ => status(e),
+    }
+}
+
+/// Which list it is in and why nothing happens yet, plus who keeps it (`date` formats a day).
+fn keep_detail(e: &LeavingItem, now: i64, date: impl Fn(i64) -> String) -> String {
+    let mut parts = vec![];
+    if let Some(t) = &e.collection_title {
+        parts.push(format!("In “{t}”"));
+    }
+    if e.protection == Protection::None && !e.collection_active {
+        parts.push("deletion isn't turned on yet".to_owned());
+    }
+    if let Some(d) = e.effective_deletion_date
+        && !paused(e, now)
+    {
+        parts.push(format!("date {}", date(d)));
+    }
+    let c = &e.counts;
+    let keepers: Vec<String> = [
+        (c.forever, "forever"),
+        (c.until_watched, "until watched"),
+        (c.days, "for a while"),
+    ]
+    .into_iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(n, what)| format!("{n} {what}"))
+    .collect();
+    if !keepers.is_empty() {
+        parts.push(format!("kept by {}", keepers.join(", ")));
+    }
+    let s = parts.join(" · ");
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(f) => f.to_uppercase().chain(chars).collect(),
+        None => s,
+    }
+}
+
+/// "3 Dec 2026" in the browser's language.
+fn medium_date(ts: i64) -> String {
+    let d = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ts as f64 * 1000.0));
+    let o = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(&o, &"dateStyle".into(), &"medium".into());
+    String::from(d.to_locale_date_string("default", &o))
+}
+
+/// A movie or show page: where it stands in Leaving soon, my choice, the keep choices on
+/// demand. Shown once the list has been loaded (kept in the browser), then refreshed.
+#[component]
+pub fn KeepPanel(item: media_api::Item) -> impl IntoView {
+    let kind = match item.kind {
+        media_api::ItemKind::Movie => "movie",
+        media_api::ItemKind::Series => "show",
+        _ => return ().into_any(),
+    };
+    if state::ctx().keep.get_untracked().is_none() {
+        return ().into_any();
+    }
+    let list = RwSignal::new(state::load::<Vec<LeavingItem>>(state::LEAVING));
+    spawn_local(async move {
+        let Some(k) = state::ctx().keep_client() else {
+            return;
+        };
+        if let Ok(l) = k.leaving_soon().await {
+            state::save(state::LEAVING, &l);
+            list.try_set(Some(l));
+        }
+    });
+    let choosing = RwSignal::new(false);
+    let on_voted = Callback::new(move |updated: LeavingItem| {
+        list.update(|l| {
+            if let Some(l) = l {
+                if let Some(x) = l.iter_mut().find(|x| x.key == updated.key) {
+                    *x = updated;
+                }
+                state::save(state::LEAVING, l);
+            }
+        });
+        choosing.set(false);
+    });
+    let (id, tmdb, tvdb) = (
+        item.id.clone(),
+        item.provider_ids.tmdb.clone(),
+        item.provider_ids.tvdb.clone(),
+    );
+    let entry = Memo::new(move |_| {
+        list.with(|l| {
+            l.as_ref().map(|l| {
+                keep_service::leaving_entry(l, &id, kind, tmdb.as_deref(), tvdb.as_deref()).cloned()
+            })
+        })
+    });
+    view! {
+        {move || entry.get().map(|e| {
+            let now = now_s();
+            let Some(e) = e else {
+                return view! {
+                    <section class="keep-panel">
+                        <h3>"Not scheduled for deletion"</h3>
+                        <p class="muted small">"It is in none of the server's deletion lists."</p>
+                    </section>
+                }.into_any();
+            };
+            let detail = keep_detail(&e, now, medium_date);
+            let voted = e.my_vote.is_some();
+            view! {
+                <section class="keep-panel listed">
+                    <h3>{keep_policy(&e, now)}</h3>
+                    {(!detail.is_empty()).then(|| view! { <p class="muted small">{detail}</p> })}
+                    <p>{mine(&e).unwrap_or("You haven't chosen anything")}</p>
+                    {move || if choosing.get() {
+                        view! { <KeepChoices item=e.clone() on_voted=on_voted /> }.into_any()
+                    } else {
+                        view! {
+                            <div class="actions">
+                                <button class="small" on:click=move |_| choosing.set(true)>
+                                    {if voted { "Change my choice" } else { "Keep it" }}
+                                </button>
+                            </div>
+                        }.into_any()
+                    }}
+                </section>
+            }.into_any()
+        })}
+    }
+    .into_any()
 }
 
 #[component]
@@ -732,6 +883,38 @@ mod tests {
         assert_eq!(
             short_label(&item(Protection::None, true, Some(now + 9 * DAY)), now),
             ("9 days".into(), false)
+        );
+    }
+
+    #[test]
+    fn title_page_panel_words_like_android() {
+        let now = 1_000_000;
+        let mut kept = item(Protection::UntilWatched, true, Some(now + 20 * DAY));
+        kept.counts.until_watched = 1;
+        assert_eq!(
+            keep_policy(&kept, now),
+            "Kept until the person who asked has watched it"
+        );
+        kept.counts.until_watched = 3;
+        kept.counts.forever = 1;
+        kept.collection_title = Some("Old movies".into());
+        assert_eq!(
+            keep_policy(&kept, now),
+            "Kept until 3 people have watched it"
+        );
+        assert_eq!(
+            keep_detail(&kept, now, |_| "D".into()),
+            "In “Old movies” · date D · kept by 1 forever, 3 until watched"
+        );
+        let paused = item(Protection::None, false, Some(now - 10));
+        assert_eq!(keep_policy(&paused, now), "On the deletion list");
+        assert_eq!(
+            keep_detail(&paused, now, |_| "D".into()),
+            "Deletion isn't turned on yet"
+        );
+        assert_eq!(
+            keep_policy(&item(Protection::Forever, true, None), now),
+            "Kept forever"
         );
     }
 

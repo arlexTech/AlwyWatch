@@ -301,3 +301,10 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
   padding: 2px 8px; border-radius: 6px; background: var(--surface-high); color: var(--muted); vertical-align: middle; margin-left: 4px; }
 .tag.main { background: var(--accent); color: #000; }
 .link-pair { background: var(--surface); border-radius: var(--radius); padding: 6px 14px; margin: 4px 0 8px; }
+/* Title page: the saga link, and where the title stands in Leaving soon. */
+.title-links { margin: 4px 0 12px; }
+.keep-panel { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; max-width: 640px; }
+.keep-panel h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.keep-panel.listed { box-shadow: inset 3px 0 0 var(--accent); }
+.keep-panel p { margin: 4px 0; }
+.keep-panel .actions { margin: 10px 0 0; gap: 6px; }
