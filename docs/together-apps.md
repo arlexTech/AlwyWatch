@@ -7,16 +7,26 @@ For the Android (phone/tablet and TV), desktop and web apps. Protocol details:
 server; without one, "Watch together" is hidden.
 
 Rooms are private and start as a lobby: there is **no room code to type or show anywhere**.
+A room outlives its titles: when the host leaves the player it goes back to the lobby and
+everyone stays; each start opens the player for everyone, wherever they are in the app.
 
 ## 1. "Watch together" on a title
 
-On a movie or an episode (detail screen, and the player's menu when the title is playing
-alone), "Watch together":
+On a movie or an episode's detail screen, "Watch together":
 
 1. creates the lobby: `together_create(account_id, item_id)` / web: build the
    `TogetherMedia` (as today) then `KeepClient::together_create(&TogetherCreate { media })`;
 2. opens the **Room screen** with the returned `TogetherJoined` (`member_id` + `state`).
    **Never the player.**
+
+Hosting a room already, the button reads "Watch in your room": `together_update(code,
+member_id, false, resume_ms, account_id, item_id)` makes it the room's title (everyone stays;
+a playing room starts a new round), then the Room screen.
+
+In the **player**, watching alone, "Watch together" pauses, creates the lobby the same way and
+shows the room in a dialog over the video (title, members, invited, Invite, "Start at mm:ss",
+Cancel). Start: `together_start(code, member_id, current position)`; the same player then
+follows the room (no reload). Cancel: `together_leave`, playback goes on.
 
 ## 2. Room screen
 
@@ -44,8 +54,18 @@ Shows, from the latest `TogetherState`:
 While the screen is open, loop on `together_wait(code, member_id, state.seq)` /
 `KeepClient::together_wait(code, member, seq)` (it returns at once on any change, or after
 ~25 s) and redraw from each answer. **This loop is the seat's heartbeat**: a seat that does not
-poll for 60 s is dropped, so keep it running in the lobby and in the player alike. When an
-answer has `started == true`, open the player in sync (everyone, host included).
+poll for 60 s is dropped, so keep it running while the app is in the foreground (the host may
+be picking a title anywhere in the app).
+
+**Every start opens the player**: keep the last `round` the player opened for (or that the
+viewer left); when an answer has `started == true` and a higher `round`, open the player in
+sync, wherever the app is (everyone, host included).
+
+**Closing the player** keeps the seat: back to the Room screen. When the host closes it in a
+started room, send `together_lobby(code, member_id, position_ms)`: the room goes back to the
+lobby. A player that sees `started == false` (and isn't the host's) closes and shows the Room
+screen ("<host> went back to the waiting room"). In the lobby again, the host's Start uses
+`state.position_ms` (where they stopped).
 
 Errors in the loop: on a network error, retry with backoff. On 404 with a seat that worked
 before, call `together_join(code)` once (a dropped seat may come back); 404 again means the
@@ -84,8 +104,19 @@ errors, retry with backoff. Do not show a banner for a room the user just left o
 
 `together_join` on a started room returns `state.started == true`: find the title on the
 user's servers (`together_find(account_ids, state.media)`), open the player at
-`together_position(state, received_at_ms, now_ms)` / `state.position_at(..)`, playing if
-`state.playing`, and run the room's `wait` loop. In the player, as today: send every play,
+`together_position_at(state, together_now_ms())` / `state.position_at(server_now)`, playing
+if `state.playing`, and run the room's `wait` loop. `together_now_ms()` is the server's clock
+measured from this device (the core measures it in `together_join`/`together_wait`; the web
+app with `ClockSync` and `together_clock`).
+
+**Starting together.** While `state.loading` is not empty, the player stays paused at
+`state.position_ms` and shows "Loading for everyone…" / "Waiting for <names>…". If its own
+member id is in `loading` (`together_is_loading`), once the title is ready to play there with
+`together_ready_buffer_ms()` buffered ahead (or to its end; or after 8 s ready whatever the
+buffer), it calls `together_ready(code, member_id, state.round)` once per round. When
+`together_starts_in(state, now)` gives a delay, it stays paused and presses play exactly then
+(a timer, not the half-second loop). A new `round` while the player is open (another title):
+load that title the same way. In the player, as today: send every play,
 pause, seek and title change with `together_update`; on each `wait` answer whose `by` is not
 this seat, follow it: every half second the player compares itself with the room and plays up to 6 % faster or slower for small drifts, seeking only past 2 s (`together_correction`; seeks only past 1 s when the speed can't change, as with passthrough audio). Not for 2 s after its own change, which the room hasn't echoed yet. The player shows "n watching" with the
 members' avatars and names.
@@ -113,9 +144,12 @@ refresh; the list long poll keeps it current):
 | Invite / withdraw | `together_invite(code, member_id, user_keys)`, `together_uninvite(code, member_id, user_key)` | `together_invite(code, &TogetherInvite)`, `together_uninvite(code, member, user_key)` |
 | Join / decline | `together_join(code)`, `together_decline(code)` | `together_join(code)`, `together_decline(code)` |
 | Start | `together_start(code, member_id, position_ms)` | `together_start(code, member, position_ms)` |
+| Loaded for the start | `together_ready(code, member_id, round)` | `together_ready(code, &TogetherReady)` |
+| Back to the lobby (host leaves the player) | `together_lobby(code, member_id, position_ms)` | `together_lobby(code, member, position_ms)` |
+| Server clock | `together_now_ms()` | `ClockSync` + `together_clock()` |
 | Play/pause/seek/title | `together_update(code, member_id, playing, position_ms, account_id?, item_id?)` | `together_update(code, &TogetherUpdate)` (`started: false`) |
 | Room changes + heartbeat | `together_wait(code, member_id, after)` | `together_wait(code, member, after)` |
 | Leave | `together_leave(code, member_id)` | `together_leave(code, member)` |
 | Am I host | `together_is_host(state, member_id)` | `state.is_host(member)` |
-| Where to play | `together_position(state, received_at_ms, now_ms)`, `together_find(account_ids, media)` | `state.position_at(server_now_ms)` |
+| Where to play | `together_position_at(state, together_now_ms())`, `together_starts_in`, `together_is_loading`, `together_find(account_ids, media)` | `state.position_at(server_now_ms)`, `state.starts_in(..)`, `state.is_loading(..)` |
 | Avatars | `keep_avatar_request(user_key, version)` ([profile-apps.md](profile-apps.md)) | `avatar_url(user_key, version)` + `auth_headers()` |
