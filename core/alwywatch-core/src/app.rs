@@ -3489,6 +3489,22 @@ impl AlwyWatch {
         .await
     }
 
+    /// "New room" on the Together page: a lobby with no title yet (`state.media.title` is
+    /// empty). People can be invited and join, my other devices too, while I browse; a title's
+    /// "Watch in your room" ([`AlwyWatch::together_update`]) then chooses what to watch.
+    pub async fn together_open(&self) -> Result<TogetherJoined> {
+        let rights = self.together_rights();
+        self.run(|c| async move {
+            Ok(c.keep()?
+                .together_create(&TogetherCreate {
+                    media: TogetherMedia::none(),
+                    rights,
+                })
+                .await?)
+        })
+        .await
+    }
+
     /// My rooms and the rooms I am invited to (`invited == true`: offer Join / Not now), with
     /// the list's `version` for [`AlwyWatch::together_rooms_wait`]. Nobody sees other rooms.
     pub async fn together_rooms(&self) -> Result<TogetherRooms> {
@@ -3682,6 +3698,10 @@ impl AlwyWatch {
         account_ids: Vec<String>,
         media: TogetherMedia,
     ) -> Result<Option<TogetherMatch>> {
+        // A room without a title yet: nothing to look for.
+        if media.is_none() {
+            return Ok(None);
+        }
         self.run(|c| async move {
             for a in account_ids {
                 if let Ok(Some(item_id)) = c.together_find_on(&a, &media).await {

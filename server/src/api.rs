@@ -274,6 +274,7 @@ fn together_error(e: crate::together::TogetherError) -> Error {
             StatusCode::LOCKED,
             "the host doesn't let others do this in this room".into(),
         ),
+        E::NoTitle => Error(StatusCode::CONFLICT, "choose what to watch first".into()),
     }
 }
 

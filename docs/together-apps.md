@@ -10,6 +10,16 @@ Rooms are private and start as a lobby: there is **no room code to type or show 
 A room outlives its titles: when the host leaves the player it goes back to the lobby and
 everyone stays; each start opens the player for everyone, wherever they are in the app.
 
+## 0. "New room" on the Together page
+
+A room can be opened before choosing what to watch: `together_open()` / web:
+`KeepClient::together_create` with `TogetherMedia::none()`. The Room screen opens with
+"Nothing chosen yet" (`media.title` empty, `TogetherMedia::is_none`): the host invites people,
+who join right away (and the host's other devices, from "Your rooms"), then browses anywhere
+in the app; "Watch in your room" on a title (section 1) chooses it. Until then the room shows
+**Choose what to watch** (goes to Home) instead of Start, guests read "<host> is choosing what
+to watch", and the server refuses a start (409).
+
 ## 1. "Watch together" on a title
 
 On a movie or an episode's detail screen, "Watch together":

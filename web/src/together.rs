@@ -159,6 +159,9 @@ pub fn on_remote(
 }
 
 pub fn media_label(m: &TogetherMedia) -> String {
+    if m.is_none() {
+        return "Nothing chosen yet".into();
+    }
     match &m.series_title {
         Some(show) => format!(
             "{show} · S{} · E{}",
@@ -852,6 +855,26 @@ pub async fn create_room(srv: AnyServer, item: Item) -> Result<String, String> {
     Ok(code)
 }
 
+/// "New room" on the Together page: a lobby with no title yet. People join while the host
+/// browses; a title's "Watch in your room" then chooses what to watch.
+pub async fn open_room() -> Result<String, String> {
+    let c = state::ctx();
+    let k = c.keep_client().ok_or(NO_KEEP)?;
+    let j = k
+        .together_create(&TogetherCreate {
+            media: TogetherMedia::none(),
+            rights: crate::prefs::load().together,
+        })
+        .await
+        .map_err(|e| plain_together(&e))?;
+    if c.room.active() {
+        c.room.leave("", true);
+    }
+    let code = j.state.code.clone();
+    c.room.open(code.clone(), j.member_id, Some(j.state));
+    Ok(code)
+}
+
 /// Takes a seat in a room I'm invited to (or in on another device).
 pub async fn join(code: &str) -> Result<TogetherJoined, String> {
     let k = state::ctx().keep_client().ok_or(NO_KEEP)?;
@@ -1143,9 +1166,37 @@ pub fn Together() -> impl IntoView {
     let busy = RwSignal::new(None::<String>);
     let error = RwSignal::new(None::<String>);
     let linked = move || state::ctx().keep.get().is_some();
+    let opening = RwSignal::new(false);
+    let nav_new = navigate.clone();
+    let new_room = move |_| {
+        if opening.get_untracked() {
+            return;
+        }
+        opening.set(true);
+        error.set(None);
+        let navigate = nav_new.clone();
+        spawn_local(async move {
+            let res = open_room().await;
+            opening.try_set(false);
+            match res {
+                Ok(code) => navigate(&room_href(&code), Default::default()),
+                Err(e) => {
+                    error.try_set(Some(e));
+                }
+            }
+        });
+    };
     view! {
         <h1>"Watch together"</h1>
         <p class="muted">"Private rooms: only the people the host invites can see them."</p>
+        <Show when=linked>
+            <div class="actions">
+                <button class="primary" disabled=move || opening.get() on:click=new_room.clone()>
+                    {move || if opening.get() { "Opening a room…" } else { "New room" }}
+                </button>
+                <span class="muted small">"Invite people first, choose what to watch afterwards."</span>
+            </div>
+        </Show>
         {move || (!linked()).then(|| view! { <ErrorText text=NO_KEEP.to_string() /> })}
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         {move || (inv.unreachable.get() && linked()).then(|| view! {
@@ -1155,7 +1206,7 @@ pub fn Together() -> impl IntoView {
             None if linked() => view! { <Loading /> }.into_any(),
             None => ().into_any(),
             Some(r) if r.rooms.is_empty() => view! {
-                <p class="muted empty">"No rooms yet. Open a movie or an episode and choose Watch together, then invite people."</p>
+                <p class="muted empty">"No rooms yet. Start one here, or open a movie or an episode and choose Watch together."</p>
             }.into_any(),
             Some(r) => {
                 let (invites, mine): (Vec<_>, Vec<_>) = r.rooms.into_iter().partition(|r| r.invited);
@@ -1275,7 +1326,7 @@ fn Lobby(room: Room) -> impl IntoView {
     let found = LocalResource::new(move || {
         let m = media.get();
         async move {
-            let m = m?;
+            let m = m.filter(|m| !m.is_none())?;
             let (acc, id) = find(&m).await?;
             let srv = state::ctx().server(&acc)?;
             let item = srv.item(&id).await.ok();
@@ -1334,6 +1385,7 @@ fn Lobby(room: Room) -> impl IntoView {
         {move || room.state.get().map(|s| {
             let host = s.members.iter().find(|m| m.id == s.host).map(|m| m.name.clone()).unwrap_or_else(|| "the host".into());
             let hosting = room.hosting();
+            let untitled = s.media.is_none();
             let people = group_members(&s);
             let watch = watch.clone();
             let leave = leave.clone();
@@ -1343,7 +1395,14 @@ fn Lobby(room: Room) -> impl IntoView {
                     <div>
                         <p class="muted">{if s.started { "Watch together · watching now" } else { "Watch together · lobby" }}</p>
                         <h1>{media_label(&s.media)}</h1>
-                        {move || matches!(found.get(), Some(None)).then(|| view! {
+                        {untitled.then(|| view! {
+                            <p class="muted small">{if hosting {
+                                "Browse to a movie or an episode and choose Watch in your room. Everyone stays here meanwhile.".to_string()
+                            } else {
+                                format!("{host} is choosing what to watch.")
+                            }}</p>
+                        })}
+                        {move || (!untitled && matches!(found.get(), Some(None))).then(|| view! {
                             <p class="muted small">"This title isn't on your servers: you can be in the room but can't play it here."</p>
                         })}
                     </div>
@@ -1351,9 +1410,13 @@ fn Lobby(room: Room) -> impl IntoView {
                 <div class="actions">
                     {match (s.started, hosting) {
                         (true, _) => view! { <button class="primary" on:click=watch>"Open the player"</button> }.into_any(),
+                        (false, true) if untitled => view! {
+                            <A href="/" attr:class="button primary">"Choose what to watch"</A>
+                        }.into_any(),
                         (false, true) => view! {
                             <button class="primary" disabled=move || busy.get() on:click=start>"Start watching"</button>
                         }.into_any(),
+                        (false, false) if untitled => view! { <p class="accent waiting">{format!("{host} is choosing what to watch")}</p> }.into_any(),
                         (false, false) if s.round > 0 => view! { <p class="accent waiting">{format!("{host} is picking what to watch next")}</p> }.into_any(),
                         (false, false) => view! { <p class="accent waiting">{format!("Waiting for {host} to start")}</p> }.into_any(),
                     }}
@@ -1613,7 +1676,17 @@ pub fn SeatBanner() -> impl IntoView {
         }
         let (label, started) = room
             .state
-            .with(|s| s.as_ref().map(|s| (media_label(&s.media), s.started)))
+            .with(|s| {
+                s.as_ref().map(|s| {
+                    let label = if s.media.is_none() {
+                        // Hosting an untitled room: say how to choose.
+                        "open a title and choose Watch in your room".to_owned()
+                    } else {
+                        media_label(&s.media)
+                    };
+                    (label, s.started)
+                })
+            })
             .unwrap_or_default();
         Some(view! {
             <div class="banner seat" role="status">

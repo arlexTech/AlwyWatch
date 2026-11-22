@@ -44,6 +44,8 @@ pub enum TogetherError {
     Forbidden,
     /// A guest doing what the host's rights don't allow (pause, seek, another title).
     NotAllowed,
+    /// Starting a room that has no title yet.
+    NoTitle,
 }
 
 struct Member {
@@ -693,6 +695,10 @@ impl Rooms {
                 return Err(TogetherError::Forbidden);
             }
             if u.started {
+                let chosen = u.media.as_ref().unwrap_or(&room.state.media);
+                if chosen.is_none() {
+                    return Err(TogetherError::NoTitle);
+                }
                 met = room.all_pairs();
                 room.begin_round(u.position_ms);
             } else {
@@ -908,6 +914,47 @@ mod tests {
             started,
             lobby: false,
         }
+    }
+
+    #[test]
+    fn a_room_opens_before_its_title_and_people_join_meanwhile() {
+        let r = Rooms::default();
+        let j = r
+            .create(
+                TogetherCreate {
+                    media: TogetherMedia::none(),
+                    rights: Default::default(),
+                },
+                "Ana",
+                "plex:ana",
+                &Avatar::default(),
+            )
+            .unwrap();
+        let code = j.state.code.clone();
+        assert!(j.state.media.is_none());
+        // Invited people (and my other devices) come in while I browse.
+        r.invite(&code, &j.member_id, "plex:ana", &[inv("jf:bob", "Bob")])
+            .unwrap();
+        let (bob, _) = r.join(&code, "Bob", "jf:bob", &Avatar::default()).unwrap();
+        let (tv, _) = r
+            .join(&code, "Ana", "plex:ana", &Avatar::default())
+            .unwrap();
+        assert_eq!(tv.state.members.len(), 3);
+        // Nothing to start yet.
+        assert_eq!(
+            r.update(&code, upd(&j.member_id, false, 0, true), "plex:ana")
+                .unwrap_err(),
+            TogetherError::NoTitle
+        );
+        // The title chosen, from any of the host's devices: then it starts for everyone.
+        let mut pick = upd(&tv.member_id, false, 0, false);
+        pick.media = Some(media("Monsters"));
+        let (st, _) = r.update(&code, pick, "plex:ana").unwrap();
+        assert_eq!(st.media.title, "Monsters");
+        let (st, _) = r
+            .update(&code, upd(&j.member_id, false, 0, true), "plex:ana")
+            .unwrap();
+        assert!(st.started && st.is_loading(&bob.member_id));
     }
 
     /// Every seat reports it loaded the current round: the room plays.

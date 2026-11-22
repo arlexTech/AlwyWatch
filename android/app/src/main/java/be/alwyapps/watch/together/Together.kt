@@ -24,7 +24,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** "Show · S1 · E2", or the movie's title. */
-fun TogetherMedia.label(): String = seriesTitle?.let { "$it · S${season ?: 1} · E${episode ?: 1}" } ?: title
+fun TogetherMedia.label(): String = if (untitled()) "Nothing chosen yet" else seriesTitle?.let { "$it · S${season ?: 1} · E${episode ?: 1}" } ?: title
+
+/** A room opened before choosing what to watch ("New room"): no title yet. */
+fun TogetherMedia.untitled(): Boolean = title.isBlank()
 
 /** One entry per person (a user on two devices has two seats), with how many devices. */
 fun List<TogetherMember>.people(): List<Pair<TogetherMember, Int>> = groupBy { it.userKey.ifEmpty { it.id } }.values.map { it.first() to it.size }

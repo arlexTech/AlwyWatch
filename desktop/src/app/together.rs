@@ -83,6 +83,9 @@ fn mono_ms() -> i64 {
 
 /// "Silo S2 · E7" or the movie title.
 pub(super) fn media_title(m: &TogetherMedia) -> String {
+    if m.title.trim().is_empty() {
+        return "Nothing chosen yet".into();
+    }
     match (&m.series_title, m.season, m.episode) {
         (Some(s), Some(se), Some(ep)) => format!("{s} S{se} · E{ep}"),
         _ => m.title.clone(),
@@ -399,8 +402,8 @@ impl App {
             }
         };
         ui.set_together_status(sstr(if rooms.is_empty() {
-            "No rooms yet. Open a movie or an episode and choose Watch together, then invite \
-             people."
+            "No rooms yet. Start one here, or open a movie or an episode and choose Watch \
+             together."
         } else {
             ""
         }));
@@ -680,6 +683,34 @@ impl App {
         }
     }
 
+    /// "New room" on the Together page: a lobby with no title yet. People join while the host
+    /// browses; a title's "Watch in your room" then chooses what to watch.
+    pub(super) fn together_new(self: &Rc<Self>) {
+        if self.in_room() {
+            self.navigate(Route::Room);
+            self.ui().set_room_message(
+                "You're already in a room. Leave it first to start another one.".into(),
+            );
+            return;
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.together_open().await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(j) => {
+                    t.enter_room(j);
+                    t.navigate(Route::Room);
+                }
+                Err(e) => t.ui().set_error(sstr(format!(
+                    "Watch together unavailable: {}",
+                    room_error(&e)
+                ))),
+            }
+        })
+        .ok();
+    }
+
     fn enter_room(self: &Rc<Self>, j: TogetherJoined) {
         let generation = {
             let mut st = self.state.borrow_mut();
@@ -731,8 +762,14 @@ impl App {
             .map(|m| m.name.clone())
             .unwrap_or_else(|| "the host".into());
         let now = self.core.together_now_ms();
+        let untitled = s.media.title.trim().is_empty();
+        ui.set_room_untitled(untitled);
         ui.set_room_title(sstr(media_title(&s.media)));
         ui.set_room_status(sstr(match (s.started, s.playing) {
+            (false, _) if untitled && host => "Open a movie or an episode and choose Watch in \
+                 your room. The people you invite can join in the meantime."
+                .to_owned(),
+            (false, _) if untitled => format!("{host_name} is choosing what to watch."),
             (false, _) if host && s.round > 0 => "Back in the waiting room: start again, or open \
                  another title and choose Watch together. Everyone stays here."
                 .to_owned(),
@@ -1307,7 +1344,11 @@ impl App {
             return;
         }
         room.seq = room.seq.max(s.seq);
+        let hosting = together_is_host(s.clone(), room.member.clone());
         room.state = Some(s);
+        drop(st);
+        // Title pages then offer "Watch in your room".
+        self.ui().set_room_hosting(hosting);
     }
 
     /// Where the room is, for the player: on the server's clock, turned into an instant here
@@ -1698,6 +1739,7 @@ impl App {
             let _ = tx.send(ToPlayer::Note(n.to_owned()));
         }
         self.ui().set_room_picker(false);
+        self.ui().set_room_hosting(false);
         if tell_server {
             let core = self.core.clone();
             core.runtime().spawn({

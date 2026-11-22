@@ -1309,6 +1309,8 @@ export component AppWindow inherits Window {
     in property <[PersonRow]> room-invited;
     in property <bool> room-is-host;
     in property <bool> room-started;
+    in property <bool> room-untitled; // opened before choosing what to watch
+    in property <bool> room-hosting; // I host a room: titles offer "Watch in your room"
     in property <string> room-host-name;
     in property <string> room-message;
     // "Watch together" pressed in the player: the room over the paused video, and where the
@@ -1448,6 +1450,7 @@ export component AppWindow inherits Window {
     callback together-open(string); // room code: join an invitation, or open my room
     callback together-decline(string); // room code: "Not now"
     callback room-start();
+    callback together-new(); // a room first, its title afterwards
     callback player-room-start();
     callback player-room-cancel();
     callback room-play(); // started room, player closed: back to the video
@@ -1793,7 +1796,7 @@ export component AppWindow inherits Window {
                                             clicked => { root.play(root.detail.id, true); }
                                         }
                                         if root.detail.playable && root.keep-active : Button {
-                                            label: "Watch together";
+                                            label: root.room-hosting ? "Watch in your room" : "Watch together";
                                             has-icon: true;
                                             icon: @image-url("icons/group.svg");
                                             clicked => { root.watch-together(root.detail.id); }
@@ -2384,6 +2387,12 @@ export component AppWindow inherits Window {
                             spacing: 10px;
                             alignment: start;
                             PageTitle { title: "Together"; subtitle: "Your rooms and your invitations. Rooms are private: only the people invited see them."; }
+                            HorizontalLayout {
+                                spacing: 14px;
+                                alignment: start;
+                                Button { label: "New room"; primary: true; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.together-new(); } }
+                                Text { text: "Invite people first, choose what to watch afterwards."; color: Palette.muted; vertical-alignment: center; }
+                            }
                             if root.together-status != "" : Text { text: root.together-status; color: Palette.muted; font-size: 16px; wrap: word-wrap; }
                             for room in root.together-rooms : Focusable {
                                 height: 128px;
@@ -2457,7 +2466,15 @@ export component AppWindow inherits Window {
                                     HorizontalLayout {
                                         spacing: 10px;
                                         alignment: start;
-                                        if root.room-is-host && !root.room-started : Button {
+                                        if root.room-is-host && !root.room-started && root.room-untitled : Button {
+                                            label: "Choose what to watch";
+                                            primary: true;
+                                            autofocus: true;
+                                            has-icon: true;
+                                            icon: @image-url("icons/video_library.svg");
+                                            clicked => { root.go(Page.home); }
+                                        }
+                                        if root.room-is-host && !root.room-started && !root.room-untitled : Button {
                                             label: "Start watching";
                                             primary: true;
                                             autofocus: true;
@@ -2480,7 +2497,7 @@ export component AppWindow inherits Window {
                                         }
                                         Button { label: "Leave"; clicked => { root.room-leave(); } }
                                     }
-                                    if !root.room-is-host && !root.room-started : Text {
+                                    if !root.room-is-host && !root.room-started && !root.room-untitled : Text {
                                         text: "Waiting for " + root.room-host-name + " to start";
                                         color: Palette.accent;
                                         font-weight: 700;

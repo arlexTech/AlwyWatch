@@ -58,6 +58,7 @@ import be.alwyapps.watch.together.TogetherSession
 import be.alwyapps.watch.together.friendly
 import be.alwyapps.watch.together.label
 import be.alwyapps.watch.together.people
+import be.alwyapps.watch.together.untitled
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.Avatar
@@ -119,6 +120,20 @@ suspend fun createRoom(
     // One room at a time on a device.
     if (TogetherSession.seat?.code != joined.state.code) TogetherSession.seat?.let { leaveCurrentRoom() }
     TogetherSession.begin(core, joined, startAt = resumeMs)
+    nav.push(Route.Room(joined.state.code))
+}
+
+/**
+ * "New room" on the Together page: a waiting room with no title yet. People join while the host
+ * browses; a title's "Watch in your room" then chooses what to watch.
+ */
+suspend fun openEmptyRoom(
+    core: AlwyWatch,
+    nav: Navigator,
+) {
+    val joined = core.togetherOpen()
+    if (TogetherSession.seat?.code != joined.state.code) TogetherSession.seat?.let { leaveCurrentRoom() }
+    TogetherSession.begin(core, joined)
     nav.push(Route.Room(joined.state.code))
 }
 
@@ -211,6 +226,9 @@ fun TogetherScreen() {
     val list = TogetherInbox.rooms?.rooms.orEmpty()
     val invites = list.filter { it.invited }
     val mine = list.filter { it.mine }
+    val scope = rememberCoroutineScope()
+    var opening by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = d.gutter, vertical = 24.dp),
@@ -226,27 +244,43 @@ fun TogetherScreen() {
                 )
             }
         }
+        // A room first, the title afterwards: people (and my other devices) join meanwhile.
+        item(key = "new") {
+            Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionButton(
+                    if (opening) "Opening a room…" else "New room",
+                    {
+                        if (opening) return@ActionButton
+                        opening = true
+                        problem = null
+                        scope.launch {
+                            try {
+                                openEmptyRoom(core, nav)
+                            } catch (e: CoreException) {
+                                problem = friendly(e)
+                            } finally {
+                                opening = false
+                            }
+                        }
+                    },
+                    if (invites.isEmpty() && mine.isEmpty()) Modifier.initialFocus() else Modifier,
+                    primary = invites.isEmpty() && mine.isEmpty(),
+                    icon = Icons.Add,
+                )
+                Text("Invite people first, choose what to watch afterwards.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                problem?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodyMedium) }
+            }
+        }
         if (loaded && invites.isEmpty() && mine.isEmpty()) {
             item(key = "empty") {
                 Text(
                     if (TogetherInbox.unreachable && TogetherInbox.rooms == null) {
                         "Can't reach your AlwyWatch server right now. Trying again…"
                     } else {
-                        "No rooms yet. Open a movie or an episode and choose Watch together, then invite people."
+                        "No rooms yet. Start one here, or open a movie or an episode and choose Watch together."
                     },
                     Modifier.widthIn(max = 640.dp).padding(top = 12.dp),
                     style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-            // Something to focus on an empty page (TV: the D-pad, and closing the menu, need it).
-            item(key = "start") {
-                ActionButton(
-                    "Choose something to watch",
-                    { nav.reset(Route.Home) },
-                    Modifier.padding(top = 4.dp).initialFocus(),
-                    primary = true,
-                    // Not Play: it opens the libraries to pick a title, it doesn't play anything.
-                    icon = Icons.Library,
                 )
             }
         }
@@ -637,6 +671,7 @@ fun RoomScreen(code: String) {
             be.alwyapps.watch.core
                 .togetherIsHost(state, seat.memberId)
         val myKey = state.members.firstOrNull { it.id == seat.memberId }?.userKey
+        val untitled = state.media.untitled()
         item(key = "media") {
             Row(Modifier.widthIn(max = 760.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 RoomPoster(state.media, if (d.isTv) 110.dp else 88.dp)
@@ -650,6 +685,10 @@ fun RoomScreen(code: String) {
                     if (!started) {
                         Text(
                             when {
+                                untitled && isHost ->
+                                    "Open a movie or an episode and choose Watch in your room. " +
+                                        "The people you invite can join in the meantime."
+                                untitled -> "$hostName is choosing what to watch"
                                 isHost && again ->
                                     "Start this again, or pick another title: open a movie or an episode and " +
                                         "choose Watch in your room. Everyone stays here."
@@ -692,6 +731,15 @@ fun RoomScreen(code: String) {
                             ActionButton("Watch with them", {
                                 scope.launch { openRoomPlayer(ctx, core)?.let { problem = it } }
                             }, Modifier.initialFocus(), primary = true, icon = Icons.Play)
+                        isHost && untitled ->
+                            ActionButton(
+                                "Choose what to watch",
+                                { nav.reset(Route.Home) },
+                                if (alone) Modifier else Modifier.initialFocus(),
+                                primary = !alone,
+                                // Not Play: it opens the libraries to pick a title.
+                                icon = Icons.Library,
+                            )
                         isHost -> {
                             val resume = TogetherSession.startAt
                             ActionButton(

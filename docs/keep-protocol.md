@@ -263,6 +263,8 @@ TogetherPerson  {user_key, name, media_name, avatar, server_name, last_together_
 
 ### Lifecycle
 
+A room may be created with an empty title (`media.title == ""`, the other fields empty: a room opened before choosing what to watch). It behaves like any lobby, except that starting it answers 409 until an update carries a `media`.
+
 1. **Create.** `POST /v1/together {media}` → a lobby (`started: false`, `playing: false`,
    `position_ms: 0`), the caller's seat as host. It appears only in the caller's list.
 2. **Invite.** The host posts user keys. Unknown users (or users of a server no longer served)

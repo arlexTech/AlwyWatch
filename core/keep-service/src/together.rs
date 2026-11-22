@@ -406,6 +406,31 @@ pub fn together_correction(
     }
 }
 
+impl TogetherMedia {
+    /// A room opened before choosing what to watch: no title yet (the host picks one
+    /// anywhere in the app, then "Watch in your room").
+    pub fn none() -> Self {
+        Self {
+            kind: String::new(),
+            title: String::new(),
+            year: None,
+            tmdb: None,
+            imdb: None,
+            tvdb: None,
+            series_title: None,
+            series_tmdb: None,
+            series_tvdb: None,
+            season: None,
+            episode: None,
+        }
+    }
+
+    /// No title chosen yet (see [`TogetherMedia::none`]): nothing can start.
+    pub fn is_none(&self) -> bool {
+        self.title.trim().is_empty()
+    }
+}
+
 impl TogetherState {
     /// Whether `member_id` still has to load this round's title (then report
     /// [`TogetherReady`]).

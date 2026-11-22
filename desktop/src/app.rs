@@ -4841,6 +4841,7 @@ impl App {
         on!(on_together_decline, |a, code| a
             .together_decline(code.into()));
         on!(on_room_start, |a| a.room_start());
+        on!(on_together_new, |a| a.together_new());
         on!(on_room_play, |a| a.open_room_player());
         on!(on_room_leave, |a| a.room_leave());
         on!(on_room_invite, |a| a.room_invite());
