@@ -688,9 +688,6 @@ component PlayerOverlay inherits Rectangle {
             vertical-alignment: center;
         }
         Rectangle { horizontal-stretch: 1; }
-        if root.skip != "" : PlayerPill { label: root.skip; clicked => { root.cmd("skip", ""); } }
-        if root.near-end : PlayerPill { label: root.countdown > 0 ? "Next episode in " + root.countdown + " s" : "Next episode"; clicked => { root.cmd("next", ""); } }
-        if root.countdown > 0 : PlayerPill { label: "Keep watching"; has-icon: false; clicked => { root.cmd("cancel", ""); } }
         if root.room-label != "" : PlayerPill { label: root.room-label; icon: @image-url("icons/group.svg"); clicked => { root.cmd("room", ""); } }
         if root.room-label == "" && root.can-together : PlayerPill { label: "Watch together"; icon: @image-url("icons/group.svg"); clicked => { root.cmd("together", ""); } }
         if root.audio.length > 1 || root.subtitles.length > 1 : PlayerPill {
@@ -700,15 +697,17 @@ component PlayerOverlay inherits Rectangle {
         }
     }
 
-    // Controls hidden: "Skip intro" / "Next episode" float bottom right (white, as focused on TV).
-    if !root.show && !root.tracks-open && (root.near-end || root.skip != "") : HorizontalLayout {
-        x: root.width - self.preferred-width - 48px;
-        y: root.height - 48px - 42px;
+    // "Skip intro" / "Next episode", bottom right: floating (white, as focused on TV) when the
+    // controls hide, above the seek bar when they show. Same place on every platform.
+    if !root.tracks-open && (root.near-end || root.skip != "") : HorizontalLayout {
+        width: self.preferred-width;
+        x: root.width - self.width - (root.show ? root.side : 48px);
+        y: root.show ? root.height - 36px - 42px - 12px - 32px - 12px - 42px : root.height - 48px - 42px;
         height: 42px;
         spacing: 10px;
         if root.countdown > 0 : PlayerPill { label: "Keep watching"; has-icon: false; clicked => { root.cmd("cancel", ""); } }
-        if root.near-end : PlayerPill { primary: true; label: root.countdown > 0 ? "Next episode in " + root.countdown + " s" : "Next episode"; clicked => { root.cmd("next", ""); } }
-        if !root.near-end : PlayerPill { primary: true; label: root.skip; clicked => { root.cmd("skip", ""); } }
+        if root.near-end : PlayerPill { primary: !root.show; label: root.countdown > 0 ? "Next episode in " + root.countdown + " s" : "Next episode"; clicked => { root.cmd("next", ""); } }
+        if !root.near-end : PlayerPill { primary: !root.show; label: root.skip; clicked => { root.cmd("skip", ""); } }
     }
 
     // Audio & subtitles: a panel on the right, like on TV. A click outside closes it.

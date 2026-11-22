@@ -383,6 +383,19 @@ fun PlayerOverlay(
                         }
                     }
                     Spacer(Modifier.weight(1f))
+                    // "Skip intro" / "Next episode": above the seek bar, at the right (where it
+                    // floats when the controls hide). Same place on every platform.
+                    val upNext = ui.nearEnd
+                    val skip = ui.skipLabel
+                    if (upNext || skip != null) {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.End) {
+                            if (upNext) {
+                                PillButton(Icons.SkipNext, ui.upNextIn?.let { "Next episode in $it s" } ?: "Next episode", onNext)
+                            } else if (skip != null) {
+                                PillButton(Icons.SkipNext, skip, onSkip)
+                            }
+                        }
+                    }
                     // Bottom: seek bar, times, extra actions.
                     SeekBar(position, buffered, duration, onSeek = {
                         player()?.seekTo(it)
@@ -406,14 +419,6 @@ fun PlayerOverlay(
                             )
                         }
                         Spacer(Modifier.weight(1f))
-                        ui.skipLabel?.let {
-                            PillButton(Icons.SkipNext, it, onSkip)
-                            Spacer(Modifier.width(10.dp))
-                        }
-                        if (ui.nearEnd) {
-                            PillButton(Icons.SkipNext, "Next episode", onNext)
-                            Spacer(Modifier.width(10.dp))
-                        }
                         // Only in a room (started from the title's page): nothing while watching alone.
                         if (ui.togetherCode != null) {
                             val n = ui.togetherMembers.people().size

@@ -1433,7 +1433,7 @@ fn PlayerView(
                             SegmentKind::Preview => "Skip preview",
                             SegmentKind::Commercial => "Skip ad",
                         };
-                        view! { <button class="skip" on:click=skip>{label}" · "{fmt_time(s.end_ms)}</button> }.into_any()
+                        view! { <button class="skip" on:click=skip>{label}</button> }.into_any()
                     }
                 }
             })}

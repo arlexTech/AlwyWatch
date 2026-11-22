@@ -885,10 +885,10 @@ fn seek_to(m: &Mpv, ms: u64) {
 
 fn skip_name(kind: SegmentKind) -> &'static str {
     match kind {
-        SegmentKind::Intro => "the intro",
-        SegmentKind::Credits => "the credits",
-        SegmentKind::Recap => "the recap",
-        SegmentKind::Preview => "the preview",
-        SegmentKind::Commercial => "this",
+        SegmentKind::Intro => "intro",
+        SegmentKind::Credits => "credits",
+        SegmentKind::Recap => "recap",
+        SegmentKind::Preview => "preview",
+        SegmentKind::Commercial => "ad",
     }
 }
