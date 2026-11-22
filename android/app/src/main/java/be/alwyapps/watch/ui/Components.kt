@@ -314,7 +314,8 @@ fun ItemMenu(
                 })
             }
             // Only for what is in that row: started, or shown there (the next episode of a show).
-            if (!played && (started || inContinueWatching) && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)) {
+            // (A watched title can sit there too, when it was started again.)
+            if ((!played || inContinueWatching) && (started || inContinueWatching) && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)) {
                 ListRow("Remove from Continue watching", icon = Icons.Close, onClick = {
                     act { core.removeFromContinueWatching(account, item.id) }
                 })

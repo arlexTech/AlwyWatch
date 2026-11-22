@@ -115,6 +115,11 @@ async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
     resume.sort_by_key(|(_, i)| std::cmp::Reverse(i.user.last_played_at.unwrap_or(0)));
     // One row, like the apps: what is in progress, then the next episode of the shows that
     // have nothing in progress (the servers' "next up" repeats the in-progress ones).
+    // A watched title reopened for a moment is not "in progress" (same rule as the apps:
+    // under two minutes or 5 %).
+    resume.retain(|(_, i)| {
+        !(i.user.played && i.user.position_ms < (i.runtime_ms.unwrap_or(0) / 20).max(120_000))
+    });
     let mut watching = dedupe(resume);
     let started: HashSet<String> = watching
         .iter()

@@ -2915,12 +2915,25 @@ fn shows_not_episodes(items: Vec<Item>) -> Vec<Item> {
         .collect()
 }
 
+/// A watched title that was reopened for a moment (servers keep that position and list it
+/// as "in progress"): not something to continue. Its show's next episode takes the place.
+/// A real rewatch counts once it is past two minutes or 5 % of the title.
+pub(crate) fn finished_and_barely_reopened(i: &Item) -> bool {
+    let limit = (i.runtime_ms.unwrap_or(0) / 20).max(120_000);
+    i.user.played && i.user.position_ms < limit
+}
+
 /// Merges in-progress items and next episodes into one list by recency (see
 /// [`Home::continue_watching`]): in-progress items by their own date, next episodes by when
 /// their show was last watched (set by `fetch_home`); undated next episodes last, in the
 /// server's order (the sort is stable).
 pub fn continue_watching(resume: &[Item], next_up: &[Item]) -> Vec<Item> {
-    let mut all: Vec<Item> = resume.iter().chain(next_up).cloned().collect();
+    let mut all: Vec<Item> = resume
+        .iter()
+        .filter(|i| !finished_and_barely_reopened(i))
+        .chain(next_up)
+        .cloned()
+        .collect();
     all.sort_by_key(|i| std::cmp::Reverse(i.user.last_played_at.unwrap_or(0)));
     // One entry per show: its most recent one (an episode in progress beats the next one).
     let mut seen = std::collections::HashSet::new();
@@ -3039,6 +3052,25 @@ mod continue_watching_tests {
             .collect();
         // Newest first, one per show (b2 is more recent than b), undated d last.
         assert_eq!(ids, ["c", "a", "b2", "e", "d"]);
+    }
+
+    #[test]
+    fn a_watched_episode_reopened_for_a_moment_gives_way_to_the_next_one() {
+        let now = unix_now();
+        // Episode 5 is watched but the server kept a position 1:42 into it; episode 6 is next.
+        let mut reopened = ep("e5", "S", Some(now - 60), 102_000);
+        reopened.user.played = true;
+        let next = [ep("e6", "S", Some(now - 3600), 0)];
+        let ids = |r: &[Item]| -> Vec<String> {
+            continue_watching(r, &next)
+                .into_iter()
+                .map(|i| i.id)
+                .collect()
+        };
+        assert_eq!(ids(&[reopened.clone()]), ["e6"]);
+        // A real rewatch (past two minutes) stays.
+        reopened.user.position_ms = 600_000;
+        assert_eq!(ids(&[reopened]), ["e5"]);
     }
 }
 
