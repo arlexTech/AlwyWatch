@@ -114,6 +114,8 @@ struct RoomSync {
     hold: bool,
     load: bool,
     waiting: Option<String>,
+    /// A start (or the end of loading) still to play at `at`.
+    start_pending: bool,
 }
 
 pub struct TogetherLink {
@@ -311,7 +313,9 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
     let mut applied: (Option<String>, Option<String>) = (None, None);
     // Watching together: changes we make for the room are not the viewer's to send back.
     let together = req.together.as_ref();
-    let mut quiet_until = Instant::now() + Duration::from_secs(3);
+    // The player's own seek for the room (not the viewer's): its "restart" isn't sent back.
+    // Expires, as several quick seeks may end in one restart.
+    let mut own_seek: Option<Instant> = None;
     let mut started = false;
     // The room's last state: followed continuously.
     let mut room: Option<RoomSync> = None;
@@ -321,15 +325,27 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
     let mut next_check = Instant::now();
     let mut rate = 1.0_f64;
     let mut note: Option<(String, Instant)> = None;
-    let send_user = |m: &Mpv| {
+    // The viewer's own change: sent to the room, and followed from now on (the room's answer
+    // comes later; until then the old state must not pull the player back).
+    let send_user = |m: &Mpv, room: &mut Option<RoomSync>| {
         if let Some(t) = together {
+            let playing = !m.get_flag("pause").unwrap_or(false);
+            let position_ms = m
+                .get_f64("time-pos")
+                .map(|s| (s.max(0.0) * 1000.0) as u64)
+                .unwrap_or(0);
             t.send.as_ref()(FromPlayer::User {
-                playing: !m.get_flag("pause").unwrap_or(false),
-                position_ms: m
-                    .get_f64("time-pos")
-                    .map(|s| (s.max(0.0) * 1000.0) as u64)
-                    .unwrap_or(0),
+                playing,
+                position_ms,
             });
+            if let Some(r) = room.as_mut()
+                && !r.hold
+            {
+                r.playing = playing;
+                r.position_ms = position_ms;
+                r.at = Instant::now();
+                r.start_pending = false;
+            }
         }
     };
     loop {
@@ -359,7 +375,6 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                         // Paused until a start that's a moment ahead, or while loading.
                         let play = playing && !hold && Instant::now() >= at;
                         if paused == play {
-                            quiet_until = Instant::now() + Duration::from_millis(1500);
                             let _ = m.command(&["set", "pause", if play { "no" } else { "yes" }]);
                             paused = !play;
                         }
@@ -378,6 +393,8 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                             hold,
                             load,
                             waiting,
+                            // A start still ahead (or loading): play the moment it comes.
+                            start_pending: playing && (hold || at > Instant::now()),
                         });
                         next_check = Instant::now();
                     }
@@ -388,17 +405,20 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 }
             }
         }
-        // The start everyone heard: play right at its instant.
-        if let Some(r) = &room
+        // The start everyone heard: play right at its instant, once (a pause after it is the
+        // viewer's own).
+        if let Some(r) = room.as_mut()
+            && r.start_pending
             && r.playing
             && !r.hold
-            && paused
             && Instant::now() >= r.at
         {
-            quiet_until = Instant::now() + Duration::from_millis(1500);
-            let _ = m.command(&["set", "pause", "no"]);
-            paused = false;
-            next_check = Instant::now() + Duration::from_millis(500);
+            r.start_pending = false;
+            if paused {
+                let _ = m.command(&["set", "pause", "no"]);
+                paused = false;
+                next_check = Instant::now() + Duration::from_millis(500);
+            }
         }
         // Loading for the room: paused at its position until enough is buffered.
         if let (Some(r), Some(t)) = (&room, together)
@@ -411,7 +431,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 && Instant::now() >= next_check
                 && pos.is_some_and(|p| p.abs_diff(r.position_ms) > 300)
             {
-                quiet_until = Instant::now() + Duration::from_millis(1500);
+                own_seek = Some(Instant::now());
                 seek_to(&m, r.position_ms);
                 next_check = Instant::now() + Duration::from_millis(500);
             }
@@ -470,7 +490,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
             let c =
                 alwywatch_core::together_correction(expected, actual, playing, rate, !req.spdif);
             if let Some(to) = c.seek_to_ms {
-                quiet_until = Instant::now() + Duration::from_millis(1500);
+                own_seek = Some(Instant::now());
                 seek_to(&m, to);
                 // Let the seek land (buffering) before judging again.
                 next_check = Instant::now() + Duration::from_secs(2);
@@ -516,8 +536,12 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
             }
             // The first one is the start itself, not the viewer moving.
             mpv::EVENT_PLAYBACK_RESTART if !started => started = true,
-            mpv::EVENT_PLAYBACK_RESTART if Instant::now() >= quiet_until => {
-                send_user(&m);
+            mpv::EVENT_PLAYBACK_RESTART
+                if own_seek
+                    .take()
+                    .is_some_and(|t| t.elapsed() < Duration::from_secs(3)) => {}
+            mpv::EVENT_PLAYBACK_RESTART => {
+                send_user(&m, &mut room);
                 // Our own seek: the room hasn't echoed it yet, don't pull back meanwhile.
                 next_check = Instant::now() + Duration::from_secs(2);
             }
@@ -599,10 +623,9 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         let is_paused = m.get_flag("pause").unwrap_or(false);
         if is_paused != paused {
             paused = is_paused;
-            if Instant::now() >= quiet_until {
-                send_user(&m);
-                next_check = Instant::now() + Duration::from_secs(2);
-            }
+            // The player's own pauses update `paused` as they make them: this one is the viewer's.
+            send_user(&m, &mut room);
+            next_check = Instant::now() + Duration::from_secs(2);
             report(snapshot(
                 if paused {
                     PlaybackEvent::Pause

@@ -1651,11 +1651,19 @@ impl App {
                 .together_update(code, member, playing, position_ms, account, item)
                 .await;
             let Some(t) = this.upgrade() else { return };
-            if let Some(room) = t.state.borrow_mut().together.as_mut() {
+            let idle = t.state.borrow_mut().together.as_mut().is_some_and(|room| {
                 room.sending = room.sending.saturating_sub(1);
-            }
+                room.sending == 0
+            });
             match r {
-                Ok(s) => t.accept_room(s),
+                Ok(s) => {
+                    t.accept_room(s.clone());
+                    // The player follows the room as it now is (our change, server-timed),
+                    // unless a newer change of ours is still on its way.
+                    if !new_title && idle {
+                        t.sync_player(&s);
+                    }
+                }
                 // The host doesn't allow it: say so and go back to what the room plays.
                 Err(CoreError::Server { status: 423 }) => {
                     let Some(s) = t.room_state() else { return };
