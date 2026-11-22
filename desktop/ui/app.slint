@@ -755,7 +755,6 @@ export component AppWindow inherits Window {
     // Home
     in property <[Rail]> rails;
     in property <[NamedId]> libraries;
-    in property <Detail> hero;
     // Library / search grid
     in property <string> grid-title;
     in property <[Card]> grid;
@@ -1116,59 +1115,12 @@ export component AppWindow inherits Window {
                         Text { text: root.error; color: Palette.muted; }
                     }
 
-                    // Home: artwork hero that follows the hovered/focused card, then rails.
+                    // Home: the rails (no artwork banner: like the phone, the page is for browsing).
                     if root.page == Page.home : ScrollView {
                         VerticalLayout {
                             spacing: 18px;
-                            Rectangle {
-                                height: 460px;
-                                clip: true;
-                                Image { source: root.hero.backdrop; width: parent.width; height: parent.height; image-fit: cover; }
-                                Rectangle { background: @linear-gradient(90deg, #09090cf5 0%, #09090cb0 35%, #09090c00 70%); }
-                                Rectangle { background: @linear-gradient(180deg, #09090c00 50%, #09090c 100%); }
-                                VerticalLayout {
-                                    x: 40px;
-                                    width: min(560px, parent.width - 80px);
-                                    padding-bottom: 36px;
-                                    spacing: 12px;
-                                    alignment: end;
-                                    if root.hero.logo.width > 0 : Image {
-                                        source: root.hero.logo;
-                                        height: 110px;
-                                        width: min(380px, self.height * root.hero.logo.width / max(1, root.hero.logo.height) * 1px / 1px);
-                                        image-fit: contain;
-                                        horizontal-alignment: left;
-                                    }
-                                    if root.hero.logo.width == 0 : Text {
-                                        text: root.hero.title;
-                                        color: Palette.text;
-                                        font-size: 44px;
-                                        font-weight: 800;
-                                        letter-spacing: -1px;
-                                        wrap: word-wrap;
-                                    }
-                                    Text { text: root.hero.meta; color: Palette.muted; font-size: 15px; overflow: elide; }
-                                    Text { text: root.hero.overview; color: Palette.muted; font-size: 14px; wrap: word-wrap; max-height: 60px; overflow: elide; }
-                                    HorizontalLayout {
-                                        spacing: 10px;
-                                        alignment: start;
-                                        if root.hero.playable : Button {
-                                            label: root.hero.resumable ? "Resume" : "Play";
-                                            primary: true;
-                                            has-icon: true;
-                                            icon: @image-url("icons/play_arrow_fill1.svg");
-                                            clicked => { root.play(root.hero.id, false); }
-                                        }
-                                        if root.hero.id != "" : Button {
-                                            label: "Details";
-                                            has-icon: true;
-                                            icon: @image-url("icons/info.svg");
-                                            clicked => { root.open-item(root.hero.id); }
-                                        }
-                                    }
-                                }
-                            }
                             VerticalLayout {
+                                padding-top: 28px;
                                 padding-left: 40px;
                                 padding-right: 24px;
                                 padding-bottom: 32px;

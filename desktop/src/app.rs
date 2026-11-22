@@ -2203,16 +2203,6 @@ impl App {
                 );
             }
         }
-        // Hero: the first title with artwork (then whatever the user points at).
-        if let Some(first) = rails
-            .iter()
-            .flat_map(|(_, items)| items.iter())
-            .find(|i| image_ref(i, ImageKind::Backdrop).is_some())
-            .cloned()
-            && self.ui().get_hero().id.is_empty()
-        {
-            self.set_hero(&first);
-        }
         ui.set_rails(ModelRc::new(VecModel::from(rail_vec)));
         ui.set_libraries(ModelRc::new(VecModel::from(
             home.libraries
@@ -2665,52 +2655,6 @@ impl App {
             crew: SharedString::default(),
             saga_id: SharedString::default(),
             saga_label: SharedString::default(),
-        }
-    }
-
-    /// The home hero: follows the hovered/focused card (only items with a backdrop).
-    fn set_hero(self: &Rc<Self>, i: &Item) {
-        if image_ref(i, ImageKind::Backdrop).is_none() {
-            return;
-        }
-        let ui = self.ui();
-        if ui.get_hero().id.as_str() == i.id {
-            return;
-        }
-        let mut h = Self::detail_of(i);
-        // A "recently added" show says what is new for it first.
-        if let Some(n) = self.state.borrow().notes.get(&i.id) {
-            let mut meta = vec![n.label.clone()];
-            meta.extend(i.official_rating.clone());
-            meta.extend(i.community_rating.map(|r| format!("★ {r:.1}")));
-            meta.extend(i.genres.first().cloned());
-            h.meta = sstr(meta.join("  ·  "));
-        }
-        // Keep the previous artwork until the new one is decoded (no flash to black).
-        let prev = ui.get_hero();
-        h.backdrop = prev.backdrop;
-        ui.set_hero(h);
-        let id = i.id.clone();
-        self.load_image(i, ImageKind::Backdrop, BACKDROP_PX, {
-            let id = id.clone();
-            move |this, img| {
-                let ui = this.ui();
-                let mut h = ui.get_hero();
-                if h.id.as_str() == id {
-                    h.backdrop = img;
-                    ui.set_hero(h);
-                }
-            }
-        });
-        if image_ref(i, ImageKind::Logo).is_some() {
-            self.load_image(i, ImageKind::Logo, 800, move |this, img| {
-                let ui = this.ui();
-                let mut h = ui.get_hero();
-                if h.id.as_str() == id {
-                    h.logo = img;
-                    ui.set_hero(h);
-                }
-            });
         }
     }
 
@@ -4582,12 +4526,6 @@ impl App {
         });
         on!(on_prefetch, |a, id| {
             a.prefetch(&id);
-            if a.ui().get_page() == Page::Home {
-                let item = a.state.borrow().items.get(id.as_str()).cloned();
-                if let Some(i) = item {
-                    a.set_hero(&i);
-                }
-            }
         });
         on!(on_open_library, |a, id, title| a
             .navigate(Route::Library(id.into(), title.into())));
