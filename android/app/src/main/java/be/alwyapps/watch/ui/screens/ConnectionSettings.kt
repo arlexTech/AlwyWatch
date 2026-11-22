@@ -307,10 +307,10 @@ fun AlwyWatchServerGroup(
             var stopping by remember { mutableStateOf(false) }
             if (stopping) {
                 ConfirmDialog(
-                    "Stop syncing?",
+                    "Sign out of AlwyWatch?",
                     "Leaving soon, keep choices and watch together disappear from this device until you connect again. " +
                         "Your choices stay on the server.",
-                    confirm = "Stop syncing",
+                    confirm = "Sign out",
                     onConfirm = {
                         core.keepDisconnect()
                         MyAccount.me = null
@@ -319,7 +319,7 @@ fun AlwyWatchServerGroup(
                     onDismiss = { stopping = false },
                 )
             }
-            ListRow("Stop syncing", subtitle = "Leaving soon and keep choices disappear from this device", icon = Icons.Close, iconTint = Danger, onClick = {
+            ListRow("Sign out of AlwyWatch", subtitle = "Leaving soon, keep choices and watch together disappear from this device", icon = Icons.Close, iconTint = Danger, onClick = {
                 stopping = true
             })
         }

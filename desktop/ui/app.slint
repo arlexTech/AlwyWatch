@@ -2294,6 +2294,8 @@ export component AppWindow inherits Window {
                                     }
                                     if root.me-loaded : Button { label: "Edit name"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("name"); } }
                                     if root.me-loaded : Button { label: "Change avatar"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("avatar"); } }
+                                    // This computer forgets the AlwyWatch server (choices stay on the server).
+                                    Button { label: "Sign out"; y: (parent.height - self.height) / 2; clicked => { root.keep-disconnect(); } }
                                 }
                                 if root.me-message != "" : Text { text: root.me-message; color: Palette.danger; wrap: word-wrap; }
                                 if root.links.length > 1 || root.link-candidates.length > 0 : VerticalLayout {
@@ -2336,7 +2338,6 @@ export component AppWindow inherits Window {
                                     Rectangle { horizontal-stretch: 1; }
                                     if root.keep-can-switch && root.keep-choices.length == 0 : Button { label: "Sync another account"; clicked => { root.keep-choose(); } }
                                     if root.send-step == "" : Button { label: "Add a device"; clicked => { root.send-start(); } }
-                                    Button { label: "Stop syncing"; clicked => { root.keep-disconnect(); } }
                                 }
                                 if root.keep-active && root.send-step == "code" : VerticalLayout {
                                     spacing: 10px;
