@@ -222,6 +222,9 @@ private fun Root(core: AlwyWatch) {
                     be.alwyapps.watch.ui.screens
                         .InvitationPrompt()
                 }
+                // "Are these both you?" (two sign-ins of one person), looked for after the start.
+                be.alwyapps.watch.ui.screens
+                    .IdentityPrompt()
                 val openRoom = be.alwyapps.watch.together.TogetherInbox.openRoom
                 androidx.compose.runtime.LaunchedEffect(openRoom) {
                     if (openRoom != null) {

@@ -57,6 +57,20 @@ fun requestErrorText(e: CoreException): String =
         else -> e.message ?: "Something went wrong."
     }
 
+/**
+ * A season's row label in the app's language: "Season N" from its number when the server's name
+ * is only a word and that number ("Saison 2", "Staffel 2"); specials and named seasons keep
+ * their name.
+ */
+internal fun seasonLabel(
+    number: UInt,
+    name: String,
+): String {
+    if (number == 0u) return name.ifBlank { "Specials" }
+    val generic = name.isBlank() || Regex("^\\p{L}+\\.?\\s*0*$number$").matches(name.trim())
+    return if (generic) "Season $number" else name
+}
+
 /** A square check box (the row around it is the click and focus target). */
 @Composable
 private fun CheckBox(checked: Boolean) {
@@ -148,14 +162,14 @@ fun RequestSeasonsDialog(
                         val on = s.number in chosen
                         if (open) {
                             ListRow(
-                                s.name,
+                                seasonLabel(s.number, s.name),
                                 if (s.number == firstOpen) Modifier.focusOnAppear() else Modifier,
                                 subtitle = s.label,
                                 leading = { CheckBox(on) },
                                 onClick = { chosen = if (on) chosen - s.number else chosen + s.number },
                             )
                         } else {
-                            ListRow(s.name, subtitle = s.label, leading = { StateMark(s.state) })
+                            ListRow(seasonLabel(s.number, s.name), subtitle = s.label, leading = { StateMark(s.state) })
                         }
                     }
                 }

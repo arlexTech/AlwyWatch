@@ -66,7 +66,7 @@ data class Tab(
 fun Route.isTopLevel(rail: Boolean): Boolean =
     when (this) {
         Route.Home, Route.LeavingSoon, Route.Together -> true
-        Route.Search, Route.Downloads, Route.Settings, Route.Watchlist -> rail
+        Route.Search, Route.Downloads, Route.Settings, Route.Watchlist, Route.Requests -> rail
         is Route.Library -> true
         else -> false
     }
@@ -96,6 +96,8 @@ fun tabs(): List<Tab> {
     if (core.keepActive()) out += Tab(Route.LeavingSoon, "Leaving", Icons.Hourglass)
     // Watch together goes through the AlwyWatch server.
     if (core.keepActive()) out += Tab(Route.Together, "Together", Icons.Group)
+    // Requests (Seerr), when connected: with the other pages (phones reach it from Settings).
+    if (rail && runCatching { core.seerrActive() }.getOrDefault(false)) out += Tab(Route.Requests, "Requests", Icons.Add)
     if (rail && !d.isTv) out += Tab(Route.Downloads, "Downloads", Icons.Download)
     if (rail) out += Tab(Route.Settings, "Settings", Icons.Settings)
     return out
@@ -132,14 +134,21 @@ fun AppScaffold(content: @Composable () -> Unit) {
                         .FocusRequester()
                 }
             val pageFocus = remember { PageFocus() }
+            val clock = UiPrefs(LocalCore.current, true).clock
             Box(
                 Modifier
                     .fillMaxSize()
                     .focusRequester(page)
-                    .then(if (edgeToEdge) Modifier else Modifier.padding(top = 24.dp)),
+                    // The clock's band is kept free: pages that scroll (search, settings) are cut
+                    // below it instead of sliding their buttons under it.
+                    .then(if (edgeToEdge) Modifier else Modifier.padding(top = if (clock) 60.dp else 24.dp)),
             ) { androidx.compose.runtime.CompositionLocalProvider(LocalPageFocus provides pageFocus) { content() } }
-            TvMenu(tabs, selected, page, pageFocus) { nav.reset(it) }
-            if (UiPrefs(LocalCore.current, true).clock) TvClock(Modifier.align(Alignment.TopEnd))
+            TvMenu(tabs, selected, page, pageFocus) { route ->
+                // Home from another page: its first row, not the card focused on an earlier visit.
+                if (route == Route.Home) FocusMemory.forget("home")
+                nav.reset(route)
+            }
+            if (clock) TvClock(Modifier.align(Alignment.TopEnd))
         }
     } else if (rail) {
         Row(Modifier.fillMaxSize()) {
@@ -302,6 +311,7 @@ private fun TvMenu(
     onSelect: (Route) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
+    val nav = LocalNavigator.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val fm = androidx.compose.ui.platform.LocalFocusManager.current
     val current =
@@ -318,7 +328,9 @@ private fun TvMenu(
         if (!back) fm.clearFocus(force = true)
     }
     val select: (Route) -> Unit = { route ->
-        onSelect(route)
+        // The page already shown: only close the menu, the focus back where it was (resetting
+        // to it moved the home to another row).
+        if (route != nav.current) onSelect(route)
         scope.launch {
             kotlinx.coroutines.delay(60)
             leave()

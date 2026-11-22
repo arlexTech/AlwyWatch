@@ -63,6 +63,7 @@ import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.Subtle
 import be.alwyapps.watch.ui.Success
 import be.alwyapps.watch.ui.UrlImage
+import be.alwyapps.watch.ui.dpadScroll
 import be.alwyapps.watch.ui.fadeEdges
 import be.alwyapps.watch.ui.focusOnAppear
 
@@ -107,7 +108,15 @@ fun SeerrTitleScreen(
             }
         }
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+    // TV: the overview, cast… have nothing to focus: ↓ past the last button scrolls the page.
+    val list =
+        androidx.compose.foundation.lazy
+            .rememberLazyListState()
+    LazyColumn(
+        Modifier.fillMaxSize().dpadScroll(list),
+        state = list,
+        contentPadding = PaddingValues(bottom = 40.dp),
+    ) {
         item(key = "hero") {
             // TV: short enough that the title, its state and the Request button (or why not) are
             // on the first screen (420 dp left them below the fold of a 540 dp-high TV).

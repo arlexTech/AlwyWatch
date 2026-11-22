@@ -107,7 +107,9 @@ fun ListRow(
             .then(if (memory != null && onClick != null) Modifier.rememberFocus(memory, "row:$title") else Modifier)
             .pageFocusTracked(focused)
             .fillMaxWidth()
-            .background(bg)
+            // The fill takes the outline's rounded shape (square, its corners showed outside the
+            // outline on rows not inside a Group, e.g. the invite picker).
+            .background(bg, RoundedCornerShape(d.radius + 4.dp))
             .then(if (focused && d.isTv) Modifier.border(2.dp, Color.White, RoundedCornerShape(d.radius + 4.dp)) else Modifier)
             .then(if (onClick != null) Modifier.clickable(interactionSource = interaction, indication = null, onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = if (d.isTv) 16.dp else 14.dp),

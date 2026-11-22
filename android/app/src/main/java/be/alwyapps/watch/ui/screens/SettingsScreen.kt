@@ -79,17 +79,21 @@ private fun SettingsPage(
 ) {
     val d = LocalDimens.current
     // Back on this page: the row that was opened gets the focus (else its first row, TV).
+    // TV: rows scroll into view just enough (the default keeps the focused row a third of the
+    // way down: a page opening on a row under its first group had its title half off screen).
     androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalRowMemory provides "settings.$title") {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = d.gutter, vertical = 16.dp)
-                .widthIn(max = 760.dp),
-            verticalArrangement = Arrangement.spacedBy(26.dp),
-        ) {
-            PageTitle(title)
-            content()
+        be.alwyapps.watch.ui.MinimalScrollSpec {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = d.gutter, vertical = 16.dp)
+                    .widthIn(max = 760.dp),
+                verticalArrangement = Arrangement.spacedBy(26.dp),
+            ) {
+                PageTitle(title)
+                content()
+            }
         }
     }
 }
@@ -217,6 +221,8 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
             onConfirm = {
                 core.removeAccount(a.id)
                 ctx.services.tokens.remove(a.id)
+                // Signed in again later, "Are these both you?" may ask again for it.
+                Identity.forgetAccount(ctx, a.id)
                 version++
                 if (a.id == current) onAccountChanged(core.accounts().firstOrNull()?.id)
             },

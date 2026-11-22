@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
@@ -74,12 +76,14 @@ import be.alwyapps.watch.ui.Subtle
 import be.alwyapps.watch.ui.ambient
 import be.alwyapps.watch.ui.ambientGlow
 import be.alwyapps.watch.ui.backdrop
+import be.alwyapps.watch.ui.dpadScroll
 import be.alwyapps.watch.ui.fadeEdges
+import be.alwyapps.watch.ui.focusOnAppear
 import be.alwyapps.watch.ui.formatRuntime
-import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.poster
 import be.alwyapps.watch.ui.progress
 import be.alwyapps.watch.ui.remaining
+import be.alwyapps.watch.ui.rememberFocus
 import be.alwyapps.watch.ui.rememberSwr
 import be.alwyapps.watch.ui.thumb
 import kotlinx.coroutines.launch
@@ -112,6 +116,17 @@ fun DetailScreen(
             refresh = { core.refreshItem(account, itemId, it).item },
         )
     val item = res.value
+    // "Fully drawn" for startup benchmarks when the app reopens on a title page (only the home
+    // reported it: a cold start onto this page logged it whenever the home was reached later).
+    androidx.activity.compose.ReportDrawnWhen { item != null || res.error != null }
+    // TV: the action that had the focus, for coming back here; opened anew, Play.
+    val focusKey = "detail.$itemId"
+    remember(itemId) {
+        if (!nav.returning) {
+            be.alwyapps.watch.ui.FocusMemory
+                .forget(focusKey)
+        }
+    }
     // Back from the player, or watched state changed from a menu: positions and marks moved.
     val changed = be.alwyapps.watch.ui.ItemsChanged.version
     LaunchedEffect(changed) { if (changed > 0) res.reload() }
@@ -168,7 +183,7 @@ fun DetailScreen(
     val playable = item != null && (item.kind == ItemKind.MOVIE || item.kind == ItemKind.EPISODE)
     // Warm up playback so pressing Play starts instantly.
     if (playable) {
-        LaunchedEffect(itemId) { core.prefetchPlaybackInfo(account, itemId, DeviceProfiles.get(ctx)) }
+        LaunchedEffect(itemId) { core.prefetchPlaybackInfo(account, itemId, DeviceProfiles.load(ctx)) }
     }
     // Shows: the episode to continue with (first unwatched, or the one in progress).
     var nextEp by remember(itemId) { mutableStateOf<Item?>(null) }
@@ -266,6 +281,7 @@ fun DetailScreen(
             } == true
         }
     var requestingSeasons by remember { mutableStateOf(false) }
+    val moreDirect = remember { booleanArrayOf(false) }
     val moreFocus =
         remember {
             androidx.compose.ui.focus
@@ -308,7 +324,11 @@ fun DetailScreen(
                         .seasonPlan(latest, haveSeasons)
                         .missing
                         .isNotEmpty()
-                scope.launch { runCatching { (if (left) moreFocus else seasonMarkFocus).requestFocus() } }
+                scope.launch {
+                    if (left) moreDirect[0] = true
+                    runCatching { (if (left) moreFocus else seasonMarkFocus).requestFocus() }
+                    moreDirect[0] = false
+                }
             }
         }
     }
@@ -432,17 +452,26 @@ fun DetailScreen(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
+                                    // Back on this page (from a room left, the trailer…): the button
+                                    // that opened it has the focus again; opened anew, Play.
                                     if (playLabel != null && playAction != null) {
-                                        ActionButton(playLabel, playAction, Modifier.initialFocus(), primary = true, icon = Icons.Play)
+                                        ActionButton(
+                                            playLabel,
+                                            playAction,
+                                            Modifier.rememberFocus(focusKey, "play", default = true),
+                                            primary = true,
+                                            icon = Icons.Play,
+                                        )
                                     }
-                                    fromStart?.let { ActionButton("From start", it) }
-                                    watchTogether?.let { IconAction(Icons.Group, "Watch together", it) }
-                                    playTrailer?.let { IconAction(Icons.Movie, "Trailer", it) }
+                                    fromStart?.let { ActionButton("From start", it, Modifier.rememberFocus(focusKey, "start")) }
+                                    watchTogether?.let { IconAction(Icons.Group, "Watch together", it, Modifier.rememberFocus(focusKey, "together")) }
+                                    playTrailer?.let { IconAction(Icons.Movie, "Trailer", it, Modifier.rememberFocus(focusKey, "trailer")) }
                                     if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
                                         IconAction(
                                             if (watchlisted) Icons.BookmarkFilled else Icons.Bookmark,
                                             if (watchlisted) "Remove from my list" else "Add to my list",
                                             toggleList,
+                                            Modifier.rememberFocus(focusKey, "list"),
                                             active = watchlisted,
                                         )
                                     }
@@ -454,7 +483,9 @@ fun DetailScreen(
                                             else -> "Mark watched"
                                         },
                                         toggleWatched,
-                                        if (item.kind == ItemKind.SERIES) Modifier.focusRequester(markFocus) else Modifier,
+                                        Modifier
+                                            .rememberFocus(focusKey, "watched")
+                                            .then(if (item.kind == ItemKind.SERIES) Modifier.focusRequester(markFocus) else Modifier),
                                         active = item.user.played,
                                     )
                                 }
@@ -553,6 +584,7 @@ fun DetailScreen(
                             markFocus = seasonMarkFocus,
                             onMore = if (canRequestMore) ({ requestingSeasons = true }) else null,
                             moreFocus = moreFocus,
+                            direct = moreDirect,
                         ) { pickedSeason = it.id }
                     }
                     item(key = "eps-top") { Spacer(Modifier.height(7.dp)) }
@@ -671,7 +703,7 @@ private fun TrackPills(
     val ctx = LocalContext.current
     var info by remember(target.id) { mutableStateOf<be.alwyapps.watch.core.media.PlaybackInfo?>(null) }
     LaunchedEffect(target.id) {
-        info = runCatching { core.playbackInfo(account, target.id, DeviceProfiles.get(ctx)) }.getOrNull()
+        info = runCatching { core.playbackInfo(account, target.id, DeviceProfiles.load(ctx)) }.getOrNull()
     }
     val pi = info ?: return
     val key =
@@ -1015,9 +1047,16 @@ private fun Overview(
             onDismissRequest = { full = false },
             title = { Text(title) },
             text = {
+                // TV: the text itself takes the focus and ↑/↓ scroll it (nothing else in it can
+                // be focused, so the remote could not read past the first screen).
+                val scroll = androidx.compose.foundation.rememberScrollState()
                 Text(
                     text,
-                    Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    Modifier
+                        .focusOnAppear()
+                        .dpadScroll(scroll, focusable = true)
+                        .verticalScroll(scroll)
+                        .padding(6.dp),
                     style = MaterialTheme.typography.bodyLarge,
                 )
             },
@@ -1054,9 +1093,14 @@ private fun CastRow(cast: List<be.alwyapps.watch.core.media.Person>) {
                 be.alwyapps.watch.ui.FocusCard(
                     onClick = {},
                     glow = false,
-                    modifier = Modifier.width(photo + 20.dp).then(if (n == 0) Modifier.focusRequester(first) else Modifier),
+                    modifier = Modifier.width(photo + 28.dp).then(if (n == 0) Modifier.focusRequester(first) else Modifier),
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    // Padded inside the card: its rounded clip (and the focus outline) cut the
+                    // last letters of a name that reached its corner ("Dwayne Johnsor").
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 8.dp),
+                    ) {
                         be.alwyapps.watch.ui
                             .UrlImage(p.photoUrl, photo, Modifier.size(photo).clip(RoundedCornerShape(50)))
                         Text(
@@ -1064,6 +1108,7 @@ private fun CastRow(cast: List<be.alwyapps.watch.core.media.Person>) {
                             Modifier.padding(top = 6.dp),
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         )
                         p.role?.let {
@@ -1261,19 +1306,42 @@ private fun SeasonPicker(
     /** "More seasons" (Seerr): only when some season can be requested. */
     onMore: (() -> Unit)?,
     moreFocus: androidx.compose.ui.focus.FocusRequester,
+    /** Set just before [moreFocus] is asked for the focus: entering the row then keeps it. */
+    direct: BooleanArray,
     onSelected: (Item) -> Unit,
 ) {
     val d = LocalDimens.current
+    // Entering the row (↓ from the buttons, ↑ from the mark button) lands on the season shown,
+    // not on whichever chip is nearest geometrically (the last one, from the action row).
+    val selectedChip =
+        remember {
+            androidx.compose.ui.focus
+                .FocusRequester()
+        }
     Column {
         Text("Episodes", Modifier.padding(horizontal = d.gutter, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
         LazyRow(
+            Modifier
+                .focusProperties {
+                    onEnter = {
+                        // A request for a chip of its own ("More seasons" after its dialog) is kept.
+                        if (direct[0]) direct[0] = false else runCatching { selectedChip.requestFocus() }
+                    }
+                }.focusGroup(),
             contentPadding = PaddingValues(horizontal = d.gutter),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Long press (hold OK on a remote): this season watched or unwatched.
             items(list, key = { it.id }) { s ->
-                ActionButton(s.title, { onSelected(s) }, selected = s.id == selected.id, onLongClick = { onMark(s) })
+                val isSelected = s.id == selected.id
+                ActionButton(
+                    s.title,
+                    { onSelected(s) },
+                    if (isSelected) Modifier.focusRequester(selectedChip) else Modifier,
+                    selected = isSelected,
+                    onLongClick = { onMark(s) },
+                )
             }
             if (onMore != null) {
                 item(key = "more") {

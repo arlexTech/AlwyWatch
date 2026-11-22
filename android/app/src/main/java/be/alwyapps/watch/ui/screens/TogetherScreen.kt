@@ -236,7 +236,8 @@ fun TogetherScreen() {
                     { nav.reset(Route.Home) },
                     Modifier.padding(top = 4.dp).initialFocus(),
                     primary = true,
-                    icon = Icons.Play,
+                    // Not Play: it opens the libraries to pick a title, it doesn't play anything.
+                    icon = Icons.Library,
                 )
             }
         }
@@ -572,9 +573,22 @@ fun RoomScreen(code: String) {
     // Leaving clears the seat: the screen then goes back by itself.
     val leave = { leaveCurrentRoom() }
     if (confirmLeave) {
+        val st = TogetherSession.state?.takeIf { it.code == code }
+        val mySeat = TogetherSession.seat?.takeIf { it.code == code }
+        val hosting =
+            st != null &&
+                mySeat != null &&
+                be.alwyapps.watch.core
+                    .togetherIsHost(st, mySeat.memberId)
+        val myKey = st?.members?.firstOrNull { it.id == mySeat?.memberId }?.userKey
+        val othersHere = st?.members.orEmpty().any { it.userKey != myKey }
         ConfirmDialog(
             "Leave this room?",
-            "To come back, you'll need a new invitation.",
+            when {
+                hosting && othersHere -> "You're the host: the room stays open for the others and one of them becomes the host."
+                hosting -> "You're alone in it: the room closes, and the invitations you sent are withdrawn."
+                else -> "To come back, you'll need a new invitation."
+            },
             confirm = "Leave",
             onConfirm = leave,
             onDismiss = { confirmLeave = false },
@@ -663,6 +677,9 @@ fun RoomScreen(code: String) {
                             }
                         }
                     }
+                    // Host, nobody else in the room or invited yet: Invite first (OK by reflex
+                    // must not start an empty room); Start once someone is there.
+                    val alone = state.members.all { it.userKey == myKey } && state.invited.isEmpty()
                     when {
                         started ->
                             ActionButton("Watch with them", {
@@ -679,15 +696,21 @@ fun RoomScreen(code: String) {
                                     "Start watching"
                                 },
                                 { start(resume) },
-                                Modifier.initialFocus(),
-                                primary = true,
+                                if (alone) Modifier else Modifier.initialFocus(),
+                                primary = !alone,
                                 icon = Icons.Play,
                             )
                             if (resume > 0) ActionButton("From the beginning", { start(0) })
                         }
                     }
                     if (isHost) {
-                        ActionButton("Invite people", { inviting = true }, Modifier.focusRequester(inviteButton), icon = Icons.Add)
+                        ActionButton(
+                            "Invite people",
+                            { inviting = true },
+                            Modifier.focusRequester(inviteButton).then(if (alone && !started) Modifier.initialFocus() else Modifier),
+                            primary = alone && !started,
+                            icon = Icons.Add,
+                        )
                     }
                     ActionButton(
                         "Leave",
@@ -777,7 +800,14 @@ private fun InvitePeopleDialog(
             }
     }
     val present = (state.members.map { it.userKey } + state.invited.map { it.userKey }).toSet()
-    val all = people.orEmpty().filter { it.userKey !in present }
+    // Recent partners first (most recent first), then everyone by name: the "Recent" and
+    // "Everyone" headers below rely on that order (the server's order put no recent one first,
+    // so the headers never showed).
+    val all =
+        people
+            .orEmpty()
+            .filter { it.userKey !in present }
+            .sortedWith(compareBy<TogetherPerson>({ it.lastTogetherAt == null }, { -(it.lastTogetherAt ?: 0L) }, { it.name.lowercase() }))
     val q = query.trim()
     val shown = if (q.isEmpty()) all else all.filter { it.name.contains(q, true) || it.mediaName.contains(q, true) }
     val sameName =

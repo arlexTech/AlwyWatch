@@ -23,6 +23,9 @@ object DeviceProfiles {
 
     fun get(ctx: Context): DeviceProfile = cached ?: build(ctx.applicationContext).also { cached = it }
 
+    /** [get] off the main thread (the codec list takes tens of ms the first time). */
+    suspend fun load(ctx: Context): DeviceProfile = cached ?: kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { get(ctx) }
+
     private val mimeToCodec =
         mapOf(
             "video/avc" to "h264",

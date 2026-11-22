@@ -3,11 +3,15 @@ package be.alwyapps.watch.ui.screens
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -169,6 +173,8 @@ fun SearchScreen() {
         }
     val seerrOn = remember { core.seerrActive() }
     val focus = remember { FocusRequester() }
+    val clear = remember { FocusRequester() }
+    val mic = remember { FocusRequester() }
     // Keyboard straight away only for a new search, not when coming back to results.
     LaunchedEffect(Unit) { if (query.isEmpty()) runCatching { focus.requestFocus() } }
     // Watched state changed from a result's menu: search again so the marks follow.
@@ -221,33 +227,49 @@ fun SearchScreen() {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 PageTitle("Search")
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Field(
-                        query,
-                        { query = it },
-                        // Down goes to the chosen filter (else the chip nearest the field's middle).
-                        Modifier
-                            .weight(1f)
-                            .focusRequester(focus)
-                            .focusProperties { if (query.length >= 2) down = chips }
-                            .dpadEscape(),
-                        placeholder = { Text(if (listening) "Listening… say a title" else "Movies, shows, episodes…") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        leadingIcon = Icons.Search,
-                        pill = true,
-                        selectAllOnEdit = true,
-                        trailing =
-                            if (query.isEmpty()) {
-                                null
-                            } else {
+                    // ✕ sits over the field's end but is not part of it: inside the text field
+                    // (its trailing icon) the D-pad could never reach it, → went to the mic.
+                    val hasClear = query.isNotEmpty()
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                        Field(
+                            query,
+                            { query = it },
+                            // Down goes to the chosen filter (else the chip nearest the field's middle).
+                            Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focus)
+                                .focusProperties {
+                                    if (query.length >= 2) down = chips
+                                    if (hasClear) right = clear
+                                }.dpadEscape(),
+                            placeholder = { Text(if (listening) "Listening… say a title" else "Movies, shows, episodes…") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            leadingIcon = Icons.Search,
+                            pill = true,
+                            selectAllOnEdit = true,
+                            // Room for ✕, so the text never runs under it.
+                            trailing = if (hasClear) ({ Spacer(Modifier.size(if (d.isTv) 56.dp else 50.dp)) }) else null,
+                        )
+                        if (hasClear) {
+                            IconAction(
+                                Icons.Close,
+                                "Clear",
                                 {
-                                    IconAction(Icons.Close, "Clear", {
-                                        query = ""
-                                        runCatching { focus.requestFocus() }
-                                    }, Modifier.padding(end = 4.dp))
-                                }
-                            },
-                    )
+                                    query = ""
+                                    runCatching { focus.requestFocus() }
+                                },
+                                Modifier
+                                    .padding(end = 6.dp)
+                                    .focusRequester(clear)
+                                    .focusProperties {
+                                        left = focus
+                                        if (voice) right = mic
+                                        if (query.length >= 2) down = chips
+                                    },
+                            )
+                        }
+                    }
                     if (voice) {
                         IconAction(Icons.Mic, if (listening) "Listening…" else "Voice search", {
                             when {
@@ -260,7 +282,7 @@ fun SearchScreen() {
                                     android.content.pm.PackageManager.PERMISSION_GRANTED -> startListening()
                                 else -> askMic.launch(android.Manifest.permission.RECORD_AUDIO)
                             }
-                        }, active = listening)
+                        }, Modifier.focusRequester(mic).focusProperties { if (hasClear) left = clear }, active = listening)
                     }
                 }
                 voiceNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = be.alwyapps.watch.ui.Muted) }

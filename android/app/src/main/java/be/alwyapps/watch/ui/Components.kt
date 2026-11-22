@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +58,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
@@ -256,7 +259,8 @@ fun ItemMenu(
             Modifier
                 .ignoreHeldOk()
                 .verticalScroll(androidx.compose.foundation.rememberScrollState())
-                .padding(bottom = 24.dp)
+                // TV: clear of the screen's bottom edge (its overscan zone).
+                .padding(bottom = if (d.isTv) 48.dp else 24.dp)
                 .navigationBarsPadding(),
         ) {
             Text(
@@ -332,6 +336,28 @@ fun ItemMenu(
                         nav.push(Route.Detail(sid, season, account))
                     })
                 }
+            }
+            // My list (movies and shows), as the title page's bookmark does.
+            if (item.kind == ItemKind.MOVIE || series) {
+                val listed = remember(item.id) { runCatching { core.isWatchlisted(account, item.id) }.getOrDefault(false) }
+                ListRow(
+                    if (listed) "Remove from my list" else "Add to my list",
+                    icon = if (listed) Icons.BookmarkFilled else Icons.Bookmark,
+                    onClick = {
+                        onDismiss()
+                        ctx.services.scope.launch {
+                            val r = runCatching { core.setWatchlisted(account, item.id, !listed) }
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                r.onFailure {
+                                    android.widget.Toast
+                                        .makeText(ctx, "My list: ${it.message}", android.widget.Toast.LENGTH_LONG)
+                                        .show()
+                                }
+                                ItemsChanged.bump()
+                            }
+                        }
+                    },
+                )
             }
             ListRow("Details", icon = Icons.Info, onClick = {
                 onDismiss()
@@ -982,6 +1008,137 @@ fun Modifier.focusOnAppear(enabled: Boolean = LocalDimens.current.isTv): Modifie
     return focusRequester(fr)
 }
 
+/**
+ * TV: plain "just enough" scrolling for [content] (Compose's default on TV keeps the focused
+ * element at a third of the height, which pushed a settings page's title off screen as soon as a
+ * row a little down the page took the focus).
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun MinimalScrollSpec(content: @Composable () -> Unit) {
+    if (!LocalDimens.current.isTv) {
+        content()
+        return
+    }
+    val spec =
+        remember {
+            object : androidx.compose.foundation.gestures.BringIntoViewSpec {
+                override fun calculateScrollDistance(
+                    offset: Float,
+                    size: Float,
+                    containerSize: Float,
+                ): Float {
+                    val trailing = offset + size
+                    return when {
+                        offset >= 0f && trailing <= containerSize -> 0f
+                        offset < 0f && trailing > containerSize -> 0f
+                        kotlin.math.abs(offset) < kotlin.math.abs(trailing - containerSize) -> offset
+                        else -> trailing - containerSize
+                    }
+                }
+            }
+        }
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.foundation.gestures.LocalBringIntoViewSpec provides spec,
+        content = content,
+    )
+}
+
+/**
+ * TV: ↑/↓ scroll [state] when the focus can't move that way (text longer than the screen with
+ * nothing focusable in it). [focusable]: the container itself takes the focus (a dialog's long
+ * text), with a visible outline; ↑/↓ then scroll it and, at its ends, move the focus on.
+ * Otherwise (a page) ↑/↓ move the focus as usual and scroll only where nothing is left to focus.
+ */
+@Composable
+fun Modifier.dpadScroll(
+    state: androidx.compose.foundation.gestures.ScrollableState,
+    focusable: Boolean = false,
+    shape: Shape = RoundedCornerShape(LocalDimens.current.radius),
+): Modifier {
+    val d = LocalDimens.current
+    if (!d.isTv) return this
+    val fm = LocalFocusManager.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val step = with(androidx.compose.ui.platform.LocalDensity.current) { 140.dp.toPx() }
+    var focused by remember { mutableStateOf(false) }
+
+    fun scroll(by: Float) {
+        scope.launch {
+            state.animateScrollBy(by)
+        }
+    }
+    val keys =
+        Modifier.onKeyEvent { e ->
+            if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+            val down =
+                when (e.key) {
+                    Key.DirectionDown -> true
+                    Key.DirectionUp -> false
+                    else -> return@onKeyEvent false
+                }
+            val canScroll = if (down) state.canScrollForward else state.canScrollBackward
+            if (focusable) {
+                // The focused container: scroll it first; at its end the focus moves on.
+                if (canScroll) scroll(if (down) step else -step)
+                canScroll
+            } else {
+                // A page: the focus moves when it can, else the page scrolls.
+                if (fm.moveFocus(if (down) FocusDirection.Down else FocusDirection.Up)) {
+                    true
+                } else if (canScroll) {
+                    scroll(if (down) step else -step)
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    return if (focusable) {
+        this
+            .onFocusChanged { focused = it.isFocused }
+            .then(if (focused) Modifier.border(2.dp, Color.White.copy(alpha = 0.7f), shape) else Modifier)
+            .then(keys)
+            .focusable()
+    } else {
+        this.then(keys)
+    }
+}
+
+/**
+ * A tab of a row of tabs (a library's Recommended / Browse…): the selected one is filled with
+ * the accent; the focused one (TV) has a white outline and grows a little, whether selected or
+ * not, so "where the remote is" and "what is shown" never look alike. OK switches.
+ */
+@Composable
+fun TabChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val d = LocalDimens.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(50)
+    val scale by animateFloatAsState(if (focused && d.isTv) 1.06f else 1f, tween(140), label = "scale")
+    Box(
+        modifier
+            .pageFocusTracked(focused)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }.clip(shape)
+            .background(if (selected) Accent else Glass)
+            .then(if (focused) Modifier.border(2.5.dp, Color.White, shape).border(3.5.dp, FocusEdge, shape) else Modifier)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = if (d.isTv) 11.dp else 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (selected) Color.Black else OnSurface, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+    }
+}
+
 /** Set where several servers are mixed (combined home, search): cards show which server. */
 val LocalServerBadges = androidx.compose.runtime.staticCompositionLocalOf { false }
 
@@ -1071,13 +1228,10 @@ fun MarkAllDialog(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var confirm by remember { mutableStateOf(askUnwatchedOnly) }
     val episodes = if (count != null && count > 0) "all $count episodes" else "all episodes"
-    // A season whose episodes are all unwatched and none started: nothing to forget.
-    val nothingWatched =
-        target.kind == ItemKind.SEASON &&
-            target.user.unplayedCount != null &&
-            target.childCount != null &&
-            target.user.unplayedCount == target.childCount &&
-            target.user.positionMs == 0uL
+    // A season always offers both: its counts can't tell a started episode (unplayed count =
+    // episode count while one is half watched) and its played flag can be stale. Only an exact
+    // "0 unplayed" with the played flag hides "watched".
+    val offerWatched = if (target.kind == ItemKind.SEASON) !(target.user.played && target.user.unplayedCount == 0u) else !target.user.played
 
     fun apply(played: Boolean) {
         onDismiss()
@@ -1112,7 +1266,7 @@ fun MarkAllDialog(
         title = { Text(label) },
         text = {
             Column(Modifier.ignoreHeldOk()) {
-                if (!target.user.played) {
+                if (offerWatched) {
                     ListRow(
                         "Mark $episodes watched",
                         Modifier.focusOnAppear(),
@@ -1120,15 +1274,13 @@ fun MarkAllDialog(
                         onClick = { apply(true) },
                     )
                 }
-                if (!nothingWatched) {
-                    ListRow(
-                        "Mark $episodes unwatched",
-                        if (target.user.played) Modifier.focusOnAppear() else Modifier,
-                        subtitle = "Forgets where you stopped",
-                        icon = Icons.Refresh,
-                        onClick = { confirm = true },
-                    )
-                }
+                ListRow(
+                    "Mark $episodes unwatched",
+                    if (!offerWatched) Modifier.focusOnAppear() else Modifier,
+                    subtitle = "Forgets where you stopped",
+                    icon = Icons.Refresh,
+                    onClick = { confirm = true },
+                )
             }
         },
         confirmButton = { ActionButton("Close", onDismiss) },

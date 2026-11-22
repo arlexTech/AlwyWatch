@@ -57,18 +57,24 @@ class Services(
                 .ensure(app)
             val core = AlwyWatch(config())
             activate(core)
-            be.alwyapps.watch.keep.KeepReminderWorker
-                .schedule(app)
-            be.alwyapps.watch.history.SyncWorker
-                .schedule(app, core)
+            // The first frame waits for this block (it renders from the core's cache): only the
+            // core and its tokens are needed for that. Everything else starts right after, in
+            // the background: WorkManager's first use (it opens its own database), the codec
+            // list, the network watch and the settings sync.
+            scope.launch {
+                be.alwyapps.watch.keep.KeepReminderWorker
+                    .schedule(app)
+                be.alwyapps.watch.history.SyncWorker
+                    .schedule(app, core)
+                watchNetwork(core)
+                // Deletion rules, "next N episodes", and downloads interrupted by a reboot or a
+                // killed process (they continue on their own).
+                if (!isTv) syncDownloads(core)
+                // Enumerating codecs takes tens of ms: do it now, off the main thread.
+                be.alwyapps.watch.player.DeviceProfiles
+                    .get(app)
+            }
             scope.launch { SettingsSync.run(core) }
-            watchNetwork(core)
-            // Deletion rules, "next N episodes", and downloads interrupted by a reboot or a
-            // killed process (they continue on their own).
-            if (!isTv) syncDownloads(core)
-            // Enumerating codecs takes tens of ms: do it now, off the main thread.
-            be.alwyapps.watch.player.DeviceProfiles
-                .get(app)
             core
         }
 

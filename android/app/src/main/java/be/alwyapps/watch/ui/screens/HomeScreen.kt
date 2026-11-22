@@ -183,6 +183,7 @@ private fun Rails(
     h: Home,
     onFocus: ((Item) -> Unit)?,
     offline: Boolean = false,
+    onLeavingFocus: ((be.alwyapps.watch.core.keep.LeavingItem) -> Unit)? = null,
 ) {
     val core = LocalCore.current
     val nav = LocalNavigator.current
@@ -212,7 +213,7 @@ private fun Rails(
     if (core.keepActive() && !offline) {
         // Invitations to watch together waiting for an answer (nothing when there are none).
         TogetherRail()
-        LeavingSoonRail()
+        LeavingSoonRail(onLeavingFocus)
     }
     val account = LocalAccount.current
     val servers = remember(account) { runCatching { core.accounts() }.getOrDefault(emptyList()).associate { it.id to it.serverName } }
@@ -660,18 +661,40 @@ private fun TvHome(
     // The hero follows the focused card once focus rests: rapid ←/→ through a row costs no
     // artwork decode or cross-fade per card (on a Chromecast that dropped to a few fps).
     // A flow, not state read here: a focus move doesn't recompose the home at all.
-    val focused = remember { kotlinx.coroutines.flow.MutableStateFlow<Item?>(null) }
+    // An Item, or a "Leaving soon" card (a LeavingItem: shown with its deletion label).
+    val focused = remember { kotlinx.coroutines.flow.MutableStateFlow<Any?>(null) }
+    // The leaving-soon card the hero shows (null for any other card).
+    val heroLeaving = remember { mutableStateOf<be.alwyapps.watch.core.keep.LeavingItem?>(null) }
+    val core = LocalCore.current
     // Keyed on the hero state too: a refreshed home makes a new one, and the old collector
     // would keep updating the discarded state (the hero then stopped following focus).
     LaunchedEffect(focused, hero) {
         focused.collectLatest { f ->
-            if (f != null) {
-                kotlinx.coroutines.delay(300)
-                hero.value = f
+            when (f) {
+                is Item -> {
+                    kotlinx.coroutines.delay(300)
+                    heroLeaving.value = null
+                    hero.value = f
+                }
+                is be.alwyapps.watch.core.keep.LeavingItem -> {
+                    kotlinx.coroutines.delay(300)
+                    // Its title on the synced account's server, when cached (artwork, logo);
+                    // else the hero shows its title, year and deletion date only.
+                    val owner = runCatching { core.keepConnection()?.accountId }.getOrNull()
+                    val id = f.serverItemId
+                    hero.value =
+                        if (owner != null && id != null) {
+                            runCatching { core.cachedItem(owner, id)?.item }.getOrNull()
+                        } else {
+                            null
+                        }
+                    heroLeaving.value = f
+                }
             }
         }
     }
     val onFocus = remember(focused) { { it: Item -> focused.value = it } }
+    val onLeavingFocus = remember(focused) { { it: be.alwyapps.watch.core.keep.LeavingItem -> focused.value = it } }
     BoxWithConstraints(Modifier.fillMaxSize().ambientGlow { hero.value?.ambient() }) {
         val screenH = maxHeight
         // Artwork on the right two thirds, fading into the background on the left and bottom.
@@ -702,7 +725,7 @@ private fun TvHome(
                             ?.associate { it.itemId to it.label }
                             .orEmpty()
                     }
-                HeroText(hero, labels)
+                HeroText(hero, labels, heroLeaving)
             }
             // Focused row pinned just below the hero (room for its title).
             be.alwyapps.watch.ui.TvScrollSpec(leading = 58.dp) {
@@ -711,7 +734,7 @@ private fun TvHome(
                     if (h == null) {
                         items(2) { SkeletonRail() }
                     } else {
-                        item(key = "rails") { Column { Rails(h, onFocus) } }
+                        item(key = "rails") { Column { Rails(h, onFocus, onLeavingFocus = onLeavingFocus) } }
                     }
                     item { Spacer(Modifier.height(400.dp)) }
                 }
@@ -745,18 +768,44 @@ private fun HeroArt(
 private fun HeroText(
     hero: androidx.compose.runtime.State<Item?>,
     labels: Map<String, String>,
+    leaving: androidx.compose.runtime.State<be.alwyapps.watch.core.keep.LeavingItem?>,
 ) {
-    Crossfade(hero.value, animationSpec = tween(250), label = "heroText") { item ->
-        if (item != null) {
+    Crossfade(hero.value to leaving.value, animationSpec = tween(250), label = "heroText") { (item, gone) ->
+        if (item != null || gone != null) {
             Column(Modifier.fillMaxWidth(0.48f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // A fixed slot: logos differ in height (and are empty until loaded), titles
                 // without one take one or two lines. The text below must not move from one
                 // focused card to the next.
                 Box(Modifier.height(130.dp).fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
-                    TitleArt(item, 400.dp, big = true)
+                    if (item != null) {
+                        TitleArt(item, 400.dp, big = true)
+                    } else if (gone != null) {
+                        Text(
+                            gone.title,
+                            Modifier.widthIn(max = 400.dp),
+                            style = MaterialTheme.typography.displayMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-                HeroMeta(item, labels[item.id])
-                item.overview?.let {
+                if (gone != null) {
+                    // A "Leaving soon" card: its year and kind, and when it goes.
+                    Text(
+                        listOfNotNull(
+                            gone.year?.toString(),
+                            if (gone.kind == "show") "Show" else "Movie",
+                            gone.leavesLabel(),
+                        ).joinToString("  ·  "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Muted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else if (item != null) {
+                    HeroMeta(item, labels[item.id])
+                }
+                item?.overview?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
             }

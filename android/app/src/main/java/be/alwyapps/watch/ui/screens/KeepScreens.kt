@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -39,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -181,7 +183,7 @@ fun KeepActions(
 
 /** Compact rail for the home screen. */
 @Composable
-fun LeavingSoonRail() {
+fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
     val core = LocalCore.current
     val nav = LocalNavigator.current
     val d = LocalDimens.current
@@ -195,13 +197,51 @@ fun LeavingSoonRail() {
     // Up from the cards goes to the header's button: at the far right, a geometric search
     // from a card on the left found the row above first and the button was out of reach.
     val sort = remember { FocusRequester() }
+    // TV: the home pins the focused element just under the hero. For this header button that
+    // left a thin strip of the row above showing; instead the whole row (header and cards) is
+    // placed where a focused card would put it.
+    val cards =
+        remember {
+            androidx.compose.foundation.relocation
+                .BringIntoViewRequester()
+        }
+    val scope = rememberCoroutineScope()
+    val rowPad = with(androidx.compose.ui.platform.LocalDensity.current) { 12.dp.toPx() }
     Column(Modifier.padding(top = if (d.isTv) 18.dp else 24.dp)) {
         Row(Modifier.padding(horizontal = d.gutter), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("Leaving soon", style = MaterialTheme.typography.titleMedium)
                 Text("Keep what you still want to watch", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            ActionButton("Sort them out", { nav.push(Route.Triage) }, Modifier.focusRequester(sort), primary = true, icon = be.alwyapps.watch.ui.Icons.Favorite)
+            ActionButton(
+                "Sort them out",
+                { nav.push(Route.Triage) },
+                Modifier
+                    .focusRequester(sort)
+                    .then(
+                        if (d.isTv) {
+                            Modifier.onFocusChanged { f ->
+                                if (f.isFocused) {
+                                    scope.launch {
+                                        // After the button's own scroll request (this one wins).
+                                        androidx.compose.runtime.withFrameNanos { }
+                                        // The cards' top (inside the row's padding): where a focused card goes.
+                                        runCatching {
+                                            cards.bringIntoView(
+                                                androidx.compose.ui.geometry
+                                                    .Rect(0f, rowPad, 1f, rowPad + 1f),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
+                primary = true,
+                icon = be.alwyapps.watch.ui.Icons.Favorite,
+            )
             if (!d.isTv) {
                 be.alwyapps.watch.ui
                     .IconAction(be.alwyapps.watch.ui.Icons.ChevronRight, "See all", { nav.push(Route.LeavingSoon) })
@@ -209,10 +249,19 @@ fun LeavingSoonRail() {
         }
         // Like the other rows on TV: the focused card at a fixed spot, clear of the side menu.
         be.alwyapps.watch.ui.TvScrollSpec(leading = d.gutter) {
-            LazyRow(contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(d.railSpacing)) {
+            LazyRow(
+                Modifier.bringIntoViewRequester(cards),
+                contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
+            ) {
                 items(items, key = { it.key }) { item ->
                     Column(Modifier.width(d.posterWidth)) {
-                        FocusCard(onClick = { nav.push(Route.LeavingSoon) }, Modifier.focusProperties { up = sort }) {
+                        FocusCard(
+                            onClick = { nav.push(Route.LeavingSoon) },
+                            Modifier.focusProperties { up = sort },
+                            // The home's hero follows it (title, year, when it leaves).
+                            onFocus = onFocus?.let { f -> { f(item) } },
+                        ) {
                             UrlImage(item.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
                             val (label, urgent) = item.shortLabel()
                             be.alwyapps.watch.ui.Badge(

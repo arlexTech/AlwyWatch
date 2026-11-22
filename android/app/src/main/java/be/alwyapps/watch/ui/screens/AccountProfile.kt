@@ -299,7 +299,12 @@ fun AlwyWatchAccountGroup() {
     Group("Your AlwyWatch account", footer = "Others see this name and picture when you watch together.") {
         ListRow(
             me.name,
-            subtitle = if (me.nameIsCustom && me.mediaName.isNotEmpty()) "Signed in as ${me.mediaName}" else "How others see you",
+            subtitle =
+                listOfNotNull(
+                    if (me.nameIsCustom && me.mediaName.isNotEmpty()) "Signed in as ${me.mediaName}" else "How others see you",
+                    // Linked sign-ins: the others, on a second line.
+                    alsoSignedInAs(Identity.links),
+                ).joinToString("\n"),
             leading = { Avatar(me.avatar, me.name, me.userKey, if (d.isTv) 52.dp else 46.dp) },
         )
         Divider()
@@ -320,6 +325,8 @@ fun AlwyWatchAccountGroup() {
         )
         error?.let { Text(it, Modifier.padding(16.dp), color = Danger, style = MaterialTheme.typography.bodySmall) }
     }
+    // One AlwyWatch account for my Plex and Jellyfin sign-ins.
+    LinkedSignInsGroup(me)
 }
 
 /** The display name, checked as it is typed. */

@@ -23,7 +23,14 @@ class TokenStore(
     private val prefs =
         context.getSharedPreferences(if (profile == ProfileStore.DEFAULT) "tokens" else "tokens-$profile", Context.MODE_PRIVATE)
 
-    private fun key(): SecretKey {
+    // The Keystore handle, looked up once: every token read at startup (several per account)
+    // loaded the Keystore and fetched the entry again, a binder round trip each, before the
+    // first frame. The key material itself never leaves the Keystore.
+    @Volatile private var cachedKey: SecretKey? = null
+
+    private fun key(): SecretKey = cachedKey ?: loadKey().also { cachedKey = it }
+
+    private fun loadKey(): SecretKey {
         val ks = KeyStore.getInstance(KEYSTORE).apply { load(null) }
         (ks.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
         val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE)

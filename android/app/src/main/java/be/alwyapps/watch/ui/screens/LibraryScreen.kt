@@ -158,12 +158,13 @@ fun LibraryScreen(
             androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(LibTab.entries.size) { i ->
                     val t = LibTab.entries[i]
-                    ActionButton(t.label, {
+                    // Selected = accent fill, focused = white outline (they looked alike); OK switches.
+                    be.alwyapps.watch.ui.TabChip(t.label, tab == t, {
                         tab = t
                         runCatching { core.setSetting(tabKey, t.name) }
                         // Back from what the page opened: focus where it was (the opened title, a
                         // category…), else on the current tab.
-                    }, Modifier.rememberFocus("lib.$id", "tab.${t.name}", default = tab == t), selected = tab == t)
+                    }, Modifier.rememberFocus("lib.$id", "tab.${t.name}", default = tab == t))
                 }
             }
         }
@@ -387,9 +388,14 @@ fun LibraryGrid(
                     be.alwyapps.watch.ui
                         .PageTitle(title)
                 }
-                if (pager.total > 0) {
-                    Text("%,d titles".format(pager.total), style = MaterialTheme.typography.bodyMedium, color = Muted)
-                }
+                // Always one line, empty until the count is known: appearing after the first
+                // page loaded, it pushed the sort chips (and the grid) down under the focus.
+                Text(
+                    if (pager.total > 0) "%,d titles".format(pager.total) else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Muted,
+                    minLines = 1,
+                )
                 if (sortable) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for ((label, s) in listOf("A–Z" to SortBy.TITLE, "Recently added" to SortBy.DATE_ADDED, "Release date" to SortBy.RELEASE_DATE)) {
