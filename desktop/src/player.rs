@@ -209,7 +209,6 @@ fn open(req: &PlayRequest, embed: bool) -> Result<(Arc<Mpv>, bool), String> {
     for (k, v) in window {
         m.set_option(k, v)?;
     }
-    // A bounded demuxer cache so RAM stays predictable for 4K remuxes.
     // Hardware decoding when safe (NVDEC/VAAPI on Linux, D3D11VA on Windows); `ALWYWATCH_HWDEC`
     // overrides it (diagnosis).
     let hwdec = std::env::var("ALWYWATCH_HWDEC").unwrap_or_else(|_| "auto-safe".to_owned());
@@ -220,6 +219,7 @@ fn open(req: &PlayRequest, embed: bool) -> Result<(Arc<Mpv>, bool), String> {
             m.set_option(k, v)?;
         }
     }
+    // A bounded demuxer cache so RAM stays predictable for 4K remuxes.
     for (k, v) in [
         ("keep-open", "no"),
         ("cache", "yes"),
