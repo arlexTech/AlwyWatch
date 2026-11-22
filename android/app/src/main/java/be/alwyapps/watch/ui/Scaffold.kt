@@ -135,6 +135,13 @@ fun AppScaffold(content: @Composable () -> Unit) {
     val d = LocalDimens.current
     val rail = usesRail()
     val showBars = nav.current.isTopLevel(rail)
+    // The first profile is called by its account's name (phone, tablet and TV menus, settings).
+    val services = androidx.compose.ui.platform.LocalContext.current.services
+    val core = LocalCore.current
+    remember(nav.current) {
+        be.alwyapps.watch.ui.screens
+            .currentProfile(services, core)
+    }
     // Artwork screens draw under the status bar; the others keep clear of it.
     val edgeToEdge = nav.current == Route.Home || nav.current is Route.Detail || nav.current == Route.AddServer
     if (!showBars) {
@@ -420,11 +427,12 @@ private fun TvMenu(
         ) {
             // Who is watching, above the pages (like Plex): one press opens "Who's watching?".
             val ctx = androidx.compose.ui.platform.LocalContext.current
+            val core = LocalCore.current
+            // Looked at again on each page: signing in gives the first profile its name.
             val me =
-                remember {
-                    ctx.services.profiles
-                        .list()
-                        .firstOrNull { it.id == ctx.services.profile }
+                remember(selected) {
+                    be.alwyapps.watch.ui.screens
+                        .currentProfile(ctx.services, core)
                 }
             var switching by remember { mutableStateOf(false) }
             if (switching) {

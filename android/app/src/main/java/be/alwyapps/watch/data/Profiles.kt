@@ -9,6 +9,9 @@ import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
+/** The first profile's name until it takes its account's (or is renamed). */
+const val UNNAMED = "Me"
+
 /** A person on this device: their own accounts, AlwyWatch server, Seerr and settings. */
 data class Profile(
     val id: String,
@@ -28,7 +31,7 @@ class ProfileStore(
 
     private fun raw(): JSONArray =
         prefs.getString("list", null)?.let { runCatching { JSONArray(it) }.getOrNull() }
-            ?: JSONArray().put(JSONObject().put("id", DEFAULT).put("name", "Me"))
+            ?: JSONArray().put(JSONObject().put("id", DEFAULT).put("name", UNNAMED))
 
     private fun save(a: JSONArray) {
         prefs.edit().putString("list", a.toString()).commit()

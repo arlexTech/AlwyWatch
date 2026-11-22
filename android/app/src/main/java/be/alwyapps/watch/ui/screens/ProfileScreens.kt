@@ -244,6 +244,28 @@ private fun PinEntry(
 }
 
 /**
+ * The profile in use. The first one starts without a name of its own ("Me"): it takes its
+ * account's (the AlwyWatch account, else the media account) the first time one is there.
+ */
+fun currentProfile(
+    services: be.alwyapps.watch.Services,
+    core: be.alwyapps.watch.core.AlwyWatch,
+): Profile? {
+    val p = services.profiles.list().firstOrNull { it.id == services.profile } ?: return null
+    if (p.name != be.alwyapps.watch.data.UNNAMED) return p
+    val name =
+        runCatching {
+            core.account()?.name?.takeIf { it.isNotBlank() } ?: core.accounts().let { all ->
+                val current = core.getSetting("current_account")
+                (all.firstOrNull { it.id == current } ?: all.firstOrNull())?.userName
+            }
+        }.getOrNull()?.trim()?.take(24)
+    if (name.isNullOrEmpty()) return p
+    services.profiles.rename(p.id, name)
+    return p.copy(name = name)
+}
+
+/**
  * "Who's watching?" from anywhere (the avatar on the phone's home, the side menu): one tap on a
  * profile switches to it (its PIN is asked here when it has one), with a way to add one and to
  * the settings.
