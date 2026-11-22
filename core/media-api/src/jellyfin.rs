@@ -700,7 +700,8 @@ fn convert_item(d: BaseItemDto) -> Item {
 fn sort_param(s: SortBy) -> &'static str {
     match s {
         SortBy::Title => "SortName",
-        SortBy::DateAdded => "DateCreated,SortName",
+        // A show counts by its newest episode (movies have no such date: theirs decides).
+        SortBy::DateAdded => "DateLastContentAdded,DateCreated,SortName",
         SortBy::ReleaseDate => "PremiereDate,ProductionYear,SortName",
         SortBy::Rating => "CommunityRating,SortName",
         SortBy::LastPlayed => "DatePlayed,SortName",

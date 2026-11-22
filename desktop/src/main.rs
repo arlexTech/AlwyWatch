@@ -80,6 +80,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
+    // Test hook: print each account's "recently added" rows as the home builds them.
+    if std::env::var_os("ALWYWATCH_PROBE_HOME").is_some() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        for a in core.accounts()? {
+            match rt.block_on(core.refresh_home(a.id.clone(), true)) {
+                Ok(h) => {
+                    for rail in h.latest {
+                        let titles: Vec<String> = rail
+                            .items
+                            .iter()
+                            .take(12)
+                            .map(|i| i.title.clone())
+                            .collect();
+                        eprintln!(
+                            "{} · {}: {}",
+                            a.server_name,
+                            rail.library.title,
+                            titles.join(" | ")
+                        );
+                        // The library page's "Recently added" order, for comparison.
+                        let mut q =
+                            alwywatch_core::ItemQuery::library(rail.library.id.clone(), 0, 8);
+                        q.sort_by = alwywatch_core::SortBy::DateAdded;
+                        q.descending = true;
+                        if let Ok(p) = rt.block_on(core.refresh_items(a.id.clone(), q, true)) {
+                            let t: Vec<String> =
+                                p.page.items.iter().map(|i| i.title.clone()).collect();
+                            eprintln!("    library, recently added: {}", t.join(" | "));
+                        }
+                    }
+                }
+                Err(e) => eprintln!("{}: {e}", a.server_name),
+            }
+        }
+        return Ok(());
+    }
     // Test hook: ask each account's server to start converting an item for a TV-stick-like
     // device and print the HTTP status (checks the transcode request end to end without
     // playing). The request goes through curl's stdin config: no token in a command line.

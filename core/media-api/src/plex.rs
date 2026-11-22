@@ -1032,10 +1032,21 @@ impl MediaServer for PlexClient {
                 items,
             });
         };
+        let mut sort = sort_param(q.sort_by, q.descending);
+        // Recently added shows: by their newest episode, not by when the show first arrived
+        // (the field only exists for show libraries, hence the look-up).
+        if q.sort_by == SortBy::DateAdded
+            && self.libraries().await.is_ok_and(|l| {
+                l.iter()
+                    .any(|x| x.id == *lib && x.kind == LibraryKind::Shows)
+            })
+        {
+            sort = sort.replacen("addedAt", "episode.addedAt", 1);
+        }
         let mut p = vec![
             ("X-Plex-Container-Start", q.start.to_string()),
             ("X-Plex-Container-Size", q.limit.to_string()),
-            ("sort", sort_param(q.sort_by, q.descending)),
+            ("sort", sort),
             ("includeGuids", "1".into()),
         ];
         if q.unplayed_only {
