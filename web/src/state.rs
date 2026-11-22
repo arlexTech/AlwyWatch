@@ -105,6 +105,8 @@ pub struct Ctx {
     pub invites: crate::together::Invites,
     /// Custom avatar pictures fetched: user key → (version, blob URL once loaded).
     pub avatars: RwSignal<HashMap<String, (u32, Option<String>)>>,
+    /// Who each account is on the AlwyWatch server, and linking them (one person).
+    pub links: crate::links::Links,
 }
 
 impl Ctx {
@@ -136,6 +138,7 @@ impl Ctx {
             room: crate::together::Room::new(),
             invites: crate::together::Invites::new(load(TOGETHER)),
             avatars: RwSignal::new(HashMap::new()),
+            links: crate::links::Links::new(),
         }
     }
 
@@ -202,7 +205,9 @@ impl Ctx {
         // Rails and libraries mix accounts: rebuilt from the remaining ones.
         remove(HOME);
         remove(LIBS);
+        crate::links::account_removed(self, key);
         if self.keep.get_untracked().is_some_and(|k| k.account == key) {
+            self.links.clear();
             // The room's seat goes with the account (told while its token is still here).
             self.room.leave("", true);
             self.set_keep(None);

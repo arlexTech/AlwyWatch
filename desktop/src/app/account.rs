@@ -107,6 +107,11 @@ fn http() -> Option<&'static net::reqwest::Client> {
         .as_ref()
 }
 
+/// The same client, for reading the other accounts' `Me` (Linked sign-ins).
+pub(super) fn http_client() -> Option<net::reqwest::Client> {
+    http().cloned()
+}
+
 /// A failed profile call in plain words.
 fn profile_error(e: &CoreError) -> String {
     match e {
@@ -289,6 +294,11 @@ impl App {
         self.ui().set_me_message(SharedString::new());
         self.render_me();
         self.render_presets();
+    }
+
+    /// Whether my welcome step is still to come (None: profile not known yet).
+    pub(super) fn me_profile_set(&self) -> Option<bool> {
+        self.state.borrow().me.me.as_ref().map(|m| m.profile_set)
     }
 
     /// The AlwyWatch server was unlinked: forget my profile.

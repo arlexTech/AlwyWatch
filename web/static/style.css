@@ -292,3 +292,12 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
 .pick-row.static { display: flex; align-items: center; cursor: default; }
 .pick-row.static .check { color: var(--muted); text-align: center; }
 .pick-row.static.here .check { color: var(--accent); }
+
+/* Linked sign-ins. */
+.links { border-top: 1px solid var(--outline); margin-top: 12px; padding-top: 4px; }
+.links h3 { font-size: 1rem; margin: 12px 0 4px; }
+.links h3.small-head { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 14px; }
+.tag { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 6px; background: var(--surface-high); color: var(--muted); vertical-align: middle; margin-left: 4px; }
+.tag.main { background: var(--accent); color: #000; }
+.link-pair { background: var(--surface); border-radius: var(--radius); padding: 6px 14px; margin: 4px 0 8px; }

@@ -18,6 +18,7 @@ use crate::platform::{self, Tokens};
 use crate::profiles::ProfileStore;
 mod account;
 mod history;
+mod links;
 mod profiles;
 mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
@@ -123,6 +124,8 @@ struct State {
     lists: together::Lists,
     /// My AlwyWatch profile, the welcome step's draft and the cropper.
     me: account::MeState,
+    /// Who each account is on the AlwyWatch server, and linking them (one person).
+    links: links::LinksState,
     /// Kept forever (admin), redrawn when avatars arrive.
     forever: Option<keep_service::ForeverStats>,
     /// "Mark unwatched" waiting for its confirmation: (season or series id, its label).
@@ -272,6 +275,7 @@ impl App {
                 together: None,
                 lists: Default::default(),
                 me: Default::default(),
+                links: Default::default(),
                 forever: None,
                 player_notes: None,
                 mark_pending: None,
@@ -329,6 +333,8 @@ impl App {
         // Invitations arrive through the rooms' long poll; the welcome step once per account.
         app.start_rooms_poll();
         app.check_welcome();
+        // "Are these both you?" once for two accounts of one person (after the welcome step).
+        app.check_links(true);
         app
     }
 
@@ -1055,6 +1061,7 @@ impl App {
                     t.check_welcome();
                     t.stop_rooms_poll();
                     t.start_rooms_poll();
+                    t.check_links(true);
                     // Seerr through the same server when not set up yet (optional there).
                     if t.core.seerr_connection().is_none() {
                         t.seerr_bridge(true);
@@ -1900,6 +1907,8 @@ impl App {
                 self.refresh_settings();
                 self.render_profiles();
                 self.load_me();
+                self.render_links();
+                self.check_links(false);
             }
             Route::Profiles => {
                 ui.set_page(Page::Profiles);
@@ -3633,6 +3642,10 @@ impl App {
                     t.check_welcome();
                     t.start_rooms_poll();
                 }
+                // A new account may be the same person as the synced one.
+                if let Some(t) = this.upgrade() {
+                    t.check_links(true);
+                }
             })
             .ok();
         }
@@ -3651,6 +3664,8 @@ impl App {
     fn remove_account(self: &Rc<Self>, id: String) {
         let _ = self.core.remove_account(id.clone());
         let _ = self.tokens.remove(&id);
+        self.links_account_removed(&id);
+        self.render_links();
         if self.account().as_deref() == Some(&id) {
             let next = self
                 .core
@@ -4503,6 +4518,7 @@ impl App {
             let _ = a.core.keep_disconnect();
             a.stop_rooms_poll();
             a.forget_me();
+            a.links_reset();
             a.ui().set_keep_choices(ModelRc::default());
             a.refresh_keep_settings();
             a.refresh_settings();
@@ -4543,6 +4559,11 @@ impl App {
         on!(on_account_dialog_close, |a| a.account_dialog_close());
         on!(on_welcome_continue, |a| a.welcome_continue());
         on!(on_welcome_skip, |a| a.welcome_skip());
+        on!(on_link_ask, |a, account| a.link_ask(account.into()));
+        on!(on_link_confirm, |a| a.link_confirm());
+        on!(on_link_dialog_close, |a| a.link_dialog_close());
+        on!(on_unlink_ask, |a, key| a.unlink_ask(key.into()));
+        on!(on_unlink_confirm, |a| a.unlink_confirm());
         on!(on_crop_drag, |a, dx, dy| a.crop_drag(dx, dy));
         on!(on_crop_zoom_by, |a, steps| a.crop_zoom_by(steps));
         on!(on_crop_set_zoom, |a, z| a.crop_set_zoom(z));

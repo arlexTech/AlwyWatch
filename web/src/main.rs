@@ -5,6 +5,7 @@
 mod browse;
 mod extra;
 mod keep;
+mod links;
 mod player;
 mod prefs;
 mod profile;
@@ -68,7 +69,14 @@ fn show_crashes() {
 fn App() -> impl IntoView {
     let c = state::install();
     provide_context(c.clone());
-    leptos::task::spawn_local(signin::check_keep(c.clone()));
+    {
+        let c = c.clone();
+        leptos::task::spawn_local(async move {
+            signin::check_keep(c).await;
+            // "Are these both you?" once for two accounts of one person.
+            links::refresh(true).await;
+        });
+    }
     // One invitation long poll while an account is linked to the AlwyWatch server (restarted
     // only when the linked account changes, stopped on sign-out).
     let keep = c.keep;
@@ -119,7 +127,7 @@ fn App() -> impl IntoView {
 #[component]
 fn Shell(children: ChildrenFn) -> impl IntoView {
     let c = state::ctx();
-    let (accounts, keep, welcome) = (c.accounts, c.keep, c.welcome);
+    let (accounts, keep, welcome, link_dialog) = (c.accounts, c.keep, c.welcome, c.links.dialog);
     let signed_in = move || !accounts.get().is_empty();
     let keep_on = move || keep.get().is_some();
     let admin = move || keep.get().is_some_and(|k| k.is_admin);
@@ -143,6 +151,10 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                 <Expired />
                 <Show when=keep_on><together::InviteBanner /><together::SeatBanner /></Show>
                 {move || (keep_on() && welcome.get()).then(|| view! { <profile::Welcome /> })}
+                // After the welcome step; the player is its own page, so never over a video.
+                {move || (keep_on() && !welcome.get()).then(|| link_dialog.get()).flatten().map(|(account, prompted)| {
+                    view! { <links::LinkDialog account=account prompted=prompted /> }
+                })}
                 {move || if signed_in() || matches!(current_path().as_str(), "/signin" | "/settings") {
                     children().into_any()
                 } else {

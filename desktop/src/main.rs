@@ -211,6 +211,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(step @ ("room" | "room-guest" | "room-picker")) => app.test_room(step),
         Ok("invitation") => app.test_invitation(),
         Ok(step @ ("welcome" | "avatars" | "account" | "crop")) => app.test_account(step),
+        Ok(step @ ("links" | "links-ask" | "links-unlink")) => app.test_links(step),
         Ok(step @ ("receive" | "send")) => app.test_transfer(step),
         Ok(tab @ ("recommended" | "browse" | "collections" | "categories")) => {
             app.test_home();

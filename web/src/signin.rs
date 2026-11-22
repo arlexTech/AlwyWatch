@@ -23,6 +23,8 @@ async fn finish(c: &Ctx, s: Session, served: &[ServerEntry]) {
     if c.keep.get_untracked().is_none() && served.iter().any(|e| e.id == s.server_id) {
         link(c, &s).await;
     }
+    // A new account may be the same person as the linked one.
+    crate::links::refresh(true).await;
 }
 
 async fn link(c: &Ctx, s: &Session) -> bool {
@@ -393,7 +395,9 @@ pub fn Settings() -> impl IntoView {
                 Some(k) => view! {
                     <p class="muted small">"Signed in as "<strong>{k.user_name}</strong>" on "{Ctx::origin()}
                         ". Others see this name and avatar."</p>
+                    <crate::links::AlsoSignedIn />
                     <crate::profile::AccountProfile />
+                    <crate::links::LinkedSignins />
                 }.into_any(),
                 None => {
                     // Plex accounts from before the plex.tv token was kept can't sign in here.

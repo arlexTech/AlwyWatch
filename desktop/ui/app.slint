@@ -132,6 +132,16 @@ export struct PersonRow {
     selected: bool,
 }
 
+/// A sign-in of my AlwyWatch account (Settings → Linked sign-ins).
+export struct LinkRow {
+    key: string, // user key
+    title: string, // name on that media server
+    detail: string, // "Server · Plex"
+    server: string, // plex | jellyfin
+    main: bool, // the account's data lives under it: no Unlink
+    here: bool, // the sign-in this computer uses
+}
+
 /// An avatar to choose (Change avatar, welcome step); id "default" is the initial on a colour.
 export struct PresetRow {
     id: string,
@@ -812,6 +822,19 @@ export component AppWindow inherits Window {
     in property <string> account-message;
     in property <bool> account-busy;
     in property <PersonAvatar> welcome-avatar;
+    // One AlwyWatch account for several sign-ins: "Also signed in as …", the list (shown with two
+    // or more), the accounts of this computer that can join it.
+    in property <string> me-also;
+    in property <[LinkRow]> links;
+    in property <[NamedId]> link-candidates;
+    // "" | ask ("Are these both you?") | unlink (confirmation).
+    in property <string> link-dialog;
+    in property <PersonRow> link-a;
+    in property <PersonRow> link-b;
+    in property <bool> link-prompted; // the one-time prompt: "Not now" (else "Cancel")
+    in property <bool> link-busy;
+    in property <string> link-message;
+    in property <string> unlink-question;
     // Cropper of an uploaded picture: the picture's place under the round frame (viewport
     // 360 px, frame 300 px).
     in property <bool> crop-open;
@@ -922,6 +945,11 @@ export component AppWindow inherits Window {
     callback account-dialog-close();
     callback welcome-continue();
     callback welcome-skip();
+    callback link-ask(string); // account id ("Link another sign-in")
+    callback link-confirm();
+    callback link-dialog-close(); // Not now / Cancel / Escape
+    callback unlink-ask(string); // user key
+    callback unlink-confirm();
     callback crop-drag(float, float); // screen pixels
     callback crop-zoom-by(float); // wheel steps
     callback crop-set-zoom(float);
@@ -972,6 +1000,7 @@ export component AppWindow inherits Window {
             if (e.text == Key.Escape && root.profile-dialog != "") { root.profile-cancel(); return accept; }
             if (e.text == Key.Escape && root.crop-open) { root.crop-cancel(); return accept; }
             if (e.text == Key.Escape && root.mark-confirm != "") { root.mark-confirm-cancel(); return accept; }
+            if (e.text == Key.Escape && root.link-dialog != "") { root.link-dialog-close(); return accept; }
             if (e.text == Key.Escape && root.account-dialog == "welcome") { root.welcome-skip(); return accept; }
             if (e.text == Key.Escape && root.account-dialog != "") { root.account-dialog-close(); return accept; }
             if (e.text == Key.Escape && root.room-picker) { root.picker-cancel(); return accept; }
@@ -2164,11 +2193,43 @@ export component AppWindow inherits Window {
                                         horizontal-stretch: 1;
                                         Text { text: root.me-loaded ? root.me-name : "…"; color: Palette.text; font-size: 17px; font-weight: 700; overflow: elide; }
                                         Text { text: root.me-detail; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                        if root.me-also != "" : Text { text: root.me-also; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                                     }
                                     if root.me-loaded : Button { label: "Edit name"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("name"); } }
                                     if root.me-loaded : Button { label: "Change avatar"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("avatar"); } }
                                 }
                                 if root.me-message != "" : Text { text: root.me-message; color: Palette.danger; wrap: word-wrap; }
+                                if root.links.length > 1 || root.link-candidates.length > 0 : VerticalLayout {
+                                    spacing: 10px;
+                                    Rectangle { height: 1px; background: Palette.outline; }
+                                    Text { text: "Linked sign-ins"; color: Palette.text; font-weight: 700; }
+                                    Text {
+                                        text: root.links.length > 1 ? "These sign-ins are one AlwyWatch account: same name, avatar, keep choices and watch-together rooms."
+                                            : "Another account on this computer may be you too. Linking makes them one AlwyWatch account.";
+                                        color: Palette.muted;
+                                        font-size: 12px;
+                                        wrap: word-wrap;
+                                    }
+                                    for l in root.links : HorizontalLayout {
+                                        spacing: 12px;
+                                        ServerMark { server: l.server; y: (parent.height - self.height) / 2; }
+                                        VerticalLayout {
+                                            alignment: center;
+                                            horizontal-stretch: 1;
+                                            Text { text: l.title; color: Palette.text; font-weight: 700; overflow: elide; }
+                                            Text { text: l.detail; color: Palette.muted; font-size: 12px; overflow: elide; }
+                                        }
+                                        if l.main : Badge { label: "MAIN"; tone: Palette.accent; fg: #000; y: (parent.height - self.height) / 2; }
+                                        if l.here : Badge { label: "THIS COMPUTER"; tone: Palette.surface-high; y: (parent.height - self.height) / 2; }
+                                        if !l.main : Button { label: "Unlink"; y: (parent.height - self.height) / 2; clicked => { root.unlink-ask(l.key); } }
+                                    }
+                                    if root.link-candidates.length > 0 : Text { text: "Link another sign-in"; color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+                                    for c in root.link-candidates : HorizontalLayout {
+                                        spacing: 10px;
+                                        Text { text: c.title; color: Palette.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                        Button { label: "Link…"; clicked => { root.link-ask(c.id); } }
+                                    }
+                                }
                             }
                             Group {
                                 title: "ALWYWATCH SERVER";
@@ -2462,6 +2523,71 @@ export component AppWindow inherits Window {
                         if root.account-dialog == "avatar" : Button { label: "Done"; primary: true; clicked => { root.account-dialog-close(); } }
                         if root.account-dialog == "welcome" : Button { label: "Skip"; clicked => { root.welcome-skip(); } }
                         if root.account-dialog == "welcome" : Button { label: root.account-busy ? "Saving…" : "Continue"; primary: true; clicked => { root.welcome-continue(); } }
+                    }
+                }
+            }
+        }
+    }
+    // "Are these both you?" (Link focused first) and the unlink confirmation (Cancel focused).
+    if root.link-dialog != "" : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #000000b0;
+        TouchArea { }
+        FocusScope {
+            key-pressed(e) => {
+                if (e.text == Key.Escape) { root.link-dialog-close(); return accept; }
+                if (e.text == Key.RightArrow || e.text == Key.DownArrow) { root.move-focus(true); return accept; }
+                if (e.text == Key.LeftArrow || e.text == Key.UpArrow) { root.move-focus(false); return accept; }
+                return reject;
+            }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: min(560px, root.width - 48px);
+                height: ld.preferred-height;
+                border-radius: 22px;
+                background: #1d1d24;
+                ld := VerticalLayout {
+                    padding: 28px;
+                    spacing: 14px;
+                    Text {
+                        text: root.link-dialog == "ask" ? "Are these both you?" : "Unlink this sign-in?";
+                        color: Palette.text;
+                        font-size: 22px;
+                        font-weight: 800;
+                        wrap: word-wrap;
+                    }
+                    if root.link-dialog == "ask" : Rectangle {
+                        border-radius: 16px;
+                        background: Palette.surface;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 12px;
+                            PersonLine { person: root.link-a; size: 48px; }
+                            PersonLine { person: root.link-b; size: 48px; }
+                        }
+                    }
+                    if root.link-dialog == "ask" : Text {
+                        text: "Use one AlwyWatch account for both: the same name, picture, keep choices and watch-together rooms everywhere you sign in with either. Only link sign-ins that are really yours.";
+                        color: Palette.muted;
+                        wrap: word-wrap;
+                    }
+                    if root.link-dialog == "ask" : Text {
+                        text: "This can't be undone as such: unlinking later gives that sign-in a fresh, empty account.";
+                        color: Palette.muted;
+                        font-size: 13px;
+                        wrap: word-wrap;
+                    }
+                    if root.link-dialog == "unlink" : Text { text: root.unlink-question; color: Palette.muted; wrap: word-wrap; }
+                    if root.link-message != "" : Text { text: root.link-message; color: Palette.danger; wrap: word-wrap; }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 10px;
+                        if root.link-dialog == "ask" : Button { label: root.link-prompted ? "Not now" : "Cancel"; clicked => { root.link-dialog-close(); } }
+                        if root.link-dialog == "ask" : Button { label: root.link-busy ? "Linking…" : "Link"; primary: true; autofocus: true; clicked => { root.link-confirm(); } }
+                        if root.link-dialog == "unlink" : Button { label: "Cancel"; autofocus: true; clicked => { root.link-dialog-close(); } }
+                        if root.link-dialog == "unlink" : Button { label: root.link-busy ? "Unlinking…" : "Unlink"; clicked => { root.unlink-confirm(); } }
                     }
                 }
             }

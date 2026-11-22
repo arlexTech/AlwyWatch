@@ -54,17 +54,24 @@ pub fn Leaving() -> impl IntoView {
     let filter = RwSignal::new("all");
     // A long list (a thousand titles is common): a first screenful, more on request.
     let limit = RwSignal::new(60usize);
-    spawn_local(async move {
-        let Some(k) = state::ctx().keep_client() else {
-            return error.set(Some(NO_KEEP.into()));
-        };
-        match k.leaving_soon().await {
-            Ok(l) => {
-                state::save(state::LEAVING, &l);
-                items.set(Some(l));
+    // Again after a link or an unlink (my votes are the account's).
+    let revision = state::ctx().links.revision;
+    Effect::new(move |_| {
+        revision.track();
+        spawn_local(async move {
+            let Some(k) = state::ctx().keep_client() else {
+                return error.set(Some(NO_KEEP.into()));
+            };
+            match k.leaving_soon().await {
+                Ok(l) => {
+                    state::save(state::LEAVING, &l);
+                    items.try_set(Some(l));
+                }
+                Err(e) => {
+                    error.try_set(Some(state::plain_keep(&e)));
+                }
             }
-            Err(e) => error.set(Some(state::plain_keep(&e))),
-        }
+        });
     });
     let shown = move || {
         items
