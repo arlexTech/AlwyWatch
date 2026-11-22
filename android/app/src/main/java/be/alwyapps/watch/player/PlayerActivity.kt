@@ -474,6 +474,7 @@ class PlayerActivity : ComponentActivity() {
         object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 ui.playing = isPlaying
+                refreshPip()
                 // Paused by the user: show the controls. Not while buffering after a seek
                 // (←/→ with hidden controls must keep them hidden).
                 if (!isPlaying && player?.playWhenReady == false) ui.poke()
@@ -1165,11 +1166,71 @@ class PlayerActivity : ComponentActivity() {
         return android.app.PictureInPictureParams
             .Builder()
             .setAspectRatio(ratio)
-            .build()
+            .setActions(pipActions())
+            .apply {
+                // Android 12+: the swipe home glides into the small window while playing.
+                if (android.os.Build.VERSION.SDK_INT >= 31) setAutoEnterEnabled(player?.isPlaying == true)
+            }.build()
+    }
+
+    /** The small window's buttons: back 10 s, play/pause, forward 30 s. */
+    private fun pipActions(): List<android.app.RemoteAction> {
+        fun action(
+            code: Int,
+            icon: Int,
+            label: String,
+        ) = android.app.RemoteAction(
+            android.graphics.drawable.Icon
+                .createWithResource(this, icon),
+            label,
+            label,
+            android.app.PendingIntent.getBroadcast(
+                this,
+                code,
+                android.content
+                    .Intent(PIP_ACTION)
+                    .setPackage(packageName)
+                    .putExtra(PIP_EXTRA, code),
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+            ),
+        )
+        val playing = player?.isPlaying == true
+        return listOf(
+            action(PIP_BACK, android.R.drawable.ic_media_rew, "Back 10 seconds"),
+            if (playing) {
+                action(PIP_PAUSE, android.R.drawable.ic_media_pause, "Pause")
+            } else {
+                action(PIP_PLAY, android.R.drawable.ic_media_play, "Play")
+            },
+            action(PIP_FORWARD, android.R.drawable.ic_media_ff, "Forward 30 seconds"),
+        )
+    }
+
+    private val pipReceiver =
+        object : android.content.BroadcastReceiver() {
+            override fun onReceive(
+                context: android.content.Context?,
+                intent: android.content.Intent?,
+            ) {
+                val p = player ?: return
+                when (intent?.getIntExtra(PIP_EXTRA, 0)) {
+                    PIP_PLAY -> p.play()
+                    PIP_PAUSE -> p.pause()
+                    PIP_BACK -> p.seekBack()
+                    PIP_FORWARD -> p.seekForward()
+                }
+            }
+        }
+    private var pipReceiverOn = false
+
+    /** Keeps the small window's play/pause button (and the auto-enter rule) in step. */
+    private fun refreshPip() {
+        if (pipSupported) runCatching { setPictureInPictureParams(pipParams()) }
     }
 
     private fun enterPip() {
         if (!pipSupported) return
+        if (android.os.Build.VERSION.SDK_INT >= 31 && isInPictureInPictureMode) return
         ui.visible = false
         runCatching { enterPictureInPictureMode(pipParams()) }
     }
@@ -1189,8 +1250,23 @@ class PlayerActivity : ComponentActivity() {
         if (!isInPictureInPictureMode) ui.poke()
     }
 
+    override fun onDestroy() {
+        if (pipReceiverOn) runCatching { unregisterReceiver(pipReceiver) }
+        super.onDestroy()
+    }
+
     override fun onStart() {
         super.onStart()
+        if (pipSupported && !pipReceiverOn) {
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                pipReceiver,
+                android.content.IntentFilter(PIP_ACTION),
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            pipReceiverOn = true
+            refreshPip()
+        }
         TogetherInbox.activityStarted(null, player = true)
     }
 
@@ -1223,6 +1299,12 @@ class PlayerActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val PIP_ACTION = "be.alwyapps.watch.player.PIP"
+        private const val PIP_EXTRA = "do"
+        private const val PIP_PLAY = 1
+        private const val PIP_PAUSE = 2
+        private const val PIP_BACK = 3
+        private const val PIP_FORWARD = 4
         private const val EXTRA_ACCOUNT = "account"
         private const val EXTRA_ITEM = "item"
         private const val EXTRA_START = "start"
