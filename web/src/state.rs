@@ -21,7 +21,7 @@ const KEEP: &str = "aw.keep";
 const PLEX_TV: &str = "aw.plextv";
 /// Copies of server data kept for an instant next start; they go with the accounts.
 // "2": rows carry "recently added" notes (older copies are ignored).
-pub const HOME: &str = "aw.home2";
+pub const HOME: &str = "aw.home3";
 pub const LIBS: &str = "aw.libs";
 pub const LEAVING: &str = "aw.leaving";
 pub const REQUESTS_MINE: &str = "aw.requests.mine";

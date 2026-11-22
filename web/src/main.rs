@@ -109,6 +109,7 @@ fn App() -> impl IntoView {
                 <Route path=path!("/item/:acc/:id") view=|| view! { <Shell><browse::Detail /></Shell> } />
                 <Route path=path!("/search") view=|| view! { <Shell><browse::Search /></Shell> } />
                 <Route path=path!("/list") view=|| view! { <Shell><extra::MyList /></Shell> } />
+                <Route path=path!("/continue") view=|| view! { <Shell><browse::ContinueWatching /></Shell> } />
                 <Route path=path!("/requests") view=|| view! { <Shell><request::Requests /></Shell> } />
                 <Route path=path!("/request/:kind/:tmdb") view=|| view! { <Shell><request::SeerrTitle /></Shell> } />
                 <Route path=path!("/saga/:id") view=|| view! { <Shell><request::Saga /></Shell> } />

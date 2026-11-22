@@ -18,7 +18,8 @@ use crate::ui::{Card, ErrorText, Grid, Loading, Rail};
 
 /// Rows of the home: title, (account, item) cards, 16:9 cards, notes of "recently added" show
 /// cards (what is new, what opening them shows).
-type Rails = Vec<(String, Vec<(String, Item)>, bool, Vec<RailNote>)>;
+/// Title, cards (account, item), landscape, notes, where its "See all" goes.
+type Rails = Vec<(String, Vec<(String, Item)>, bool, Vec<RailNote>, String)>;
 
 /// Cards in a "recently added" row, and entries asked of a shows library (they come episode
 /// by episode and are grouped per show, like the apps).
@@ -100,6 +101,7 @@ async fn load_server(c: &state::Ctx, acc: String, srv: AnyServer) -> ServerHome 
                     tag(r.items),
                     false,
                     r.notes,
+                    format!("/library/{acc}/{}?sort=added", lib.id),
                 ))
             })
             .collect(),
@@ -149,7 +151,13 @@ async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
     watching.extend(dedupe(next).into_iter().filter(|(_, i)| {
         !started.contains(&i.id) && i.series_id.as_ref().is_none_or(|s| !started.contains(s))
     }));
-    let mut rails: Rails = vec![("Continue watching".into(), watching, true, vec![])];
+    let mut rails: Rails = vec![(
+        "Continue watching".into(),
+        watching,
+        true,
+        vec![],
+        "/continue".into(),
+    )];
     rails.extend(latest);
     Some((rails, libs))
 }
@@ -193,10 +201,10 @@ pub fn Home() -> impl IntoView {
         })}
         {move || match rails.get() {
             None => view! { <Loading /> }.into_any(),
-            Some(r) if r.iter().all(|(_, items, _, _)| items.is_empty()) && !offline.get() => view! {
+            Some(r) if r.iter().all(|(_, items, _, _, _)| items.is_empty()) && !offline.get() => view! {
                 <p class="muted">"Nothing here yet. Your libraries are above."</p>
             }.into_any(),
-            Some(r) => r.into_iter().map(|(t, items, wide, notes)| view! { <Rail title=t items=items wide=wide notes=notes /> }).collect_view().into_any(),
+            Some(r) => r.into_iter().map(|(t, items, wide, notes, link)| view! { <Rail title=t items=items wide=wide notes=notes see_all=link /> }).collect_view().into_any(),
         }}
     }
 }
@@ -210,8 +218,12 @@ pub fn Library() -> impl IntoView {
     let total = RwSignal::new(None::<u32>);
     let error = RwSignal::new(None::<String>);
     // The view: remembered per browser.
+    // A row's "See all" asks for an order (?sort=added) without changing the remembered one.
+    let asked = use_query_map().with_untracked(|q| q.get("sort"));
     let sort =
-        RwSignal::new(state::load::<String>("aw.lib.sort").unwrap_or_else(|| "title".into()));
+        RwSignal::new(asked.unwrap_or_else(|| {
+            state::load::<String>("aw.lib.sort").unwrap_or_else(|| "title".into())
+        }));
     let unwatched = RwSignal::new(false);
     let genre = RwSignal::new(String::new());
     // Only the latest load counts (a quick change of sort or filter overtakes the last one).
@@ -620,5 +632,22 @@ pub fn Requestable(r: SeerrResult) -> impl IntoView {
             <div class="title">{r.title.clone()}</div>
             <div class="sub">{r.year.clone().unwrap_or_default()}{if show { " · show" } else { "" }}</div>
         </A>
+    }
+}
+
+/// Everything in Continue watching (its row's "See all"), from the home's last copy.
+#[component]
+pub fn ContinueWatching() -> impl IntoView {
+    let items = state::load::<Rails>(state::HOME)
+        .and_then(|r| r.into_iter().find(|(_, _, _, _, l)| l == "/continue"))
+        .map(|(_, items, _, _, _)| items)
+        .unwrap_or_default();
+    view! {
+        <h1>"Continue watching"</h1>
+        {if items.is_empty() {
+            view! { <p class="muted">"Nothing in progress."</p> }.into_any()
+        } else {
+            view! { <Grid items=items /> }.into_any()
+        }}
     }
 }

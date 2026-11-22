@@ -81,11 +81,17 @@ pub fn Rail(
     items: Vec<(String, Item)>,
     #[prop(optional)] wide: bool,
     #[prop(optional)] notes: Vec<RailNote>,
+    /// Where "See all" goes (none when empty).
+    #[prop(optional)]
+    see_all: String,
 ) -> impl IntoView {
     (!items.is_empty()).then(|| {
         view! {
             <section class="rail">
-                <h2>{title}</h2>
+                <div class="rail-head">
+                    <h2>{title}</h2>
+                    {(!see_all.is_empty()).then(|| view! { <A href=see_all attr:class="see-all">"See all ›"</A> })}
+                </div>
                 <div class="rail-row">
                     {items.into_iter().map(|(acc, i)| {
                         let note = notes.iter().find(|n| n.item_id == i.id).cloned();
