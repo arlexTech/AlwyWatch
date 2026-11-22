@@ -76,9 +76,20 @@ pub struct TrackItem {
 
 /// From the app to a player in a watch together room.
 pub enum ToPlayer {
-    /// The room plays or is paused, at this position now. The player follows it continuously
+    /// The room plays or is paused, at `position_ms` at the instant `at` (which may be a moment
+    /// ahead: a start everyone presses play for at once). The player follows it continuously
     /// (slightly faster or slower for small drifts, a seek past 2 s: `together_correction`).
-    Sync { playing: bool, position_ms: u64 },
+    /// `hold`: the room waits for players to load the title (stay paused at the position);
+    /// `load`: this one too (say [`FromPlayer::Ready`] once enough is buffered); `waiting`:
+    /// what to show meanwhile ("Waiting for Sam…").
+    Sync {
+        playing: bool,
+        position_ms: u64,
+        at: Instant,
+        hold: bool,
+        load: bool,
+        waiting: Option<String>,
+    },
     /// A short message on the video ("Sam paused").
     Note(String),
     /// Close the player (the room moved to a title found elsewhere).
@@ -89,6 +100,18 @@ pub enum ToPlayer {
 pub enum FromPlayer {
     /// The viewer played, paused or moved.
     User { playing: bool, position_ms: u64 },
+    /// The title is loaded at the room's position (`READY_BUFFER_MS` ahead, or to its end).
+    Ready,
+}
+
+/// What a player in a room last heard from it.
+struct RoomSync {
+    playing: bool,
+    position_ms: u64,
+    at: Instant,
+    hold: bool,
+    load: bool,
+    waiting: Option<String>,
 }
 
 pub struct TogetherLink {
@@ -279,10 +302,13 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
     let together = req.together.as_ref();
     let mut quiet_until = Instant::now() + Duration::from_secs(3);
     let mut started = false;
-    // The room's last state (playing, position, when): followed continuously, see `follow`.
-    let mut room: Option<(bool, u64, Instant)> = None;
+    // The room's last state: followed continuously.
+    let mut room: Option<RoomSync> = None;
+    // Loading for the room: since when the player could start, and whether we said so.
+    let mut loaded_since: Option<Instant> = None;
+    let mut ready_sent = false;
     let mut next_check = Instant::now();
-    let mut rate = 1.0;
+    let mut rate = 1.0_f64;
     let mut note: Option<(String, Instant)> = None;
     let send_user = |m: &Mpv| {
         if let Some(t) = together {
@@ -296,25 +322,52 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         }
     };
     loop {
-        let event = m.wait_event(if together.is_some() || view.is_some() {
+        // A start everyone presses play for at once: wake up right then.
+        let until_start = room
+            .as_ref()
+            .filter(|r| r.playing && !r.hold)
+            .and_then(|r| r.at.checked_duration_since(Instant::now()))
+            .map(|d| d.as_secs_f64());
+        let tick = if together.is_some() || view.is_some() {
             0.1
         } else {
             0.5
-        });
+        };
+        let event = m.wait_event(until_start.map_or(tick, |u| u.min(tick)));
         if let Some(t) = together {
             while let Ok(msg) = t.rx.try_recv() {
                 match msg {
                     ToPlayer::Sync {
                         playing,
                         position_ms,
+                        at,
+                        hold,
+                        load,
+                        waiting,
                     } => {
-                        if paused == playing {
+                        // Paused until a start that's a moment ahead, or while loading.
+                        let play = playing && !hold && Instant::now() >= at;
+                        if paused == play {
                             quiet_until = Instant::now() + Duration::from_millis(1500);
-                            let _ =
-                                m.command(&["set", "pause", if playing { "no" } else { "yes" }]);
-                            paused = !playing;
+                            let _ = m.command(&["set", "pause", if play { "no" } else { "yes" }]);
+                            paused = !play;
                         }
-                        room = Some((playing, position_ms, Instant::now()));
+                        if load && !room.as_ref().is_some_and(|r| r.load) {
+                            ready_sent = false;
+                            loaded_since = None;
+                        }
+                        if (hold || at > Instant::now()) && (rate - 1.0).abs() > 0.0001 {
+                            rate = 1.0;
+                            let _ = m.command(&["set", "speed", "1"]);
+                        }
+                        room = Some(RoomSync {
+                            playing,
+                            position_ms,
+                            at,
+                            hold,
+                            load,
+                            waiting,
+                        });
                         next_check = Instant::now();
                     }
                     ToPlayer::Note(t) => note = Some((t, Instant::now())),
@@ -324,13 +377,65 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 }
             }
         }
-        if let Some((playing, position_ms, at)) = room
+        // The start everyone heard: play right at its instant.
+        if let Some(r) = &room
+            && r.playing
+            && !r.hold
+            && paused
+            && Instant::now() >= r.at
+        {
+            quiet_until = Instant::now() + Duration::from_millis(1500);
+            let _ = m.command(&["set", "pause", "no"]);
+            paused = false;
+            next_check = Instant::now() + Duration::from_millis(500);
+        }
+        // Loading for the room: paused at its position until enough is buffered.
+        if let (Some(r), Some(t)) = (&room, together)
+            && (r.hold || Instant::now() < r.at)
+        {
+            let pos = m.get_f64("time-pos").map(|s| (s.max(0.0) * 1000.0) as u64);
+            let seeking = m.get_flag("seeking").unwrap_or(true);
+            if started
+                && !seeking
+                && Instant::now() >= next_check
+                && pos.is_some_and(|p| p.abs_diff(r.position_ms) > 300)
+            {
+                quiet_until = Instant::now() + Duration::from_millis(1500);
+                seek_to(&m, r.position_ms);
+                next_check = Instant::now() + Duration::from_millis(500);
+            }
+            if r.load && !ready_sent {
+                let here =
+                    started && !seeking && pos.is_some_and(|p| p.abs_diff(r.position_ms) <= 500);
+                if !here {
+                    loaded_since = None;
+                } else if loaded_since.is_none() {
+                    loaded_since = Some(Instant::now());
+                }
+                let ahead = m.get_f64("demuxer-cache-duration").unwrap_or(0.0);
+                let to_end = match (m.get_f64("demuxer-cache-time"), m.get_f64("duration")) {
+                    (Some(c), Some(d)) => c >= d - 1.0,
+                    _ => false,
+                };
+                let enough = ahead * 1000.0 >= alwywatch_core::together_ready_buffer_ms() as f64
+                    || to_end
+                    || loaded_since.is_some_and(|t| t.elapsed() > Duration::from_secs(8));
+                if here && enough {
+                    ready_sent = true;
+                    t.send.as_ref()(FromPlayer::Ready);
+                }
+            }
+        }
+        if let Some(r) = &room
             && started
+            && !r.hold
+            && Instant::now() >= r.at
             // Only while playing/paused like the room (the room's echo of a change of ours
             // comes first).
-            && paused != playing
+            && paused != r.playing
             && Instant::now() >= next_check
         {
+            let (playing, position_ms, at) = (r.playing, r.position_ms, r.at);
             next_check = Instant::now() + Duration::from_millis(500);
             let expected = position_ms
                 + if playing {
@@ -491,7 +596,18 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         }
         // Short notes: the room ("Sam paused"), an invitation (longer, to be read).
         let mut view_note = String::new();
-        if let Some((t, at)) = &note {
+        // The room waits (loading, a start a moment ahead): said as long as it lasts.
+        let waiting = room
+            .as_ref()
+            .filter(|r| r.hold || Instant::now() < r.at)
+            .and_then(|r| r.waiting.clone());
+        if let Some(w) = waiting {
+            if view.is_some() {
+                view_note = w;
+            } else {
+                let _ = m.command(&["show-text", &w, "300"]);
+            }
+        } else if let Some((t, at)) = &note {
             if at.elapsed() < Duration::from_secs(6) {
                 if view.is_some() {
                     view_note = t.clone();

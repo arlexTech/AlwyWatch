@@ -139,6 +139,10 @@ struct State {
     player_notes: Option<std::sync::mpsc::Sender<String>>,
     /// The playing mpv, for the in-window controls.
     player_mpv: Option<Arc<crate::mpv::Mpv>>,
+    /// What the player plays (account, item) and its link for watch together (every player
+    /// has one, so a room can start from it without reloading).
+    player_item: Option<(String, String)>,
+    player_tx: Option<std::sync::mpsc::Sender<player::ToPlayer>>,
     /// The home's Continue watching, for its "See all" page.
     continue_items: Vec<Item>,
     admin_users: Vec<AdminUser>,
@@ -290,6 +294,8 @@ impl App {
                 forever: None,
                 player_notes: None,
                 player_mpv: None,
+                player_item: None,
+                player_tx: None,
                 continue_items: vec![],
                 mark_pending: None,
                 admin_users: vec![],
@@ -3171,10 +3177,11 @@ impl App {
             if let Some(t) = this.upgrade() {
                 t.state.borrow_mut().player_notes = Some(notes_tx);
             }
-            if together != TogetherPlay::Alone {
-                req.together = this.upgrade().and_then(|t| t.player_link());
+            if let Some(t) = this.upgrade() {
+                req.together = Some(t.player_link(together != TogetherPlay::Alone));
+                t.state.borrow_mut().player_item = Some((account.clone(), id.clone()));
             }
-            let linked = req.together.is_some();
+            let linked = together != TogetherPlay::Alone;
             let (src_id, session) = (src.id.clone(), info.play_session_id.clone());
             let rt = core.runtime();
             let (core2, acct2, id2) = (core.clone(), account.clone(), id.clone());
@@ -3250,7 +3257,14 @@ impl App {
                     t.room_player_gone();
                     t.player_failed(e);
                 }
-                (Ok(()), Some(t)) if linked => t.player_started(account, id, together, start_ms),
+                (Ok(()), Some(t)) => {
+                    let alone = !t.in_room();
+                    t.ui()
+                        .set_player_can_together(alone && t.core.keep_active());
+                    if linked {
+                        t.player_started(account, id, together, start_ms);
+                    }
+                }
                 _ => {}
             }
         })
@@ -4656,7 +4670,15 @@ impl App {
         on!(on_history_pick, |a, side, id| a
             .history_pick(side.into(), id.into()));
         on!(on_history_check, |a| a.history_check());
-        on!(on_player_cmd, |a, cmd, arg| a.player_cmd(&cmd, &arg));
+        on!(on_player_cmd, |a, cmd, arg| {
+            if cmd == "together" {
+                a.player_watch_together();
+            } else {
+                a.player_cmd(&cmd, &arg);
+            }
+        });
+        on!(on_player_room_start, |a| a.player_room_start());
+        on!(on_player_room_cancel, |a| a.player_room_cancel());
         on!(on_rail_see_all, |a, key, title| {
             match key.as_str() {
                 "continue" => a.navigate(Route::Continue),

@@ -107,7 +107,17 @@ impl App {
 
     /// Playback ended (on the UI thread): back to the app.
     pub(super) fn player_closed(self: &Rc<Self>) {
-        self.state.borrow_mut().player_mpv = None;
+        // "Watch together" pressed, never started: that room closes with the player.
+        if self.ui().get_player_room() {
+            self.player_room_cancel();
+        }
+        {
+            let mut st = self.state.borrow_mut();
+            st.player_mpv = None;
+            st.player_item = None;
+            st.player_tx = None;
+        }
+        self.ui().set_player_can_together(false);
         crate::video::detach();
         let ui = self.ui();
         if ui.get_player_on() {

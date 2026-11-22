@@ -219,7 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok("seerrtitle") => app.test_seerr_title(),
         Ok(step @ ("mylist" | "mylist-first")) => app.test_mylist(step == "mylist-first"),
         Ok("detail") => app.test_detail(),
-        Ok(step @ ("room" | "room-guest" | "room-picker")) => app.test_room(step),
+        Ok(step @ ("room" | "room-guest" | "room-picker" | "player-room")) => app.test_room(step),
         Ok("invitation") => app.test_invitation(),
         Ok(step @ ("welcome" | "avatars" | "account" | "crop")) => app.test_account(step),
         Ok(step @ ("links" | "links-ask" | "links-unlink")) => app.test_links(step),
