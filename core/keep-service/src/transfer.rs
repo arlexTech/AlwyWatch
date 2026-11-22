@@ -187,8 +187,13 @@ pub struct TransferPeer {
 /// `PUT /v1/transfer/{code}` body and `GET /v1/transfer/poll/{handle}` answer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferSealed {
-    /// Hex of ephemeral public key || ciphertext.
+    /// Hex of ephemeral public key || ciphertext. Empty when the approving device sent no
+    /// sign-ins (approved from the web or an account-only device).
+    #[serde(default)]
     pub sealed: String,
+    /// A session of the approver's AlwyWatch account for the new device (poll answer only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_token: Option<String>,
 }
 
 /// Largest sealed bundle accepted (accounts and settings are a few KB).

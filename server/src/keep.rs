@@ -37,6 +37,10 @@ pub struct State {
     pub transfers: crate::transfer::Transfers,
     /// Watch together rooms (in memory only).
     pub rooms: crate::together::Rooms,
+    /// Passkey challenges in progress (in memory only).
+    pub passkeys: crate::passkey::Flows,
+    /// Pocket ID sign-ins in progress (in memory only).
+    pub oidc: crate::oidc::Oidc,
     /// Attempt limits (see `limit.rs`).
     pub limits: Limits,
     /// Maintainerr's state from the last sync: 0 not tried yet, 1 answered, 2 failed.
@@ -58,6 +62,10 @@ pub struct Limits {
     pub together_creates: crate::limit::Limiter,
     /// Identity link attempts, per person (each validates a second token).
     pub links: crate::limit::Limiter,
+    /// Failed account sign-ins, per client address and per username.
+    pub account_logins: crate::limit::Limiter,
+    /// Accounts created, per client address.
+    pub account_signups: crate::limit::Limiter,
 }
 
 impl Default for Limits {
@@ -73,6 +81,8 @@ impl Default for Limits {
             together_creates: Limiter::new(20, min(60)),
             profile_changes: Limiter::new(20, min(10)),
             links: Limiter::new(10, min(10)),
+            account_logins: Limiter::new(10, min(10)),
+            account_signups: Limiter::new(5, min(60)),
         }
     }
 }
@@ -114,6 +124,8 @@ impl State {
             jf_index: Mutex::new(HashMap::new()),
             transfers: Default::default(),
             rooms: Default::default(),
+            passkeys: Default::default(),
+            oidc: Default::default(),
             limits: Default::default(),
             maintainerr_state: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),

@@ -28,8 +28,8 @@ Lightweight, fast, open source media client for **Jellyfin and Plex**, with **Se
 - **Backend `alwywatch-server`** (`/server`, Rust, axum, SQLite, single small Docker image): needed for the "keep" feature because Maintainerr has no per-user votes. It is **self-hosted on my own server** (reachable with `ssh serv`).
 
 ## Auth and users
-- No AlwyWatch accounts. Users sign in with their existing **Jellyfin or Plex** account on the servers the app is configured for.
-- The backend only serves the **servers I have selected** (those already running on my server). It validates the user's Jellyfin/Plex token against the matching server and identifies the user from that; it never stores passwords.
+- Users sign in with their existing **Jellyfin or Plex** account on the servers the app is configured for. Since 2026-11-22 (owner's request) there are also **AlwyWatch accounts** on the backend: username + password, passkeys or Pocket ID, invitation-only sign-up; an account alone only holds profile settings and the user's server list, and Quick Connect (code + QR) signs devices in (docs/keep-protocol.md "AlwyWatch accounts").
+- The backend only serves the **servers I have selected** (those already running on my server). It validates the user's Jellyfin/Plex token against the matching server and identifies the user from that; it never stores media-server passwords or tokens (AlwyWatch account passwords are stored as Argon2id hashes).
 - Server list is a backend config (allow-list), and the app can fetch it so users don't type URLs.
 
 ## My server

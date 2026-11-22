@@ -99,6 +99,51 @@ pub struct Config {
     pub sync_minutes: u64,
     #[serde(skip)]
     pub secrets: Secrets,
+    /// AlwyWatch accounts (from the environment, see [`AccountsConf::from_env`]).
+    #[serde(skip)]
+    pub accounts: AccountsConf,
+}
+
+/// Who may create an AlwyWatch account without a media-server sign-in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Registration {
+    /// With an invitation from an admin (default).
+    #[default]
+    Invite,
+    Open,
+    Closed,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AccountsConf {
+    /// This server's public address (`ALWYWATCH_PUBLIC_URL`): needed for passkeys and Pocket
+    /// ID (both are tied to it).
+    pub rp: Option<crate::passkey::RelyingParty>,
+    pub pocketid: Option<crate::oidc::PocketId>,
+    pub registration: Registration,
+}
+
+impl AccountsConf {
+    pub fn from_env() -> Self {
+        let get = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+        let url = get("ALWYWATCH_PUBLIC_URL");
+        let rp = url
+            .as_deref()
+            .and_then(crate::passkey::RelyingParty::from_url);
+        let pocketid = rp
+            .as_ref()
+            .and_then(|r| crate::oidc::PocketId::from_env(&r.origin));
+        let registration = match get("ALWYWATCH_REGISTRATION").as_deref().map(str::trim) {
+            Some("open") => Registration::Open,
+            Some("closed") => Registration::Closed,
+            _ => Registration::Invite,
+        };
+        Self {
+            rp,
+            pocketid,
+            registration,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -143,6 +188,7 @@ impl Config {
             ));
         }
         c.secrets = Secrets::from_env();
+        c.accounts = AccountsConf::from_env();
         Ok(c)
     }
 

@@ -23,6 +23,8 @@ struct Env {
     plextv: MockServer,
     tautulli: MockServer,
     seerr: MockServer,
+    /// Pocket ID.
+    oidc: MockServer,
     state: Shared,
     /// Data dir (custom avatars), removed with the environment.
     _data: tempfile::TempDir,
@@ -38,6 +40,7 @@ async fn env_with(dry_run: bool) -> Env {
 
 async fn env_at(db: Db, dry_run: bool) -> Env {
     let seerr = MockServer::start().await;
+    let oidc = MockServer::start().await;
     let (maint, jf, plextv, tautulli) = (
         MockServer::start().await,
         MockServer::start().await,
@@ -80,6 +83,14 @@ async fn env_at(db: Db, dry_run: bool) -> Env {
     let mut config = Config::parse(&toml).unwrap();
     config.secrets = Secrets::for_tests("jf-admin-key", "taut-key");
     config.dry_run = dry_run;
+    config.accounts = crate::config::AccountsConf {
+        rp: crate::passkey::RelyingParty::from_url("https://watch.example"),
+        pocketid: Some(crate::oidc::PocketId::for_tests(
+            &oidc.uri(),
+            "https://watch.example",
+        )),
+        registration: crate::config::Registration::Invite,
+    };
     let data = tempfile::tempdir().unwrap();
     config.data_dir = data.path().to_owned();
     let state = Arc::new(State::new(
@@ -94,6 +105,7 @@ async fn env_at(db: Db, dry_run: bool) -> Env {
         plextv,
         tautulli,
         seerr,
+        oidc,
         state,
         _data: data,
     };
@@ -2838,4 +2850,404 @@ async fn a_person_whose_canonical_server_is_no_longer_served_keeps_working() {
         .await;
     assert_eq!(people[0]["user_key"], "plex:oldplex:5");
     assert_eq!(people[0]["server_name"], "HomeJelly");
+}
+
+// ----- AlwyWatch accounts -------------------------------------------------------------------
+
+impl Env {
+    /// A request without a media sign-in: `bearer` is an account session (or nothing).
+    async fn anon(
+        &self,
+        method: &str,
+        uri: &str,
+        bearer: Option<&str>,
+        body: Option<Value>,
+    ) -> (StatusCode, axum::http::HeaderMap, Value) {
+        let mut req = Request::builder().method(method).uri(uri);
+        if let Some(t) = bearer {
+            req = req.header("authorization", format!("Bearer {t}"));
+        }
+        let body = match body {
+            Some(b) => {
+                req = req.header("content-type", "application/json");
+                Body::from(b.to_string())
+            }
+            None => Body::empty(),
+        };
+        let res = crate::api::router(self.state.clone())
+            .oneshot(req.body(body).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let bytes = axum::body::to_bytes(res.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        (
+            status,
+            headers,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    /// An account made with an invitation from alice (admin): its session token.
+    async fn sign_up(&self, username: &str) -> String {
+        let (st, inv) = self
+            .call(
+                "POST",
+                "/v1/account/invites",
+                "jfsrv",
+                "jf-alice",
+                Some(json!({})),
+            )
+            .await;
+        assert_eq!(st, StatusCode::OK, "{inv}");
+        let (st, _, r) = self
+            .anon(
+                "POST",
+                "/v1/account/register",
+                None,
+                Some(json!({"username": username, "password": "password1", "invite": inv["code"], "device": "Pixel"})),
+            )
+            .await;
+        assert_eq!(st, StatusCode::OK, "{r}");
+        r["token"].as_str().unwrap().to_owned()
+    }
+}
+
+#[tokio::test]
+async fn accounts_sign_up_with_an_invitation_and_sign_in() {
+    let e = env().await;
+    let (st, _, o) = e.anon("GET", "/v1/account/options", None, None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(
+        o,
+        json!({"registration": "invite", "passkeys": true, "pocketid": true})
+    );
+
+    // No invitation: refused. Only admins make invitations.
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/register",
+            None,
+            Some(json!({"username": "sam", "password": "password1"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, _) = e
+        .call(
+            "POST",
+            "/v1/account/invites",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+
+    let token = e.sign_up("sam").await;
+    assert!(token.starts_with("aws_"));
+    let (st, _, me) = e.anon("GET", "/v1/account", Some(&token), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(me["username"], "sam");
+    assert_eq!(me["name"], "sam");
+    assert!(me["user_key"].as_str().unwrap().starts_with("account:"));
+    assert_eq!(me["sessions"][0]["device"], "Pixel");
+    assert_eq!(me["sessions"][0]["current"], true);
+
+    // Username taken (any case); wrong password; then right.
+    let (st, inv) = e
+        .call(
+            "POST",
+            "/v1/account/invites",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/register",
+            None,
+            Some(json!({"username": "SAM", "password": "password1", "invite": inv["code"]})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::CONFLICT);
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/login",
+            None,
+            Some(json!({"username": "sam", "password": "nope-nope"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _, r) = e
+        .anon(
+            "POST",
+            "/v1/account/login",
+            None,
+            Some(json!({"username": "Sam", "password": "password1", "device": "TV"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    let tv = r["token"].as_str().unwrap().to_owned();
+
+    // Settings follow the account; keep votes and rooms still need a media sign-in.
+    let (st, _, _) = e
+        .anon(
+            "PUT",
+            "/v1/me/settings",
+            Some(&tv),
+            Some(json!({"player.auto_next": "0"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (_, _, set) = e.anon("GET", "/v1/me/settings", Some(&token), None).await;
+    assert_eq!(set["player.auto_next"], "0");
+    let (st, _, _) = e.anon("GET", "/v1/leaving-soon", Some(&tv), None).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+
+    // Signing out ends that session only.
+    let (st, _, _) = e.anon("POST", "/v1/account/logout", Some(&tv), None).await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (st, _, _) = e.anon("GET", "/v1/account", Some(&tv), None).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _, _) = e.anon("GET", "/v1/account", Some(&token), None).await;
+    assert_eq!(st, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn quick_connect_signs_a_new_device_in() {
+    let e = env().await;
+    let token = e.sign_up("sam").await;
+    let (_, _, me) = e.anon("GET", "/v1/account", Some(&token), None).await;
+
+    // From the web (an account session): the new device gets a session of the same account.
+    let (st, _, t) = e
+        .anon(
+            "POST",
+            "/v1/transfer",
+            None,
+            Some(json!({"public_key": "ab".repeat(32), "device": "Living room TV"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    let (code, handle) = (t["code"].as_str().unwrap(), t["handle"].as_str().unwrap());
+    let (st, _, peer) = e
+        .anon("GET", &format!("/v1/transfer/{code}"), Some(&token), None)
+        .await;
+    assert_eq!(
+        (st, peer["device"].as_str()),
+        (StatusCode::OK, Some("Living room TV"))
+    );
+    let (st, _, a) = e
+        .anon(
+            "PUT",
+            &format!("/v1/transfer/{code}/approve"),
+            Some(&token),
+            None,
+        )
+        .await;
+    assert_eq!(
+        (st, a["device"].as_str()),
+        (StatusCode::OK, Some("Living room TV"))
+    );
+    let (st, _, got) = e
+        .anon("GET", &format!("/v1/transfer/poll/{handle}"), None, None)
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(got["sealed"], "");
+    let tv = got["account_token"].as_str().unwrap();
+    let (_, _, tv_me) = e.anon("GET", "/v1/account", Some(tv), None).await;
+    assert_eq!(tv_me["id"], me["id"]);
+    assert!(
+        tv_me["sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["device"] == "Living room TV")
+    );
+
+    // From an app signed in to Jellyfin: its sealed sign-ins, and a session of that person.
+    let (_, _, t) = e
+        .anon(
+            "POST",
+            "/v1/transfer",
+            None,
+            Some(json!({"public_key": "cd".repeat(32), "device": "Phone"})),
+        )
+        .await;
+    let (code, handle) = (t["code"].as_str().unwrap(), t["handle"].as_str().unwrap());
+    let (st, _) = e
+        .call(
+            "PUT",
+            &format!("/v1/transfer/{code}"),
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"sealed": "00ff"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (_, _, got) = e
+        .anon("GET", &format!("/v1/transfer/poll/{handle}"), None, None)
+        .await;
+    assert_eq!(got["sealed"], "00ff");
+    let (_, _, phone) = e
+        .anon(
+            "GET",
+            "/v1/account",
+            Some(got["account_token"].as_str().unwrap()),
+            None,
+        )
+        .await;
+    assert_eq!(phone["user_key"], BOB);
+    assert_eq!(phone["username"], Value::Null);
+}
+
+#[tokio::test]
+async fn an_account_takes_a_jellyfin_sign_in_and_a_media_user_adds_a_password() {
+    let e = env().await;
+    let token = e.sign_up("sam").await;
+    e.anon(
+        "PUT",
+        "/v1/me/name",
+        Some(&token),
+        Some(json!({"name": "Samuel"})),
+    )
+    .await;
+    let (st, _, me) = e
+        .anon(
+            "POST",
+            "/v1/account/link",
+            Some(&token),
+            Some(json!({"server_id": "jfsrv", "token": "jf-carol"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{me}");
+    assert_eq!(me["user_key"], "jellyfin:jfsrv:jc");
+    assert_eq!(me["linked"][0]["name"], "carol");
+    assert_eq!(me["name"], "Samuel", "the account's chosen name stays");
+    // Carol's Jellyfin sign-in is now the same person.
+    let (_, carol) = e.call("GET", "/v1/me", "jfsrv", "jf-carol", None).await;
+    assert_eq!(carol["user_key"], "jellyfin:jfsrv:jc");
+
+    // Bob (Jellyfin only) adds a username and password: same person, signs in without Jellyfin.
+    let (st, _) = e
+        .call(
+            "POST",
+            "/v1/account/claim",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"username": "bob", "password": "password2"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _, r) = e
+        .anon(
+            "POST",
+            "/v1/account/login",
+            None,
+            Some(json!({"username": "bob", "password": "password2"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(r["account"]["user_key"], BOB);
+}
+
+#[tokio::test]
+async fn pocket_id_creates_the_account_then_signs_it_in() {
+    let e = env().await;
+    let base = e.oidc.uri();
+    Mock::given(path("/.well-known/openid-configuration"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "authorization_endpoint": format!("{base}/authorize"),
+            "token_endpoint": format!("{base}/api/oidc/token"),
+            "userinfo_endpoint": format!("{base}/api/oidc/userinfo"),
+        })))
+        .mount(&e.oidc)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/oidc/token"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"access_token": "at", "token_type": "Bearer"})),
+        )
+        .mount(&e.oidc)
+        .await;
+    Mock::given(path("/api/oidc/userinfo"))
+        .and(header("authorization", "Bearer at"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"sub": "p-1", "name": "Pat", "preferred_username": "pat"})),
+        )
+        .mount(&e.oidc)
+        .await;
+
+    let sign_in = || async {
+        let (st, h, _) = e
+            .anon("GET", "/v1/account/oidc/start?next=/q/123456", None, None)
+            .await;
+        assert_eq!(st, StatusCode::SEE_OTHER);
+        let to = h["location"].to_str().unwrap().to_owned();
+        assert!(to.starts_with(&format!("{base}/authorize?")), "{to}");
+        assert!(to.contains("code_challenge_method=S256"));
+        let state = to
+            .split("state=")
+            .nth(1)
+            .unwrap()
+            .split('&')
+            .next()
+            .unwrap()
+            .to_owned();
+        let (st, h, _) = e
+            .anon(
+                "GET",
+                &format!("/v1/account/oidc/callback?code=c&state={state}"),
+                None,
+                None,
+            )
+            .await;
+        assert_eq!(st, StatusCode::SEE_OTHER);
+        let back = h["location"].to_str().unwrap().to_owned();
+        assert!(back.starts_with("/account/signed-in#token=aws_"), "{back}");
+        assert!(back.ends_with("&next=/q/123456"), "{back}");
+        let token = back
+            .split("token=")
+            .nth(1)
+            .unwrap()
+            .split('&')
+            .next()
+            .unwrap()
+            .to_owned();
+        let (_, _, me) = e.anon("GET", "/v1/account", Some(&token), None).await;
+        me
+    };
+    let first = sign_in().await;
+    assert_eq!(
+        (first["username"].as_str(), first["name"].as_str()),
+        (Some("pat"), Some("Pat"))
+    );
+    assert_eq!(first["pocketid"], true);
+    let again = sign_in().await;
+    assert_eq!(again["id"], first["id"], "the same account the second time");
+
+    // A replayed state is refused.
+    let (_, h, _) = e
+        .anon(
+            "GET",
+            "/v1/account/oidc/callback?code=c&state=unknown",
+            None,
+            None,
+        )
+        .await;
+    assert!(
+        h["location"]
+            .to_str()
+            .unwrap()
+            .starts_with("/account?error=")
+    );
 }

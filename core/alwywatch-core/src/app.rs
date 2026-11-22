@@ -2553,6 +2553,7 @@ impl AlwyWatch {
                     code.trim(),
                     &keep_service::transfer::TransferSealed {
                         sealed: keep_service::transfer::to_hex(&sealed),
+                        account_token: None,
                     },
                 )
                 .await?;

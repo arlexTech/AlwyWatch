@@ -6,12 +6,16 @@
 //! applied to Maintainerr (global exclusions, postponed deletion dates). Apps never write to
 //! Maintainerr. Configuration: see `config.rs` and docs/deploy.md.
 
+mod account_api;
+mod accounts;
 mod api;
 mod auth;
 mod config;
 mod db;
 mod keep;
 mod limit;
+mod oidc;
+mod passkey;
 mod seerr;
 mod together;
 mod transfer;

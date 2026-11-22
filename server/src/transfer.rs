@@ -22,6 +22,14 @@ struct Pending {
     device: String,
     created: Instant,
     sealed: Option<String>,
+    /// A session of the approver's AlwyWatch account, for the new device.
+    granted: Option<String>,
+}
+
+impl Pending {
+    fn answered(&self) -> bool {
+        self.sealed.is_some() || self.granted.is_some()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -80,6 +88,7 @@ impl Transfers {
                 device,
                 created: Instant::now(),
                 sealed: None,
+                granted: None,
             },
         );
         Ok(TransferStarted {
@@ -94,7 +103,7 @@ impl Transfers {
         let mut map = self.by_code.lock().unwrap_or_else(|e| e.into_inner());
         Self::purge(&mut map);
         match map.get(code) {
-            Some(p) if p.sealed.is_none() => Ok(TransferPeer {
+            Some(p) if !p.answered() => Ok(TransferPeer {
                 public_key: p.public_key.clone(),
                 device: p.device.clone(),
             }),
@@ -103,20 +112,33 @@ impl Transfers {
         }
     }
 
-    pub fn send(&self, code: &str, sealed: TransferSealed) -> Result<(), TransferError> {
-        if sealed.sealed.is_empty()
-            || sealed.sealed.len() > MAX_SEALED_HEX
-            || !sealed.sealed.bytes().all(|b| b.is_ascii_hexdigit())
+    /// The approving device's answer: its sign-ins sealed to the new device's key, and/or a
+    /// session of its AlwyWatch account (`grant`, made by the server). Both at once, so the new
+    /// device never picks up half of it.
+    pub fn send(
+        &self,
+        code: &str,
+        sealed: Option<String>,
+        grant: Option<String>,
+    ) -> Result<(), TransferError> {
+        if let Some(s) = &sealed
+            && (s.is_empty()
+                || s.len() > MAX_SEALED_HEX
+                || !s.bytes().all(|b| b.is_ascii_hexdigit()))
         {
             return Err(TransferError::Invalid("sealed must be hex, at most 256 KB"));
+        }
+        if sealed.is_none() && grant.is_none() {
+            return Err(TransferError::Invalid("nothing to send"));
         }
         let mut map = self.by_code.lock().unwrap_or_else(|e| e.into_inner());
         Self::purge(&mut map);
         let p = map.get_mut(code).ok_or(TransferError::NotFound)?;
-        if p.sealed.is_some() {
+        if p.answered() {
             return Err(TransferError::AlreadySent);
         }
-        p.sealed = Some(sealed.sealed);
+        p.sealed = sealed;
+        p.granted = grant;
         Ok(())
     }
 
@@ -131,12 +153,13 @@ impl Transfers {
         else {
             return Poll::Gone;
         };
-        if map[&code].sealed.is_none() {
+        if !map[&code].answered() {
             return Poll::Waiting;
         }
         let p = map.remove(&code).expect("present");
         Poll::Ready(TransferSealed {
             sealed: p.sealed.unwrap_or_default(),
+            account_token: p.granted,
         })
     }
 }
@@ -187,26 +210,19 @@ mod tests {
         assert!(matches!(t.poll(&s.handle), Poll::Waiting));
         let peer = t.peer(&s.code).unwrap();
         assert_eq!(peer.device, "Pixel8", "control characters dropped");
-        t.send(
-            &s.code,
-            TransferSealed {
-                sealed: "00ff".into(),
-            },
-        )
-        .unwrap();
+        t.send(&s.code, Some("00ff".into()), Some("aws_x".into()))
+            .unwrap();
         assert_eq!(
-            t.send(
-                &s.code,
-                TransferSealed {
-                    sealed: "00".into()
-                }
-            ),
+            t.send(&s.code, Some("00".into()), None),
             Err(TransferError::AlreadySent)
         );
         assert_eq!(t.peer(&s.code).err(), Some(TransferError::AlreadySent));
         assert!(matches!(t.poll("wrong"), Poll::Gone));
         match t.poll(&s.handle) {
-            Poll::Ready(b) => assert_eq!(b.sealed, "00ff"),
+            Poll::Ready(b) => {
+                assert_eq!(b.sealed, "00ff");
+                assert_eq!(b.account_token.as_deref(), Some("aws_x"));
+            }
             _ => panic!("ready expected"),
         }
         assert!(matches!(t.poll(&s.handle), Poll::Gone), "picked up once");
@@ -224,14 +240,22 @@ mod tests {
         );
         let s = start(&t);
         assert_eq!(
-            t.send(
-                &s.code,
-                TransferSealed {
-                    sealed: "not hex".into()
-                }
-            ),
+            t.send(&s.code, Some("not hex".into()), None),
             Err(TransferError::Invalid("sealed must be hex, at most 256 KB"))
         );
+        assert_eq!(
+            t.send(&s.code, None, None),
+            Err(TransferError::Invalid("nothing to send"))
+        );
+        // Approved from the web: only a session.
+        t.send(&s.code, None, Some("aws_y".into())).unwrap();
+        match t.poll(&s.handle) {
+            Poll::Ready(b) => assert_eq!(
+                (b.sealed.as_str(), b.account_token.as_deref()),
+                ("", Some("aws_y"))
+            ),
+            _ => panic!("ready expected"),
+        }
         assert!(t.peer("000000").is_err());
     }
 }

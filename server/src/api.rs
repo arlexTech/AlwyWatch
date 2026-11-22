@@ -6,7 +6,7 @@ use axum::extract::{FromRequestParts, Path, Query, RawQuery, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get, post, put};
+use axum::routing::{any, delete, get, post, put};
 use axum::{Json, Router};
 use keep_service::{
     ApiError, CountdownRequest, LinkRequest, LinkedIdentity, Me, MeWithIdentities, Rights,
@@ -14,6 +14,7 @@ use keep_service::{
 };
 use serde::Deserialize;
 
+use crate::account_api;
 use crate::auth::{AuthError, Identity};
 use crate::keep::{Shared, VoteError};
 use crate::seerr::{BridgeError, allowed};
@@ -68,6 +69,48 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/transfer", post(transfer_start))
         .route("/v1/transfer/poll/{handle}", get(transfer_poll))
         .route("/v1/transfer/{code}", get(transfer_peer).put(transfer_send))
+        .route(
+            "/v1/transfer/{code}/approve",
+            put(account_api::quick_approve),
+        )
+        .route("/v1/account", get(account_api::me))
+        .route("/v1/account/options", get(account_api::options))
+        .route("/v1/account/register", post(account_api::register))
+        .route("/v1/account/login", post(account_api::login))
+        .route("/v1/account/logout", post(account_api::logout))
+        .route("/v1/account/claim", post(account_api::claim))
+        .route("/v1/account/password", put(account_api::set_password))
+        .route("/v1/account/username", put(account_api::set_username))
+        .route(
+            "/v1/account/sessions/{id}",
+            delete(account_api::end_session),
+        )
+        .route("/v1/account/link", post(account_api::link_media))
+        .route("/v1/account/invites", post(account_api::create_invite))
+        .route(
+            "/v1/account/passkeys/register/start",
+            post(account_api::passkey_register_start),
+        )
+        .route(
+            "/v1/account/passkeys/register/finish",
+            post(account_api::passkey_register_finish),
+        )
+        .route(
+            "/v1/account/passkeys/login/start",
+            post(account_api::passkey_login_start),
+        )
+        .route(
+            "/v1/account/passkeys/login/finish",
+            post(account_api::passkey_login_finish),
+        )
+        .route(
+            "/v1/account/passkeys/{id}",
+            put(account_api::passkey_rename).delete(account_api::passkey_delete),
+        )
+        .route("/v1/account/oidc", delete(account_api::oidc_unlink))
+        .route("/v1/account/oidc/start", get(account_api::oidc_start))
+        .route("/v1/account/oidc/ticket", post(account_api::oidc_ticket))
+        .route("/v1/account/oidc/callback", get(account_api::oidc_callback))
         .fallback(crate::web::serve)
         .with_state(state)
 }
@@ -470,7 +513,7 @@ async fn together_leave(
 
 // ----- device-to-device transfer ----------------------------------------------------------------
 
-fn transfer_error(e: crate::transfer::TransferError) -> Error {
+pub(crate) fn transfer_error(e: crate::transfer::TransferError) -> Error {
     use crate::transfer::TransferError as E;
     match e {
         E::Invalid(m) => Error(StatusCode::BAD_REQUEST, m.into()),
@@ -512,7 +555,7 @@ async fn transfer_poll(State(s): State<Shared>, Path(handle): Path<String>) -> R
 /// Signed in: only users of a served media server can approve transfers.
 async fn transfer_peer(
     State(s): State<Shared>,
-    Caller(id): Caller,
+    id: crate::account_api::Person,
     Path(code): Path<String>,
 ) -> Result<Json<keep_service::transfer::TransferPeer>, Error> {
     // Every send starts by looking the code up here: a handful of tries per user is plenty,
@@ -532,7 +575,17 @@ async fn transfer_send(
     if !s.limits.transfer_codes.allow(&id.user_key) {
         return Err(too_many());
     }
-    s.transfers.send(&code, sealed).map_err(transfer_error)?;
+    // The new device also joins this person's AlwyWatch account (settings, Quick Connect).
+    let peer = s.transfers.peer(code.trim()).map_err(transfer_error)?;
+    let person = crate::account_api::Person {
+        account: s.db.account_of_person(&id.user_key).map_err(internal)?,
+        user_key: id.user_key.clone(),
+        media: None,
+    };
+    let grant = crate::account_api::grant_for(&s, &person, &peer.device)?;
+    s.transfers
+        .send(code.trim(), Some(sealed.sealed), Some(grant))
+        .map_err(transfer_error)?;
     eprintln!("[transfer] {} sent a device transfer", id.user_key);
     Ok(StatusCode::NO_CONTENT)
 }
@@ -558,6 +611,14 @@ async fn me(State(s): State<Shared>, Caller(id): Caller) -> Result<Json<MeWithId
 
 /// The caller's `Me` (with their linked sign-ins), read again from the database (after a
 /// profile change).
+/// After a profile change: the media sign-in's profile, or nothing for an account session.
+fn profile_answer(s: &Shared, p: crate::account_api::Person) -> Result<Response, Error> {
+    match p.media {
+        Some(id) => Ok(Json(me_of(s, id)?).into_response()),
+        None => Ok(StatusCode::NO_CONTENT.into_response()),
+    }
+}
+
 fn me_of(s: &Shared, id: Identity) -> Result<MeWithIdentities, Error> {
     let p =
         s.db.profile(&id.user_key)
@@ -666,40 +727,51 @@ async fn link_identity(
                 Error(StatusCode::BAD_GATEWAY, "media server unreachable".into())
             }
         })?;
+    let canonical = link_person(&s, &id.user_key, &other).await?;
+    let ids = s.db.identities_of(&canonical).map_err(internal)?;
+    Ok(Json(links_view(&s, &ids, &id.signed_in_key)))
+}
+
+/// Merges a validated sign-in (`other`) into `person` (an identity link, or an AlwyWatch
+/// account adding a media sign-in): the canonical person key.
+pub(crate) async fn link_person(
+    s: &Shared,
+    person: &str,
+    other: &Identity,
+) -> Result<String, Error> {
     // Jellyfin (open source, the server everyone moves to) holds the data when it can, so
     // stopping Plex later never strands an account.
     let prefer = |i: &crate::db::IdentityRow| {
         i.kind == ServerType::Jellyfin && s.config.server(&i.server_id).is_some()
     };
     let outcome =
-        s.db.link(&id.user_key, &sign_in_of(&other), &prefer)
+        s.db.link(person, &sign_in_of(other), &prefer)
             .map_err(|e| match e {
                 crate::db::LinkError::SameServer(server) => Error(
                     StatusCode::CONFLICT,
                     format!(
                         "your AlwyWatch account already has another sign-in on {}; unlink it first",
-                        server_name(&s, &server)
+                        server_name(s, &server)
                     ),
                 ),
                 crate::db::LinkError::Db(e) => internal(e),
             })?;
     if !outcome.merged.is_empty() {
         if let Some(from) = &outcome.avatar_from {
-            let to = avatar_path(&s, &outcome.canonical);
-            if let Err(e) = tokio::fs::rename(avatar_path(&s, from), &to).await {
+            let to = avatar_path(s, &outcome.canonical);
+            if let Err(e) = tokio::fs::rename(avatar_path(s, from), &to).await {
                 eprintln!("[link] could not move a custom avatar: {e}");
             }
         }
         for old in &outcome.merged {
-            forget_avatar_file(&s, old).await;
+            forget_avatar_file(s, old).await;
         }
         s.rooms.rekey(&outcome.merged, &outcome.canonical);
         s.db.log(
             &outcome.canonical,
             "link",
             &format!(
-                "{} + {} (merged {})",
-                id.signed_in_key,
+                "{person} + {} (merged {})",
                 other.signed_in_key,
                 outcome.merged.join(", ")
             ),
@@ -707,8 +779,7 @@ async fn link_identity(
         // Votes may have merged: re-apply.
         s.reconcile.notify_one();
     }
-    let ids = s.db.identities_of(&outcome.canonical).map_err(internal)?;
-    Ok(Json(links_view(&s, &ids, &id.signed_in_key)))
+    Ok(outcome.canonical)
 }
 
 /// Separates one sign-in from the caller's account: it starts over as its own empty account.
@@ -751,9 +822,9 @@ fn served_person(s: &Shared, key: &str) -> Result<Option<String>, Error> {
 
 async fn set_my_name(
     State(s): State<Shared>,
-    Caller(id): Caller,
+    id: crate::account_api::Person,
     Json(r): Json<keep_service::DisplayNameRequest>,
-) -> Result<Json<MeWithIdentities>, Error> {
+) -> Result<Response, Error> {
     let name = keep_service::profile::clean_display_name(&r.name)
         .map_err(|m| Error(StatusCode::BAD_REQUEST, m))?;
     if !s.limits.profile_changes.allow(&id.user_key) {
@@ -761,28 +832,28 @@ async fn set_my_name(
     }
     s.db.set_custom_name(&id.user_key, Some(&name))
         .map_err(internal)?;
-    me_of(&s, id).map(Json)
+    profile_answer(&s, id)
 }
 
 /// The one-time welcome step (name + avatar) was done or skipped, for this account on every
 /// device. Idempotent; names and avatars set on their own do not count.
 async fn profile_done(
     State(s): State<Shared>,
-    Caller(id): Caller,
-) -> Result<Json<MeWithIdentities>, Error> {
+    id: crate::account_api::Person,
+) -> Result<Response, Error> {
     s.db.mark_profile_set(&id.user_key).map_err(internal)?;
-    me_of(&s, id).map(Json)
+    profile_answer(&s, id)
 }
 
 async fn reset_my_name(
     State(s): State<Shared>,
-    Caller(id): Caller,
-) -> Result<Json<MeWithIdentities>, Error> {
+    id: crate::account_api::Person,
+) -> Result<Response, Error> {
     if !s.limits.profile_changes.allow(&id.user_key) {
         return Err(too_many());
     }
     s.db.set_custom_name(&id.user_key, None).map_err(internal)?;
-    me_of(&s, id).map(Json)
+    profile_answer(&s, id)
 }
 
 /// Where a user's custom avatar lives: under the data dir, named by a hash of the user key
@@ -800,10 +871,10 @@ async fn forget_avatar_file(s: &Shared, user_key: &str) {
 /// JSON `{preset}` picks a built-in avatar; a raw JPEG/PNG/WebP body uploads a custom one.
 async fn set_my_avatar(
     State(s): State<Shared>,
-    Caller(id): Caller,
+    id: crate::account_api::Person,
     headers: HeaderMap,
     body: axum::body::Body,
-) -> Result<Json<MeWithIdentities>, Error> {
+) -> Result<Response, Error> {
     let bad = |m: &str| Error(StatusCode::BAD_REQUEST, m.into());
     let ct = headers
         .get(axum::http::header::CONTENT_TYPE)
@@ -835,7 +906,7 @@ async fn set_my_avatar(
         s.db.set_avatar(&id.user_key, Some(&choice.preset), None)
             .map_err(internal)?;
         forget_avatar_file(&s, &id.user_key).await;
-        return me_of(&s, id).map(Json);
+        return profile_answer(&s, id);
     }
     // Read at most the limit: a bigger body is cut off, not buffered.
     let bytes = axum::body::to_bytes(body, keep_service::profile::AVATAR_MAX_BYTES)
@@ -859,27 +930,27 @@ async fn set_my_avatar(
     write.await.map_err(internal)?;
     s.db.set_avatar(&id.user_key, None, Some(&ct))
         .map_err(internal)?;
-    me_of(&s, id).map(Json)
+    profile_answer(&s, id)
 }
 
 async fn remove_my_avatar(
     State(s): State<Shared>,
-    Caller(id): Caller,
-) -> Result<Json<MeWithIdentities>, Error> {
+    id: crate::account_api::Person,
+) -> Result<Response, Error> {
     if !s.limits.profile_changes.allow(&id.user_key) {
         return Err(too_many());
     }
     s.db.set_avatar(&id.user_key, None, None)
         .map_err(internal)?;
     forget_avatar_file(&s, &id.user_key).await;
-    me_of(&s, id).map(Json)
+    profile_answer(&s, id)
 }
 
 /// A user's custom avatar, to signed-in users. The version is in the URL, so it is cached for
 /// good; the bytes only ever go out as the type they were checked to be.
 async fn user_avatar(
     State(s): State<Shared>,
-    Caller(_): Caller,
+    _who: crate::account_api::Person,
     Path(user): Path<String>,
 ) -> Result<Response, Error> {
     let none = || Error(StatusCode::NOT_FOUND, "no picture".into());
@@ -917,7 +988,7 @@ const MAX_SETTING_VALUE: usize = 4096;
 
 async fn my_settings(
     State(s): State<Shared>,
-    Caller(id): Caller,
+    id: crate::account_api::Person,
 ) -> Result<Json<std::collections::HashMap<String, String>>, Error> {
     Ok(Json(
         s.db.settings(&id.user_key)
@@ -929,7 +1000,7 @@ async fn my_settings(
 
 async fn set_my_settings(
     State(s): State<Shared>,
-    Caller(id): Caller,
+    id: crate::account_api::Person,
     Json(values): Json<std::collections::HashMap<String, String>>,
 ) -> Result<StatusCode, Error> {
     let bad = |m: &str| Error(StatusCode::BAD_REQUEST, m.into());

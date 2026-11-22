@@ -19,7 +19,9 @@ X-AlwyWatch-Server: <allow-listed server id>
   `/api/v2/resources`; the user must have access to the allow-listed Plex server; its owner is admin.
 
 The server id must be in the allow-list (`[[servers]]` in `config.toml`, the same list
-`/v1/servers` returns); there are no AlwyWatch accounts or passwords. Results are cached 10
+`/v1/servers` returns). An [AlwyWatch account](#alwywatch-accounts) session is the other way
+in (`Bearer aws_…`, no `X-AlwyWatch-Server`), for the account itself, the profile, settings and
+Quick Connect only. Media-server results are cached 10
 minutes under a keyed hash of (server, token); tokens are never stored or logged. The user key is
 `jellyfin:<server>:<user id>` or `plex:<server>:<plex user id>`. Too many rejected tokens from
 one address (20 in 10 minutes) get 429 before the media server is asked.
@@ -416,9 +418,15 @@ bundle is dropped once picked up.
 | Method | Path | Who | Body → answer |
 |---|---|---|---|
 | POST | `/v1/transfer` | anyone (10 per address per 10 min) | `{public_key, device}` → `{code, handle, expires_in}` |
-| GET | `/v1/transfer/poll/{handle}` | the new device | 202 while waiting, then `{sealed}` once; 404 when unknown or expired |
-| GET | `/v1/transfer/{code}` | user | → `{public_key, device}`; 409 once something was sent |
-| PUT | `/v1/transfer/{code}` | user | `{sealed}` → 204; 409 if already sent |
+| GET | `/v1/transfer/poll/{handle}` | the new device | 202 while waiting, then `{sealed, account_token}` once; 404 when unknown or expired |
+| GET | `/v1/transfer/{code}` | user or account session | → `{public_key, device}`; 409 once answered |
+| PUT | `/v1/transfer/{code}` | user (media sign-in) | `{sealed}` → 204; 409 if already answered |
+| PUT | `/v1/transfer/{code}/approve` | user or account session | → `{device}`: Quick Connect without sign-ins to send (the web) |
+
+Quick Connect: either answer also gives the new device a session of the approver's AlwyWatch
+account (`account_token`; an account without a way to sign in is made for a person who had
+none). `sealed` is empty after an approval. The apps show the code with a QR code of
+`<public URL>/q/<code>`, which opens the approval page of the web app.
 
 1. The new device makes a one-time X25519 key pair and registers the public key (64 hex
    characters); `device` is a label (control characters removed, 80 characters max). It shows
@@ -431,6 +439,54 @@ bundle is dropped once picked up.
    ciphertext, at most 256 KB of hex.
 
 The server holds at most 200 pending transfers (503 beyond).
+
+## AlwyWatch accounts
+
+A way for a person to sign in without a media server: username + password, passkeys or Pocket
+ID. It belongs to a person like a linked sign-in does; a person with only an account is
+`account:<id>`, and linking a Jellyfin/Plex sign-in merges as in
+[Linked identities](#linked-identities) (the account follows the canonical person). An account
+alone reaches its profile, synced settings (the apps keep the user's server list there) and
+Quick Connect; votes, rooms and Seerr need a media sign-in. Code: `server/src/accounts.rs`,
+`account_api.rs`, `passkey.rs`, `oidc.rs`.
+
+Server environment: `ALWYWATCH_PUBLIC_URL` (needed for passkeys and Pocket ID),
+`ALWYWATCH_REGISTRATION` = `invite` (default) | `open` | `closed`,
+`ALWYWATCH_POCKETID_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET` (callback:
+`<public URL>/v1/account/oidc/callback`).
+
+| Method | Path | Who | Body → answer |
+|---|---|---|---|
+| GET | `/v1/account/options` | anyone | → `{registration, passkeys, pocketid}` |
+| POST | `/v1/account/register` | anyone | `{username, password, invite?, device}` → `{token, account}` |
+| POST | `/v1/account/login` | anyone | `{username, password, device}` → `{token, account}`; 401 |
+| POST | `/v1/account/logout` | session | 204 |
+| GET | `/v1/account` | session | → account (username, name, user_key, has_password, passkeys, pocketid, sessions, linked) |
+| PUT | `/v1/account/password` | session | `{current?, new}` → 204; other sessions end |
+| PUT | `/v1/account/username` | session | `{username}` → 204; 409 taken |
+| DELETE | `/v1/account/sessions/{id}` | session | signs a device out |
+| POST | `/v1/account/link` | session | `{server_id, token}` → account: merges that media sign-in |
+| POST | `/v1/account/claim` | user (media) | `{username, password}` → account: the person can sign in without the media server |
+| POST | `/v1/account/invites` | admin | `{days?, uses?}` → `{code, url, expires_in_days, uses}` |
+| POST | `/v1/account/passkeys/register/start` · `/finish` | session | → `{flow_id, options}` · `{flow_id, name?, credential}` |
+| POST | `/v1/account/passkeys/login/start` · `/finish` | anyone | → `{flow_id, options}` · `{flow_id, device, credential}` → `{token, account}` |
+| PUT · DELETE | `/v1/account/passkeys/{id}` | session | rename `{name}` · remove |
+| GET | `/v1/account/oidc/start?next=` | browser | → Pocket ID → `/v1/account/oidc/callback` → `/account/signed-in#token=…&next=…` |
+| POST | `/v1/account/oidc/ticket` | session | → `{ticket}`; `start?ticket=` links Pocket ID to that account |
+| DELETE | `/v1/account/oidc` | session | unlinks Pocket ID |
+
+* Usernames: 3–32 of `A-Z a-z 0-9 . _ -`, unique ignoring case. Passwords: 8–256
+  characters, Argon2id. Session tokens (`aws_` + 64 hex) and invitation codes are stored as
+  SHA-256 only; a session unused for 180 days ends; 50 sessions per account at most.
+* Sign-up needs an invitation (single use by default, 7 days) unless registration is `open`.
+  A first Pocket ID sign-in creates the account without one (Pocket ID users are the
+  owner's own).
+* Passkeys: discoverable credentials, attestation `none`, ES256 / EdDSA / RS256, checked with
+  `ring` (challenge, origin = public URL, RP id hash, user present, signature, counter).
+  `credential` fields are base64url as in the browser's `PublicKeyCredential`.
+* The last way into an account with no media sign-in cannot be removed (409).
+* Limits: 10 failed sign-ins per address and per username in 10 minutes; 5 sign-ups per
+  address per hour.
 
 ## Settings across devices
 

@@ -59,6 +59,30 @@ CREATE TABLE IF NOT EXISTS identities (
     last_seen INTEGER NOT NULL, linked_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS identities_person ON identities(person);
+-- AlwyWatch accounts: sign-in methods of a person (see accounts.rs). A person with no media
+-- sign-in is `account:<id>`.
+CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY, person TEXT NOT NULL, username TEXT UNIQUE COLLATE NOCASE,
+    password TEXT, created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS accounts_person ON accounts(person);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY, account TEXT NOT NULL, device TEXT NOT NULL,
+    created INTEGER NOT NULL, last_seen INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS passkeys (
+    cred_id TEXT PRIMARY KEY, account TEXT NOT NULL, name TEXT NOT NULL, alg INTEGER NOT NULL,
+    public_key BLOB NOT NULL, sign_count INTEGER NOT NULL, created INTEGER NOT NULL,
+    last_used INTEGER
+);
+CREATE TABLE IF NOT EXISTS oidc_links (
+    issuer TEXT NOT NULL, sub TEXT NOT NULL, account TEXT NOT NULL, created INTEGER NOT NULL,
+    PRIMARY KEY (issuer, sub)
+);
+CREATE TABLE IF NOT EXISTS invites (
+    code_hash TEXT PRIMARY KEY, created_by TEXT NOT NULL, created INTEGER NOT NULL,
+    expires INTEGER NOT NULL, uses_left INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, actor TEXT NOT NULL,
     action TEXT NOT NULL, detail TEXT NOT NULL
@@ -473,7 +497,7 @@ impl Db {
             .unwrap()
     }
 
-    fn c(&self) -> MutexGuard<'_, Connection> {
+    pub(crate) fn c(&self) -> MutexGuard<'_, Connection> {
         self.0.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -1094,6 +1118,11 @@ impl Db {
 
         tx.execute(
             "UPDATE identities SET person = ?1 WHERE person IN (?2, ?3)",
+            params![canonical, a_person, b_person],
+        )?;
+        // AlwyWatch accounts (password, passkeys, Pocket ID) follow the person.
+        tx.execute(
+            "UPDATE accounts SET person = ?1 WHERE person IN (?2, ?3)",
             params![canonical, a_person, b_person],
         )?;
         tx.execute(
