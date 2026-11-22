@@ -92,6 +92,34 @@ record! {
 }
 
 record! {
+    /// What members other than the host may do once the room plays (the host's settings when
+    /// they created it; the host's own seats can always do everything). The server refuses the
+    /// rest with 403.
+    pub struct TogetherRights {
+        /// Play another title (next episode, another movie).
+        pub change_title: bool,
+        pub play_pause: bool,
+        /// Move forward or back.
+        pub seek: bool,
+    }
+}
+
+impl Default for TogetherRights {
+    /// Everyone can do everything (rooms made by apps from before rights existed).
+    fn default() -> Self {
+        Self {
+            change_title: true,
+            play_pause: true,
+            seek: true,
+        }
+    }
+}
+
+/// How far an update's position may be from where the room is for it to count as play/pause
+/// rather than a seek (the sender's own drift).
+pub const SEEK_TOLERANCE_MS: u64 = 3_000;
+
+record! {
     pub struct TogetherState {
         pub code: String,
         /// Bumped on every change (playback, title, members, invitations, start).
@@ -119,6 +147,8 @@ record! {
         /// People invited who are not in the room, sorted by name.
         #[serde(default)]
         pub invited: Vec<TogetherInvitee>,
+        #[serde(default)]
+        pub rights: TogetherRights,
     }
 }
 
@@ -188,6 +218,9 @@ record! {
     /// A new lobby with this title.
     pub struct TogetherCreate {
         pub media: TogetherMedia,
+        /// What the others may do (the creator's settings).
+        #[serde(default)]
+        pub rights: TogetherRights,
     }
 }
 
@@ -347,6 +380,7 @@ mod tests {
             members: vec![],
             host: String::new(),
             invited: vec![],
+            rights: Default::default(),
         }
     }
 

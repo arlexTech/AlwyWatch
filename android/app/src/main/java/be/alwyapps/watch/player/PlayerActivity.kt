@@ -1129,6 +1129,19 @@ class PlayerActivity : ComponentActivity() {
                 roomMedia = s.media
             } catch (e: CoreException) {
                 android.util.Log.w(TAG, "together update: ${e.javaClass.simpleName}")
+                // The host doesn't allow it (HTTP 423): say so and go back to what the room plays.
+                val s = TogetherSession.state
+                if (e is CoreException.Server && e.message?.contains("HTTP 423") == true && s != null) {
+                    val what =
+                        when {
+                            newTitle -> "change what's playing"
+                            s.playing != playing -> if (playing) "play" else "pause"
+                            else -> "move forward or back"
+                        }
+                    ui.togetherNote = "Only the host can $what in this room"
+                    ownHoldUntil = 0L
+                    if (newTitle) followTitle(s) else syncToRoom(s)
+                }
             } finally {
                 roomSending--
             }

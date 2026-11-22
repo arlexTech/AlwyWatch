@@ -1393,6 +1393,7 @@ impl App {
             r.sending += 1;
             (r.code.clone(), r.member.clone())
         };
+        let new_title = title.is_some();
         let (account, item) = title.unzip();
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
@@ -1403,8 +1404,28 @@ impl App {
             if let Some(room) = t.state.borrow_mut().together.as_mut() {
                 room.sending = room.sending.saturating_sub(1);
             }
-            if let Ok(s) = r {
-                t.accept_room(s);
+            match r {
+                Ok(s) => t.accept_room(s),
+                // The host doesn't allow it: say so and go back to what the room plays.
+                Err(CoreError::Server { status: 423 }) => {
+                    let Some(s) = t.room_state() else { return };
+                    let what = if new_title {
+                        "change what's playing"
+                    } else if s.playing != playing {
+                        if playing { "play" } else { "pause" }
+                    } else {
+                        "move forward or back"
+                    };
+                    t.to_player(ToPlayer::Note(format!(
+                        "Only the host can {what} in this room"
+                    )));
+                    if new_title {
+                        t.follow_title(s);
+                    } else {
+                        t.sync_player(&s);
+                    }
+                }
+                Err(_) => {}
             }
         })
         .ok();
@@ -1484,6 +1505,7 @@ impl App {
                 name: "Kim".into(),
                 avatar: preset("p08"),
             }],
+            rights: Default::default(),
         };
         self.state.borrow_mut().together = Some(Room {
             code: state.code.clone(),
@@ -1615,6 +1637,7 @@ mod tests {
             members,
             host: host.into(),
             invited: vec![],
+            rights: Default::default(),
         }
     }
 

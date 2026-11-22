@@ -224,6 +224,11 @@ fn together_error(e: crate::together::TogetherError) -> Error {
             StatusCode::FORBIDDEN,
             "only the host can do this, or not your seat".into(),
         ),
+        // Not 403: clients read 401/403 as a lost sign-in.
+        E::NotAllowed => Error(
+            StatusCode::LOCKED,
+            "the host doesn't let others do this in this room".into(),
+        ),
     }
 }
 

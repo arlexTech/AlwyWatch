@@ -44,6 +44,9 @@ pub(crate) fn synced(key: &str) -> bool {
         "ui.menu_hidden",
         "ui.menu_libs",
         "current_account",
+        "together.others_title",
+        "together.others_play",
+        "together.others_seek",
     ];
     KEYS.contains(&key) || key.starts_with("tracks.") || key.starts_with("version.")
 }

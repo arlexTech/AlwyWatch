@@ -1093,7 +1093,7 @@ component SettingToggle inherits HorizontalLayout {
     VerticalLayout {
         alignment: center;
         Text { text: root.title; color: Palette.text; font-weight: 700; }
-        Text { text: root.subtitle; color: Palette.muted; font-size: 12px; }
+        if root.subtitle != "" : Text { text: root.subtitle; color: Palette.muted; font-size: 12px; }
     }
     Rectangle { horizontal-stretch: 1; }
     Focusable {
@@ -1167,6 +1167,10 @@ export component AppWindow inherits Window {
     in-out property <bool> spdif;
     in property <bool> auto-skip-intro;
     in property <bool> auto-next: true;
+    // Watch together: what others may do in rooms I create.
+    in property <bool> together-title: true;
+    in property <bool> together-play: true;
+    in property <bool> together-seek: true;
     in-out property <string> search-text;
     in property <[DownloadRow]> downloads;
     // Seerr
@@ -2759,15 +2763,42 @@ export component AppWindow inherits Window {
                                 }
                                 SettingToggle {
                                     title: "Skip intros automatically";
-                                    subtitle: "Otherwise press S when the intro starts.";
+                                    subtitle: "Otherwise a Skip intro button appears.";
                                     on: root.auto-skip-intro;
                                     clicked => { root.toggle-setting("player.auto_skip_intro"); }
                                 }
                                 SettingToggle {
                                     title: "Play next episode during credits";
-                                    subtitle: "After a 10 second countdown, which C cancels.";
+                                    subtitle: "After a 10 second countdown, which Keep watching cancels.";
                                     on: root.auto-next;
                                     clicked => { root.toggle-setting("player.auto_next"); }
+                                }
+                            }
+                            if root.keep-active : Group {
+                                title: "WATCH TOGETHER";
+                                Text {
+                                    text: "In rooms you create, what the others may do. You can always do everything.";
+                                    color: Palette.muted;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+                                SettingToggle {
+                                    title: "Others can change what's playing";
+                                    subtitle: "Next episode, another title.";
+                                    on: root.together-title;
+                                    clicked => { root.toggle-setting("together.others_title"); }
+                                }
+                                SettingToggle {
+                                    title: "Others can pause and play";
+                                    subtitle: "";
+                                    on: root.together-play;
+                                    clicked => { root.toggle-setting("together.others_play"); }
+                                }
+                                SettingToggle {
+                                    title: "Others can move forward or back";
+                                    subtitle: "";
+                                    on: root.together-seek;
+                                    clicked => { root.toggle-setting("together.others_seek"); }
                                 }
                             }
                             Group {

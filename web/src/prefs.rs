@@ -22,6 +22,8 @@ pub struct PlayerPrefs {
     pub sub_mode: String,
     /// Subtitle language (ISO 639-2), or "" for the browser's language.
     pub sub_lang: String,
+    /// What others may do in watch together rooms created here.
+    pub together: keep_service::together::TogetherRights,
 }
 
 impl Default for PlayerPrefs {
@@ -32,6 +34,7 @@ impl Default for PlayerPrefs {
             countdown_s: 10,
             sub_mode: "auto".into(),
             sub_lang: String::new(),
+            together: Default::default(),
         }
     }
 }
@@ -176,6 +179,25 @@ pub fn PlaybackSettings() -> impl IntoView {
                     {[5u32, 10, 15, 30].map(|s| view! { <option value=s.to_string()>{format!("{s} seconds")}</option> }).collect_view()}
                 </select>
             </div>
+        </section>
+        <section class="group">
+            <h2>"Watch together"</h2>
+            <p class="muted small">"In rooms you create, what the others may do. You can always do everything."</p>
+            <label class="row toggle">
+                <div>"Others can change what's playing"<div class="muted small">"Next episode, another title."</div></div>
+                <input type="checkbox" prop:checked=move || prefs.with(|p| p.together.change_title)
+                    on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.together.change_title = on) } />
+            </label>
+            <label class="row toggle">
+                <div>"Others can pause and play"</div>
+                <input type="checkbox" prop:checked=move || prefs.with(|p| p.together.play_pause)
+                    on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.together.play_pause = on) } />
+            </label>
+            <label class="row toggle">
+                <div>"Others can move forward or back"</div>
+                <input type="checkbox" prop:checked=move || prefs.with(|p| p.together.seek)
+                    on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.together.seek = on) } />
+            </label>
         </section>
         <section class="group">
             <h2>"Subtitles"</h2>

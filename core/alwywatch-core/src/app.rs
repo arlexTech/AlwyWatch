@@ -1905,6 +1905,28 @@ impl AlwyWatch {
 
     // ----- settings and UI state ------------------------------------------------------------
 
+    /// What the others may do in rooms I create (Settings → Watch together; follows me to my
+    /// other devices). Everything by default.
+    pub fn together_rights(&self) -> keep_service::together::TogetherRights {
+        let on = |k: &str| self.core.store.setting(k).ok().flatten().as_deref() != Some("0");
+        keep_service::together::TogetherRights {
+            change_title: on(TOGETHER_TITLE_KEY),
+            play_pause: on(TOGETHER_PLAY_KEY),
+            seek: on(TOGETHER_SEEK_KEY),
+        }
+    }
+
+    /// Applies to rooms created from now on.
+    pub fn set_together_rights(
+        &self,
+        rights: keep_service::together::TogetherRights,
+    ) -> Result<()> {
+        let v = |b: bool| if b { "1" } else { "0" }.to_owned();
+        self.set_setting(TOGETHER_TITLE_KEY.into(), v(rights.change_title))?;
+        self.set_setting(TOGETHER_PLAY_KEY.into(), v(rights.play_pause))?;
+        self.set_setting(TOGETHER_SEEK_KEY.into(), v(rights.seek))
+    }
+
     pub fn get_setting(&self, key: String) -> Result<Option<String>> {
         Ok(self.core.store.setting(&key)?)
     }
@@ -2393,6 +2415,10 @@ const KEEP_KEY: &str = "keep.connection";
 /// AlwyWatch server address entered on the add-server screen, connected after sign-in.
 const KEEP_PRESET_KEY: &str = "keep.preset_url";
 const LEAVING_KEY: &str = "keep/leaving-soon";
+/// Watch together: what others may do in my rooms ("0": no; else yes). Synced settings.
+pub(crate) const TOGETHER_TITLE_KEY: &str = "together.others_title";
+pub(crate) const TOGETHER_PLAY_KEY: &str = "together.others_play";
+pub(crate) const TOGETHER_SEEK_KEY: &str = "together.others_seek";
 const SERVICES_KEY: &str = "keep/services";
 
 impl Core {
@@ -3339,9 +3365,12 @@ impl AlwyWatch {
         account_id: String,
         item_id: String,
     ) -> Result<TogetherJoined> {
+        let rights = self.together_rights();
         self.run(|c| async move {
             let media = c.together_media(&account_id, &item_id).await?;
-            Ok(c.keep()?.together_create(&TogetherCreate { media }).await?)
+            Ok(c.keep()?
+                .together_create(&TogetherCreate { media, rights })
+                .await?)
         })
         .await
     }
@@ -3575,6 +3604,7 @@ mod together_tests {
             position_ms: 60_000,
             host: String::new(),
             invited: vec![],
+            rights: Default::default(),
             at_ms: 1_000_000,
             now_ms: 1_000_500,
             by: String::new(),

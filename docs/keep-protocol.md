@@ -197,12 +197,13 @@ rights). The old knock routes (`/knock…`, `/requests/{id}`) are gone (404).
 ```
 TogetherMedia   {kind: "movie"|"episode", title, year?, tmdb?, imdb?, tvdb?,
                  series_title?, series_tmdb?, series_tvdb?, season?, episode?}
-TogetherCreate  {media}
+TogetherCreate  {media, rights = all true}
+TogetherRights  {change_title, play_pause, seek}
 TogetherInvite  {member_id, user_keys: [user_key]}            // 1 to 20 at once
 TogetherUpdate  {member_id, playing, position_ms, media?, started = false}
 TogetherJoined  {member_id, state}
 TogetherState   {code, seq, media, started, playing, position_ms, at_ms, now_ms, by,
-                 members: [TogetherMember], host, invited: [TogetherInvitee]}
+                 members: [TogetherMember], host, invited: [TogetherInvitee], rights}
 TogetherMember  {id, name, user_key, avatar}
 TogetherInvitee {user_key, name, avatar}
 TogetherRooms   {version, rooms: [TogetherRoom]}
@@ -211,6 +212,12 @@ TogetherRoom    {code, host, host_avatar, media, members: [name], started, playi
 TogetherPerson  {user_key, name, media_name, avatar, server_name, last_together_at?}
 ```
 
+* `rights`: what members other than the host's user may do once the room plays, set by the
+  creator (their Settings → Watch together, synced as `together.others_title|play|seek`).
+  A refused update answers **423** (not 403, which clients read as a lost sign-in): another
+  title when `change_title` is false, playing ≠ the room's when `play_pause` is false, a
+  position more than 3 s from the room's when `seek` is false (`SEEK_TOLERANCE_MS`). Apps then
+  say "Only the host can …" and go back in step with the room.
 * `media` names the title by `tmdb`/`imdb`/`tvdb` (episodes: the show's ids, `season`,
   `episode`) so each member plays their own server's copy. Text is cut to 200 characters, ids
   to 40, control characters removed.

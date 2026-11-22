@@ -30,8 +30,8 @@ pub use history::{HistoryChange, HistoryCopyResult, HistoryPlan, HistoryProgress
 pub use keep_service::identity::LinkedIdentity;
 pub use keep_service::together::{
     TogetherCorrection, TogetherCreate, TogetherInvite, TogetherInvitee, TogetherJoined,
-    TogetherMedia, TogetherMember, TogetherPerson, TogetherRoom, TogetherRooms, TogetherState,
-    TogetherUpdate,
+    TogetherMedia, TogetherMember, TogetherPerson, TogetherRights, TogetherRoom, TogetherRooms,
+    TogetherState, TogetherUpdate,
 };
 pub use keep_service::{
     AdminUser, Avatar, AvatarPreset, CountdownResult, LeavingItem, Me, MyVote, Protection, Rights,

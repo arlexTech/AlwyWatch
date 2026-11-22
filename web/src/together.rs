@@ -248,6 +248,22 @@ pub fn plain_together(e: &Error) -> String {
     }
 }
 
+/// What a guest is told when the host's rights refuse their change.
+pub fn refused_note(u: &TogetherUpdate, room: Option<&TogetherState>) -> String {
+    let what = match room {
+        _ if u.media.is_some() => "change what's playing",
+        Some(r) if r.playing != u.playing => {
+            if u.playing {
+                "play"
+            } else {
+                "pause"
+            }
+        }
+        _ => "move forward or back",
+    };
+    format!("Only the host can {what} in this room")
+}
+
 /// One person in a room: their first seat, how many devices they're on, whether they host.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Person {
@@ -582,11 +598,22 @@ impl Room {
                     media,
                     started: false,
                 };
-                if let Ok(s) = k.together_update(&code, &update).await
-                    && self.is(&code)
-                {
-                    self.media.set_value(Some(s.media.clone()));
-                    self.accept(s);
+                match k.together_update(&code, &update).await {
+                    Ok(s) if self.is(&code) => {
+                        self.media.set_value(Some(s.media.clone()));
+                        self.accept(s);
+                    }
+                    // The host doesn't allow it: say so and go back in step with the room.
+                    Err(Error::Status { status: 423 }) if self.is(&code) => {
+                        self.note.try_set(Some(refused_note(
+                            &update,
+                            self.state.get_untracked().as_ref(),
+                        )));
+                        if let Some(s) = self.state.get_untracked() {
+                            self.incoming.try_set(Some((false, s)));
+                        }
+                    }
+                    _ => {}
                 }
             }
             let _ = self.sending.try_update_value(|n| *n = n.saturating_sub(1));
@@ -638,7 +665,10 @@ pub async fn create_room(srv: AnyServer, item: Item) -> Result<String, String> {
     let k = c.keep_client().ok_or(NO_KEEP)?;
     let media = media_of(&srv, &item).await;
     let j = k
-        .together_create(&TogetherCreate { media })
+        .together_create(&TogetherCreate {
+            media,
+            rights: crate::prefs::load().together,
+        })
         .await
         .map_err(|e| plain_together(&e))?;
     if c.room.active() {
@@ -1409,6 +1439,7 @@ mod tests {
             members: vec![member("a", "Ann"), member("b", "Bob")],
             host: "a".into(),
             invited: vec![],
+            rights: Default::default(),
         }
     }
 

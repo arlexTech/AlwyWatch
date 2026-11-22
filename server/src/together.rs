@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 
 use keep_service::Avatar;
 use keep_service::together::{
-    TogetherCreate, TogetherInvitee, TogetherJoined, TogetherMedia, TogetherMember, TogetherRoom,
-    TogetherRooms, TogetherState, TogetherUpdate, WAIT_SECS,
+    SEEK_TOLERANCE_MS, TogetherCreate, TogetherInvitee, TogetherJoined, TogetherMedia,
+    TogetherMember, TogetherRoom, TogetherRooms, TogetherState, TogetherUpdate, WAIT_SECS,
 };
 use tokio::sync::Notify;
 
@@ -39,6 +39,8 @@ pub enum TogetherError {
     Full,
     /// A member of the room doing what they may not (someone else's seat, host-only change).
     Forbidden,
+    /// A guest doing what the host's rights don't allow (pause, seek, another title).
+    NotAllowed,
 }
 
 struct Member {
@@ -135,6 +137,30 @@ impl Room {
         self.members
             .get(&self.state.host)
             .map(|m| m.user_key.as_str())
+    }
+
+    /// Whether a guest's update stays within what the host allows (`TogetherRights`).
+    fn allowed(&self, u: &TogetherUpdate) -> Result<(), TogetherError> {
+        let r = &self.state.rights;
+        let new_title = u
+            .media
+            .as_ref()
+            .is_some_and(|m| clean_media(m.clone()) != self.state.media);
+        if new_title {
+            return if r.change_title {
+                Ok(())
+            } else {
+                Err(TogetherError::NotAllowed)
+            };
+        }
+        if u.playing != self.state.playing && !r.play_pause {
+            return Err(TogetherError::NotAllowed);
+        }
+        let expected = self.state.position_at(now_ms());
+        if u.position_ms.abs_diff(expected) > SEEK_TOLERANCE_MS && !r.seek {
+            return Err(TogetherError::NotAllowed);
+        }
+        Ok(())
     }
 
     fn is_host_user(&self, user_key: &str) -> bool {
@@ -407,6 +433,7 @@ impl Rooms {
                 members: vec![],
                 host: String::new(),
                 invited: vec![],
+                rights: c.rights,
             },
             members: HashMap::new(),
             guests: HashMap::new(),
@@ -605,6 +632,9 @@ impl Rooms {
                 met = room.all_pairs();
             }
         } else {
+            if !room.is_host_user(user_key) {
+                room.allowed(&u)?;
+            }
             room.state.playing = u.playing;
         }
         room.state.position_ms = u.position_ms;
@@ -744,6 +774,7 @@ mod tests {
         r.create(
             TogetherCreate {
                 media: media("Monsters"),
+                rights: Default::default(),
             },
             "Ana",
             "plex:ana",
@@ -909,6 +940,84 @@ mod tests {
                 .invite(code, &b.member_id, "jf:cy", &[inv("jf:cy", "Cy")])
                 .map(|_| ()),
             Err(TogetherError::NotFound)
+        );
+    }
+
+    #[test]
+    fn guests_do_only_what_the_host_allows() {
+        let rooms = Rooms::default();
+        let a = rooms
+            .create(
+                TogetherCreate {
+                    media: media("Monsters"),
+                    rights: keep_service::together::TogetherRights {
+                        change_title: false,
+                        play_pause: false,
+                        seek: true,
+                    },
+                },
+                "Ana",
+                "plex:ana",
+                &Avatar::default(),
+            )
+            .unwrap();
+        let code = &a.state.code;
+        let b = invite_in(&rooms, &a, "Bo", "jf:bo");
+        rooms
+            .update(code, upd(&a.member_id, true, 10_000, true), "plex:ana")
+            .unwrap();
+        // Bo may not pause, nor change the title; he may move along (playing on).
+        let refused = |u| rooms.update(code, u, "jf:bo").map(|_| ());
+        assert_eq!(
+            refused(upd(&b.member_id, false, 10_000, false)),
+            Err(TogetherError::NotAllowed)
+        );
+        let mut retitle = upd(&b.member_id, true, 0, false);
+        retitle.media = Some(media("Up"));
+        assert_eq!(refused(retitle), Err(TogetherError::NotAllowed));
+        assert_eq!(refused(upd(&b.member_id, true, 60_000, false)), Ok(()));
+        // The host can do everything.
+        let (s, _) = rooms
+            .update(code, upd(&a.member_id, false, 60_000, false), "plex:ana")
+            .unwrap();
+        assert!(!s.playing);
+        assert!(!s.rights.play_pause);
+    }
+
+    #[test]
+    fn seeking_can_be_reserved_to_the_host() {
+        let rooms = Rooms::default();
+        let a = rooms
+            .create(
+                TogetherCreate {
+                    media: media("Monsters"),
+                    rights: keep_service::together::TogetherRights {
+                        change_title: true,
+                        play_pause: true,
+                        seek: false,
+                    },
+                },
+                "Ana",
+                "plex:ana",
+                &Avatar::default(),
+            )
+            .unwrap();
+        let code = &a.state.code;
+        let b = invite_in(&rooms, &a, "Bo", "jf:bo");
+        rooms
+            .update(code, upd(&a.member_id, false, 10_000, true), "plex:ana")
+            .unwrap();
+        // Pausing/playing where the room is: fine. Jumping a minute: refused.
+        assert!(
+            rooms
+                .update(code, upd(&b.member_id, true, 10_500, false), "jf:bo")
+                .is_ok()
+        );
+        assert_eq!(
+            rooms
+                .update(code, upd(&b.member_id, true, 70_000, false), "jf:bo")
+                .map(|_| ()),
+            Err(TogetherError::NotAllowed)
         );
     }
 

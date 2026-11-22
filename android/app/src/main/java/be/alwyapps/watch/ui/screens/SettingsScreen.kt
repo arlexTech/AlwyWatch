@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -502,6 +503,37 @@ private fun PlaybackSection() {
                 subtitle = "Lower power on some TV devices, but breaks playback on others.",
             )
         }
+    }
+    if (core.keepActive()) TogetherRightsGroup()
+}
+
+/** In watch together rooms I create, what the others may do (follows me to my other devices). */
+@Composable
+private fun TogetherRightsGroup() {
+    val core = LocalCore.current
+    var rights by remember { mutableStateOf(core.togetherRights()) }
+
+    fun change(r: be.alwyapps.watch.core.keep.TogetherRights) {
+        rights = r
+        runCatching { core.setTogetherRights(r) }
+    }
+    Group("Watch together") {
+        Text(
+            "In rooms you create, what the others may do. You can always do everything.",
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ToggleRow(
+            "Others can change what's playing",
+            rights.changeTitle,
+            { change(rights.copy(changeTitle = it)) },
+            subtitle = "Next episode, another title.",
+        )
+        Divider()
+        ToggleRow("Others can pause and play", rights.playPause, { change(rights.copy(playPause = it)) })
+        Divider()
+        ToggleRow("Others can move forward or back", rights.seek, { change(rights.copy(seek = it)) })
     }
 }
 

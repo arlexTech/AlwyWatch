@@ -2961,6 +2961,10 @@ impl App {
         let ui = self.ui();
         ui.set_auto_skip_intro(get("player.auto_skip_intro").as_deref() == Some("1"));
         ui.set_auto_next(get("player.auto_next").as_deref() != Some("0"));
+        let r = self.core.together_rights();
+        ui.set_together_title(r.change_title);
+        ui.set_together_play(r.play_pause);
+        ui.set_together_seek(r.seek);
     }
 
     fn play(self: &Rc<Self>, id: String, from_start: bool) {
@@ -4759,6 +4763,7 @@ impl App {
             // Defaults: automatic next episode is on, automatic intro skip is off.
             let was = match key.as_str() {
                 "player.auto_next" => on.as_deref() != Some("0"),
+                k if k.starts_with("together.") => on.as_deref() != Some("0"),
                 _ => on.as_deref() == Some("1"),
             };
             let _ = a.core.set_setting(key, if was { "0" } else { "1" }.into());
