@@ -2,10 +2,12 @@
 //! AlwyWatch in the browser: the same Jellyfin/Plex/Seerr/keep clients as the apps (compiled
 //! to wasm32), a Leptos UI, and the browser's own video player. Served by alwywatch-server.
 
+mod account;
 mod browse;
 mod extra;
 mod keep;
 mod links;
+mod passkey;
 mod player;
 mod prefs;
 mod profile;
@@ -72,6 +74,7 @@ fn App() -> impl IntoView {
     {
         let c = c.clone();
         leptos::task::spawn_local(async move {
+            account::check(c.clone()).await;
             signin::check_keep(c).await;
             // "Are these both you?" once for two accounts of one person.
             links::refresh(true).await;
@@ -120,12 +123,26 @@ fn App() -> impl IntoView {
                 <Route path=path!("/admin") view=|| view! { <Shell><keep::Admin /></Shell> } />
                 <Route path=path!("/admin/forever") view=|| view! { <Shell><keep::Forever /></Shell> } />
                 <Route path=path!("/settings") view=|| view! { <Shell><signin::Settings /></Shell> } />
+                <Route path=path!("/account") view=|| view! { <Shell><account::AccountPage /></Shell> } />
+                <Route path=path!("/account/signed-in") view=|| view! { <Shell><account::SignedInPage /></Shell> } />
+                <Route path=path!("/join") view=|| view! { <Shell><account::Join /></Shell> } />
+                <Route path=path!("/join/:code") view=|| view! { <Shell><account::Join /></Shell> } />
+                <Route path=path!("/q/:code") view=|| view! { <Shell><account::Approve /></Shell> } />
             </Routes>
         </Router>
     }
 }
 
 /// Side menu + page. Without any account, every page leads to signing in.
+/// Pages that work without a Jellyfin/Plex account.
+fn open_page(path: &str) -> bool {
+    matches!(
+        path,
+        "/signin" | "/settings" | "/account" | "/account/signed-in" | "/join"
+    ) || path.starts_with("/join/")
+        || path.starts_with("/q/")
+}
+
 #[component]
 fn Shell(children: ChildrenFn) -> impl IntoView {
     let c = state::ctx();
@@ -162,7 +179,7 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                 {move || (keep_on() && !welcome.get()).then(|| link_dialog.get()).flatten().map(|(account, prompted)| {
                     view! { <links::LinkDialog account=account prompted=prompted /> }
                 })}
-                {move || if signed_in() || matches!(current_path().as_str(), "/signin" | "/settings") {
+                {move || if signed_in() || open_page(&current_path()) {
                     children().into_any()
                 } else {
                     view! { <signin::SignIn /> }.into_any()

@@ -12,6 +12,10 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::{Deserialize, Serialize};
 
+use keep_service::account::{
+    AccountOptions, AccountView, Approved, Invite, LinkedView, PasskeyView, SessionView, SignedIn,
+};
+
 use crate::accounts::{self, AccountError, AccountRow, SESSION_PREFIX};
 use crate::api::{Caller, Error};
 use crate::auth::AuthError;
@@ -115,73 +119,21 @@ impl FromRequestParts<Shared> for Person {
 
 // ----- what the server offers ---------------------------------------------------------------
 
-#[derive(Serialize)]
-pub struct Options {
-    /// "invite", "open" or "closed".
-    registration: &'static str,
-    passkeys: bool,
-    pocketid: bool,
-}
-
-pub async fn options(State(s): State<Shared>) -> Json<Options> {
+pub async fn options(State(s): State<Shared>) -> Json<AccountOptions> {
     let a = &s.config.accounts;
-    Json(Options {
+    Json(AccountOptions {
         registration: match a.registration {
             Registration::Invite => "invite",
             Registration::Open => "open",
             Registration::Closed => "closed",
-        },
+        }
+        .into(),
         passkeys: a.rp.is_some(),
         pocketid: a.pocketid.is_some(),
     })
 }
 
 // ----- sign-up and sign-in ------------------------------------------------------------------
-
-#[derive(Serialize)]
-pub struct SignedIn {
-    pub token: String,
-    pub account: AccountView,
-}
-
-#[derive(Serialize)]
-pub struct AccountView {
-    pub id: String,
-    pub username: Option<String>,
-    pub name: String,
-    /// The person's key (as in rooms and profiles).
-    pub user_key: String,
-    pub has_password: bool,
-    pub passkeys: Vec<PasskeyView>,
-    pub pocketid: bool,
-    pub sessions: Vec<SessionView>,
-    /// Media-server sign-ins linked to this person.
-    pub linked: Vec<LinkedView>,
-}
-
-#[derive(Serialize)]
-pub struct PasskeyView {
-    pub id: String,
-    pub name: String,
-    pub created: i64,
-    pub last_used: Option<i64>,
-}
-
-#[derive(Serialize)]
-pub struct SessionView {
-    pub id: String,
-    pub device: String,
-    pub created: i64,
-    pub last_seen: i64,
-    pub current: bool,
-}
-
-#[derive(Serialize)]
-pub struct LinkedView {
-    pub server_id: String,
-    pub kind: String,
-    pub name: String,
-}
 
 fn view(s: &Shared, a: &AccountRow, current: Option<&str>) -> Result<AccountView, Error> {
     let db = &s.db;
@@ -522,15 +474,6 @@ fn seven() -> i64 {
 }
 fn one() -> i64 {
     1
-}
-
-#[derive(Serialize)]
-pub struct Invite {
-    code: String,
-    /// The web page that signs up with it.
-    url: Option<String>,
-    expires_in_days: i64,
-    uses: i64,
 }
 
 /// `POST /v1/account/invites` (AlwyWatch admin): an invitation to create an account.
@@ -943,11 +886,6 @@ fn account_for(s: &Shared, p: &Person) -> Result<AccountRow, Error> {
 pub fn grant_for(s: &Shared, p: &Person, device: &str) -> Result<String, Error> {
     let a = account_for(s, p)?;
     s.db.new_session(&a.id, device).map_err(internal)
-}
-
-#[derive(Serialize)]
-pub struct Approved {
-    device: String,
 }
 
 /// `PUT /v1/transfer/{code}/approve`: signs the device showing `code` in to my account (the

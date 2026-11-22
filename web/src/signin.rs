@@ -23,6 +23,12 @@ async fn finish(c: &Ctx, s: Session, served: &[ServerEntry]) {
     if c.keep.get_untracked().is_none() && served.iter().any(|e| e.id == s.server_id) {
         link(c, &s).await;
     }
+    // Signed in to an AlwyWatch account too: this sign-in becomes part of it.
+    if served.iter().any(|e| e.id == s.server_id)
+        && let Some(t) = c.keep_token(&s)
+    {
+        crate::account::link_media(c, &s.server_id, &t).await;
+    }
     // A new account may be the same person as the linked one.
     crate::links::refresh(true).await;
 }
@@ -100,9 +106,10 @@ pub fn SignIn() -> impl IntoView {
         }
     });
     let picked = RwSignal::new(None::<ServerEntry>);
+    let account = c.account;
     view! {
         <h1>"Sign in"</h1>
-        <p class="muted">"Use your Jellyfin or Plex account. Nothing else to create."</p>
+        <p class="muted">"Use your Jellyfin or Plex account."</p>
         {move || match served.get() {
             None => view! { <crate::ui::Loading /> }.into_any(),
             Some(list) => {
@@ -130,6 +137,16 @@ pub fn SignIn() -> impl IntoView {
                         ServerType::Jellyfin => view! { <JellyfinForm entry=e served=all.clone() /> }.into_any(),
                         ServerType::Plex => view! { <PlexForm entry=e served=all.clone() /> }.into_any(),
                     })}
+                    {move || match account.get() {
+                        Some(a) => view! {
+                            <p class="muted small">"AlwyWatch account: "<strong>{a.name}</strong>". "
+                                <leptos_router::components::A href="/account">"Manage"</leptos_router::components::A></p>
+                        }.into_any(),
+                        None => view! {
+                            <p class="muted">"Or, without a media server: your AlwyWatch account (profile, settings, signing in other devices)."</p>
+                            <crate::account::AccountSignIn next="/settings" />
+                        }.into_any(),
+                    }}
                 }.into_any()
             }
         }}
@@ -391,6 +408,13 @@ pub fn Settings() -> impl IntoView {
         </section>
         <section class="group">
             <h2>"AlwyWatch account"</h2>
+            <div class="row">
+                <div class="muted small">{move || match c2.account.get() {
+                    Some(a) => format!("Account: {}. Password, passkeys, Pocket ID and your devices.", a.name),
+                    None => "Sign in without a media server, with a password, passkey or Pocket ID.".to_owned(),
+                }}</div>
+                <leptos_router::components::A href="/account" attr:class="button">"Account"</leptos_router::components::A>
+            </div>
             {move || match c2.keep.get() {
                 Some(k) => view! {
                     <p class="muted small">"Signed in as "<strong>{k.user_name}</strong>" on "{Ctx::origin()}

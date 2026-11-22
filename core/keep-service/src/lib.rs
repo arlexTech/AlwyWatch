@@ -9,6 +9,7 @@
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!();
 
+pub mod account;
 pub mod identity;
 pub mod profile;
 pub mod together;
@@ -355,12 +356,215 @@ impl KeepClient {
         }
     }
 
+    /// A client for an AlwyWatch account session (`aws_…` token, no media server): the
+    /// account, profile, settings and Quick Connect calls work with it.
+    pub fn account(http: Client, base_url: &str, token: &str) -> Self {
+        Self::new(http, base_url, "", token)
+    }
+
+    /// Whether this client is an account session rather than a media sign-in.
+    pub fn is_account(&self) -> bool {
+        self.server_id.is_empty()
+    }
+
     fn req(&self, method: Method, path: &str) -> RequestBuilder {
-        self.http
+        let r = self
+            .http
             .request(method, format!("{}/v1{path}", self.base))
             .bearer_auth(&self.token)
-            .header(SERVER_HEADER, &self.server_id)
-            .header("Accept", "application/json")
+            .header("Accept", "application/json");
+        if self.server_id.is_empty() {
+            r
+        } else {
+            r.header(SERVER_HEADER, &self.server_id)
+        }
+    }
+
+    fn public(http: &Client, method: Method, base_url: &str, path: &str) -> RequestBuilder {
+        http.request(
+            method,
+            format!("{}/v1{path}", base_url.trim_end_matches('/')),
+        )
+        .header("Accept", "application/json")
+    }
+
+    // ----- AlwyWatch accounts (docs/keep-protocol.md "AlwyWatch accounts") ----------------
+
+    /// Public: sign-up policy, passkeys, Pocket ID.
+    pub async fn account_options(http: &Client, base_url: &str) -> Result<account::AccountOptions> {
+        net::send_json(Self::public(
+            http,
+            Method::GET,
+            base_url,
+            "/account/options",
+        ))
+        .await
+    }
+
+    /// Public: a new account with a password.
+    pub async fn account_register(
+        http: &Client,
+        base_url: &str,
+        r: &account::RegisterRequest,
+    ) -> Result<account::SignedIn> {
+        net::send_json(Self::public(http, Method::POST, base_url, "/account/register").json(r))
+            .await
+    }
+
+    /// Public: signs in with username and password.
+    pub async fn account_login(
+        http: &Client,
+        base_url: &str,
+        r: &account::LoginRequest,
+    ) -> Result<account::SignedIn> {
+        net::send_json(Self::public(http, Method::POST, base_url, "/account/login").json(r)).await
+    }
+
+    /// Public: starts a passkey sign-in: `{flow_id, options}` for the browser.
+    pub async fn passkey_login_start(http: &Client, base_url: &str) -> Result<serde_json::Value> {
+        net::send_json(Self::public(
+            http,
+            Method::POST,
+            base_url,
+            "/account/passkeys/login/start",
+        ))
+        .await
+    }
+
+    /// Public: finishes a passkey sign-in with the browser's credential.
+    pub async fn passkey_login_finish(
+        http: &Client,
+        base_url: &str,
+        flow_id: &str,
+        device: &str,
+        credential: &serde_json::Value,
+    ) -> Result<account::SignedIn> {
+        net::send_json(
+            Self::public(http, Method::POST, base_url, "/account/passkeys/login/finish").json(
+                &serde_json::json!({"flow_id": flow_id, "device": device, "credential": credential}),
+            ),
+        )
+        .await
+    }
+
+    /// Account session: who I am, my ways to sign in and my devices.
+    pub async fn account_me(&self) -> Result<account::AccountView> {
+        net::send_json(self.req(Method::GET, "/account")).await
+    }
+
+    /// Account session: ends it.
+    pub async fn account_logout(&self) -> Result<()> {
+        net::send(self.req(Method::POST, "/account/logout")).await?;
+        Ok(())
+    }
+
+    /// Account session: sets or changes the password (other sessions end).
+    pub async fn account_set_password(&self, current: Option<&str>, new: &str) -> Result<()> {
+        net::send(
+            self.req(Method::PUT, "/account/password")
+                .json(&account::PasswordChange {
+                    current: current.map(str::to_owned),
+                    new: new.to_owned(),
+                }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Account session: signs one of my devices out.
+    pub async fn account_end_session(&self, id: &str) -> Result<()> {
+        net::send(self.req(
+            Method::DELETE,
+            &format!("/account/sessions/{}", net::percent_encode(id)),
+        ))
+        .await?;
+        Ok(())
+    }
+
+    /// Account session: adds a Jellyfin/Plex sign-in (checked by the server, not stored).
+    pub async fn account_link(&self, server_id: &str, token: &str) -> Result<account::AccountView> {
+        net::send_json(self.req(Method::POST, "/account/link").json(&LinkRequest {
+            server_id: server_id.to_owned(),
+            token: token.to_owned(),
+        }))
+        .await
+    }
+
+    /// Media sign-in: adds a username and password to me (signing in without the media server).
+    pub async fn account_claim(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<account::AccountView> {
+        net::send_json(
+            self.req(Method::POST, "/account/claim")
+                .json(&account::ClaimRequest {
+                    username: username.to_owned(),
+                    password: password.to_owned(),
+                }),
+        )
+        .await
+    }
+
+    /// Admin: an invitation to create an account.
+    pub async fn account_invite(&self, days: i64, uses: i64) -> Result<account::Invite> {
+        net::send_json(
+            self.req(Method::POST, "/account/invites")
+                .json(&account::InviteRequest { days, uses }),
+        )
+        .await
+    }
+
+    /// Account session: starts adding a passkey (`{flow_id, options}` for the browser).
+    pub async fn passkey_register_start(&self) -> Result<serde_json::Value> {
+        net::send_json(self.req(Method::POST, "/account/passkeys/register/start")).await
+    }
+
+    pub async fn passkey_register_finish(
+        &self,
+        flow_id: &str,
+        name: &str,
+        credential: &serde_json::Value,
+    ) -> Result<account::AccountView> {
+        net::send_json(self.req(Method::POST, "/account/passkeys/register/finish").json(
+            &serde_json::json!({"flow_id": flow_id, "name": name, "credential": credential}),
+        ))
+        .await
+    }
+
+    pub async fn passkey_delete(&self, id: &str) -> Result<()> {
+        net::send(self.req(
+            Method::DELETE,
+            &format!("/account/passkeys/{}", net::percent_encode(id)),
+        ))
+        .await?;
+        Ok(())
+    }
+
+    /// Account session: a one-time ticket to link Pocket ID in a browser
+    /// (`/v1/account/oidc/start?ticket=…`).
+    pub async fn oidc_ticket(&self) -> Result<String> {
+        #[derive(Deserialize)]
+        struct T {
+            ticket: String,
+        }
+        let t: T = net::send_json(self.req(Method::POST, "/account/oidc/ticket")).await?;
+        Ok(t.ticket)
+    }
+
+    pub async fn oidc_unlink(&self) -> Result<()> {
+        net::send(self.req(Method::DELETE, "/account/oidc")).await?;
+        Ok(())
+    }
+
+    /// Quick Connect: signs the device showing `code` in to my account (nothing sealed to
+    /// send, e.g. from the web).
+    pub async fn transfer_approve(&self, code: &str) -> Result<account::Approved> {
+        net::send_json(self.req(
+            Method::PUT,
+            &format!("/transfer/{}/approve", net::percent_encode(code)),
+        ))
+        .await
     }
 
     /// Public: the allow-listed servers.

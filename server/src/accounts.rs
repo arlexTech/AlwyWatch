@@ -13,7 +13,7 @@ use rusqlite::{OptionalExtension, params};
 use crate::db::{Db, now};
 
 /// Session tokens start with this (media tokens never do), so a request says which it is.
-pub const SESSION_PREFIX: &str = "aws_";
+pub use keep_service::account::SESSION_PREFIX;
 /// A session unused for this long is gone.
 const SESSION_IDLE: i64 = 180 * 86_400;
 /// `last_seen` is written at most this often (a request per second must not write each time).

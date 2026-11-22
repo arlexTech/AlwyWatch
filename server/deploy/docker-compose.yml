@@ -22,6 +22,14 @@ services:
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       SEERR_API_KEY: ${SEERR_API_KEY:-}   # Seerr bridge (Seerr → Settings → General → API key)
       # MAINTAINERR_API_KEY: ${MAINTAINERR_API_KEY}   # only if you enable Maintainerr's API key
+      # AlwyWatch accounts (docs/keep-protocol.md "AlwyWatch accounts"): this site's address
+      # (passkeys and Pocket ID need it), who may sign up, and Pocket ID (optional; callback
+      # <public URL>/v1/account/oidc/callback).
+      ALWYWATCH_PUBLIC_URL: ${ALWYWATCH_PUBLIC_URL:-}
+      ALWYWATCH_REGISTRATION: ${ALWYWATCH_REGISTRATION:-invite}
+      ALWYWATCH_POCKETID_ISSUER: ${ALWYWATCH_POCKETID_ISSUER:-}
+      ALWYWATCH_POCKETID_CLIENT_ID: ${ALWYWATCH_POCKETID_CLIENT_ID:-}
+      ALWYWATCH_POCKETID_CLIENT_SECRET: ${ALWYWATCH_POCKETID_CLIENT_SECRET:-}
     volumes:
       - ./data:/data            # config.toml + keep.sqlite (owned by uid 65534)
     networks:

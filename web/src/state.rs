@@ -93,6 +93,8 @@ pub struct Ctx {
     pub client: ClientInfo,
     pub accounts: RwSignal<Vec<Session>>,
     pub keep: RwSignal<Option<KeepLink>>,
+    /// The AlwyWatch account (no media server) this browser is signed in to.
+    pub account: RwSignal<Option<crate::account::AccountLink>>,
     /// An account a server refused (session ended): the menu offers to sign in again.
     pub expired: RwSignal<Option<String>>,
     /// My profile on the AlwyWatch server (the linked account's).
@@ -132,6 +134,7 @@ impl Ctx {
             },
             accounts: RwSignal::new(load(ACCOUNTS).unwrap_or_default()),
             keep: RwSignal::new(load(KEEP)),
+            account: RwSignal::new(crate::account::load()),
             expired: RwSignal::new(None),
             me: RwSignal::new(load(ME)),
             welcome: RwSignal::new(false),
