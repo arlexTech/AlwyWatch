@@ -1275,16 +1275,21 @@ private fun SeasonPicker(
             items(list, key = { it.id }) { s ->
                 ActionButton(s.title, { onSelected(s) }, selected = s.id == selected.id, onLongClick = { onMark(s) })
             }
-            // The same, visible: for the season shown.
-            item(key = "mark") {
-                IconAction(Icons.Check, "${selected.title}: watched or not", { onMark(selected) }, Modifier.focusRequester(markFocus))
-            }
-            // After the mark, so it stays next to the seasons (RIGHT from the last one, then here).
             if (onMore != null) {
                 item(key = "more") {
                     ActionButton("More seasons", onMore, Modifier.focusRequester(moreFocus), icon = Icons.Add)
                 }
             }
+        }
+        // The same as the long press, visible and in words, for the season shown: its own line
+        // under the seasons (a lone ✓ next to them read as one more season, or as "selected").
+        Row(Modifier.padding(start = d.gutter, end = d.gutter, top = 10.dp)) {
+            ActionButton(
+                "Mark ${selected.title} watched or unwatched",
+                { onMark(selected) },
+                Modifier.focusRequester(markFocus),
+                icon = Icons.Check,
+            )
         }
     }
 }
