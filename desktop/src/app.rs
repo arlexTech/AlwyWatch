@@ -3447,18 +3447,27 @@ impl App {
             return;
         }
         ui.set_detail_keep(match self.core.keep_status_of(i.clone()) {
+            // In no list and never looked up: "Keep it" asks the server for its entry.
             None => KeepPanel {
                 shown: true,
                 title: "Not scheduled for deletion".into(),
+                choice: "You haven't chosen anything".into(),
                 ..Default::default()
             },
             Some(e) => {
                 let row = Self::leaving_row(&e);
+                let planned = keep_planned(&e);
                 KeepPanel {
                     shown: true,
-                    listed: true,
+                    listed: planned,
+                    looking: false,
+                    error: SharedString::new(),
                     key: sstr(&e.key),
-                    title: sstr(keep_policy(&e, &row.when)),
+                    title: if planned {
+                        sstr(keep_policy(&e, &row.when))
+                    } else {
+                        "Not scheduled for deletion".into()
+                    },
                     detail: sstr(keep_detail(&e)),
                     choice: if row.vote.is_empty() {
                         "You haven't chosen anything".into()
@@ -3469,6 +3478,49 @@ impl App {
                 }
             }
         });
+    }
+
+    /// "Keep it" on a title that is in no deletion list: its entry from the server, then the
+    /// keep choices.
+    fn keep_look_up(self: &Rc<Self>) {
+        let id = self.ui().get_detail().id.to_string();
+        let Some(item) = self.state.borrow().items.get(&id).cloned() else {
+            return;
+        };
+        let ui = self.ui();
+        let mut panel = ui.get_detail_keep();
+        panel.looking = true;
+        panel.error = SharedString::new();
+        ui.set_detail_keep(panel);
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.keep_entry(item).await;
+            let Some(t) = this.upgrade() else { return };
+            let ui = t.ui();
+            // Another title's page by now: nothing to show.
+            if ui.get_page() != Page::Detail || ui.get_detail().id.as_str() != id {
+                return;
+            }
+            match r {
+                Ok(e) => {
+                    t.render_keep_panel_of_page();
+                    ui.set_leaving_open(sstr(&e.key));
+                }
+                Err(e) => {
+                    let mut panel = ui.get_detail_keep();
+                    panel.looking = false;
+                    panel.error = sstr(match e {
+                        CoreError::NotFound => {
+                            "This title isn't in the library that deletions are managed for."
+                                .to_owned()
+                        }
+                        e => e.to_string(),
+                    });
+                    ui.set_detail_keep(panel);
+                }
+            }
+        })
+        .ok();
     }
 
     /// The keep panel of the title page on screen (after a vote or a refresh).
@@ -4511,6 +4563,8 @@ impl App {
         ui.set_detail_keep(KeepPanel {
             shown: true,
             listed: true,
+            looking: false,
+            error: SharedString::new(),
             key: sstr("t"),
             title: sstr("Kept until 2 people have watched it"),
             detail: sstr("In “Old movies” · date 23 Nov 2026 · kept by 2 until watched"),
@@ -4879,6 +4933,7 @@ impl App {
         });
         on!(on_keep_vote, |a, key, choice| a
             .keep_vote(key.into(), choice.into()));
+        on!(on_keep_look_up, |a| a.keep_look_up());
         on!(on_watch_together, |a, id| {
             if let Some(account) = a.account_of(&id) {
                 a.watch_together(account, id.into());
@@ -5159,16 +5214,24 @@ fn keep_policy(e: &LeavingItem, leaves: &str) -> String {
     }
 }
 
+/// Something is planned for the title or someone keeps it. False: it is in no deletion list
+/// (kept ahead for "a while" at most, which only counts once it gets into one).
+fn keep_planned(e: &LeavingItem) -> bool {
+    e.listed || e.protection != Protection::None
+}
+
 /// Which list it is in and why nothing happens yet, plus who keeps it.
 fn keep_detail(e: &LeavingItem) -> String {
     let mut parts = vec![];
-    if let Some(t) = &e.collection_title {
+    // (A title taken out of its list by a keep still remembers which one it was in.)
+    if let Some(t) = e.collection_title.as_ref().filter(|_| e.listed) {
         parts.push(format!("In “{t}”"));
     }
-    if e.protection == Protection::None && !e.collection_active {
+    if e.listed && e.protection == Protection::None && !e.collection_active {
         parts.push("deletion isn't turned on yet".to_owned());
     }
     if let Some(d) = e.effective_deletion_date
+        && e.listed
         && !keep_paused(e, now_secs())
     {
         parts.push(format!("date {}", medium_date(d)));
@@ -5281,6 +5344,7 @@ mod keep_panel_tests {
             protection,
             my_vote: None,
             counts: VoteCounts::default(),
+            listed: true,
         }
     }
 

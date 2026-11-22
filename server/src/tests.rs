@@ -482,6 +482,170 @@ async fn keep_forever_from_two_users_excludes_once_until_both_withdraw() {
 }
 
 #[tokio::test]
+async fn a_title_in_no_deletion_list_can_be_kept_ahead() {
+    let e = env().await;
+    e.state.sync().await.unwrap();
+    // A Jellyfin user: the title is found on Maintainerr's server by its TMDB id.
+    Mock::given(method("GET"))
+        .and(path("/api/media-server/search/Primetime"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": "900", "title": "Primetime", "type": "show", "year": 2020,
+             "providerIds": {"tmdb": ["77"]}},
+            {"id": "901", "title": "Primetime", "type": "movie", "year": 2026,
+             "providerIds": {"tmdb": ["77"], "imdb": ["tt1"]}}
+        ])))
+        .expect(1)
+        .mount(&e.maint)
+        .await;
+    let lookup =
+        json!({"item_id": "jf-primetime", "kind": "movie", "title": "Primetime", "tmdb_id": "77"});
+    let (s, item) = e
+        .call(
+            "POST",
+            "/v1/keep-entry",
+            "jfsrv",
+            "jf-bob",
+            Some(lookup.clone()),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{item}");
+    assert_eq!(
+        item["key"], "901",
+        "the movie, not the show of the same name"
+    );
+    assert_eq!(item["title"], "Primetime");
+    assert_eq!(item["listed"], false);
+    assert_eq!(item["protection"], "none");
+    assert_eq!(item["effective_deletion_date"], Value::Null);
+    assert_eq!(item["server_item_id"], "jf-primetime");
+    // Asked again: known now, Maintainerr isn't searched a second time.
+    let (s, again) = e
+        .call("POST", "/v1/keep-entry", "jfsrv", "jf-bob", Some(lookup))
+        .await;
+    assert_eq!((s, &again["key"]), (StatusCode::OK, &json!("901")));
+    // Not listed while nobody keeps it.
+    let listed = |list: &Value| list.as_array().unwrap().iter().any(|i| i["key"] == "901");
+    let (_, list) = e
+        .call("GET", "/v1/leaving-soon", "jfsrv", "jf-bob", None)
+        .await;
+    assert!(!listed(&list));
+
+    // "I don't care" is recorded and answered, although Leaving soon doesn't list the title.
+    let (s, item) = e
+        .call(
+            "PUT",
+            "/v1/votes/901",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"kind": "dont_care"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{item}");
+    assert_eq!(item["my_vote"]["kind"], "dont_care");
+    // Their own list carries it (for the title's page), nobody else's does.
+    let (_, list) = e
+        .call("GET", "/v1/leaving-soon", "jfsrv", "jf-bob", None)
+        .await;
+    assert!(listed(&list));
+    let (_, list) = e
+        .call("GET", "/v1/leaving-soon", "plexsrv", "px-friend", None)
+        .await;
+    assert!(!listed(&list));
+    // Some days: nothing to extend yet, so it isn't "extended" and nothing is written.
+    let (_, item) = e
+        .call(
+            "PUT",
+            "/v1/votes/901",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"kind": "keep_days", "days": 7})),
+        )
+        .await;
+    assert_eq!(item["protection"], "none");
+    assert_eq!(item["my_vote"]["kind"], "keep_days");
+    assert_eq!(e.state.reconcile_once().await.unwrap(), 0);
+
+    // Forever: excluded in Maintainerr, so it never enters a deletion list.
+    Mock::given(method("POST"))
+        .and(path("/api/rules/exclusion"))
+        .and(body_json(json!({"mediaServerId": "901", "action": 0})))
+        .respond_with(ResponseTemplate::new(201))
+        .expect(1)
+        .mount(&e.maint)
+        .await;
+    let (_, item) = e
+        .call(
+            "PUT",
+            "/v1/votes/901",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"kind": "keep_forever"})),
+        )
+        .await;
+    assert_eq!(item["protection"], "forever");
+    assert_eq!(item["listed"], false);
+    assert_eq!(e.state.reconcile_once().await.unwrap(), 1);
+    let (_, list) = e
+        .call("GET", "/v1/leaving-soon", "jfsrv", "jf-bob", None)
+        .await;
+    assert!(listed(&list), "a kept title shows with the other kept ones");
+    // A sync (the title still in no collection) changes nothing.
+    e.state.sync().await.unwrap();
+    assert_eq!(e.state.reconcile_once().await.unwrap(), 0);
+
+    // On Maintainerr's own server the id is the same: checked with Maintainerr, no search.
+    Mock::given(method("GET"))
+        .and(path("/api/media-server/meta/950"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!(
+            {"id": "950", "title": "Dreamland", "type": "show", "year": 2024,
+             "providerIds": {"tvdb": ["5"]}}
+        )))
+        .mount(&e.maint)
+        .await;
+    let (s, item) = e
+        .call(
+            "POST",
+            "/v1/keep-entry",
+            "plexsrv",
+            "px-friend",
+            Some(json!({"item_id": "950", "kind": "show", "title": "Dreamland"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{item}");
+    assert_eq!(
+        (&item["key"], &item["title"]),
+        (&json!("950"), &json!("Dreamland"))
+    );
+    // An episode, or a title that isn't in that library: refused.
+    let (s, _) = e
+        .call(
+            "POST",
+            "/v1/keep-entry",
+            "plexsrv",
+            "px-friend",
+            Some(json!({"item_id": "950", "kind": "episode", "title": "x"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    Mock::given(method("GET"))
+        .and(path("/api/media-server/search/Nowhere"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&e.maint)
+        .await;
+    let (s, _) = e
+        .call(
+            "POST",
+            "/v1/keep-entry",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"item_id": "jf-x", "kind": "movie", "title": "Nowhere", "tmdb_id": "1"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    e.maint.verify().await;
+}
+
+#[tokio::test]
 async fn admin_rights_limit_keeps() {
     let e = env().await;
     e.state.sync().await.unwrap();

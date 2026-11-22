@@ -217,10 +217,12 @@ impl State {
             Protection::Forever
         } else if desired.until_watched {
             Protection::UntilWatched
-        } else if desired
-            .extend_until
-            .is_some_and(|e| row.deletion_date.is_none_or(|d| e > d))
+        } else if (row.in_collection || row.deletion_date.is_some())
+            && desired
+                .extend_until
+                .is_some_and(|e| row.deletion_date.is_none_or(|d| e > d))
         {
+            // (A title in no list has no date to extend: its "keep N days" waits for one.)
             Protection::Extended
         } else {
             Protection::None
@@ -251,6 +253,7 @@ impl State {
             protection,
             my_vote: mine,
             counts: desired.counts.clone(),
+            listed: row.in_collection,
         }
     }
 
@@ -258,7 +261,10 @@ impl State {
     /// protected items last.
     pub async fn leaving_soon(&self, who: &Identity) -> Result<Vec<LeavingItem>, String> {
         let now = now();
-        let items = self.db.visible_items().map_err(|e| e.to_string())?;
+        let items = self
+            .db
+            .visible_items(&who.user_key)
+            .map_err(|e| e.to_string())?;
         let votes = self.db.votes().map_err(|e| e.to_string())?;
         let mut by_item: HashMap<&str, Vec<&crate::db::VoteRow>> = HashMap::new();
         for v in &votes {
@@ -287,12 +293,83 @@ impl State {
         Ok(out)
     }
 
+    /// One item as the caller sees it (also one that Leaving soon doesn't list: a title kept
+    /// ahead of any deletion list, or one the caller doesn't care about).
     pub async fn item_for(&self, who: &Identity, key: &str) -> Result<LeavingItem, String> {
-        self.leaving_soon(who)
-            .await?
-            .into_iter()
-            .find(|i| i.key == key)
-            .ok_or_else(|| "not found".into())
+        let row = self
+            .db
+            .item(key)
+            .map_err(|e| e.to_string())?
+            .ok_or("not found")?;
+        let votes = self.db.votes().map_err(|e| e.to_string())?;
+        let vs: Vec<&crate::db::VoteRow> = votes.iter().filter(|v| v.item_key == key).collect();
+        let desired = Desired::from_votes(vs.iter().copied(), now());
+        let mine = vs
+            .iter()
+            .find(|v| v.user_key == who.user_key && v.fulfilled_at.is_none())
+            .map(|v| v.vote.clone());
+        let on_my_server = self.mapper(who).await.map(&row);
+        Ok(self.item_view(&row, &desired, mine, on_my_server))
+    }
+
+    /// The keep entry of a movie or show that is in no deletion list, so it can be kept
+    /// before it gets there. The title is found on the server Maintainerr manages: by its id
+    /// when the caller uses that server, else by its TMDB/TVDB id among the titles of that name.
+    pub async fn keep_entry(
+        &self,
+        who: &Identity,
+        req: &keep_service::TitleLookup,
+    ) -> Result<LeavingItem, VoteError> {
+        let invalid = |m: &str| VoteError::Invalid(m.into());
+        let internal = |e: String| VoteError::Invalid(e);
+        if req.kind != "movie" && req.kind != "show" {
+            return Err(invalid("only movies and shows can be kept"));
+        }
+        let (tmdb, tvdb) = (req.tmdb_id.as_deref(), req.tvdb_id.as_deref());
+        let same_server = who.server_id == self.config.maintainerr.server;
+        let known = if same_server {
+            self.db.item(&req.item_id)
+        } else {
+            self.db.item_by_ids(&req.kind, tmdb, tvdb)
+        }
+        .map_err(|e| internal(e.to_string()))?;
+        let key = match known {
+            Some(row) => row.key,
+            None => {
+                let same = |a: &Option<String>, b: Option<&str>| matches!((a.as_deref(), b), (Some(x), Some(y)) if !y.is_empty() && x == y);
+                let found = if same_server {
+                    self.maintainerr.meta(&req.item_id).await.ok()
+                } else if tmdb.is_none() && tvdb.is_none() {
+                    None
+                } else {
+                    self.maintainerr
+                        .search(&req.title)
+                        .await
+                        .map_err(|e| internal(e.to_string()))?
+                        .into_iter()
+                        .find(|m| {
+                            m.kind == req.kind && (same(&m.tmdb_id, tmdb) || same(&m.tvdb_id, tvdb))
+                        })
+                }
+                .filter(|m| m.kind == req.kind)
+                .ok_or(VoteError::NotFound)?;
+                self.db
+                    .adopt_item(
+                        &found.id,
+                        &req.kind,
+                        &found.title,
+                        found.year,
+                        found.tmdb_id.as_deref().or(tmdb),
+                        found.tvdb_id.as_deref().or(tvdb),
+                    )
+                    .map_err(|e| internal(e.to_string()))?;
+                found.id
+            }
+        };
+        let mut item = self.item_for(who, &key).await.map_err(internal)?;
+        // The caller's own id for it (the provider-id index may not know a new title yet).
+        item.server_item_id = Some(req.item_id.clone());
+        Ok(item)
     }
 
     // ----- votes ----------------------------------------------------------------------------

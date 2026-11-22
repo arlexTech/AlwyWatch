@@ -212,6 +212,7 @@ Protocol: [keep-protocol.md](keep-protocol.md).
 | `keep_me()` | Rights, admin flag, display name, avatar, `profile_set` |
 | `cached_leaving_soon` / `refresh_leaving_soon(force)`, `keep_triage(limit)` | Most urgent first; triage = not voted yet |
 | `keep_vote(key, VoteRequest)`, `keep_unvote(key)` | Patch the cached list in place |
+| `keep_status_of(Item)`, `keep_entry(Item)` | A title page's keep entry: from the cache (instant, `None` when in no deletion list), or asked from the server for a title in no list, to keep it ahead |
 | `keep_due_reminders(now)` | "Keep until watched" reminders due now (local notifications) |
 | `keep_admin_users()`, `keep_admin_set_rights(user, Rights)`, `keep_admin_countdown(collection, stagger_days)` | Admins only |
 | `keep_admin_forever()` | Who keeps what forever, shared and alone |

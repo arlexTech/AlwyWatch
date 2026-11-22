@@ -75,6 +75,7 @@ server accordingly. Missing (older servers): both true.
 | GET | `/v1/triage?limit=N` | user | → `[LeavingItem]` not voted on yet and not protected (swipe mode; default 20, max 200) |
 | PUT | `/v1/votes/{key}` | user | `VoteRequest` → `LeavingItem` (replaces the caller's vote) |
 | DELETE | `/v1/votes/{key}` | user | → `LeavingItem` |
+| POST | `/v1/keep-entry` | user | `TitleLookup` → `LeavingItem` of a movie or show that is in no deletion list, to vote on it ahead (see below); 404 when the library Maintainerr manages doesn't have it |
 | GET | `/v1/admin/users` | admin | → `[AdminUser]` |
 | PUT | `/v1/admin/users/{user_key}/rights` | admin | `Rights` → `AdminUser` |
 | PUT | `/v1/admin/users/{user_key}/seerr` | admin | `SeerrLinkRequest` → `AdminUser` |
@@ -114,7 +115,26 @@ item played by that user (polled every 15 minutes, webhooks wake it earlier).
 `poster_url`, `tmdb_id`, `tvdb_id`, `server_item_id` (the same item on the caller's server,
 matched by provider ids for the other server type), `collection_*`, `deletion_date`,
 `effective_deletion_date` (null when protected), `protection`
-(`none`/`extended`/`until_watched`/`forever`), `my_vote` and `counts`.
+(`none`/`extended`/`until_watched`/`forever`), `my_vote`, `counts` and `listed` (in a
+deletion list right now).
+
+#### Keeping a title before it is in a list
+
+A title's page offers the same choices when the title is in no deletion list. The client sends
+`TitleLookup` (`item_id` on the caller's server, `kind` `movie`/`show`, `title`, `tmdb_id`,
+`tvdb_id`); the server finds the title on the server Maintainerr manages: by `item_id` when the
+caller uses that server (checked with Maintainerr's `GET /api/media-server/meta/{id}`), else by
+TMDB/TVDB id among `GET /api/media-server/search/{title}`. It remembers the item and answers its
+`LeavingItem` (`listed: false`, no date), whose `key` takes votes like any other.
+
+- *Forever* and *until watched* add the usual global exclusion, so the title never enters a list.
+- *Keep N days* has nothing to postpone yet: `protection` stays `none`; if the title gets into a
+  list before the N days are over, its date is pushed to then.
+- *I don't care* is recorded.
+
+`/v1/leaving-soon` lists such a title once someone keeps it, and to its voter whatever the
+choice (for the title's page). The apps' Leaving soon lists show only what is `listed` or kept
+(forever / until watched).
 
 ### Rights
 

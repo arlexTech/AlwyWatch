@@ -37,6 +37,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/leaving-soon", get(leaving_soon))
         .route("/v1/triage", get(triage))
         .route("/v1/votes/{key}", put(vote).delete(unvote))
+        .route("/v1/keep-entry", post(keep_entry))
         .route("/v1/admin/users", get(admin_users))
         .route("/v1/admin/users/{user}/rights", put(admin_rights))
         .route("/v1/admin/users/{user}/seerr", put(admin_link_seerr))
@@ -1064,6 +1065,22 @@ async fn vote(
 ) -> Result<impl IntoResponse, Error> {
     s.vote(&id, &key, &req).map_err(vote_err)?;
     Ok(Json(s.item_for(&id, &key).await.map_err(internal)?))
+}
+
+async fn keep_entry(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Json(req): Json<keep_service::TitleLookup>,
+) -> Result<impl IntoResponse, Error> {
+    Ok(Json(s.keep_entry(&id, &req).await.map_err(
+        |e| match e {
+            VoteError::NotFound => Error(
+                StatusCode::NOT_FOUND,
+                "this title isn't in the library that deletions are managed for".into(),
+            ),
+            other => vote_err(other),
+        },
+    )?))
 }
 
 async fn unvote(

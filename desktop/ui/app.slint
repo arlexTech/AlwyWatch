@@ -71,9 +71,14 @@ export struct Detail {
 export struct KeepPanel {
     /// The keep server is connected and the list was loaded at least once.
     shown: bool,
-    /// In a deletion list (else nothing more than the title and the note).
+    /// Something is planned for it or someone keeps it (else: in no deletion list).
     listed: bool,
+    /// Empty until the server was asked for the entry of a title in no list ("Keep it").
     key: string,
+    /// Asking the server for that entry.
+    looking: bool,
+    /// Why it couldn't be found.
+    error: string,
     /// "Kept forever", "Leaves in 12 days", "Not scheduled for deletion"…
     title: string,
     /// Muted line: which list, why nothing happens yet, who keeps it.
@@ -1462,6 +1467,7 @@ export component AppWindow inherits Window {
     callback keep-disconnect();
     callback account-sign-out();
     callback keep-vote(string, string); // key, choice
+    callback keep-look-up(); // the title page's title, in no deletion list
     callback watch-together(string); // item: a new room (lobby) with it
     callback together-open(string); // room code: join an invitation, or open my room
     callback together-decline(string); // room code: "Not now"
@@ -1880,20 +1886,28 @@ export component AppWindow inherits Window {
                                             Icon { source: @image-url("icons/hourglass_bottom.svg"); tint: root.detail-keep.listed ? Palette.accent : Palette.muted; width: 20px; height: 20px; y: (parent.height - self.height) / 2; }
                                             Text { text: root.detail-keep.title; color: Palette.text; font-size: 16px; font-weight: 700; vertical-alignment: center; }
                                         }
-                                        if !root.detail-keep.listed : Text { text: "It is in none of the server's deletion lists."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
-                                        if root.detail-keep.listed && root.detail-keep.detail != "" : Text { text: root.detail-keep.detail; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
-                                        if root.detail-keep.listed : Text { text: root.detail-keep.choice; color: Palette.text; font-size: 14px; wrap: word-wrap; }
-                                        if root.detail-keep.listed && root.leaving-open != root.detail-keep.key : HorizontalLayout {
+                                        if !root.detail-keep.listed : Text { text: "It is in none of the server's deletion lists. What you choose now counts if it gets into one."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                        if root.detail-keep.detail != "" : Text { text: root.detail-keep.detail; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                        Text { text: root.detail-keep.choice; color: Palette.text; font-size: 14px; wrap: word-wrap; }
+                                        if root.detail-keep.key == "" || root.leaving-open != root.detail-keep.key : HorizontalLayout {
                                             alignment: start;
                                             padding-top: 6px;
                                             Button {
-                                                label: root.detail-keep.voted ? "Change my choice" : "Keep it";
+                                                label: root.detail-keep.looking ? "Looking it up…" : root.detail-keep.voted ? "Change my choice" : "Keep it";
                                                 has-icon: true;
                                                 icon: @image-url("icons/schedule.svg");
-                                                clicked => { root.leaving-open = root.detail-keep.key; }
+                                                // A title in no list: its entry comes from the server first.
+                                                clicked => {
+                                                    if root.detail-keep.key != "" {
+                                                        root.leaving-open = root.detail-keep.key;
+                                                    } else if !root.detail-keep.looking {
+                                                        root.keep-look-up();
+                                                    }
+                                                }
                                             }
                                         }
-                                        if root.detail-keep.listed && root.leaving-open == root.detail-keep.key : KeepChoices {
+                                        if root.detail-keep.error != "" : Text { text: root.detail-keep.error; color: Palette.danger; font-size: 13px; wrap: word-wrap; }
+                                        if root.detail-keep.key != "" && root.leaving-open == root.detail-keep.key : KeepChoices {
                                             padding-top: 6px;
                                             key: root.detail-keep.key;
                                             voted: root.detail-keep.voted;

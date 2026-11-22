@@ -2456,11 +2456,17 @@ impl Core {
         if let Ok(Some(mut c)) = self.store.cache_get::<Vec<LeavingItem>>(LEAVING_KEY) {
             if let Some(slot) = c.value.iter_mut().find(|i| i.key == item.key) {
                 *slot = item.clone();
+            } else {
+                // A title in no deletion list, looked up or voted on from its page: kept here
+                // for that page (the lists leave it out unless it is kept).
+                c.value.push(item.clone());
             }
             let _ = self.store.cache_put(LEAVING_KEY, &c.value);
         }
     }
 }
+
+use keep_service::leaving_or_kept;
 
 #[uniffi::export]
 impl AlwyWatch {
@@ -2806,11 +2812,42 @@ impl AlwyWatch {
 
     /// Leaving soon, most urgent first (cached, instant).
     pub fn cached_leaving_soon(&self) -> Result<Option<Vec<LeavingItem>>> {
+        Ok(self.leaving_cache()?.map(leaving_or_kept))
+    }
+
+    /// Everything the server answered: also the titles with a choice of mine that are in no
+    /// deletion list (the lists leave them out, a title's page shows the choice).
+    fn leaving_cache(&self) -> Result<Option<Vec<LeavingItem>>> {
         Ok(self
             .core
             .store
             .cache_get::<Vec<LeavingItem>>(LEAVING_KEY)?
             .map(|c| c.value))
+    }
+
+    /// The keep entry of a movie or show that is in no deletion list (asked from the server,
+    /// which finds it in the library deletions are managed for), to keep it ahead with
+    /// [`Self::keep_vote`]. From then on [`Self::keep_status_of`] knows it. Not found there:
+    /// `NotFound`.
+    pub async fn keep_entry(&self, item: Item) -> Result<LeavingItem> {
+        self.run(|c| async move {
+            let title = keep_service::TitleLookup {
+                kind: match item.kind {
+                    ItemKind::Movie => "movie",
+                    ItemKind::Series => "show",
+                    _ => "other",
+                }
+                .into(),
+                item_id: item.id,
+                title: item.title,
+                tmdb_id: item.provider_ids.tmdb,
+                tvdb_id: item.provider_ids.tvdb,
+            };
+            let entry = c.keep()?.keep_entry(&title).await?;
+            c.keep_patch(&entry);
+            Ok(entry)
+        })
+        .await
     }
 
     /// The keep status of a movie or show page (from the cached Leaving soon list, instant).
@@ -2821,7 +2858,7 @@ impl AlwyWatch {
             ItemKind::Series => "show",
             _ => return None,
         };
-        let list = self.cached_leaving_soon().ok().flatten()?;
+        let list = self.leaving_cache().ok().flatten()?;
         keep_service::leaving_entry(
             &list,
             &item.id,
@@ -2840,7 +2877,7 @@ impl AlwyWatch {
                     Ok(client.leaving_soon().await?)
                 })
                 .await?;
-            Ok(v)
+            Ok(leaving_or_kept(v))
         })
         .await
     }

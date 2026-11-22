@@ -622,7 +622,7 @@ fun DetailScreen(
                             }
                         }
                         if (keepOn && keepKnown) {
-                            KeepPanel(keepEntry) { keepEntry = it }
+                            KeepPanel(item.id, keepEntry, { core.keepEntry(item) }) { keepEntry = it }
                         }
                         // "Directed by …", like Plex.
                         people
@@ -1512,14 +1512,20 @@ private suspend fun awaitSeerr(core: be.alwyapps.watch.core.AlwyWatch): Boolean 
 
 /**
  * The title's keep policy (Leaving soon) and my own choice, with the keep choices on demand.
- * [entry] null: in no deletion list.
+ * [entry] null: in no deletion list and no choice of mine. It can be kept all the same, ahead
+ * of any list: [lookUp] asks the server for its entry when the choices are opened.
  */
 @Composable
 private fun KeepPanel(
+    itemId: String,
     entry: be.alwyapps.watch.core.keep.LeavingItem?,
-    onVoted: (be.alwyapps.watch.core.keep.LeavingItem) -> Unit,
+    lookUp: suspend () -> be.alwyapps.watch.core.keep.LeavingItem,
+    onEntry: (be.alwyapps.watch.core.keep.LeavingItem) -> Unit,
 ) {
-    var choosing by remember(entry?.key) { mutableStateOf(false) }
+    var choosing by remember(itemId) { mutableStateOf(false) }
+    var looking by remember(itemId) { mutableStateOf(false) }
+    var error by remember(itemId) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     // Closing the choices (Back or a choice made) puts the focus back on the keep button.
     val keepButton =
         remember {
@@ -1527,6 +1533,8 @@ private fun KeepPanel(
                 .FocusRequester()
         }
     var refocus by remember { mutableStateOf(false) }
+    // In no list, and nobody keeps it: nothing is planned for it.
+    val unplanned = entry == null || (!entry.listed && entry.protection == be.alwyapps.watch.core.keep.Protection.NONE)
     Column(
         Modifier
             .fillMaxWidth()
@@ -1535,23 +1543,26 @@ private fun KeepPanel(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.Hourglass, null, Modifier.size(20.dp), tint = if (entry == null) Muted else be.alwyapps.watch.ui.Accent)
-            Text(entry?.let { keepPolicy(it) } ?: "Not scheduled for deletion", style = MaterialTheme.typography.titleSmall)
+            Icon(Icons.Hourglass, null, Modifier.size(20.dp), tint = if (unplanned) Muted else be.alwyapps.watch.ui.Accent)
+            Text(if (unplanned || entry == null) "Not scheduled for deletion" else keepPolicy(entry), style = MaterialTheme.typography.titleSmall)
         }
-        if (entry == null) {
-            Text("It is in none of the server's deletion lists.", color = Muted, style = MaterialTheme.typography.bodySmall)
-            return@Column
+        if (unplanned) {
+            Text(
+                "It is in none of the server's deletion lists. What you choose now counts if it gets into one.",
+                color = Muted,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
-        keepDetail(entry)?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
-        Text(entry.voteLabel() ?: "You haven't chosen anything", style = MaterialTheme.typography.bodyMedium)
-        if (choosing) {
+        entry?.let { e -> keepDetail(e)?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) } }
+        Text(entry?.voteLabel() ?: "You haven't chosen anything", style = MaterialTheme.typography.bodyMedium)
+        if (choosing && entry != null) {
             val first =
                 remember {
                     androidx.compose.ui.focus
                         .FocusRequester()
                 }
             KeepActions(entry, {
-                onVoted(it)
+                onEntry(it)
                 choosing = false
                 refocus = true
             }, Modifier.padding(top = 6.dp), firstFocus = first)
@@ -1562,11 +1573,39 @@ private fun KeepPanel(
             }
         } else {
             ActionButton(
-                if (entry.myVote == null) "Keep it" else "Change my choice",
-                { choosing = true },
+                when {
+                    looking -> "Looking it up…"
+                    entry?.myVote == null -> "Keep it"
+                    else -> "Change my choice"
+                },
+                {
+                    if (entry != null) {
+                        choosing = true
+                    } else if (!looking) {
+                        // Not in the Leaving soon list: its entry comes from the server.
+                        looking = true
+                        scope.launch {
+                            try {
+                                onEntry(lookUp())
+                                error = null
+                                choosing = true
+                            } catch (e: be.alwyapps.watch.core.CoreException) {
+                                error =
+                                    if (e is be.alwyapps.watch.core.CoreException.NotFound) {
+                                        "This title isn't in the library that deletions are managed for."
+                                    } else {
+                                        e.message
+                                    }
+                            } finally {
+                                looking = false
+                            }
+                        }
+                    }
+                },
                 Modifier.padding(top = 6.dp).focusRequester(keepButton),
                 icon = Icons.Schedule,
             )
+            error?.let { Text(it, color = be.alwyapps.watch.ui.Danger, style = MaterialTheme.typography.bodySmall) }
             LaunchedEffect(refocus) {
                 if (refocus) {
                     runCatching { keepButton.requestFocus() }
@@ -1592,9 +1631,10 @@ private fun keepPolicy(e: be.alwyapps.watch.core.keep.LeavingItem): String =
 /** Which list it is in and why nothing happens yet, plus who keeps it. */
 private fun keepDetail(e: be.alwyapps.watch.core.keep.LeavingItem): String? {
     val parts = mutableListOf<String>()
-    e.collectionTitle?.let { parts += "In “$it”" }
-    if (e.protection == be.alwyapps.watch.core.keep.Protection.NONE && !e.collectionActive) parts += "deletion isn't turned on yet"
-    e.effectiveDeletionDate?.takeIf { !e.paused() }?.let {
+    // (A title taken out of its list by a keep still remembers which one it was in.)
+    if (e.listed) e.collectionTitle?.let { parts += "In “$it”" }
+    if (e.listed && e.protection == be.alwyapps.watch.core.keep.Protection.NONE && !e.collectionActive) parts += "deletion isn't turned on yet"
+    e.effectiveDeletionDate?.takeIf { e.listed && !e.paused() }?.let {
         parts += "date " +
             java.text.DateFormat
                 .getDateInstance(java.text.DateFormat.MEDIUM)

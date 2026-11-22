@@ -1268,16 +1268,20 @@ impl Db {
     }
 
     /// Items to show: everything in a Maintainerr collection plus anything someone still keeps.
-    pub fn visible_items(&self) -> rusqlite::Result<Vec<ItemRow>> {
+    /// What Leaving soon answers to `user`: the titles in a deletion list, those someone
+    /// keeps, and those with a choice of their own (also "I don't care" on a title in no list:
+    /// its page shows the choice).
+    pub fn visible_items(&self, user: &str) -> rusqlite::Result<Vec<ItemRow>> {
         let c = self.c();
         let mut st = c.prepare(
             "SELECT key, collection_id, collection_title, collection_active, in_collection, title, year, kind, poster,
                     tmdb, tvdb, deletion_date, meta_at
              FROM items i
              WHERE in_collection = 1 OR EXISTS (
-                SELECT 1 FROM votes v WHERE v.item_key = i.key AND v.fulfilled_at IS NULL AND v.kind != 'dont_care')",
+                SELECT 1 FROM votes v WHERE v.item_key = i.key AND v.fulfilled_at IS NULL
+                  AND (v.kind != 'dont_care' OR v.user_key = ?1))",
         )?;
-        st.query_map([], row_item)?.collect()
+        st.query_map([user], row_item)?.collect()
     }
 
     pub fn item(&self, key: &str) -> rusqlite::Result<Option<ItemRow>> {
@@ -1289,6 +1293,60 @@ impl Db {
                 row_item,
             )
             .optional()
+    }
+
+    /// The item of a title known by its provider ids (TVDB first for shows, like the mapper).
+    pub fn item_by_ids(
+        &self,
+        kind: &str,
+        tmdb: Option<&str>,
+        tvdb: Option<&str>,
+    ) -> rusqlite::Result<Option<ItemRow>> {
+        let by = |column: &str, id: Option<&str>| -> rusqlite::Result<Option<ItemRow>> {
+            let Some(id) = id.filter(|v| !v.is_empty()) else {
+                return Ok(None);
+            };
+            self.c()
+                .query_row(
+                    &format!(
+                        "SELECT key, collection_id, collection_title, collection_active, in_collection, title, year, kind, poster,
+                                tmdb, tvdb, deletion_date, meta_at FROM items WHERE kind = ?1 AND {column} = ?2
+                         ORDER BY in_collection DESC LIMIT 1"
+                    ),
+                    params![kind, id],
+                    row_item,
+                )
+                .optional()
+        };
+        let (first, second) = if kind == "show" {
+            (("tvdb", tvdb), ("tmdb", tmdb))
+        } else {
+            (("tmdb", tmdb), ("tvdb", tvdb))
+        };
+        match by(first.0, first.1)? {
+            Some(row) => Ok(Some(row)),
+            None => by(second.0, second.1),
+        }
+    }
+
+    /// Remembers a library title that is in no collection, so it can be voted on. An item
+    /// already known is left as it is.
+    pub fn adopt_item(
+        &self,
+        key: &str,
+        kind: &str,
+        title: &str,
+        year: Option<i32>,
+        tmdb: Option<&str>,
+        tvdb: Option<&str>,
+    ) -> rusqlite::Result<()> {
+        self.c().execute(
+            "INSERT INTO items(key, in_collection, collection_active, title, year, kind, tmdb, tvdb, meta_at, last_seen)
+             VALUES (?1, 0, 0, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+             ON CONFLICT(key) DO NOTHING",
+            params![key, title, year, kind, tmdb, tvdb, now()],
+        )?;
+        Ok(())
     }
 
     // ----- votes ----------------------------------------------------------------------------

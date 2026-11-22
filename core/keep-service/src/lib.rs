@@ -139,6 +139,28 @@ record! {
         pub protection: Protection,
         pub my_vote: Option<MyVote>,
         pub counts: VoteCounts,
+        /// In a deletion list right now. False for a title kept before it got into one (or
+        /// taken out of its list by a keep): nothing is scheduled for it.
+        #[serde(default = "yes")]
+        pub listed: bool,
+    }
+}
+
+fn yes() -> bool {
+    true
+}
+
+record! {
+    /// A movie or show as the caller's server knows it, to keep it while it is in no deletion
+    /// list (`POST /v1/keep-entry`).
+    pub struct TitleLookup {
+        /// Its id on the caller's server.
+        pub item_id: String,
+        /// "movie" | "show"
+        pub kind: String,
+        pub title: String,
+        pub tmdb_id: Option<String>,
+        pub tvdb_id: Option<String>,
     }
 }
 
@@ -975,6 +997,11 @@ impl KeepClient {
         .await
     }
 
+    /// The keep entry of a title that is in no deletion list, to vote on it.
+    pub async fn keep_entry(&self, title: &TitleLookup) -> Result<LeavingItem> {
+        net::send_json(self.req(Method::POST, "/keep-entry").json(title)).await
+    }
+
     pub async fn unvote(&self, key: &str) -> Result<LeavingItem> {
         net::send_json(self.req(
             Method::DELETE,
@@ -1059,6 +1086,17 @@ pub fn leaving_entry<'a>(
         })
 }
 
+/// What the Leaving soon lists show: titles in a deletion list, and the kept ones. A title in
+/// no list with only "a while" or "I don't care" on it is neither leaving nor kept (the
+/// server sends it for its own page).
+pub fn leaving_or_kept(list: Vec<LeavingItem>) -> Vec<LeavingItem> {
+    list.into_iter()
+        .filter(|i| {
+            i.listed || matches!(i.protection, Protection::Forever | Protection::UntilWatched)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod leaving_entry_tests {
     use super::*;
@@ -1081,6 +1119,7 @@ mod leaving_entry_tests {
             protection: Protection::None,
             my_vote: None,
             counts: VoteCounts::default(),
+            listed: true,
         }
     }
 

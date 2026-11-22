@@ -264,6 +264,47 @@ impl Maintainerr {
         })
     }
 
+    /// Library titles matching a text (`GET /api/media-server/search/{query}`): ids, titles and
+    /// provider ids, to find the item of a title known by its TMDB/TVDB id.
+    pub async fn search(&self, query: &str) -> Result<Vec<Meta>> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct M {
+            id: serde_json::Value,
+            #[serde(default)]
+            title: String,
+            #[serde(default)]
+            year: Option<i32>,
+            #[serde(rename = "type", default)]
+            kind: String,
+            #[serde(default)]
+            provider_ids: std::collections::HashMap<String, Vec<String>>,
+        }
+        let list: Vec<M> = net::send_json(self.req(
+            Method::GET,
+            &format!("/api/media-server/search/{}", net::percent_encode(query)),
+        ))
+        .await?;
+        Ok(list
+            .into_iter()
+            .map(|m| {
+                let first = |k: &str| m.provider_ids.get(k).and_then(|v| v.first()).cloned();
+                Meta {
+                    id: match &m.id {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    },
+                    tmdb_id: first("tmdb"),
+                    tvdb_id: first("tvdb"),
+                    imdb_id: first("imdb"),
+                    title: m.title,
+                    year: m.year,
+                    kind: m.kind,
+                }
+            })
+            .collect())
+    }
+
     /// Children of an item (seasons of a show, episodes of a season), ordered by index.
     pub async fn children(&self, media_server_id: &str) -> Result<Vec<(String, i64)>> {
         #[derive(Deserialize)]

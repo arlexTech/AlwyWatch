@@ -49,7 +49,9 @@ fn mine(i: &LeavingItem) -> Option<&'static str> {
 
 #[component]
 pub fn Leaving() -> impl IntoView {
-    let items = RwSignal::new(state::load::<Vec<LeavingItem>>(state::LEAVING));
+    let items = RwSignal::new(
+        state::load::<Vec<LeavingItem>>(state::LEAVING).map(keep_service::leaving_or_kept),
+    );
     let error = RwSignal::new(None::<String>);
     let filter = RwSignal::new("all");
     // A long list (a thousand titles is common): a first screenful, more on request.
@@ -65,7 +67,7 @@ pub fn Leaving() -> impl IntoView {
             match k.leaving_soon().await {
                 Ok(l) => {
                     state::save(state::LEAVING, &l);
-                    items.try_set(Some(l));
+                    items.try_set(Some(keep_service::leaving_or_kept(l)));
                 }
                 Err(e) => {
                     error.try_set(Some(state::plain_keep(&e)));
@@ -212,13 +214,15 @@ fn keep_policy(e: &LeavingItem, now: i64) -> String {
 /// Which list it is in and why nothing happens yet, plus who keeps it (`date` formats a day).
 fn keep_detail(e: &LeavingItem, now: i64, date: impl Fn(i64) -> String) -> String {
     let mut parts = vec![];
-    if let Some(t) = &e.collection_title {
+    // (A title taken out of its list by a keep still remembers which one it was in.)
+    if let Some(t) = e.collection_title.as_ref().filter(|_| e.listed) {
         parts.push(format!("In “{t}”"));
     }
-    if e.protection == Protection::None && !e.collection_active {
+    if e.listed && e.protection == Protection::None && !e.collection_active {
         parts.push("deletion isn't turned on yet".to_owned());
     }
     if let Some(d) = e.effective_deletion_date
+        && e.listed
         && !paused(e, now)
     {
         parts.push(format!("date {}", date(d)));
@@ -252,6 +256,10 @@ fn medium_date(ts: i64) -> String {
     String::from(d.to_locale_date_string("default", &o))
 }
 
+/// Under "Not scheduled for deletion": a title can be kept ahead of any list.
+const UNPLANNED: &str =
+    "It is in none of the server's deletion lists. What you choose now counts if it gets into one.";
+
 /// A movie or show page: where it stands in Leaving soon, my choice, the keep choices on
 /// demand. Shown once the list has been loaded (kept in the browser), then refreshed.
 #[component]
@@ -281,14 +289,60 @@ pub fn KeepPanel(item: media_api::Item) -> impl IntoView {
     let on_voted = Callback::new(move |updated: LeavingItem| {
         list.update(|l| {
             if let Some(l) = l {
-                if let Some(x) = l.iter_mut().find(|x| x.key == updated.key) {
-                    *x = updated;
+                match l.iter_mut().find(|x| x.key == updated.key) {
+                    Some(x) => *x = updated,
+                    // A title in no deletion list, kept from here.
+                    None => l.push(updated),
                 }
                 state::save(state::LEAVING, l);
             }
         });
         choosing.set(false);
     });
+    // In no list: "Keep it" asks the server for the title's entry first.
+    let looking = RwSignal::new(false);
+    let lookup_error = RwSignal::new(None::<String>);
+    let title = keep_service::TitleLookup {
+        item_id: item.id.clone(),
+        kind: kind.into(),
+        title: item.title.clone(),
+        tmdb_id: item.provider_ids.tmdb.clone(),
+        tvdb_id: item.provider_ids.tvdb.clone(),
+    };
+    let look_up = move || {
+        if looking.get_untracked() {
+            return;
+        }
+        let Some(k) = state::ctx().keep_client() else {
+            return lookup_error.set(Some(NO_KEEP.into()));
+        };
+        looking.set(true);
+        let title = title.clone();
+        spawn_local(async move {
+            match k.keep_entry(&title).await {
+                Ok(e) => {
+                    lookup_error.try_set(None);
+                    list.try_update(|l| {
+                        if let Some(l) = l
+                            && !l.iter().any(|x| x.key == e.key)
+                        {
+                            l.push(e);
+                        }
+                    });
+                    choosing.try_set(true);
+                }
+                Err(net::Error::NotFound) => {
+                    lookup_error.try_set(Some(
+                        "This title isn't in the library that deletions are managed for.".into(),
+                    ));
+                }
+                Err(e) => {
+                    lookup_error.try_set(Some(state::plain_keep(&e)));
+                }
+            }
+            looking.try_set(false);
+        });
+    };
     let (id, tmdb, tvdb) = (
         item.id.clone(),
         item.provider_ids.tmdb.clone(),
@@ -305,18 +359,29 @@ pub fn KeepPanel(item: media_api::Item) -> impl IntoView {
         {move || entry.get().map(|e| {
             let now = now_s();
             let Some(e) = e else {
+                let look_up = look_up.clone();
                 return view! {
                     <section class="keep-panel">
                         <h3>"Not scheduled for deletion"</h3>
-                        <p class="muted small">"It is in none of the server's deletion lists."</p>
+                        <p class="muted small">{UNPLANNED}</p>
+                        <p>"You haven't chosen anything"</p>
+                        <div class="actions">
+                            <button class="small" disabled=move || looking.get() on:click=move |_| look_up()>
+                                {move || if looking.get() { "Looking it up…" } else { "Keep it" }}
+                            </button>
+                        </div>
+                        {move || lookup_error.get().map(|m| view! { <p class="error small">{m}</p> })}
                     </section>
                 }.into_any();
             };
             let detail = keep_detail(&e, now, medium_date);
             let voted = e.my_vote.is_some();
+            // In no list and nobody keeps it: nothing is planned for it.
+            let planned = e.listed || e.protection != Protection::None;
             view! {
-                <section class="keep-panel listed">
-                    <h3>{keep_policy(&e, now)}</h3>
+                <section class="keep-panel" class:listed=planned>
+                    <h3>{if planned { keep_policy(&e, now) } else { "Not scheduled for deletion".into() }}</h3>
+                    {(!planned).then(|| view! { <p class="muted small">{UNPLANNED}</p> })}
                     {(!detail.is_empty()).then(|| view! { <p class="muted small">{detail}</p> })}
                     <p>{mine(&e).unwrap_or("You haven't chosen anything")}</p>
                     {move || if choosing.get() {
@@ -857,6 +922,7 @@ mod tests {
             protection,
             my_vote: None,
             counts: Default::default(),
+            listed: true,
         }
     }
 
