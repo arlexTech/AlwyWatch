@@ -381,6 +381,7 @@ fun RequestsGroup(
             Divider()
             ListRow("Stop using Seerr", icon = Icons.Close, iconTint = Danger, onClick = {
                 core.seerrSignOut()
+                core.setSetting(be.alwyapps.watch.SEERR_OFF, "1")
                 ctx.services.tokens.remove("seerr")
                 onChanged()
             })

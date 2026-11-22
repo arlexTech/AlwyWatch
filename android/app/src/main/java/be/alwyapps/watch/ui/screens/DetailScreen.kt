@@ -10,7 +10,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -266,10 +265,19 @@ fun DetailScreen(
             ?.providerIds
             ?.tmdb
             ?.toLongOrNull()
-    val seerrOn = remember { runCatching { core.seerrActive() }.getOrDefault(false) }
     var seerrSeasons by remember(itemId) { mutableStateOf<List<be.alwyapps.watch.core.seerr.SeerrSeasonInfo>?>(null) }
-    if (seerrOn && showTmdb != null) {
-        LaunchedEffect(showTmdb) { seerrSeasons = runCatching { core.seerrSeasonInfo(showTmdb) }.getOrNull() }
+    if (showTmdb != null) {
+        LaunchedEffect(showTmdb) {
+            // Seerr may connect a moment after start (through the AlwyWatch server): look again
+            // for a few seconds before giving up on the button.
+            repeat(10) {
+                if (runCatching { core.seerrActive() }.getOrDefault(false)) {
+                    seerrSeasons = runCatching { core.seerrSeasonInfo(showTmdb) }.getOrNull()
+                    return@LaunchedEffect
+                }
+                kotlinx.coroutines.delay(1_000)
+            }
+        }
     }
     val haveSeasons = seasonList.mapNotNull { it.seasonNumber }
     val canRequestMore =
@@ -282,6 +290,7 @@ fun DetailScreen(
             } == true
         }
     var requestingSeasons by remember { mutableStateOf(false) }
+    val moreDirect = remember { booleanArrayOf(false) }
     val moreFocus =
         remember {
             androidx.compose.ui.focus
@@ -324,7 +333,11 @@ fun DetailScreen(
                         .seasonPlan(latest, haveSeasons)
                         .missing
                         .isNotEmpty()
-                scope.launch { runCatching { (if (left) moreFocus else seasonMarkFocus).requestFocus() } }
+                scope.launch {
+                    if (left) moreDirect[0] = true
+                    runCatching { (if (left) moreFocus else seasonMarkFocus).requestFocus() }
+                    moreDirect[0] = false
+                }
             }
         }
     }
@@ -550,7 +563,7 @@ fun DetailScreen(
                     ) {
                         item.overview?.let { Overview(item.title, it) }
                         if (item.genres.isNotEmpty()) {
-                            FlowRow(
+                            androidx.compose.foundation.layout.FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
@@ -580,6 +593,7 @@ fun DetailScreen(
                             markFocus = seasonMarkFocus,
                             onMore = if (canRequestMore) ({ requestingSeasons = true }) else null,
                             moreFocus = moreFocus,
+                            direct = moreDirect,
                         ) { pickedSeason = it.id }
                     }
                     item(key = "eps-top") { Spacer(Modifier.height(7.dp)) }
@@ -1301,6 +1315,8 @@ private fun SeasonPicker(
     /** "More seasons" (Seerr): only when some season can be requested. */
     onMore: (() -> Unit)?,
     moreFocus: androidx.compose.ui.focus.FocusRequester,
+    /** Set just before [moreFocus] is asked for the focus: entering the row then keeps it. */
+    direct: BooleanArray,
     onSelected: (Item) -> Unit,
 ) {
     val d = LocalDimens.current
@@ -1316,7 +1332,10 @@ private fun SeasonPicker(
         LazyRow(
             Modifier
                 .focusProperties {
-                    onEnter = { runCatching { selectedChip.requestFocus() } }
+                    onEnter = {
+                        // A request for a chip of its own ("More seasons" after its dialog) is kept.
+                        if (direct[0]) direct[0] = false else runCatching { selectedChip.requestFocus() }
+                    }
                 }.focusGroup(),
             contentPadding = PaddingValues(horizontal = d.gutter),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1333,25 +1352,21 @@ private fun SeasonPicker(
                     onLongClick = { onMark(s) },
                 )
             }
+            if (onMore != null) {
+                item(key = "more") {
+                    ActionButton("More seasons", onMore, Modifier.focusRequester(moreFocus), icon = Icons.Add)
+                }
+            }
         }
         // The same as the long press, visible and in words, for the season shown: its own line
         // under the seasons (a lone ✓ next to them read as one more season, or as "selected").
-        // "More seasons" sits here too, always in sight: at the end of the season row it was off
-        // screen on a phone as soon as a show had a few seasons.
-        FlowRow(
-            Modifier.padding(start = d.gutter, end = d.gutter, top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        Row(Modifier.padding(start = d.gutter, end = d.gutter, top = 10.dp)) {
             ActionButton(
                 "Mark ${selected.title} watched or unwatched",
                 { onMark(selected) },
                 Modifier.focusRequester(markFocus),
                 icon = Icons.Check,
             )
-            if (onMore != null) {
-                ActionButton("More seasons", onMore, Modifier.focusRequester(moreFocus), icon = Icons.Add)
-            }
         }
     }
 }

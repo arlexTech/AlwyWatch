@@ -59,6 +59,7 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
 
     fun finish(s: SeerrSignedIn) {
         ctx.services.tokens.put("seerr", s.cookie)
+        core.setSetting(be.alwyapps.watch.SEERR_OFF, "0")
         onDone()
     }
 
@@ -94,6 +95,7 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                     onClick = {
                         attempt {
                             core.seerrConnectBridge()
+                            core.setSetting(be.alwyapps.watch.SEERR_OFF, "0")
                             onDone()
                         }
                     },

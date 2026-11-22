@@ -32,6 +32,9 @@ class AlwyWatchApp : Application() {
 
 val Context.services: Services get() = (applicationContext as AlwyWatchApp).services
 
+/** Set when the user chose "Stop using Seerr": the app then doesn't reconnect it on its own. */
+const val SEERR_OFF = "seerr.off"
+
 /** Process-wide singletons, created lazily. Nothing here touches the network at startup. */
 class Services(
     private val app: Application,
@@ -73,6 +76,18 @@ class Services(
                 // Enumerating codecs takes tens of ms: do it now, off the main thread.
                 be.alwyapps.watch.player.DeviceProfiles
                     .get(app)
+                // Seerr through the AlwyWatch server when it isn't set up yet: connecting the server
+                // only tried once, silently, so a phone could stay without requests ("More
+                // seasons" never showed). Not after the user chose "Stop using Seerr".
+                if (core.seerrConnection() == null &&
+                    core.keepConnection() != null &&
+                    core.getSetting(SEERR_OFF) != "1"
+                ) {
+                    runCatching {
+                        be.alwyapps.watch.ui.screens
+                            .connectSeerrThroughKeep(core, app)
+                    }
+                }
             }
             scope.launch { SettingsSync.run(core) }
             core
