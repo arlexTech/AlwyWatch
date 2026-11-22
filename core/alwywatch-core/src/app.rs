@@ -2696,6 +2696,38 @@ impl AlwyWatch {
         self.run(|c| async move { Ok(c.keep()?.me().await?) }).await
     }
 
+    /// The sign-ins (Plex user, Jellyfin user…) that are my one AlwyWatch account; a single
+    /// entry means nothing is linked. See `docs/identity-apps.md`.
+    pub async fn keep_links(&self) -> Result<Vec<LinkedIdentity>> {
+        self.run(|c| async move { Ok(c.keep()?.links().await?) })
+            .await
+    }
+
+    /// Makes another account signed in on this device (`account_id`, with the same token the
+    /// app would give `keep_connect` for it: the plex.tv token for Plex) part of my AlwyWatch
+    /// account: both sign-ins then share name, avatar, votes and rooms. Cannot be undone as
+    /// such (unlinking starts that sign-in over, empty). Read `keep_me` again afterwards.
+    pub async fn keep_link(
+        &self,
+        account_id: String,
+        token: String,
+    ) -> Result<Vec<LinkedIdentity>> {
+        let account = self
+            .accounts()?
+            .into_iter()
+            .find(|a| a.id == account_id)
+            .ok_or(CoreError::NotFound)?;
+        self.run(|c| async move { Ok(c.keep()?.link(&account.server_id, &token).await?) })
+            .await
+    }
+
+    /// Takes a sign-in out of my AlwyWatch account (not the main one): it becomes an
+    /// account of its own again, empty.
+    pub async fn keep_unlink(&self, user_key: String) -> Result<Vec<LinkedIdentity>> {
+        self.run(|c| async move { Ok(c.keep()?.unlink(&user_key).await?) })
+            .await
+    }
+
     /// Leaving soon, most urgent first (cached, instant).
     pub fn cached_leaving_soon(&self) -> Result<Option<Vec<LeavingItem>>> {
         Ok(self

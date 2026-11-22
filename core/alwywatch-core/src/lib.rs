@@ -27,6 +27,7 @@ pub use app::*;
 pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
 pub use error::{CoreError, Result};
 pub use history::{HistoryChange, HistoryCopyResult, HistoryPlan, HistoryProgress};
+pub use keep_service::identity::LinkedIdentity;
 pub use keep_service::together::{
     TogetherCreate, TogetherInvite, TogetherInvitee, TogetherJoined, TogetherMedia, TogetherMember,
     TogetherPerson, TogetherRoom, TogetherRooms, TogetherState, TogetherUpdate,
