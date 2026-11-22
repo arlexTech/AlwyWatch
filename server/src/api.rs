@@ -51,6 +51,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/together", get(together_rooms).post(together_create))
         .route("/v1/together/wait", get(together_rooms_wait))
         .route("/v1/together/people", get(together_people))
+        .route("/v1/together/clock", get(together_clock))
         .route("/v1/together/{code}", put(together_update))
         .route("/v1/together/{code}/invites", post(together_invite))
         .route(
@@ -59,6 +60,7 @@ pub fn router(state: Shared) -> Router {
         )
         .route("/v1/together/{code}/join", post(together_join))
         .route("/v1/together/{code}/wait", get(together_wait))
+        .route("/v1/together/{code}/ready", post(together_ready))
         .route(
             "/v1/together/{code}/members/{member}",
             axum::routing::delete(together_leave),
@@ -413,6 +415,27 @@ async fn together_update(
         .map_err(together_error)?;
     record_met(&s, &met);
     Ok(Json(state))
+}
+
+/// The server clock, for the apps' clock sync (no sign-in: it says nothing but the time).
+async fn together_clock() -> Json<keep_service::together::TogetherClock> {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    Json(keep_service::together::TogetherClock { now_ms })
+}
+
+async fn together_ready(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(code): Path<String>,
+    Json(r): Json<keep_service::together::TogetherReady>,
+) -> Result<Json<keep_service::together::TogetherState>, Error> {
+    s.rooms
+        .ready(&code, &r.member_id, &id.user_key, r.round)
+        .map(Json)
+        .map_err(together_error)
 }
 
 #[derive(Deserialize)]

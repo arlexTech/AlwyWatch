@@ -597,6 +597,7 @@ impl Room {
                     position_ms,
                     media,
                     started: false,
+                    lobby: false,
                 };
                 match k.together_update(&code, &update).await {
                     Ok(s) if self.is(&code) => {
@@ -1435,6 +1436,9 @@ mod tests {
             position_ms: 60_000,
             at_ms: 1_000,
             now_ms: 1_000,
+            round: 0,
+            loading: vec![],
+            ready_by_ms: 0,
             by: by.into(),
             members: vec![member("a", "Ann"), member("b", "Bob")],
             host: "a".into(),

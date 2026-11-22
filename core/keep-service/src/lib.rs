@@ -538,7 +538,55 @@ impl KeepClient {
                 position_ms,
                 media: None,
                 started: true,
+                lobby: false,
             },
+        )
+        .await
+    }
+
+    /// The host takes the room back to the waiting room (nothing plays, everyone stays).
+    pub async fn together_lobby(
+        &self,
+        code: &str,
+        member: &str,
+        position_ms: u64,
+    ) -> Result<together::TogetherState> {
+        self.together_update(
+            code,
+            &together::TogetherUpdate {
+                member_id: member.to_owned(),
+                playing: false,
+                position_ms,
+                media: None,
+                started: false,
+                lobby: true,
+            },
+        )
+        .await
+    }
+
+    /// This seat has loaded the title of `round` (the start waits for every seat).
+    pub async fn together_ready(
+        &self,
+        code: &str,
+        ready: &together::TogetherReady,
+    ) -> Result<together::TogetherState> {
+        net::send_json(
+            self.req(
+                Method::POST,
+                &format!("/together/{}/ready", net::percent_encode(code)),
+            )
+            .json(ready),
+        )
+        .await
+    }
+
+    /// The server clock (no sign-in needed), for [`together::ClockSync`]: measure the round
+    /// trip around this call.
+    pub async fn together_clock(&self) -> Result<together::TogetherClock> {
+        net::send_json(
+            self.req(Method::GET, "/together/clock")
+                .timeout(std::time::Duration::from_secs(5)),
         )
         .await
     }

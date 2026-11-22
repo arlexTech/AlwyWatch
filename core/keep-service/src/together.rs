@@ -25,7 +25,11 @@
 //! - `POST /v1/together/{code}/join` (invited user, or a member's other device) →
 //!   [`TogetherJoined`].
 //! - `PUT /v1/together/{code}` with [`TogetherUpdate`] → [`TogetherState`] (`started: true`
-//!   from the host starts a lobby).
+//!   from the host starts the waiting room, `lobby: true` takes it back there).
+//! - `POST /v1/together/{code}/ready` with [`TogetherReady`] → [`TogetherState`]: this seat
+//!   has loaded the round's title (see [`TogetherState::loading`]).
+//! - `GET /v1/together/clock` → [`TogetherClock`] (no sign-in): the server clock, for
+//!   [`ClockSync`].
 //! - `GET /v1/together/{code}/wait?after={seq}&member={id}` → [`TogetherState`], as soon as
 //!   `seq` is past `after` or after about 25 s (it doubles as the member's heartbeat).
 //! - `DELETE /v1/together/{code}/members/{id}` → 204.
@@ -47,6 +51,14 @@ macro_rules! record {
 
 /// How long `wait` (and the room list's `wait`) holds a request without change.
 pub const WAIT_SECS: u64 = 25;
+
+/// How much of the title a player loads ahead before it reports ready (or the whole title,
+/// when shorter): the start then plays without anyone stalling.
+pub const READY_BUFFER_MS: u64 = 5_000;
+/// The longest a start waits for slow seats (they catch up after).
+pub const READY_TIMEOUT_MS: i64 = 20_000;
+/// Once everyone is ready, playback starts this long after (every seat hears it before).
+pub const START_LEAD_MS: i64 = 1_000;
 
 record! {
     /// A title, as every server can find it.
@@ -125,14 +137,26 @@ record! {
         /// Bumped on every change (playback, title, members, invitations, start).
         pub seq: u64,
         pub media: TogetherMedia,
-        /// False while the room is a lobby; set once by the host, never goes back.
+        /// False while the room is a waiting room: at first, and whenever the host goes back to
+        /// it (to pick another title; everyone stays in the room).
         #[serde(default)]
         pub started: bool,
-        /// Always false in a lobby.
+        /// Always false in a waiting room and while [`TogetherState::loading`] is not empty.
         pub playing: bool,
-        /// Position at `at_ms` (server clock, Unix ms).
+        /// Position at `at_ms` (server clock, Unix ms). `at_ms` may be a little in the future
+        /// (a start everyone hears first): until then the position stays put.
         pub position_ms: u64,
         pub at_ms: i64,
+        /// Bumped each time a title starts (the start, another title): `ready` names it.
+        #[serde(default)]
+        pub round: u64,
+        /// Seats still loading this round's title. Nothing plays until each one is ready (or
+        /// until `ready_by_ms`); then the room plays from `at_ms`, for everyone at once.
+        #[serde(default)]
+        pub loading: Vec<String>,
+        /// Server clock when the start goes ahead without the seats still loading.
+        #[serde(default)]
+        pub ready_by_ms: i64,
         /// Server clock when this answer was made (to estimate the offset).
         pub now_ms: i64,
         /// Member who made the last change (empty when it was the server: joins, leaves,
@@ -241,16 +265,73 @@ record! {
         pub position_ms: u64,
         /// A new title (next episode, another movie).
         pub media: Option<TogetherMedia>,
-        /// True: start the lobby (host only). False changes nothing (a room never goes back).
+        /// True: start the waiting room (host only). False changes nothing.
         #[serde(default)]
         pub started: bool,
+        /// True (host only): back to the waiting room. Nothing plays, everyone stays; the host
+        /// may then change the title and start again.
+        #[serde(default)]
+        pub lobby: bool,
+    }
+}
+
+record! {
+    /// This seat's player has loaded [`READY_BUFFER_MS`] of the title of `round`.
+    pub struct TogetherReady {
+        pub member_id: String,
+        pub round: u64,
+    }
+}
+
+record! {
+    pub struct TogetherClock {
+        /// Server clock (Unix ms) when the answer was made.
+        pub now_ms: i64,
+    }
+}
+
+/// The server clock seen from a device, from round trips to `GET /v1/together/clock`: the
+/// offset of the quickest round trip (its answer was made in the middle of it, within half of
+/// it), so every seat agrees on "now" within a few milliseconds. Send a few samples in a row,
+/// again every couple of minutes (device clocks drift).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ClockSync {
+    /// (round trip, offset) of the latest samples.
+    samples: Vec<(i64, i64)>,
+}
+
+impl ClockSync {
+    const KEEP: usize = 8;
+
+    /// One round trip: sent and received on the local clock, `server_ms` from the answer.
+    pub fn add(&mut self, sent_ms: i64, server_ms: i64, received_ms: i64) {
+        let rtt = (received_ms - sent_ms).max(0);
+        self.samples.push((rtt, server_ms - (sent_ms + rtt / 2)));
+        if self.samples.len() > Self::KEEP {
+            self.samples.remove(0);
+        }
+    }
+
+    /// Server clock minus local clock (None before the first sample).
+    pub fn offset(&self) -> Option<i64> {
+        self.samples.iter().min_by_key(|(rtt, _)| *rtt).map(|s| s.1)
+    }
+
+    /// The quickest round trip (how precise the offset is: within half of it).
+    pub fn best_rtt(&self) -> Option<i64> {
+        self.samples.iter().map(|s| s.0).min()
+    }
+
+    /// Server clock now, from the local clock.
+    pub fn server_now(&self, local_ms: i64) -> Option<i64> {
+        self.offset().map(|o| local_ms + o)
     }
 }
 
 /// How a member's player follows the room, decided every half second or so: small drifts are
 /// absorbed by playing slightly faster or slower (pitch kept, not noticeable), large ones by a
-/// seek. Hysteresis keeps the rate from flapping: correcting starts past 120 ms and stops
-/// under 40 ms.
+/// seek. Hysteresis keeps the rate from flapping: correcting starts past 60 ms and stops
+/// under 20 ms (well under a frame at 24 fps, with the clocks synced by [`ClockSync`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TogetherCorrection {
@@ -302,7 +383,7 @@ pub fn together_correction(
         return seek;
     }
     let correcting = (current_rate - 1.0).abs() > 0.001;
-    let threshold = if correcting { 40 } else { 120 };
+    let threshold = if correcting { 20 } else { 60 };
     if !can_change_rate || drift.unsigned_abs() <= threshold {
         return steady;
     }
@@ -322,6 +403,17 @@ pub fn together_correction(
 }
 
 impl TogetherState {
+    /// Whether `member_id` still has to load this round's title (then report
+    /// [`TogetherReady`]).
+    pub fn is_loading(&self, member_id: &str) -> bool {
+        self.loading.iter().any(|m| m == member_id)
+    }
+
+    /// How long until a start everyone heard plays (None: not waiting for one).
+    pub fn starts_in(&self, server_now_ms: i64) -> Option<i64> {
+        (self.playing && self.at_ms > server_now_ms).then(|| self.at_ms - server_now_ms)
+    }
+
     /// Where playback should be now, on the server clock (`server_now_ms`).
     pub fn position_at(&self, server_now_ms: i64) -> u64 {
         if !self.playing {
@@ -376,6 +468,9 @@ mod tests {
             position_ms: 10_000,
             at_ms: 1_000,
             now_ms: 1_000,
+            round: 1,
+            loading: vec![],
+            ready_by_ms: 0,
             by: String::new(),
             members: vec![],
             host: String::new(),
@@ -412,7 +507,7 @@ mod tests {
     #[test]
     fn small_drift_changes_speed_large_drift_seeks() {
         // In step: nothing.
-        let c = together_correction(10_000, 10_080, true, 1.0, true);
+        let c = together_correction(10_000, 10_050, true, 1.0, true);
         assert_eq!((c.seek_to_ms, c.rate), (None, 1.0));
         // 500 ms ahead: slower, no seek.
         let c = together_correction(10_000, 10_500, true, 1.0, true);
@@ -425,10 +520,10 @@ mod tests {
             together_correction(10_000, 13_000, true, 1.0, true).seek_to_ms,
             Some(10_000)
         );
-        // Correcting: keeps going until within 40 ms, then back to normal.
-        assert!(together_correction(10_000, 10_090, true, 0.98, true).rate < 1.0);
+        // Correcting: keeps going until within 20 ms, then back to normal.
+        assert!(together_correction(10_000, 10_040, true, 0.98, true).rate < 1.0);
         assert_eq!(
-            together_correction(10_000, 10_030, true, 0.98, true).rate,
+            together_correction(10_000, 10_015, true, 0.98, true).rate,
             1.0
         );
     }
@@ -456,11 +551,38 @@ mod tests {
     }
 
     #[test]
+    fn a_start_in_the_future_holds_the_position() {
+        let mut s = state();
+        s.at_ms = 5_000;
+        assert_eq!(s.position_at(4_000), 10_000);
+        assert_eq!(s.starts_in(4_000), Some(1_000));
+        assert_eq!(s.starts_in(5_000), None);
+        assert_eq!(s.position_at(5_500), 10_500);
+    }
+
+    #[test]
+    fn the_quickest_round_trip_sets_the_clock() {
+        let mut c = ClockSync::default();
+        assert_eq!(c.server_now(0), None);
+        // Server 1000 ms ahead; a slow trip with its answer late in it, then a quick one.
+        c.add(0, 1_300, 400);
+        c.add(1_000, 2_010, 1_020);
+        assert_eq!(c.offset(), Some(1_000));
+        assert_eq!(c.best_rtt(), Some(20));
+        assert_eq!(c.server_now(5_000), Some(6_000));
+        // Only the latest samples count.
+        for i in 0..10 {
+            c.add(10_000 + i, 10_500 + i, 10_100 + i);
+        }
+        assert_eq!(c.offset(), Some(450));
+    }
+
+    #[test]
     fn updates_without_started_do_not_start() {
         let u: TogetherUpdate = serde_json::from_str(
             r#"{"member_id":"a","playing":true,"position_ms":3,"media":null}"#,
         )
         .unwrap();
-        assert!(!u.started);
+        assert!(!u.started && !u.lobby);
     }
 }

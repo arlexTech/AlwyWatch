@@ -240,6 +240,8 @@ pub struct Core {
     pub(crate) history: Mutex<crate::history::HistoryProgress>,
     /// Bumped by each synced setting change: only the last of a burst pushes them.
     pub(crate) settings_gen: std::sync::atomic::AtomicU64,
+    /// Watch together: the AlwyWatch server's clock seen from here, and when it was measured.
+    together_clock: Mutex<(keep_service::together::ClockSync, Option<Instant>)>,
 }
 
 impl Core {
@@ -978,6 +980,7 @@ impl AlwyWatch {
                 plex_tv: RwLock::new(HashMap::new()),
                 history: Mutex::new(Default::default()),
                 settings_gen: std::sync::atomic::AtomicU64::new(0),
+                together_clock: Mutex::new(Default::default()),
             }),
             rt,
         }))
@@ -3220,6 +3223,32 @@ pub fn together_position(state: TogetherState, received_at_ms: i64, now_ms: i64)
     state.position_at(state.now_ms + (now_ms - received_at_ms).max(0))
 }
 
+/// Where playback should be at `server_now_ms` (from [`AlwyWatch::together_now_ms`]).
+#[uniffi::export]
+pub fn together_position_at(state: TogetherState, server_now_ms: i64) -> u64 {
+    state.position_at(server_now_ms)
+}
+
+/// How long until a start everyone heard plays (None: not waiting for one). Keep the player
+/// paused at the position until then, and press play right then.
+#[uniffi::export]
+pub fn together_starts_in(state: TogetherState, server_now_ms: i64) -> Option<i64> {
+    state.starts_in(server_now_ms)
+}
+
+/// Whether this seat still has to load the round's title: load it paused, and once
+/// [`together_ready_buffer_ms`] of it is buffered call [`AlwyWatch::together_ready`].
+#[uniffi::export]
+pub fn together_is_loading(state: TogetherState, member_id: String) -> bool {
+    state.is_loading(&member_id)
+}
+
+/// How much a player buffers before it reports ready.
+#[uniffi::export]
+pub fn together_ready_buffer_ms() -> u64 {
+    keep_service::together::READY_BUFFER_MS
+}
+
 /// How the player should follow the room now (speed or seek), see
 /// [`keep_service::together::together_correction`].
 #[uniffi::export]
@@ -3271,7 +3300,68 @@ pub fn together_is_host(state: TogetherState, member_id: String) -> bool {
     state.is_host(&member_id)
 }
 
+/// Local monotonic clock (ms) for the clock sync.
+fn mono_ms() -> i64 {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as i64
+}
+
+/// Resync the server clock this often (device clocks drift by a few ms a minute).
+const CLOCK_RESYNC: Duration = Duration::from_secs(120);
+
 impl Core {
+    /// The server clock now: measured, else this device's own clock.
+    pub(crate) fn together_now(&self) -> i64 {
+        let measured = self
+            .together_clock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .0
+            .server_now(mono_ms());
+        measured.unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0)
+        })
+    }
+
+    /// A few quick round trips to the server clock; the best round trip (ms).
+    pub(crate) async fn together_sync_clock(&self) -> Result<i64> {
+        let keep = self.keep()?;
+        let mut sync = keep_service::together::ClockSync::default();
+        for _ in 0..5 {
+            let sent = mono_ms();
+            let Ok(c) = keep.together_clock().await else {
+                continue;
+            };
+            sync.add(sent, c.now_ms, mono_ms());
+        }
+        let Some(rtt) = sync.best_rtt() else {
+            return Err(CoreError::Network {
+                detail: "the AlwyWatch server's clock did not answer".into(),
+            });
+        };
+        *self
+            .together_clock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = (sync, Some(Instant::now()));
+        Ok(rtt)
+    }
+
+    /// Measures the clock when it never was or a while ago (errors: the device clock is used).
+    async fn together_clock_fresh(&self) {
+        let stale = self
+            .together_clock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .1
+            .is_none_or(|t| t.elapsed() > CLOCK_RESYNC);
+        if stale {
+            let _ = self.together_sync_clock().await;
+        }
+    }
+
     /// A title as every server can find it (an episode carries its show's ids).
     async fn together_media(&self, account_id: &str, item_id: &str) -> Result<TogetherMedia> {
         let srv = self.server(account_id)?;
@@ -3437,8 +3527,11 @@ impl AlwyWatch {
     /// Joins a room I am invited to (or already in on another device): my seat and the room.
     /// Open the Room screen when `state.started` is false, the player in sync otherwise.
     pub async fn together_join(&self, code: String) -> Result<TogetherJoined> {
-        self.run(|c| async move { Ok(c.keep()?.together_join(&code).await?) })
-            .await
+        self.run(|c| async move {
+            c.together_clock_fresh().await;
+            Ok(c.keep()?.together_join(&code).await?)
+        })
+        .await
     }
 
     /// "Not now" on an invitation: it goes away (the host sees it).
@@ -3488,11 +3581,53 @@ impl AlwyWatch {
                         position_ms,
                         media,
                         started: false,
+                        lobby: false,
                     },
                 )
                 .await?)
         })
         .await
+    }
+
+    /// The host leaves the player: back to the waiting room for everyone (nobody leaves; the
+    /// others' players close). The host may then pick another title and start again.
+    pub async fn together_lobby(
+        &self,
+        code: String,
+        member_id: String,
+        position_ms: u64,
+    ) -> Result<TogetherState> {
+        self.run(|c| async move {
+            Ok(c.keep()?
+                .together_lobby(&code, &member_id, position_ms)
+                .await?)
+        })
+        .await
+    }
+
+    /// This seat's player has loaded the title of `round` (see [`together_is_loading`]). When
+    /// every seat has, the room plays for everyone at once.
+    pub async fn together_ready(
+        &self,
+        code: String,
+        member_id: String,
+        round: u64,
+    ) -> Result<TogetherState> {
+        self.run(|c| async move {
+            Ok(c.keep()?
+                .together_ready(
+                    &code,
+                    &keep_service::together::TogetherReady { member_id, round },
+                )
+                .await?)
+        })
+        .await
+    }
+
+    /// The AlwyWatch server's clock now (Unix ms), as measured from this device within a few
+    /// milliseconds (the room calls keep it measured): where every seat agrees playback is.
+    pub fn together_now_ms(&self) -> i64 {
+        self.core.together_now()
     }
 
     /// The room after `after` changed, or after about 25 s. Call it in a loop while in the room
@@ -3503,8 +3638,11 @@ impl AlwyWatch {
         member_id: String,
         after: u64,
     ) -> Result<TogetherState> {
-        self.run(|c| async move { Ok(c.keep()?.together_wait(&code, &member_id, after).await?) })
-            .await
+        self.run(|c| async move {
+            c.together_clock_fresh().await;
+            Ok(c.keep()?.together_wait(&code, &member_id, after).await?)
+        })
+        .await
     }
 
     /// Leaves the room for good (coming back needs a new invitation, unless another of my
@@ -3607,6 +3745,9 @@ mod together_tests {
             rights: Default::default(),
             at_ms: 1_000_000,
             now_ms: 1_000_500,
+            round: 1,
+            loading: vec![],
+            ready_by_ms: 0,
             by: String::new(),
             members: vec![],
         };

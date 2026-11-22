@@ -1914,7 +1914,14 @@ impl App {
                 let model = self.state.borrow().grid_model.clone();
                 model.set_vec(vec![]);
                 let badges = self.home_accounts().len() > 1;
-                self.fill(&model, &items, ImageKind::SeriesPrimary, POSTER_PX, 0, badges);
+                self.fill(
+                    &model,
+                    &items,
+                    ImageKind::SeriesPrimary,
+                    POSTER_PX,
+                    0,
+                    badges,
+                );
             }
             Route::Recent(library, title) => {
                 ui.set_page(Page::Library);
@@ -2163,7 +2170,12 @@ impl App {
         let mut keys: HashMap<String, String> = home
             .latest
             .iter()
-            .map(|r| (format!("New in {}", r.library.title), format!("lib:{}", r.library.id)))
+            .map(|r| {
+                (
+                    format!("New in {}", r.library.title),
+                    format!("lib:{}", r.library.id),
+                )
+            })
             .collect();
         keys.insert("Continue watching".into(), "continue".into());
         self.keep_notes(home.latest.iter().flat_map(|r| &r.notes));
@@ -4651,10 +4663,7 @@ impl App {
                 "leaving" => a.navigate(Route::Leaving),
                 k => {
                     if let Some(lib) = k.strip_prefix("lib:") {
-                        let name = title
-                            .strip_prefix("New in ")
-                            .unwrap_or(&title)
-                            .to_owned();
+                        let name = title.strip_prefix("New in ").unwrap_or(&title).to_owned();
                         a.navigate(Route::Recent(lib.to_owned(), name));
                     }
                 }

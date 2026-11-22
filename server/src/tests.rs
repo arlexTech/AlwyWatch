@@ -1168,6 +1168,7 @@ async fn watch_together_rooms_are_private_and_joined_by_invitation() {
             StatusCode::FORBIDDEN
         );
     }
+    let mut last_ready = json!(null);
     // Bob's other device joins without an invitation.
     let (s, b2) = e
         .call(
@@ -1192,15 +1193,46 @@ async fn watch_together_rooms_are_private_and_joined_by_invitation() {
         )
         .await;
     assert_eq!(s, StatusCode::OK);
+    // Nothing plays until every seat has loaded the title.
     assert_eq!(
-        (&st["started"], &st["playing"]),
-        (&json!(true), &json!(true))
+        (&st["started"], &st["playing"], &st["round"]),
+        (&json!(true), &json!(false), &json!(1))
     );
+    assert_eq!(st["loading"].as_array().unwrap().len(), 3);
     let wait = format!("/v1/together/{code}/wait?after={seq}&member={friend}");
     let (s, st) = e.call("GET", &wait, "plexsrv", "px-friend", None).await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(st["started"], true);
     assert_eq!(st["by"], b2["member_id"]);
+    let ready = format!("/v1/together/{code}/ready");
+    for (srv, tok, seat) in [
+        ("plexsrv", "px-friend", &friend),
+        ("jfsrv", "jf-bob", &bob),
+        (
+            "jfsrv",
+            "jf-bob",
+            &b2["member_id"].as_str().unwrap().to_owned(),
+        ),
+    ] {
+        let (s, st) = e
+            .call(
+                "POST",
+                &ready,
+                srv,
+                tok,
+                Some(json!({"member_id": seat, "round": 1})),
+            )
+            .await;
+        assert_eq!(s, StatusCode::OK);
+        last_ready = st;
+    }
+    assert_eq!(last_ready["playing"], true);
+    // The clock, for the apps' sync.
+    let (s, clock) = e
+        .call("GET", "/v1/together/clock", "plexsrv", "px-friend", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(clock["now_ms"].as_i64().unwrap() > 1_700_000_000_000);
     // Started: anyone plays; "started": false does not go back.
     let (s, st) = e
         .call(

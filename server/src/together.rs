@@ -3,7 +3,9 @@
 //!
 //! A room is private: only its members (by user, on any device) and the people its host invited
 //! know it exists; for everyone else every call answers `NotFound`, exactly like an unknown
-//! code. It starts as a lobby (nothing plays, only the host changes it) until the host starts it.
+//! code. It starts as a waiting room (nothing plays, only the host changes it) until the host
+//! starts it, and goes back to one when the host leaves the player: everyone stays in the room
+//! while the host picks the next title. Each title starts once every seat has loaded it.
 
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -12,8 +14,9 @@ use std::time::{Duration, Instant};
 
 use keep_service::Avatar;
 use keep_service::together::{
-    SEEK_TOLERANCE_MS, TogetherCreate, TogetherInvitee, TogetherJoined, TogetherMedia,
-    TogetherMember, TogetherRoom, TogetherRooms, TogetherState, TogetherUpdate, WAIT_SECS,
+    READY_TIMEOUT_MS, SEEK_TOLERANCE_MS, START_LEAD_MS, TogetherCreate, TogetherInvitee,
+    TogetherJoined, TogetherMedia, TogetherMember, TogetherRoom, TogetherRooms, TogetherState,
+    TogetherUpdate, WAIT_SECS,
 };
 use tokio::sync::Notify;
 
@@ -165,6 +168,44 @@ impl Room {
 
     fn is_host_user(&self, user_key: &str) -> bool {
         self.host_user() == Some(user_key)
+    }
+
+    /// A title starts (the start, another title): nothing plays until every seat has loaded
+    /// it (`ready`) or `READY_TIMEOUT_MS` passed.
+    fn begin_round(&mut self, position_ms: u64) {
+        let s = &mut self.state;
+        s.started = true;
+        s.round += 1;
+        s.playing = false;
+        s.position_ms = position_ms;
+        s.at_ms = now_ms();
+        s.loading = self.members.keys().cloned().collect();
+        s.loading.sort();
+        s.ready_by_ms = s.at_ms + READY_TIMEOUT_MS;
+    }
+
+    /// Everyone loaded (or the wait is over): play, a moment from now so every seat starts at
+    /// the same instant.
+    fn go(&mut self) {
+        let s = &mut self.state;
+        s.loading.clear();
+        s.ready_by_ms = 0;
+        s.playing = true;
+        s.at_ms = now_ms() + START_LEAD_MS;
+    }
+
+    /// Starts a round whose wait is over (seats gone, or the deadline); true when it did.
+    fn tick(&mut self) -> bool {
+        if self.state.loading.is_empty() {
+            return false;
+        }
+        let members = &self.members;
+        self.state.loading.retain(|m| members.contains_key(m));
+        if self.state.loading.is_empty() || now_ms() >= self.state.ready_by_ms {
+            self.go();
+            return true;
+        }
+        false
     }
 
     /// Drops members who stopped polling; true when someone was dropped.
@@ -369,7 +410,8 @@ impl Rooms {
     /// Drops silent members and dead rooms (waking whoever should know).
     fn purge(&self, map: &mut HashMap<String, Room>) {
         for r in map.values_mut() {
-            if r.expire_members() {
+            let dropped = r.expire_members();
+            if r.tick() || dropped {
                 r.bump("");
             }
         }
@@ -429,6 +471,9 @@ impl Rooms {
                 position_ms: 0,
                 at_ms: now_ms(),
                 now_ms: 0,
+                round: 0,
+                loading: vec![],
+                ready_by_ms: 0,
                 by: String::new(),
                 members: vec![],
                 host: String::new(),
@@ -594,6 +639,10 @@ impl Rooms {
                 return Err(TogetherError::Full);
             }
             let member_id = room.add_member(name, user_key, avatar);
+            // A start still waiting: it waits for the newcomer too (within the same deadline).
+            if !room.state.loading.is_empty() {
+                room.state.loading.push(member_id.clone());
+            }
             let met = if room.state.started {
                 room.pairs_with(user_key)
             } else {
@@ -610,8 +659,9 @@ impl Rooms {
         })
     }
 
-    /// Play/pause/seek/title. In a lobby only the host changes it (and nothing plays) until
-    /// they send `started`.
+    /// Play/pause/seek/title. In a waiting room only the host changes it (and nothing plays)
+    /// until they send `started`; `lobby` (host) goes back to one. A start or another title
+    /// waits for every seat to load it (`ready`); any other change meanwhile ends the wait.
     pub fn update(
         &self,
         code: &str,
@@ -621,29 +671,77 @@ impl Rooms {
         let mut map = self.lock();
         let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
         room.check(&u.member_id, user_key)?;
+        let host = room.is_host_user(user_key);
         let mut met = vec![];
-        if !room.state.started {
-            if !room.is_host_user(user_key) {
+        let new_title = u
+            .media
+            .as_ref()
+            .is_some_and(|m| clean_media(m.clone()) != room.state.media);
+        if u.lobby {
+            if !host {
                 return Err(TogetherError::Forbidden);
             }
-            room.state.started = u.started;
-            room.state.playing = u.started && u.playing;
+            let s = &mut room.state;
+            s.started = false;
+            s.playing = false;
+            s.loading.clear();
+            s.ready_by_ms = 0;
+            s.position_ms = u.position_ms;
+            s.at_ms = now_ms();
+        } else if !room.state.started {
+            if !host {
+                return Err(TogetherError::Forbidden);
+            }
             if u.started {
                 met = room.all_pairs();
+                room.begin_round(u.position_ms);
+            } else {
+                room.state.position_ms = u.position_ms;
+                room.state.at_ms = now_ms();
             }
         } else {
-            if !room.is_host_user(user_key) {
+            if !host {
                 room.allowed(&u)?;
             }
-            room.state.playing = u.playing;
+            if new_title {
+                room.begin_round(u.position_ms);
+            } else {
+                let s = &mut room.state;
+                s.loading.clear();
+                s.ready_by_ms = 0;
+                s.playing = u.playing;
+                s.position_ms = u.position_ms;
+                s.at_ms = now_ms();
+            }
         }
-        room.state.position_ms = u.position_ms;
-        room.state.at_ms = now_ms();
         if let Some(m) = u.media {
             room.state.media = clean_media(m);
         }
         room.bump(&u.member_id);
         Ok((room.view(), met))
+    }
+
+    /// This seat has loaded the title of `round`: the last one to do so starts playback for
+    /// everyone. A stale round changes nothing.
+    pub fn ready(
+        &self,
+        code: &str,
+        member: &str,
+        user_key: &str,
+        round: u64,
+    ) -> Result<TogetherState, TogetherError> {
+        let mut map = self.lock();
+        let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
+        room.check(member, user_key)?;
+        let s = &mut room.state;
+        if round == s.round && s.loading.iter().any(|m| m == member) {
+            s.loading.retain(|m| m != member);
+            if s.loading.is_empty() {
+                room.go();
+            }
+            room.bump("");
+        }
+        Ok(room.view())
     }
 
     /// The room once `seq` passed `after`, or after `WAIT_SECS` (also the member's heartbeat).
@@ -672,17 +770,24 @@ impl Rooms {
         after: u64,
         timeout: Duration,
     ) -> Result<TogetherState, TogetherError> {
-        let changed = {
+        let (changed, ready_by) = {
             let mut map = self.lock();
             let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
             room.check(member, user_key)?;
-            if room.expire_members() {
+            let dropped = room.expire_members();
+            if room.tick() || dropped {
                 room.bump("");
             }
             if room.state.seq > after {
                 return Ok(room.view());
             }
-            room.changed.clone()
+            let ready_by = (!room.state.loading.is_empty()).then_some(room.state.ready_by_ms);
+            (room.changed.clone(), ready_by)
+        };
+        // A start waiting for slow seats goes ahead at its deadline even if nobody calls.
+        let timeout = match ready_by {
+            Some(t) => timeout.min(Duration::from_millis((t - now_ms()).max(0) as u64 + 5)),
+            None => timeout,
         };
         let notified = changed.notified();
         tokio::pin!(notified);
@@ -699,6 +804,9 @@ impl Rooms {
         let mut map = self.lock();
         let room = map.get_mut(code).ok_or(TogetherError::NotFound)?;
         room.check(member, user_key)?;
+        if room.tick() {
+            room.bump("");
+        }
         Ok(room.view())
     }
 
@@ -798,7 +906,28 @@ mod tests {
             position_ms,
             media: None,
             started,
+            lobby: false,
         }
+    }
+
+    /// Every seat reports it loaded the current round: the room plays.
+    fn all_ready(rooms: &Rooms, code: &str) -> TogetherState {
+        let (round, seats): (u64, Vec<(String, String)>) = {
+            let map = rooms.lock();
+            let r = &map[code];
+            (
+                r.state.round,
+                r.members
+                    .iter()
+                    .map(|(id, m)| (id.clone(), m.user_key.clone()))
+                    .collect(),
+            )
+        };
+        let mut last = None;
+        for (id, user) in seats {
+            last = Some(rooms.ready(code, &id, &user, round).unwrap());
+        }
+        last.unwrap()
     }
 
     /// Ana (host) invites; the invitee joins.
@@ -966,6 +1095,7 @@ mod tests {
         rooms
             .update(code, upd(&a.member_id, true, 10_000, true), "plex:ana")
             .unwrap();
+        assert!(all_ready(&rooms, code).playing);
         // Bo may not pause, nor change the title; he may move along (playing on).
         let refused = |u| rooms.update(code, u, "jf:bo").map(|_| ());
         assert_eq!(
@@ -1022,7 +1152,7 @@ mod tests {
     }
 
     #[test]
-    fn lobby_belongs_to_the_host_until_started_and_never_goes_back() {
+    fn lobby_belongs_to_the_host_until_started() {
         let rooms = Rooms::default();
         let a = create(&rooms);
         let code = &a.state.code;
@@ -1046,14 +1176,112 @@ mod tests {
         let (s, met) = rooms
             .update(code, upd(&a.member_id, true, 2_000, true), "plex:ana")
             .unwrap();
-        assert!(s.started && s.playing);
+        assert!(s.started && !s.playing && s.loading.len() == 2);
         assert_eq!(met, vec![("jf:bo".to_owned(), "plex:ana".to_owned())]);
+        assert!(all_ready(&rooms, code).playing);
         // Started: anyone plays; `started: false` does not go back.
         let (s, _) = rooms
             .update(code, upd(&b.member_id, false, 3_000, false), "jf:bo")
             .unwrap();
         assert!(s.started && !s.playing);
         assert_eq!(s.by, b.member_id);
+    }
+
+    #[test]
+    fn a_title_plays_once_every_seat_has_loaded_it() {
+        let rooms = Rooms::default();
+        let a = create(&rooms);
+        let code = &a.state.code;
+        let b = invite_in(&rooms, &a, "Bo", "jf:bo");
+        let (s, _) = rooms
+            .update(code, upd(&a.member_id, true, 2_000, true), "plex:ana")
+            .unwrap();
+        assert_eq!((s.round, s.playing, s.loading.len()), (1, false, 2));
+        assert!(s.ready_by_ms > s.now_ms);
+        let s = rooms.ready(code, &a.member_id, "plex:ana", 1).unwrap();
+        assert_eq!(s.loading, vec![b.member_id.clone()]);
+        assert!(!s.playing);
+        // A report for an older round changes nothing.
+        let s = rooms.ready(code, &b.member_id, "jf:bo", 0).unwrap();
+        assert!(!s.playing);
+        let s = rooms.ready(code, &b.member_id, "jf:bo", 1).unwrap();
+        assert!(s.playing && s.loading.is_empty());
+        // Everyone starts together, a moment from now, where the host said.
+        assert!(s.at_ms > s.now_ms);
+        assert_eq!(s.position_at(s.now_ms), 2_000);
+        // Another title: a new round, waiting again.
+        let mut next = upd(&a.member_id, true, 0, false);
+        next.media = Some(media("Up"));
+        let (s, _) = rooms.update(code, next, "plex:ana").unwrap();
+        assert_eq!((s.round, s.playing, s.loading.len()), (2, false, 2));
+        // Play while waiting: no more waiting.
+        let (s, _) = rooms
+            .update(code, upd(&a.member_id, true, 0, false), "plex:ana")
+            .unwrap();
+        assert!(s.playing && s.loading.is_empty());
+    }
+
+    #[tokio::test]
+    async fn slow_seats_do_not_hold_the_start_forever() {
+        let rooms = Rooms::default();
+        let a = create(&rooms);
+        let code = a.state.code.clone();
+        let _b = invite_in(&rooms, &a, "Bo", "jf:bo");
+        rooms
+            .update(&code, upd(&a.member_id, true, 0, true), "plex:ana")
+            .unwrap();
+        let s = rooms.ready(&code, &a.member_id, "plex:ana", 1).unwrap();
+        assert!(!s.playing);
+        // Bo never reports; the deadline comes during Ana's wait, which wakes with the start.
+        rooms.lock().get_mut(&code).unwrap().state.ready_by_ms = now_ms() + 40;
+        let s = rooms
+            .wait_for(
+                &code,
+                &a.member_id,
+                "plex:ana",
+                s.seq,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        assert!(s.playing && s.loading.is_empty());
+    }
+
+    #[test]
+    fn the_host_takes_everyone_back_to_the_waiting_room() {
+        let rooms = Rooms::default();
+        let a = create(&rooms);
+        let code = &a.state.code;
+        let b = invite_in(&rooms, &a, "Bo", "jf:bo");
+        rooms
+            .update(code, upd(&a.member_id, true, 0, true), "plex:ana")
+            .unwrap();
+        all_ready(&rooms, code);
+        let mut back = upd(&b.member_id, false, 9_000, false);
+        back.lobby = true;
+        assert_eq!(
+            rooms.update(code, back.clone(), "jf:bo").map(|_| ()),
+            Err(TogetherError::Forbidden),
+            "only the host"
+        );
+        back.member_id = a.member_id.clone();
+        let (s, _) = rooms.update(code, back, "plex:ana").unwrap();
+        assert!(!s.started && !s.playing);
+        assert_eq!(s.members.len(), 2, "everyone stays");
+        // Another title, then a new start.
+        let mut retitle = upd(&a.member_id, false, 0, false);
+        retitle.media = Some(media("Up"));
+        rooms.update(code, retitle, "plex:ana").unwrap();
+        let (s, _) = rooms
+            .update(code, upd(&a.member_id, true, 0, true), "plex:ana")
+            .unwrap();
+        assert_eq!(
+            (s.started, s.round, s.media.title.as_str()),
+            (true, 2, "Up")
+        );
+        // Someone joining while it loads is waited for too.
+        let c = invite_in(&rooms, &a, "Cy", "jf:cy");
+        assert!(c.state.loading.contains(&c.member_id));
     }
 
     #[test]
