@@ -54,6 +54,13 @@ impl App {
         ui.set_player_note(v.note.into());
         ui.set_player_has_next(v.has_next);
         ui.set_player_has_previous(v.has_previous);
+        ui.set_player_near_end(v.near_end);
+        ui.set_player_ends_at(if v.duration_ms > v.position_ms {
+            crate::localtime::clock_in((v.duration_ms - v.position_ms) / 1000).into()
+        } else {
+            SharedString::default()
+        });
+        ui.set_player_room_label(self.player_room_label().into());
         let label = |list: &[TrackItem]| {
             list.iter()
                 .find(|t| t.selected)

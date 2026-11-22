@@ -4673,6 +4673,8 @@ impl App {
         on!(on_player_cmd, |a, cmd, arg| {
             if cmd == "together" {
                 a.player_watch_together();
+            } else if cmd == "room" {
+                a.room_invite();
             } else {
                 a.player_cmd(&cmd, &arg);
             }

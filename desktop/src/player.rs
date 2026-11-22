@@ -62,6 +62,8 @@ pub struct PlayerView {
     pub note: String,
     pub has_next: bool,
     pub has_previous: bool,
+    /// The credits with a next episode: a "Next episode" button.
+    pub near_end: bool,
     pub audio: Vec<TrackItem>,
     pub subtitles: Vec<TrackItem>,
 }
@@ -641,6 +643,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         }
         let mut view_skip = String::new();
         let mut view_countdown = 0;
+        let mut view_near_end = false;
         // Skip intro / next episode prompts, shared with the other players (core).
         let Some(dur) = last_pos.duration_ms else {
             if let Some(v) = view {
@@ -652,12 +655,14 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                     view_note,
                     view_skip,
                     view_countdown,
+                    view_near_end,
                 );
             }
             continue;
         };
         let pos = last_pos.position_ms;
         let prompt = playback_prompt(req.segments.clone(), pos, Some(dur), req.has_next);
+        view_near_end = prompt.credits && req.has_next;
         if let Some(seg) = &prompt.skip
             && req.auto_skip_intro
             && matches!(seg.kind, SegmentKind::Intro | SegmentKind::Recap)
@@ -700,6 +705,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 view_note,
                 view_skip,
                 view_countdown,
+                view_near_end,
             );
         } else if let Some(t) = text {
             // Refreshed every loop (0.5 s), so it disappears soon after the prompt ends.
@@ -710,6 +716,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
 }
 
 /// Sends what the controls show when it changed.
+#[allow(clippy::too_many_arguments)] // the loop's state, passed as is
 fn push_view(
     m: &Mpv,
     v: &ViewLink,
@@ -718,6 +725,7 @@ fn push_view(
     note: String,
     skip: String,
     countdown: u32,
+    near_end: bool,
 ) {
     let ms = |p: &str| m.get_f64(p).map_or(0, |s| (s.max(0.0) * 1000.0) as u64);
     let position_ms = ms("time-pos");
@@ -782,6 +790,7 @@ fn push_view(
         note,
         has_next: req.has_next,
         has_previous: req.has_previous,
+        near_end,
         audio: tracks("audio"),
         subtitles: tracks("sub"),
     };

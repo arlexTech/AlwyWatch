@@ -914,6 +914,21 @@ impl App {
     }
 
     /// The room's player is closed (another may follow at once: next episode, new title).
+    /// The player's room button: "3 watching" while it plays in a room, else empty.
+    pub(super) fn player_room_label(&self) -> String {
+        let st = self.state.borrow();
+        let Some(r) = st.together.as_ref().filter(|r| r.player_open) else {
+            return String::new();
+        };
+        let Some(s) = r.state.as_ref() else {
+            return String::new();
+        };
+        match group_members(s, "").len() {
+            0 | 1 => "Only you so far".into(),
+            n => format!("{n} watching"),
+        }
+    }
+
     pub(super) fn room_player_gone(&self) {
         if let Some(r) = self.state.borrow_mut().together.as_mut() {
             r.player_open = false;

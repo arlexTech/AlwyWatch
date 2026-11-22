@@ -5,6 +5,7 @@
 mod app;
 mod avatars;
 mod headless;
+mod localtime;
 mod mpv;
 mod platform;
 mod player;
