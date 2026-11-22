@@ -80,6 +80,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
+    // Test hook: print what Seerr says about a show's seasons (the "More seasons" button).
+    if let Ok(tmdb) = std::env::var("ALWYWATCH_PROBE_SEASONS") {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        eprintln!("seerr active: {}", core.seerr_active());
+        let found = rt.block_on(core.seerr_season_info(tmdb.parse().unwrap_or_default()));
+        eprintln!("{found:?}");
+        return Ok(());
+    }
     // Test hook: print each account's "recently added" rows as the home builds them.
     if std::env::var_os("ALWYWATCH_PROBE_HOME").is_some() {
         let rt = tokio::runtime::Builder::new_current_thread()
