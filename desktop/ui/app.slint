@@ -354,24 +354,61 @@ component IconButton inherits Focusable {
 }
 
 // Cast and crew: round photos with name and role, scrolling sideways.
-component CastRow inherits ScrollView {
+// Round arrow at the end of a row (desktop: rows scroll sideways without a scrollbar).
+component RailArrow inherits Rectangle {
+    in property <bool> left;
+    callback clicked;
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+    background: ta.has-hover ? #ffffffee : #000000aa;
+    border-width: 1px;
+    border-color: #ffffff33;
+    Image {
+        source: root.left ? @image-url("icons/chevron_left.svg") : @image-url("icons/chevron_right.svg");
+        width: 26px;
+        height: 26px;
+        colorize: ta.has-hover ? #000 : #fff;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Like the rows: no scrollbar, arrows at the ends when there are more people.
+component CastRow inherits Rectangle {
     in property <[Card]> people;
     height: 150px;
-    content-width: root.people.length * 104px;
-    for c[i] in root.people : VerticalLayout {
-        x: i * 104px;
-        width: 92px;
-        spacing: 4px;
-        Rectangle {
-            width: 76px;
-            height: 76px;
-            border-radius: 38px;
-            clip: true;
-            background: Palette.surface;
-            Image { source: c.image; width: parent.width; height: parent.height; image-fit: cover; }
+    sv := Flickable {
+        content-width: root.people.length * 104px;
+        animate content-x { duration: 250ms; easing: ease-in-out; }
+        for c[i] in root.people : VerticalLayout {
+            x: i * 104px;
+            width: 92px;
+            spacing: 4px;
+            Rectangle {
+                width: 76px;
+                height: 76px;
+                border-radius: 38px;
+                clip: true;
+                background: Palette.surface;
+                Image { source: c.image; width: parent.width; height: parent.height; image-fit: cover; }
+            }
+            Text { text: c.title; color: Palette.text; font-size: 12px; horizontal-alignment: center; wrap: word-wrap; max-height: 32px; overflow: elide; }
+            Text { text: c.subtitle; color: Palette.muted; font-size: 11px; horizontal-alignment: center; overflow: elide; }
         }
-        Text { text: c.title; color: Palette.text; font-size: 12px; horizontal-alignment: center; wrap: word-wrap; max-height: 32px; overflow: elide; }
-        Text { text: c.subtitle; color: Palette.muted; font-size: 11px; horizontal-alignment: center; overflow: elide; }
+    }
+    if sv.content-x < 0 : RailArrow {
+        x: 0;
+        y: 16px;
+        left: true;
+        clicked => { sv.content-x = min(0, sv.content-x + max(104px, sv.width - 104px)); }
+    }
+    if sv.content-x + sv.content-width > sv.width + 1px : RailArrow {
+        x: parent.width - self.width;
+        y: 16px;
+        clicked => { sv.content-x = max(sv.width - sv.content-width, sv.content-x - max(104px, sv.width - 104px)); }
     }
 }
 
@@ -552,36 +589,55 @@ component RailView {
     VerticalLayout {
         spacing: 10px;
         Text { text: root.rail.title; color: Palette.text; font-size: 20px; font-weight: 700; }
-        sv := ScrollView {
+        Rectangle {
             height: root.h + 8px;
-            content-width: root.rail.items.length * root.step + 12px;
-            content-height: root.h + 4px;
-            vertical-scrollbar-policy: always-off;
-            for c[i] in root.rail.items : Rectangle {
-                x: i * root.step + 4px;
-                y: 4px;
-                width: root.step - 16px;
-                height: root.h;
-                if root.rail.landscape : LandscapeCard {
-                    card: c;
-                    clicked => { root.open(c.id); }
-                    focused => {
-                        if (parent.x + sv.content-x < 0) { sv.content-x = -parent.x + 4px; }
-                        if (parent.x + parent.width + sv.content-x > sv.visible-width) { sv.content-x = sv.visible-width - parent.x - parent.width - 4px; }
-                        root.hovered(c.id);
+            // No scrollbar (it covered the second line under the cards): the wheel or trackpad
+            // scrolls, and an arrow at each end moves a screen's worth when there is more.
+            sv := Flickable {
+                content-width: root.rail.items.length * root.step + 12px;
+                content-height: root.h + 4px;
+                animate content-x { duration: 250ms; easing: ease-in-out; }
+                for c[i] in root.rail.items : Rectangle {
+                    x: i * root.step + 4px;
+                    y: 4px;
+                    width: root.step - 16px;
+                    height: root.h;
+                    if root.rail.landscape : LandscapeCard {
+                        card: c;
+                        clicked => { root.open(c.id); }
+                        focused => {
+                            if (parent.x + sv.content-x < 0) { sv.content-x = -parent.x + 4px; }
+                            if (parent.x + parent.width + sv.content-x > sv.width) { sv.content-x = sv.width - parent.x - parent.width - 4px; }
+                            root.hovered(c.id);
+                        }
                     }
-                }
-                if !root.rail.landscape : PosterCard {
-                    card: c;
-                    clicked => { root.open(c.id); }
-                    focused => {
-                        if (parent.x + sv.content-x < 0) { sv.content-x = -parent.x + 4px; }
-                        if (parent.x + parent.width + sv.content-x > sv.visible-width) { sv.content-x = sv.visible-width - parent.x - parent.width - 4px; }
-                        root.hovered(c.id);
+                    if !root.rail.landscape : PosterCard {
+                        card: c;
+                        clicked => { root.open(c.id); }
+                        focused => {
+                            if (parent.x + sv.content-x < 0) { sv.content-x = -parent.x + 4px; }
+                            if (parent.x + parent.width + sv.content-x > sv.width) { sv.content-x = sv.width - parent.x - parent.width - 4px; }
+                            root.hovered(c.id);
+                        }
                     }
                 }
             }
+            if sv.content-x < 0 : RailArrow {
+                x: 0;
+                y: (root.h - self.height) / 2;
+                left: true;
+                clicked => { sv.content-x = min(0, sv.content-x + root.page-step(sv.width)); }
+            }
+            if sv.content-x + sv.content-width > sv.width + 1px : RailArrow {
+                x: parent.width - self.width;
+                y: (root.h - self.height) / 2;
+                clicked => { sv.content-x = max(sv.width - sv.content-width, sv.content-x - root.page-step(sv.width)); }
+            }
         }
+    }
+    // A screen's worth of whole cards, keeping one card of the previous screen in sight.
+    pure function page-step(w: length) -> length {
+        return max(1, floor(w / root.step) - 1) * root.step;
     }
 }
 
