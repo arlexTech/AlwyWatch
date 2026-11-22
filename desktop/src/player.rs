@@ -452,9 +452,18 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 } else {
                     0
                 };
+            // `time-pos` is the shown frame's time: playing, the real position is on average half
+            // a frame later (Android and browsers report a continuous position).
+            let half_frame = if playing {
+                m.get_f64("container-fps")
+                    .filter(|f| *f > 1.0)
+                    .map_or(0.0, |f| 500.0 / f)
+            } else {
+                0.0
+            };
             let actual = m
                 .get_f64("time-pos")
-                .map_or(expected, |s| (s.max(0.0) * 1000.0) as u64);
+                .map_or(expected, |s| (s.max(0.0) * 1000.0 + half_frame) as u64);
             // Passthrough audio can't change speed: seeks only.
             let c =
                 alwywatch_core::together_correction(expected, actual, playing, rate, !req.spdif);
@@ -857,7 +866,12 @@ fn selected(m: &Mpv, prop: &str) -> Option<String> {
 }
 
 fn seek_to(m: &Mpv, ms: u64) {
-    let _ = m.command(&["seek", &format!("{:.3}", ms as f64 / 1000.0), "absolute"]);
+    // Exact: lands on the frame at `ms`, not the keyframe before (rooms compare frames).
+    let _ = m.command(&[
+        "seek",
+        &format!("{:.3}", ms as f64 / 1000.0),
+        "absolute+exact",
+    ]);
 }
 
 fn skip_name(kind: SegmentKind) -> &'static str {

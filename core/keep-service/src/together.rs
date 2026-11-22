@@ -330,8 +330,9 @@ impl ClockSync {
 
 /// How a member's player follows the room, decided every half second or so: small drifts are
 /// absorbed by playing slightly faster or slower (pitch kept, not noticeable), large ones by a
-/// seek. Hysteresis keeps the rate from flapping: correcting starts past 60 ms and stops
-/// under 20 ms (well under a frame at 24 fps, with the clocks synced by [`ClockSync`]).
+/// seek. Hysteresis keeps the rate from flapping: correcting starts past 40 ms and stops
+/// under 15 ms (a third of a frame at 24 fps, with the clocks synced by [`ClockSync`]). Paused,
+/// everyone seeks to the exact position the room paused at, so all show the same frame.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct TogetherCorrection {
@@ -345,6 +346,8 @@ pub struct TogetherCorrection {
 /// its speed, as with audio passthrough).
 pub const SEEK_DRIFT_MS: u64 = 2_000;
 pub const SEEK_WITHOUT_RATE_MS: u64 = 1_000;
+/// Paused players further apart than this seek to the room's exact position.
+pub const PAUSED_DRIFT_MS: u64 = 15;
 /// Fastest/slowest catch-up speed (±6 %).
 const MAX_RATE_DELTA: f64 = 0.06;
 
@@ -372,8 +375,9 @@ pub fn together_correction(
         rate: 1.0,
     };
     if !playing {
-        // Paused: a seek is invisible; the small threshold covers seek inaccuracy.
-        return if drift.unsigned_abs() > 300 {
+        // Paused: a seek is invisible. Everyone seeks to the same position, so they land on
+        // the same frame; past 15 ms apart they may show different ones.
+        return if drift.unsigned_abs() > PAUSED_DRIFT_MS {
             seek
         } else {
             steady
@@ -383,7 +387,7 @@ pub fn together_correction(
         return seek;
     }
     let correcting = (current_rate - 1.0).abs() > 0.001;
-    let threshold = if correcting { 20 } else { 60 };
+    let threshold = if correcting { 15 } else { 40 };
     if !can_change_rate || drift.unsigned_abs() <= threshold {
         return steady;
     }
@@ -507,8 +511,10 @@ mod tests {
     #[test]
     fn small_drift_changes_speed_large_drift_seeks() {
         // In step: nothing.
-        let c = together_correction(10_000, 10_050, true, 1.0, true);
+        let c = together_correction(10_000, 10_030, true, 1.0, true);
         assert_eq!((c.seek_to_ms, c.rate), (None, 1.0));
+        // 50 ms apart: already corrected.
+        assert!(together_correction(10_000, 10_050, true, 1.0, true).rate < 1.0);
         // 500 ms ahead: slower, no seek.
         let c = together_correction(10_000, 10_500, true, 1.0, true);
         assert_eq!(c.seek_to_ms, None);
@@ -520,12 +526,24 @@ mod tests {
             together_correction(10_000, 13_000, true, 1.0, true).seek_to_ms,
             Some(10_000)
         );
-        // Correcting: keeps going until within 20 ms, then back to normal.
-        assert!(together_correction(10_000, 10_040, true, 0.98, true).rate < 1.0);
+        // Correcting: keeps going until within 15 ms, then back to normal.
+        assert!(together_correction(10_000, 10_030, true, 0.98, true).rate < 1.0);
         assert_eq!(
-            together_correction(10_000, 10_015, true, 0.98, true).rate,
+            together_correction(10_000, 10_010, true, 0.98, true).rate,
             1.0
         );
+    }
+
+    #[test]
+    fn paused_players_show_the_same_frame() {
+        // A frame apart: everyone goes to the paused position.
+        assert_eq!(
+            together_correction(10_000, 10_042, false, 1.0, true).seek_to_ms,
+            Some(10_000)
+        );
+        // On it (after that seek): stays.
+        let c = together_correction(10_000, 10_000, false, 1.0, true);
+        assert_eq!((c.seek_to_ms, c.rate), (None, 1.0));
     }
 
     #[test]
@@ -534,18 +552,6 @@ mod tests {
         assert_eq!((c.seek_to_ms, c.rate), (None, 1.0));
         assert_eq!(
             together_correction(10_000, 11_200, true, 1.0, false).seek_to_ms,
-            Some(10_000)
-        );
-    }
-
-    #[test]
-    fn paused_members_seek_to_the_room() {
-        assert_eq!(
-            together_correction(10_000, 10_200, false, 1.0, true).seek_to_ms,
-            None
-        );
-        assert_eq!(
-            together_correction(10_000, 10_400, false, 1.0, true).seek_to_ms,
             Some(10_000)
         );
     }
