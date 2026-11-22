@@ -248,7 +248,10 @@ component Focusable inherits Rectangle {
     in property <bool> autofocus: false;
     out property <bool> active: fs.has-focus || ta.has-hover;
     callback clicked();
+    /// Keyboard focus or mouse hover (prefetch, previews).
     callback focused();
+    /// Keyboard focus only: rows scroll the card into view (not on hover, which nudged them).
+    callback keyboard-focused();
     init => { if root.autofocus { fs.focus(); } }
     border-radius: 14px;
     fs := FocusScope {
@@ -259,7 +262,12 @@ component Focusable inherits Rectangle {
             }
             return reject;
         }
-        focus-changed-event => { if (self.has-focus) { root.focused(); } }
+        focus-changed-event => {
+            if (self.has-focus) {
+                root.focused();
+                root.keyboard-focused();
+            }
+        }
     }
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -605,19 +613,19 @@ component RailView {
                     if root.rail.landscape : LandscapeCard {
                         card: c;
                         clicked => { root.open(c.id); }
-                        focused => {
+                        focused => { root.hovered(c.id); }
+                        keyboard-focused => {
                             if (parent.x + sv.content-x < 0) { sv.content-x = -parent.x + 4px; }
                             if (parent.x + parent.width + sv.content-x > sv.width) { sv.content-x = sv.width - parent.x - parent.width - 4px; }
-                            root.hovered(c.id);
                         }
                     }
                     if !root.rail.landscape : PosterCard {
                         card: c;
                         clicked => { root.open(c.id); }
-                        focused => {
+                        focused => { root.hovered(c.id); }
+                        keyboard-focused => {
                             if (parent.x + sv.content-x < 0) { sv.content-x = -parent.x + 4px; }
                             if (parent.x + parent.width + sv.content-x > sv.width) { sv.content-x = sv.width - parent.x - parent.width - 4px; }
-                            root.hovered(c.id);
                         }
                     }
                 }
