@@ -418,31 +418,80 @@ private fun TvMenu(
                 .padding(4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            // Several profiles on this device: who is watching, at the top (like Plex).
+            // Who is watching, above the pages (like Plex): one press opens "Who's watching?".
             val ctx = androidx.compose.ui.platform.LocalContext.current
-            val services = ctx.services
             val me =
                 remember {
-                    services.profiles
+                    ctx.services.profiles
                         .list()
-                        .takeIf { it.size > 1 }
-                        ?.firstOrNull { it.id == services.profile }
+                        .firstOrNull { it.id == ctx.services.profile }
                 }
+            var switching by remember { mutableStateOf(false) }
+            if (switching) {
+                be.alwyapps.watch.ui.screens
+                    .ProfileSwitcher(onDismiss = { switching = false })
+            }
             if (me != null) {
-                TvMenuItem(
-                    Tab(Route.Settings, "${me.name} \u00b7 Switch", Icons.Person),
-                    selected = false,
-                    open = open,
-                    modifier = Modifier,
-                ) {
-                    be.alwyapps.watch.ui.screens.ProfileSession.open = false
-                    be.alwyapps.watch.ui.screens.ProfileSession.picker = true
-                    (ctx as? android.app.Activity)?.recreate()
-                }
+                TvProfileItem(me.name, open) { switching = true }
+                // A hairline sets the person apart from the pages.
+                Box(
+                    Modifier
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                        .then(if (open) Modifier.width(142.dp) else Modifier.width(20.dp))
+                        .height(1.dp)
+                        .background(Color.White.copy(alpha = 0.14f)),
+                )
             }
             for (t in tabs) {
                 val on = t.route == selected
                 TvMenuItem(t, on, open, if (on) Modifier.focusRequester(current) else Modifier) { select(t.route) }
+            }
+        }
+    }
+}
+
+/** The profile at the top of the TV menu: its avatar, and its name once the menu is open. */
+@Composable
+private fun TvProfileItem(
+    name: String,
+    open: Boolean,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    Row(
+        Modifier
+            .then(if (open) Modifier.width(160.dp) else Modifier)
+            .clip(RoundedCornerShape(50))
+            .background(if (focused) Color.White else Color.Transparent)
+            .clickable(interactionSource = interaction, indication = null, onClickLabel = "Switch profile", onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        be.alwyapps.watch.ui.screens
+            .Avatar(name, 26)
+        if (open) {
+            Column {
+                Text(
+                    name,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    color = if (focused) Color.Black else Color.White,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    "Switch profile",
+                    // The label style is heavy and tracked: too loud under a name.
+                    style =
+                        MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                            letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified,
+                        ),
+                    color = if (focused) Color.Black.copy(alpha = 0.6f) else Subtle,
+                    maxLines = 1,
+                )
             }
         }
     }

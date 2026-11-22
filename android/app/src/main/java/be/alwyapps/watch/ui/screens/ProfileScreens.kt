@@ -35,6 +35,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import be.alwyapps.watch.data.Profile
 import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.Accent
@@ -193,7 +194,13 @@ fun Avatar(
             .background(Brush.linearGradient(colors)),
         contentAlignment = Alignment.Center,
     ) {
-        Text(name.firstOrNull()?.uppercase() ?: "?", color = Color.Black, style = MaterialTheme.typography.headlineMedium)
+        // Small ones (a menu) scale their letter; the tiles keep the headline size.
+        val style = MaterialTheme.typography.headlineMedium
+        Text(
+            name.firstOrNull()?.uppercase() ?: "?",
+            color = Color.Black,
+            style = if (size < 48) style.copy(fontSize = (size * 0.5f).sp, lineHeight = (size * 0.6f).sp) else style,
+        )
     }
 }
 
@@ -290,7 +297,7 @@ fun ProfileSwitcher(
                                 SwitcherTile(
                                     p.name,
                                     if (current) {
-                                        "Watching now"
+                                        "Current"
                                     } else if (p.hasPin) {
                                         "PIN"
                                     } else {
