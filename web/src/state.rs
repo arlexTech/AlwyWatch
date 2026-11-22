@@ -36,19 +36,22 @@ fn storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok()?
 }
 
+// Every key belongs to the current profile (see `profiles.rs`).
 pub fn load<T: DeserializeOwned>(key: &str) -> Option<T> {
-    serde_json::from_str(&storage()?.get_item(key).ok()??).ok()
+    let key = crate::profiles::scoped(key);
+    serde_json::from_str(&storage()?.get_item(&key).ok()??).ok()
 }
 
 pub fn save<T: Serialize>(key: &str, value: &T) {
     if let Some(s) = storage() {
-        let _ = s.set_item(key, &serde_json::to_string(value).unwrap_or_default());
+        let key = crate::profiles::scoped(key);
+        let _ = s.set_item(&key, &serde_json::to_string(value).unwrap_or_default());
     }
 }
 
 pub fn remove(key: &str) {
     if let Some(s) = storage() {
-        let _ = s.remove_item(key);
+        let _ = s.remove_item(&crate::profiles::scoped(key));
     }
 }
 

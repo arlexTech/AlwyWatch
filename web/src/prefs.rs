@@ -157,7 +157,6 @@ pub fn PlaybackSettings() -> impl IntoView {
         prefs.update(|p| f(p));
         save(&prefs.get_untracked());
     };
-    let browser = language_name(&browser_language());
     view! {
         <section class="group">
             <h2>"Intros and credits"</h2>
@@ -199,8 +198,21 @@ pub fn PlaybackSettings() -> impl IntoView {
                     on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.together.seek = on) } />
             </label>
         </section>
+    }
+}
+
+/// The Audio & subtitles part of Settings.
+#[component]
+pub fn AudioSettings() -> impl IntoView {
+    let prefs = RwSignal::new(load());
+    let change = move |f: &dyn Fn(&mut PlayerPrefs)| {
+        prefs.update(|p| f(p));
+        save(&prefs.get_untracked());
+    };
+    let browser = language_name(&browser_language());
+    view! {
         <section class="group">
-            <h2>"Subtitles"</h2>
+            <h2>"Languages"</h2>
             <div class="row">
                 <div>"Subtitles"<div class="muted small">"Automatic: when the audio is not in your subtitle language."</div></div>
                 <select class="chip" aria-label="Subtitles"

@@ -52,6 +52,7 @@ import be.alwyapps.watch.core.downloads.DownloadState
 import be.alwyapps.watch.core.media.Item
 import be.alwyapps.watch.core.media.ItemKind
 import be.alwyapps.watch.core.media.LibraryKind
+import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.ErrorBanner
 import be.alwyapps.watch.ui.Icons
@@ -457,18 +458,34 @@ private fun HomeTopBar(
         TopIcon(Icons.Bookmark, "My list") { nav.push(Route.Watchlist) }
         TopIcon(Icons.Search, "Search") { nav.push(Route.Search) }
         TopIcon(Icons.Download, if (offline) "Leave downloads" else "Downloads", active = offline, onClick = onToggleDownloads)
-        // You: settings, accounts and servers.
+        // You: with several profiles on the device, who's watching (one tap to switch, and the
+        // settings); else straight to the settings.
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val profile =
+            remember {
+                ctx.services.profiles
+                    .list()
+                    .takeIf { it.size > 1 }
+                    ?.firstOrNull { it.id == ctx.services.profile }
+            }
+        var switching by remember { mutableStateOf(false) }
+        if (switching) {
+            ProfileSwitcher(onDismiss = { switching = false }, onSettings = {
+                switching = false
+                nav.push(Route.Settings)
+            })
+        }
         Box(
             Modifier
                 .padding(start = 6.dp)
                 .size(38.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
                 .background(Brush.linearGradient(listOf(be.alwyapps.watch.ui.Accent, Color(0xFFFF6A3D))))
-                .clickable { nav.push(Route.Settings) },
+                .clickable { if (profile != null) switching = true else nav.push(Route.Settings) },
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                me?.userName?.firstOrNull()?.uppercase() ?: "?",
+                (profile?.name ?: me?.userName)?.firstOrNull()?.uppercase() ?: "?",
                 color = Color.Black,
                 style = MaterialTheme.typography.titleMedium,
             )

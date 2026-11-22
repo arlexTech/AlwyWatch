@@ -3016,12 +3016,54 @@ impl App {
         }
     }
 
+    /// Settings → Audio & subtitles: the next choice of a setting (same values as Android).
+    fn cycle_setting(&self, key: String) {
+        let codes: Vec<&str> = std::iter::once("")
+            .chain(LANGUAGES.iter().map(|(c, _)| *c))
+            .collect();
+        let options: Vec<&str> = match key.as_str() {
+            "player.sub_mode" => vec!["auto", "forced", "always", "off"],
+            "player.audio_lang" | "player.sub_lang" => codes,
+            _ => return,
+        };
+        let now = self
+            .core
+            .get_setting(key.clone())
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let at = options.iter().position(|o| *o == now).unwrap_or(0);
+        let next = options[(at + 1) % options.len()];
+        let _ = self.core.set_setting(key, next.to_owned());
+        self.load_player_settings();
+    }
+
     /// Player switches in settings (defaults: auto intro skip off, auto next episode on).
     fn load_player_settings(&self) {
         let get = |k: &str| self.core.get_setting(k.to_owned()).ok().flatten();
         let ui = self.ui();
         ui.set_auto_skip_intro(get("player.auto_skip_intro").as_deref() == Some("1"));
         ui.set_auto_next(get("player.auto_next").as_deref() != Some("0"));
+        let lang = |code: &str| {
+            LANGUAGES
+                .iter()
+                .find(|(c, _)| *c == code)
+                .map_or_else(|| code.to_owned(), |(_, n)| (*n).to_owned())
+        };
+        ui.set_audio_lang_label(sstr(match get("player.audio_lang").as_deref() {
+            None | Some("") => "Original".to_owned(),
+            Some(c) => lang(c),
+        }));
+        ui.set_sub_mode_label(sstr(match get("player.sub_mode").as_deref() {
+            Some("forced") => "Forced only",
+            Some("always") => "Always",
+            Some("off") => "Off",
+            _ => "Automatic",
+        }));
+        ui.set_sub_lang_label(sstr(match get("player.sub_lang").as_deref() {
+            None | Some("") => "System language".to_owned(),
+            Some(c) => lang(c),
+        }));
         let r = self.core.together_rights();
         ui.set_together_title(r.change_title);
         ui.set_together_play(r.play_pause);
@@ -4441,9 +4483,12 @@ impl App {
     /// Test hook used by headless screenshots: open Settings.
     pub fn test_settings(self: &Rc<Self>) {
         self.navigate(Route::Settings);
+        // ALWYWATCH_TEST_SECTION: which section of the settings to show.
+        if let Ok(section) = std::env::var("ALWYWATCH_TEST_SECTION") {
+            self.ui().set_settings_section(sstr(section));
+        }
     }
 
-    /// Test hook used by headless screenshots: a home from two made-up servers (server marks).
     /// A title page with sample data: trailer and list buttons, crew, cast.
     pub fn test_detail(self: &Rc<Self>) {
         let ui = self.ui();
@@ -4764,6 +4809,8 @@ impl App {
         on!(on_profile_edited, |a, text| a.profile_edited(text.into()));
         on!(on_profile_pin_remove, |a| a.profile_pin_remove());
         on!(on_profile_cancel, |a| a.profile_cancel());
+        on!(on_profile_switcher, |a| a.profile_switcher());
+        on!(on_cycle_setting, |a, key| a.cycle_setting(key.into()));
         on!(on_profile_auto_toggle, |a| a.profile_auto_toggle());
         on!(on_history_pick, |a, side, id| a
             .history_pick(side.into(), id.into()));
@@ -4974,6 +5021,26 @@ impl App {
         });
     }
 }
+
+/// Languages offered for audio and subtitles (the codes Android stores too).
+const LANGUAGES: [(&str, &str); 16] = [
+    ("eng", "English"),
+    ("fra", "French"),
+    ("nld", "Dutch"),
+    ("deu", "German"),
+    ("spa", "Spanish"),
+    ("ita", "Italian"),
+    ("por", "Portuguese"),
+    ("jpn", "Japanese"),
+    ("kor", "Korean"),
+    ("zho", "Chinese"),
+    ("ara", "Arabic"),
+    ("rus", "Russian"),
+    ("pol", "Polish"),
+    ("swe", "Swedish"),
+    ("tur", "Turkish"),
+    ("hin", "Hindi"),
+];
 
 /// The AlwyWatch account token, in the token store like media tokens.
 const ACCOUNT_TOKEN: &str = "alwywatch_account";

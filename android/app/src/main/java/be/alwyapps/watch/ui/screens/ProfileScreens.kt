@@ -236,6 +236,135 @@ private fun PinEntry(
     onBack?.let { ActionButton("Back", it) }
 }
 
+/**
+ * "Who's watching?" from anywhere (the avatar on the phone's home, the side menu): one tap on a
+ * profile switches to it (its PIN is asked here when it has one), with a way to add one and to
+ * the settings.
+ */
+@Composable
+fun ProfileSwitcher(
+    onDismiss: () -> Unit,
+    onSettings: (() -> Unit)? = null,
+) {
+    val ctx = LocalContext.current
+    val services = ctx.services
+    val profiles = remember { services.profiles.list() }
+    var asking by remember { mutableStateOf<Profile?>(null) }
+    var adding by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    val switchTo = { id: String -> services.switchProfile(ctx as Activity, id, alreadyUnlocked = true) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Background,
+        title = {
+            Text(
+                when {
+                    adding -> "New profile"
+                    asking != null -> "Switch to ${asking?.name}"
+                    else -> "Who's watching?"
+                },
+            )
+        },
+        text = {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                val a = asking
+                when {
+                    adding -> {
+                        Text("A profile has its own servers, history and settings.", color = Muted)
+                        Field(
+                            name,
+                            { name = it.take(24) },
+                            Modifier.fillMaxWidth().initialFocus(),
+                            placeholder = { Text("Name") },
+                            singleLine = true,
+                        )
+                    }
+                    a != null -> PinEntry(a, null) { switchTo(a.id) }
+                    else ->
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            profiles.forEachIndexed { i, p ->
+                                val current = p.id == services.profile
+                                SwitcherTile(
+                                    p.name,
+                                    if (current) {
+                                        "Watching now"
+                                    } else if (p.hasPin) {
+                                        "PIN"
+                                    } else {
+                                        ""
+                                    },
+                                    if (i ==
+                                        0
+                                    ) {
+                                        Modifier.initialFocus()
+                                    } else {
+                                        Modifier
+                                    },
+                                ) {
+                                    when {
+                                        current -> onDismiss()
+                                        p.hasPin -> asking = p
+                                        else -> switchTo(p.id)
+                                    }
+                                }
+                            }
+                            SwitcherTile("Add", "", Modifier, add = true) { adding = true }
+                        }
+                }
+            }
+        },
+        confirmButton = {
+            when {
+                adding ->
+                    ActionButton("Create and switch", {
+                        if (name.isNotBlank()) switchTo(services.profiles.add(name.trim()))
+                    }, primary = true)
+                asking != null -> ActionButton("Back", { asking = null })
+                onSettings != null -> ActionButton("Settings", onSettings, icon = Icons.Settings)
+                else -> ActionButton("Close", onDismiss)
+            }
+        },
+        dismissButton = { if (adding) ActionButton("Back", { adding = false }) },
+    )
+}
+
+@Composable
+private fun SwitcherTile(
+    name: String,
+    note: String,
+    modifier: Modifier,
+    add: Boolean = false,
+    onClick: () -> Unit,
+) {
+    FocusCard(
+        onClick = onClick,
+        modifier = modifier,
+        shape =
+            androidx.compose.foundation.shape
+                .RoundedCornerShape(18.dp),
+        glow = false,
+    ) {
+        Column(
+            Modifier.width(92.dp).padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (add) {
+                Box(Modifier.size(64.dp).clip(CircleShape).background(be.alwyapps.watch.ui.SurfaceHigh), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Icon(Icons.Add, null, tint = Color.White)
+                }
+            } else {
+                Avatar(name, 64)
+            }
+            Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1, textAlign = TextAlign.Center)
+            Text(note, style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
+        }
+    }
+}
+
 /** Settings: the device's profiles (switch, add, rename, PIN, remove). */
 @Composable
 fun ProfilesGroup() {

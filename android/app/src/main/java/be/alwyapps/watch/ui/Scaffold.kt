@@ -292,6 +292,21 @@ private fun SideRail(
             .padding(horizontal = 16.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
     ) {
+        // Several profiles on this device: who is watching, one tap to switch.
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val me =
+            remember {
+                ctx.services.profiles
+                    .list()
+                    .takeIf { it.size > 1 }
+                    ?.firstOrNull { it.id == ctx.services.profile }
+            }
+        var switching by remember { mutableStateOf(false) }
+        if (switching) {
+            be.alwyapps.watch.ui.screens
+                .ProfileSwitcher(onDismiss = { switching = false })
+        }
+        if (me != null) RailItem(Tab(Route.Settings, me.name, Icons.Person), false, expanded) { switching = true }
         for (t in tabs) RailItem(t, t.route == selected, expanded) { select(t.route) }
         Spacer(Modifier.height(32.dp))
     }

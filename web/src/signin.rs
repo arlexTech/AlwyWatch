@@ -381,14 +381,69 @@ fn page_is_https() -> bool {
     Ctx::origin().starts_with("https://")
 }
 
+/// The sections of Settings: the same, in the same order, on every platform
+/// (docs/settings.md). `(id, title)`.
+const SECTIONS: [(&str, &str); 6] = [
+    ("servers", "Servers"),
+    ("alwywatch", "AlwyWatch & requests"),
+    ("profiles", "Profiles"),
+    ("playback", "Playback"),
+    ("audio", "Audio & subtitles"),
+    ("about", "About & storage"),
+];
+
+/// `/settings` and `/settings/:section`: the sections on the left, one shown at a time.
 #[component]
 pub fn Settings() -> impl IntoView {
-    let c = state::ctx();
-    let c2 = c.clone();
+    let params = leptos_router::hooks::use_params_map();
+    let section = Memo::new(move |_| {
+        params
+            .read()
+            .get("section")
+            .filter(|s| SECTIONS.iter().any(|(id, _)| id == s))
+            .unwrap_or_else(|| "servers".into())
+    });
     view! {
         <h1>"Settings"</h1>
+        <div class="settings">
+            <nav class="settings-nav" aria-label="Settings sections">
+                {SECTIONS.iter().map(|(id, title)| {
+                    let id = *id;
+                    view! {
+                        <a href=format!("/settings/{id}") aria-current=move || (section.get() == id).then_some("page")>{*title}</a>
+                    }
+                }).collect_view()}
+            </nav>
+            <div class="settings-body">
+                {move || match section.get().as_str() {
+                    "alwywatch" => view! { <AlwyWatchSection /> }.into_any(),
+                    "profiles" => view! { <crate::profiles::ProfilesSettings /> }.into_any(),
+                    "playback" => view! { <crate::prefs::PlaybackSettings /> }.into_any(),
+                    "audio" => view! { <crate::prefs::AudioSettings /> }.into_any(),
+                    "about" => view! {
+                        <section class="group">
+                            <h2>"About"</h2>
+                            <p>{format!("AlwyWatch {}", env!("CARGO_PKG_VERSION"))}</p>
+                            <p class="muted small">"Free software under the GNU AGPL v3 or later."</p>
+                        </section>
+                        <section class="group">
+                            <h2>"Storage"</h2>
+                            <p class="muted small">"Accounts and settings are kept in this browser only. Sign out on shared computers."</p>
+                        </section>
+                    }.into_any(),
+                    _ => view! { <ServersSection /> }.into_any(),
+                }}
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn ServersSection() -> impl IntoView {
+    let c = state::ctx();
+    view! {
         <section class="group">
-            <h2>"Accounts"</h2>
+            <h2>"Your Jellyfin and Plex servers"</h2>
             {move || {
                 let c = c.clone();
                 c.accounts.get().into_iter().map(|s| {
@@ -404,17 +459,18 @@ pub fn Settings() -> impl IntoView {
                     }
                 }).collect_view()
             }}
-            <leptos_router::components::A href="/signin" attr:class="button">"Add an account"</leptos_router::components::A>
+            <leptos_router::components::A href="/signin" attr:class="button">"Add a server"</leptos_router::components::A>
         </section>
+    }
+}
+
+#[component]
+fn AlwyWatchSection() -> impl IntoView {
+    let c2 = state::ctx();
+    let c3 = c2.clone();
+    view! {
         <section class="group">
-            <h2>"AlwyWatch account"</h2>
-            <div class="row">
-                <div class="muted small">{move || match c2.account.get() {
-                    Some(a) => format!("Account: {}. Password, passkeys, Pocket ID and your devices.", a.name),
-                    None => "Sign in without a media server, with a password, passkey or Pocket ID.".to_owned(),
-                }}</div>
-                <leptos_router::components::A href="/account" attr:class="button">"Account"</leptos_router::components::A>
-            </div>
+            <h2>"You on AlwyWatch"</h2>
             {move || match c2.keep.get() {
                 Some(k) => view! {
                     <p class="muted small">"Signed in as "<strong>{k.user_name}</strong>" on "{Ctx::origin()}
@@ -433,8 +489,15 @@ pub fn Settings() -> impl IntoView {
                 }
             }}
         </section>
-        <h2>"Playback"</h2>
-        <crate::prefs::PlaybackSettings />
-        <p class="muted small">"Accounts are kept in this browser only. Sign out on shared computers."</p>
+        <section class="group">
+            <h2>"Connection and devices"</h2>
+            <div class="row">
+                <div class="muted small">{move || match c3.account.get() {
+                    Some(a) => format!("Signed in to the account of {}. Password, passkeys, Pocket ID and your devices.", a.name),
+                    None => "Sign in without a media server, with a password, passkey or Pocket ID; sign a TV in with a code.".to_owned(),
+                }}</div>
+                <leptos_router::components::A href="/account" attr:class="button">"Account"</leptos_router::components::A>
+            </div>
+        </section>
     }
 }

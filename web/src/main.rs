@@ -11,6 +11,7 @@ mod passkey;
 mod player;
 mod prefs;
 mod profile;
+mod profiles;
 mod request;
 mod signin;
 mod state;
@@ -123,6 +124,7 @@ fn App() -> impl IntoView {
                 <Route path=path!("/admin") view=|| view! { <Shell><keep::Admin /></Shell> } />
                 <Route path=path!("/admin/forever") view=|| view! { <Shell><keep::Forever /></Shell> } />
                 <Route path=path!("/settings") view=|| view! { <Shell><signin::Settings /></Shell> } />
+                <Route path=path!("/settings/:section") view=|| view! { <Shell><signin::Settings /></Shell> } />
                 <Route path=path!("/account") view=|| view! { <Shell><account::AccountPage /></Shell> } />
                 <Route path=path!("/account/signed-in") view=|| view! { <Shell><account::SignedInPage /></Shell> } />
                 <Route path=path!("/join") view=|| view! { <Shell><account::Join /></Shell> } />
@@ -159,6 +161,7 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
         <div class="shell">
             <nav class="menu">
                 <A href="/" attr:class="brand">"AlwyWatch"</A>
+                <profiles::ProfileMenu />
                 <Show when=signed_in>
                     <A href="/">"Home"</A>
                     <A href="/search">"Search"</A>

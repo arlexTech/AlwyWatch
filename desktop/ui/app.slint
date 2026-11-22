@@ -1206,6 +1206,22 @@ component SettingToggle inherits HorizontalLayout {
     }
 }
 
+/// A setting with a few choices: the current one on a button, a click takes the next.
+component SettingChoice inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> value;
+    callback clicked();
+    spacing: 10px;
+    VerticalLayout {
+        alignment: center;
+        Text { text: root.title; color: Palette.text; font-weight: 700; }
+        if root.subtitle != "" : Text { text: root.subtitle; color: Palette.muted; font-size: 12px; }
+    }
+    Rectangle { horizontal-stretch: 1; }
+    Button { label: root.value; y: (parent.height - self.height) / 2; clicked => { root.clicked(); } }
+}
+
 export component AppWindow inherits Window {
     title: "AlwyWatch";
     preferred-width: 1280px;
@@ -1497,7 +1513,16 @@ export component AppWindow inherits Window {
     in-out property <string> profile-input; // the dialog's name or PIN field
     in property <string> profile-message;
     in property <bool> profile-gate; // "Who's watching?" before the app
+    // Settings: the section shown (servers | alwywatch | profiles | playback | audio | about).
+    in-out property <string> settings-section: "servers";
+    property <string> shown-section: root.page == Page.profiles ? "profiles" : root.settings-section;
+    in property <string> audio-lang-label;
+    in property <string> sub-mode-label;
+    in property <string> sub-lang-label;
+    callback cycle-setting(string); // next choice of a setting key
     in property <bool> profile-gate-back; // the gate's PIN step can go back to the tiles
+    in property <bool> profile-gate-menu; // opened from the menu: it can be closed
+    callback profile-switcher(); // the menu's profile item: "Who's watching?" over the app
     callback profile-open(string); // switch to (or, at start, pick) a profile
     callback profile-dialog-open(string, string); // kind, profile id
     callback profile-submit();
@@ -1587,6 +1612,8 @@ export component AppWindow inherits Window {
                         letter-spacing: -0.5px;
                     }
                     Rectangle { height: 22px; }
+                    // Several profiles on this computer: who is watching, one click to switch.
+                    if root.profiles.length > 1 : NavItem { label: root.profile-name; icon: @image-url("icons/person.svg"); selected: false; clicked => { root.profile-switcher(); } }
                     NavItem { label: "Home"; icon: @image-url("icons/home.svg"); selected: root.page == Page.home; clicked => { root.go(Page.home); } }
                     NavItem { label: "Search"; icon: @image-url("icons/search.svg"); selected: root.page == Page.search; clicked => { root.go(Page.search); } }
                     NavItem { label: "My list"; icon: @image-url("icons/bookmark.svg"); selected: root.page == Page.mylist && root.list-title == "My list"; clicked => { root.go(Page.mylist); } }
@@ -2648,47 +2675,6 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    if root.page == Page.profiles : ScrollView {
-                        VerticalLayout {
-                            padding: 40px;
-                            padding-top: 28px;
-                            spacing: 20px;
-                            alignment: start;
-                            PageTitle { title: "Profiles"; }
-                            Text {
-                                text: "Several people on this computer: each profile has its own servers, history and settings. Downloads are shared.";
-                                color: Palette.muted;
-                                wrap: word-wrap;
-                            }
-                            Group {
-                                for p in root.profiles : HorizontalLayout {
-                                    spacing: 12px;
-                                    Avatar { initial: p.initial; tone: p.tone; size: 40px; y: (parent.height - self.height) / 2; }
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Text { text: p.name; color: Palette.text; font-weight: 700; }
-                                        if p.has-pin : Text { text: "Protected by a PIN"; color: Palette.muted; font-size: 12px; }
-                                    }
-                                    Rectangle { horizontal-stretch: 1; }
-                                    if p.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
-                                    if p.current : Button { label: "Rename"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("rename", p.id); } }
-                                    if p.current : Button { label: p.has-pin ? "PIN" : "Set a PIN"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("pin", p.id); } }
-                                    if !p.current : Button { label: "Switch"; y: (parent.height - self.height) / 2; clicked => { root.profile-open(p.id); } }
-                                    if p.removable : IconButton { icon: @image-url("icons/delete.svg"); clicked => { root.profile-dialog-open("remove", p.id); } }
-                                }
-                                HorizontalLayout { alignment: start; Button { label: "Add a profile"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.profile-dialog-open("add", ""); } } }
-                            }
-                            if root.profiles.length > 1 : Group {
-                                SettingToggle {
-                                    title: "Sign in automatically";
-                                    subtitle: "Open the last profile used instead of asking who's watching (a PIN is still asked)";
-                                    on: root.profile-auto;
-                                    clicked => { root.profile-auto-toggle(); }
-                                }
-                            }
-                        }
-                    }
-
                     if root.page == Page.historycopy : ScrollView {
                         VerticalLayout {
                             padding: 40px;
@@ -2740,15 +2726,35 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    if root.page == Page.settings : ScrollView {
+                    if root.page == Page.settings || root.page == Page.profiles : HorizontalLayout {
+                        // The sections, the same on every platform (docs/settings.md).
                         VerticalLayout {
+                            width: 270px;
                             padding: 40px;
                             padding-top: 28px;
-                            spacing: 22px;
+                            padding-right: 0px;
+                            spacing: 4px;
                             alignment: start;
                             PageTitle { title: "Settings"; }
+                            Rectangle { height: 14px; }
+                                    NavItem { label: "Servers"; icon: @image-url("icons/video_library.svg"); selected: root.shown-section == "servers"; clicked => { root.settings-section = "servers"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: "AlwyWatch & requests"; icon: @image-url("icons/hourglass_bottom.svg"); selected: root.shown-section == "alwywatch"; clicked => { root.settings-section = "alwywatch"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: "Profiles"; icon: @image-url("icons/person.svg"); selected: root.shown-section == "profiles"; clicked => { root.settings-section = "profiles"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: "Playback"; icon: @image-url("icons/play_arrow_fill1.svg"); selected: root.shown-section == "playback"; clicked => { root.settings-section = "playback"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: "Audio & subtitles"; icon: @image-url("icons/subtitles.svg"); selected: root.shown-section == "audio"; clicked => { root.settings-section = "audio"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: "About & storage"; icon: @image-url("icons/info.svg"); selected: root.shown-section == "about"; clicked => { root.settings-section = "about"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                        }
+                        ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 96px;
+                            spacing: 22px;
+                            alignment: start;
+                            if root.shown-section == "servers" : VerticalLayout {
+                                spacing: 22px;
+                                alignment: start;
                             Group {
-                                title: "ACCOUNTS";
+                                title: "YOUR JELLYFIN AND PLEX SERVERS";
                                 for a in root.accounts : HorizontalLayout {
                                     spacing: 10px;
                                     VerticalLayout {
@@ -2768,26 +2774,12 @@ export component AppWindow inherits Window {
                                     if root.accounts.length >= 2 : Button { label: "Copy watch history"; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.go(Page.historycopy); } }
                                 }
                             }
-                            Group {
-                                title: "PROFILES";
-                                HorizontalLayout {
-                                    spacing: 10px;
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Text { text: root.profile-name; color: Palette.text; font-weight: 700; }
-                                        Text {
-                                            text: root.profiles.length > 1 ? root.profiles.length + " profiles on this computer" : "Several people on this computer? Each profile has its own servers, history and settings.";
-                                            color: Palette.muted;
-                                            font-size: 12px;
-                                            wrap: word-wrap;
-                                        }
-                                    }
-                                    Rectangle { horizontal-stretch: 1; }
-                                    Button { label: "Profiles"; has-icon: true; icon: @image-url("icons/person.svg"); y: (parent.height - self.height) / 2; clicked => { root.go(Page.profiles); } }
-                                }
                             }
+                            if root.shown-section == "alwywatch" : VerticalLayout {
+                                spacing: 22px;
+                                alignment: start;
                             if root.keep-active : Group {
-                                title: "ALWYWATCH ACCOUNT";
+                                title: "YOU ON ALWYWATCH";
                                 HorizontalLayout {
                                     spacing: 14px;
                                     UserAvatar { avatar: root.me-avatar; size: 56px; y: (parent.height - self.height) / 2; }
@@ -2800,8 +2792,6 @@ export component AppWindow inherits Window {
                                     }
                                     if root.me-loaded : Button { label: "Edit name"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("name"); } }
                                     if root.me-loaded : Button { label: "Change avatar"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("avatar"); } }
-                                    // This computer forgets the AlwyWatch server (choices stay on the server).
-                                    Button { label: "Sign out"; y: (parent.height - self.height) / 2; clicked => { root.keep-disconnect(); } }
                                 }
                                 if root.me-message != "" : Text { text: root.me-message; color: Palette.danger; wrap: word-wrap; }
                                 if root.links.length > 1 || root.link-candidates.length > 0 : VerticalLayout {
@@ -2837,11 +2827,16 @@ export component AppWindow inherits Window {
                                 }
                             }
                             Group {
-                                title: "ALWYWATCH SERVER";
+                                title: "CONNECTION AND DEVICES";
                                 if root.alwy-account != "" : HorizontalLayout {
                                     spacing: 10px;
-                                    Text { text: "AlwyWatch account: " + root.alwy-account; color: Palette.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                                    Button { label: "Sign out of the account"; clicked => { root.account-sign-out(); } }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text { text: "Signed in to the account of " + root.alwy-account; color: Palette.text; font-weight: 700; overflow: elide; }
+                                        Text { text: "Password, passkeys and your devices: on the AlwyWatch website."; color: Palette.muted; font-size: 12px; }
+                                    }
+                                    Button { label: "Sign out"; clicked => { root.account-sign-out(); } }
                                 }
                                 if root.keep-active : HorizontalLayout {
                                     spacing: 10px;
@@ -2849,6 +2844,8 @@ export component AppWindow inherits Window {
                                     Rectangle { horizontal-stretch: 1; }
                                     if root.keep-can-switch && root.keep-choices.length == 0 : Button { label: "Sync another account"; clicked => { root.keep-choose(); } }
                                     if root.send-step == "" : Button { label: "Add a device"; clicked => { root.send-start(); } }
+                                    // This computer forgets the AlwyWatch server (choices stay on the server).
+                                    Button { label: "Disconnect"; clicked => { root.keep-disconnect(); } }
                                 }
                                 if root.keep-active && root.send-step == "code" : VerticalLayout {
                                     spacing: 10px;
@@ -2930,6 +2927,45 @@ export component AppWindow inherits Window {
                                 }
                                 if root.seerr-message != "" && root.page == Page.settings : Text { text: root.seerr-message; color: Palette.danger; }
                             }
+                            }
+                            if root.shown-section == "profiles" : VerticalLayout {
+                                spacing: 22px;
+                                alignment: start;
+                            Text {
+                                text: "Several people on this computer: each profile has its own servers, history and settings. Downloads are shared.";
+                                color: Palette.muted;
+                                wrap: word-wrap;
+                            }
+                            Group {
+                                for p in root.profiles : HorizontalLayout {
+                                    spacing: 12px;
+                                    Avatar { initial: p.initial; tone: p.tone; size: 40px; y: (parent.height - self.height) / 2; }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: p.name; color: Palette.text; font-weight: 700; }
+                                        if p.has-pin : Text { text: "Protected by a PIN"; color: Palette.muted; font-size: 12px; }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    if p.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
+                                    if p.current : Button { label: "Rename"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("rename", p.id); } }
+                                    if p.current : Button { label: p.has-pin ? "PIN" : "Set a PIN"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("pin", p.id); } }
+                                    if !p.current : Button { label: "Switch"; y: (parent.height - self.height) / 2; clicked => { root.profile-open(p.id); } }
+                                    if p.removable : IconButton { icon: @image-url("icons/delete.svg"); clicked => { root.profile-dialog-open("remove", p.id); } }
+                                }
+                                HorizontalLayout { alignment: start; Button { label: "Add a profile"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.profile-dialog-open("add", ""); } } }
+                            }
+                            if root.profiles.length > 1 : Group {
+                                SettingToggle {
+                                    title: "Sign in automatically";
+                                    subtitle: "Open the last profile used instead of asking who's watching (a PIN is still asked)";
+                                    on: root.profile-auto;
+                                    clicked => { root.profile-auto-toggle(); }
+                                }
+                            }
+                            }
+                            if root.shown-section == "playback" : VerticalLayout {
+                                spacing: 22px;
+                                alignment: start;
                             Group {
                                 title: "PLAYBACK";
                                 SettingToggle {
@@ -2978,6 +3014,26 @@ export component AppWindow inherits Window {
                                     clicked => { root.toggle-setting("together.others_seek"); }
                                 }
                             }
+                            }
+                            if root.shown-section == "audio" : VerticalLayout {
+                                spacing: 22px;
+                                alignment: start;
+                            Group {
+                                title: "LANGUAGES";
+                                SettingChoice { title: "Audio language"; subtitle: ""; value: root.audio-lang-label; clicked => { root.cycle-setting("player.audio_lang"); } }
+                                SettingChoice { title: "Subtitles"; subtitle: "Automatic: when the audio is not in your subtitle language."; value: root.sub-mode-label; clicked => { root.cycle-setting("player.sub_mode"); } }
+                                SettingChoice { title: "Subtitle language"; subtitle: ""; value: root.sub-lang-label; clicked => { root.cycle-setting("player.sub_lang"); } }
+                                Text { text: "A movie or show remembers the tracks picked for it while watching, and its next episodes follow."; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                            }
+                            }
+                            if root.shown-section == "about" : VerticalLayout {
+                                spacing: 22px;
+                                alignment: start;
+                            Group {
+                                title: "ABOUT";
+                                Text { text: root.about; color: Palette.text; }
+                                Text { text: "Free software under the GNU AGPL v3 or later."; color: Palette.muted; font-size: 12px; }
+                            }
                             Group {
                                 title: "STORAGE";
                                 HorizontalLayout {
@@ -2988,7 +3044,8 @@ export component AppWindow inherits Window {
                                     Button { label: "Clear"; clicked => { root.clear-cache(); } }
                                 }
                             }
-                            Text { text: root.about; color: Palette.subtle; }
+                            }
+                        }
                         }
                     }
                 }
@@ -3381,7 +3438,7 @@ export component AppWindow inherits Window {
         TouchArea { }
         FocusScope {
             key-pressed(e) => {
-                if (e.text == Key.Escape && root.profile-gate-back) { root.profile-cancel(); return accept; }
+                if (e.text == Key.Escape && (root.profile-gate-back || root.profile-gate-menu)) { root.profile-cancel(); return accept; }
                 if (e.text == Key.RightArrow || e.text == Key.DownArrow) { root.move-focus(true); return accept; }
                 if (e.text == Key.LeftArrow || e.text == Key.UpArrow) { root.move-focus(false); return accept; }
                 return reject;
@@ -3390,6 +3447,12 @@ export component AppWindow inherits Window {
                 padding: 24px;
                 spacing: 28px;
                 alignment: center;
+                if root.profile-target.id == "" && root.profile-gate-menu : HorizontalLayout {
+                    alignment: center;
+                    spacing: 10px;
+                    Button { label: "Manage profiles"; clicked => { root.profile-cancel(); root.go(Page.profiles); } }
+                    Button { label: "Close"; clicked => { root.profile-cancel(); } }
+                }
                 if root.profile-target.id == "" : Text { text: "Who's watching?"; color: Palette.text; font-size: 40px; font-weight: 800; letter-spacing: -0.5px; horizontal-alignment: center; }
                 if root.profile-target.id == "" : HorizontalLayout {
                     alignment: center;

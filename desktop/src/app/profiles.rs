@@ -80,6 +80,18 @@ impl App {
         ui.set_profile_gate(true);
     }
 
+    /// The menu's profile item: "Who's watching?" over the app (Escape or Close goes back).
+    pub(super) fn profile_switcher(&self) {
+        self.render_profiles();
+        let ui = self.ui();
+        ui.set_profile_gate_back(true);
+        ui.set_profile_gate_menu(true);
+        ui.set_profile_target(ProfileRow::default());
+        ui.set_profile_input(SharedString::new());
+        ui.set_profile_message(SharedString::new());
+        ui.set_profile_gate(true);
+    }
+
     /// A profile was picked: "Switch" in Settings, or a tile of "Who's watching?".
     pub(super) fn profile_open(self: &Rc<Self>, id: String) {
         let Some(p) = self.find_profile(&id) else {
@@ -109,6 +121,7 @@ impl App {
         if id == self.current_profile() {
             let ui = self.ui();
             ui.set_profile_gate(false);
+            ui.set_profile_gate_menu(false);
             ui.set_profile_target(ProfileRow::default());
             ui.set_profile_input(SharedString::new());
         } else {
@@ -245,6 +258,13 @@ impl App {
         let ui = self.ui();
         if !ui.get_profile_dialog().is_empty() {
             self.close_profile_dialog();
+        } else if ui.get_profile_gate()
+            && ui.get_profile_gate_menu()
+            && ui.get_profile_target().id.is_empty()
+        {
+            // Opened from the menu, nothing picked: back to the app.
+            ui.set_profile_gate_menu(false);
+            ui.set_profile_gate(false);
         } else if ui.get_profile_gate() && ui.get_profile_gate_back() {
             ui.set_profile_target(ProfileRow::default());
             ui.set_profile_input(SharedString::new());

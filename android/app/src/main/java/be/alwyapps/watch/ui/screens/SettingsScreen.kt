@@ -55,8 +55,8 @@ private enum class Section(
     val title: String,
     val icon: ImageVector,
 ) {
-    SERVERS("servers", "Servers & accounts", Icons.Library),
-    SERVICES("services", "AlwyWatch server & requests", Icons.Hourglass),
+    SERVERS("servers", "Servers", Icons.Library),
+    SERVICES("services", "AlwyWatch & requests", Icons.Hourglass),
     PROFILES("profiles", "Profiles", Icons.Person),
     PLAYBACK("playback", "Playback", Icons.Play),
     AUDIO("audio", "Audio & subtitles", Icons.Subtitles),
