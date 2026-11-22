@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Playback session: one mpv instance in its own native window (best hardware decoding and HDR
-//! path), driven from a dedicated thread. Progress is reported back through a callback.
+//! Playback session: one mpv instance driven from a dedicated thread, drawn inside AlwyWatch's
+//! window with the app's own controls on top (see `video.rs`); in its own mpv window when the
+//! app has no OpenGL. Progress is reported back through a callback, what the controls show
+//! through `PlayRequest::view`.
 
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use alwywatch_core::{
@@ -30,6 +32,46 @@ pub struct PlayRequest {
     pub together: Option<TogetherLink>,
     /// Short messages shown on the video whatever plays (an invitation arrived).
     pub notes: Option<mpsc::Receiver<String>>,
+    /// Draw inside the app's window and send what the controls show here; None: mpv's own
+    /// window (also the fallback when the window can't host the video).
+    pub view: Option<ViewLink>,
+}
+
+/// The in-window player's link to the app.
+pub struct ViewLink {
+    /// Called with the mpv instance once the video is in the window (the controls send their
+    /// commands to it directly; mpv's client API is thread-safe).
+    pub attached: Box<dyn Fn(Arc<Mpv>) + Send>,
+    /// What the controls show, sent when it changes.
+    pub show: Box<dyn Fn(PlayerView) + Send>,
+}
+
+/// What the in-window controls show.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PlayerView {
+    pub position_ms: u64,
+    pub duration_ms: u64,
+    /// Buffered up to here.
+    pub cache_ms: u64,
+    pub paused: bool,
+    /// "Skip intro" (empty: no button).
+    pub skip: String,
+    /// Seconds before the next episode starts (0: no countdown).
+    pub countdown: u32,
+    /// A short message ("Sam paused"), empty when none.
+    pub note: String,
+    pub has_next: bool,
+    pub has_previous: bool,
+    pub audio: Vec<TrackItem>,
+    pub subtitles: Vec<TrackItem>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrackItem {
+    /// mpv's id ("no" for subtitles off).
+    pub id: String,
+    pub label: String,
+    pub selected: bool,
 }
 
 /// From the app to a player in a watch together room.
@@ -118,19 +160,35 @@ pub fn spawn(req: PlayRequest, report: impl Fn(Progress) + Send + 'static) -> Re
         .map_err(|e| e.to_string())
 }
 
-fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
-    let m = Mpv::new()?;
-    // Video: hardware decoding when safe (VAAPI/NVDEC on Linux, D3D11VA on Windows), the modern
-    // renderer, and a bounded demuxer cache so RAM stays predictable for 4K remuxes.
+/// A configured, initialised mpv: in the app's window when `embed` and the window can host it.
+fn open(req: &PlayRequest, embed: bool) -> Result<(Arc<Mpv>, bool), String> {
+    let m = Arc::new(Mpv::new()?);
+    let window: &[(&str, &str)] = if embed {
+        // Drawn by the app (render API): no window, no mpv keys or on-screen controls.
+        &[
+            ("vo", "libmpv"),
+            ("input-default-bindings", "no"),
+            ("osc", "no"),
+            ("osd-bar", "no"),
+        ]
+    } else {
+        &[
+            ("vo", "gpu-next"),
+            ("force-window", "immediate"),
+            ("fullscreen", "yes"),
+            ("input-default-bindings", "yes"),
+            ("input-vo-keyboard", "yes"),
+            ("osc", "yes"),
+        ]
+    };
+    for (k, v) in window {
+        m.set_option(k, v)?;
+    }
+    // Video: hardware decoding when safe (VAAPI/NVDEC on Linux, D3D11VA on Windows) and a
+    // bounded demuxer cache so RAM stays predictable for 4K remuxes.
     for (k, v) in [
-        ("vo", "gpu-next"),
         ("hwdec", "auto-safe"),
-        ("force-window", "immediate"),
-        ("fullscreen", "yes"),
         ("keep-open", "no"),
-        ("input-default-bindings", "yes"),
-        ("input-vo-keyboard", "yes"),
-        ("osc", "yes"),
         ("cache", "yes"),
         ("demuxer-max-bytes", "64MiB"),
         ("demuxer-max-back-bytes", "32MiB"),
@@ -149,6 +207,21 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         m.set_option("start", &format!("{:.3}", req.start_ms as f64 / 1000.0))?;
     }
     m.initialize()?;
+    if embed && let Err(e) = crate::video::attach(m.clone()) {
+        eprintln!("video in the window unavailable ({e}): using mpv's window");
+        drop(m);
+        return open(req, false);
+    }
+    Ok((m, embed))
+}
+
+fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
+    let (m, embedded) = open(&req, req.view.is_some())?;
+    let view = req.view.as_ref().filter(|_| embedded);
+    if let Some(v) = view {
+        (v.attached)(m.clone());
+    }
+    let mut shown = PlayerView::default();
     // One header per call: the Jellyfin header contains commas that list-splitting would break.
     // (`http-header-fields-append` is a command-line form only: libmpv rejects it as an option.)
     for h in &req.media.headers {
@@ -218,7 +291,11 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         }
     };
     loop {
-        let event = m.wait_event(if together.is_some() { 0.1 } else { 0.5 });
+        let event = m.wait_event(if together.is_some() || view.is_some() {
+            0.1
+        } else {
+            0.5
+        });
         if let Some(t) = together {
             while let Ok(msg) = t.rx.try_recv() {
                 match msg {
@@ -374,15 +451,34 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
             report(snapshot(PlaybackEvent::Progress, false));
         }
         // Short notes: the room ("Sam paused"), an invitation (longer, to be read).
+        let mut view_note = String::new();
         if let Some((t, at)) = &note {
             if at.elapsed() < Duration::from_secs(6) {
-                let _ = m.command(&["show-text", t, "900"]);
-                continue;
+                if view.is_some() {
+                    view_note = t.clone();
+                } else {
+                    let _ = m.command(&["show-text", t, "900"]);
+                    continue;
+                }
+            } else {
+                note = None;
             }
-            note = None;
         }
+        let mut view_skip = String::new();
+        let mut view_countdown = 0;
         // Skip intro / next episode prompts, shared with the other players (core).
         let Some(dur) = last_pos.duration_ms else {
+            if let Some(v) = view {
+                push_view(
+                    &m,
+                    v,
+                    &req,
+                    &mut shown,
+                    view_note,
+                    view_skip,
+                    view_countdown,
+                );
+            }
             continue;
         };
         let pos = last_pos.position_ms;
@@ -394,7 +490,6 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         {
             skipped.push(seg.start_ms);
             seek_to(&m, seg.end_ms);
-            continue;
         }
         let text = if prompt.credits && req.auto_next && !cancelled && !paused {
             let since = *countdown.get_or_insert_with(Instant::now);
@@ -406,28 +501,140 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 });
                 break;
             }
+            view_countdown = left.as_secs() as u32 + 1;
             Some(format!(
                 "Next episode in {} s   ·   > now   ·   C to keep watching",
-                left.as_secs() + 1
+                view_countdown
             ))
         } else {
             if !prompt.credits {
                 countdown = None;
             }
+            // A button on the in-window player; nothing in mpv's window (S still skips there).
             if let Some(seg) = &prompt.skip {
-                Some(format!("Press S to skip {}", skip_name(seg.kind)))
-            } else if prompt.next_episode {
-                Some("Press > for the next episode".to_owned())
-            } else {
-                None
+                view_skip = format!("Skip {}", skip_name(seg.kind));
             }
+            None
         };
-        if let Some(t) = text {
+        if let Some(v) = view {
+            push_view(
+                &m,
+                v,
+                &req,
+                &mut shown,
+                view_note,
+                view_skip,
+                view_countdown,
+            );
+        } else if let Some(t) = text {
             // Refreshed every loop (0.5 s), so it disappears soon after the prompt ends.
             let _ = m.command(&["show-text", &t, "900"]);
         }
     }
     Ok(())
+}
+
+/// Sends what the controls show when it changed.
+fn push_view(
+    m: &Mpv,
+    v: &ViewLink,
+    req: &PlayRequest,
+    shown: &mut PlayerView,
+    note: String,
+    skip: String,
+    countdown: u32,
+) {
+    let ms = |p: &str| m.get_f64(p).map_or(0, |s| (s.max(0.0) * 1000.0) as u64);
+    let position_ms = ms("time-pos");
+    let tracks = |kind: &str| {
+        let count: usize = m
+            .get_string("track-list/count")
+            .and_then(|c| c.parse().ok())
+            .unwrap_or(0);
+        let mut out = Vec::new();
+        if kind == "sub" {
+            out.push(TrackItem {
+                id: "no".into(),
+                label: "Off".into(),
+                selected: matches!(m.get_string("sid").as_deref(), Some("no" | "false") | None),
+            });
+        }
+        for i in 0..count {
+            let prop = |n: &str| {
+                m.get_string(&format!("track-list/{i}/{n}"))
+                    .filter(|v| !v.is_empty())
+            };
+            if prop("type").as_deref() != Some(kind) {
+                continue;
+            }
+            let Some(id) = prop("id") else { continue };
+            let lang = prop("lang").map(|l| language_name(&l));
+            let mut parts: Vec<String> = lang.iter().cloned().collect();
+            if let Some(t) = prop("title").filter(|t| Some(t) != lang.as_ref()) {
+                parts.push(t);
+            }
+            if kind == "audio"
+                && let Some(c) = prop("codec")
+            {
+                parts.push(c.to_uppercase());
+            }
+            if m.get_flag(&format!("track-list/{i}/forced"))
+                .unwrap_or(false)
+            {
+                parts.push("forced".into());
+            }
+            if parts.is_empty() {
+                parts.push(format!("Track {id}"));
+            }
+            out.push(TrackItem {
+                id,
+                label: parts.join(" · "),
+                selected: m
+                    .get_flag(&format!("track-list/{i}/selected"))
+                    .unwrap_or(false),
+            });
+        }
+        out
+    };
+    let now = PlayerView {
+        // Steps of a quarter second: fewer UI updates, smooth enough for the bar and clock.
+        position_ms: position_ms / 250 * 250,
+        duration_ms: ms("duration"),
+        cache_ms: ms("demuxer-cache-time") / 1000 * 1000,
+        paused: m.get_flag("pause").unwrap_or(false),
+        skip,
+        countdown,
+        note,
+        has_next: req.has_next,
+        has_previous: req.has_previous,
+        audio: tracks("audio"),
+        subtitles: tracks("sub"),
+    };
+    if now != *shown {
+        (v.show)(now.clone());
+        *shown = now;
+    }
+}
+
+fn language_name(code: &str) -> String {
+    let name = match code.to_ascii_lowercase().as_str() {
+        "fre" | "fra" | "fr" => "French",
+        "eng" | "en" => "English",
+        "ger" | "deu" | "de" => "German",
+        "spa" | "es" => "Spanish",
+        "ita" | "it" => "Italian",
+        "jpn" | "ja" => "Japanese",
+        "dut" | "nld" | "nl" => "Dutch",
+        "por" | "pt" => "Portuguese",
+        "kor" | "ko" => "Korean",
+        "chi" | "zho" | "zh" => "Chinese",
+        "rus" | "ru" => "Russian",
+        "ara" | "ar" => "Arabic",
+        "pol" | "pl" => "Polish",
+        "und" => "Unknown language",
+        _ => return code.to_owned(),
+    };
+    name.to_owned()
 }
 
 /// mpv's audio and subtitle tracks, numbered for the core, with their mpv ids.

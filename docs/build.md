@@ -78,6 +78,10 @@ bundles a pinned, checksum-verified `libmpv-2.dll` (override with `MPV_DLL=...`)
 
 Headless mode (CI, screenshots, timing): `ALWYWATCH_SCREENSHOT=out.png
 [ALWYWATCH_SCREENSHOT_AFTER_MS=3000] alwywatch`; `ALWYWATCH_TIMING=1` prints the first-frame time.
+The player draws inside the window (mpv's render API under Slint's OpenGL renderer; mpv's own
+window only when OpenGL is unavailable). Check it without a server: `ALWYWATCH_TEST_PLAY=video.mkv
+ALWYWATCH_GL_SHOT=out.png [ALWYWATCH_GL_SHOT_AFTER_MS=1200] alwywatch` plays a local file and
+saves what the window drew (opens a real window).
 
 ## Web
 

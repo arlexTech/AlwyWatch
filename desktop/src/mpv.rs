@@ -57,7 +57,43 @@ struct Api {
     terminate_destroy: unsafe extern "C" fn(*mut MpvHandle),
     error_string: unsafe extern "C" fn(c_int) -> *const c_char,
     free: unsafe extern "C" fn(*mut c_void),
+    /// The render API (video drawn inside AlwyWatch's window); None on a libmpv without it.
+    render: Option<RenderApi>,
 }
+
+struct RenderApi {
+    create: unsafe extern "C" fn(*mut *mut c_void, *mut MpvHandle, *mut RenderParam) -> c_int,
+    set_update_callback:
+        unsafe extern "C" fn(*mut c_void, Option<unsafe extern "C" fn(*mut c_void)>, *mut c_void),
+    render: unsafe extern "C" fn(*mut c_void, *mut RenderParam) -> c_int,
+    report_swap: unsafe extern "C" fn(*mut c_void),
+    free: unsafe extern "C" fn(*mut c_void),
+}
+
+#[repr(C)]
+struct RenderParam {
+    kind: c_int,
+    data: *mut c_void,
+}
+
+#[repr(C)]
+struct OpenGlInitParams {
+    get_proc_address: Option<unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void>,
+    get_proc_address_ctx: *mut c_void,
+}
+
+#[repr(C)]
+struct OpenGlFbo {
+    fbo: c_int,
+    w: c_int,
+    h: c_int,
+    internal_format: c_int,
+}
+
+const RENDER_PARAM_API_TYPE: c_int = 1;
+const RENDER_PARAM_OPENGL_INIT_PARAMS: c_int = 2;
+const RENDER_PARAM_OPENGL_FBO: c_int = 3;
+const RENDER_PARAM_FLIP_Y: c_int = 4;
 
 #[cfg(windows)]
 const CANDIDATES: &[&str] = &["libmpv-2.dll", "mpv-2.dll", "mpv-1.dll"];
@@ -90,7 +126,23 @@ unsafe fn load(lib: Library) -> Result<Api, String> {
             *unsafe { lib.get($name) }.map_err(|e| e.to_string())?
         };
     }
+    macro_rules! opt {
+        ($name:literal) => {
+            // SAFETY: as above.
+            unsafe { lib.get($name) }.ok().map(|s| *s)
+        };
+    }
+    let render = (|| {
+        Some(RenderApi {
+            create: opt!(b"mpv_render_context_create\0")?,
+            set_update_callback: opt!(b"mpv_render_context_set_update_callback\0")?,
+            render: opt!(b"mpv_render_context_render\0")?,
+            report_swap: opt!(b"mpv_render_context_report_swap\0")?,
+            free: opt!(b"mpv_render_context_free\0")?,
+        })
+    })();
     Ok(Api {
+        render,
         create: sym!(b"mpv_create\0"),
         initialize: sym!(b"mpv_initialize\0"),
         set_option_string: sym!(b"mpv_set_option_string\0"),
@@ -108,7 +160,8 @@ pub fn available() -> bool {
     api().is_ok()
 }
 
-/// One mpv instance. Not `Sync`: drive it from a single thread.
+/// One mpv instance. Events (`wait_event`) are read by one thread only (the player's); commands
+/// and properties may come from any thread (libmpv's client API is thread-safe for them).
 pub struct Mpv {
     api: &'static Api,
     h: *mut MpvHandle,
@@ -116,6 +169,8 @@ pub struct Mpv {
 
 // The handle may move to the player thread; libmpv handles are thread-safe for these calls.
 unsafe impl Send for Mpv {}
+// SAFETY: see the type's documentation: only the player thread calls `wait_event`.
+unsafe impl Sync for Mpv {}
 
 impl Mpv {
     pub fn new() -> Result<Self, String> {
@@ -257,4 +312,111 @@ impl Drop for Mpv {
 
 fn cstr(s: &str) -> Result<CString, String> {
     CString::new(s).map_err(|_| "string contains NUL".to_string())
+}
+
+/// mpv drawing into AlwyWatch's OpenGL context (`vo=libmpv`). Lives on the UI thread, which owns
+/// the context; holds the mpv instance so the core outlives it (mpv requires the render context
+/// to be freed first: fields drop after `Drop::drop`).
+pub struct RenderContext {
+    ctx: *mut c_void,
+    api: &'static Api,
+    _mpv: std::sync::Arc<Mpv>,
+}
+
+impl RenderContext {
+    /// `get_proc_address` resolves OpenGL functions in the current context (only used during
+    /// this call). `on_update` is called from mpv's threads when a new frame is ready: it must
+    /// not call into mpv, only schedule a redraw.
+    pub fn new(
+        mpv: std::sync::Arc<Mpv>,
+        get_proc_address: &dyn Fn(&CStr) -> *const c_void,
+        on_update: unsafe extern "C" fn(*mut c_void),
+    ) -> Result<Self, String> {
+        let api = mpv.api;
+        let r = api.render.as_ref().ok_or("this libmpv has no render API")?;
+        unsafe extern "C" fn resolve(ctx: *mut c_void, name: *const c_char) -> *mut c_void {
+            // SAFETY: `ctx` points at the `&dyn Fn` below, alive for the whole create call.
+            let f = unsafe { &*(ctx as *const &dyn Fn(&CStr) -> *const c_void) };
+            f(unsafe { CStr::from_ptr(name) }) as *mut c_void
+        }
+        let mut gpa: &dyn Fn(&CStr) -> *const c_void = get_proc_address;
+        let mut init = OpenGlInitParams {
+            get_proc_address: Some(resolve),
+            get_proc_address_ctx: (&mut gpa as *mut &dyn Fn(&CStr) -> *const c_void).cast(),
+        };
+        let api_type = c"opengl";
+        let mut params = [
+            RenderParam {
+                kind: RENDER_PARAM_API_TYPE,
+                data: api_type.as_ptr() as *mut c_void,
+            },
+            RenderParam {
+                kind: RENDER_PARAM_OPENGL_INIT_PARAMS,
+                data: (&mut init as *mut OpenGlInitParams).cast(),
+            },
+            RenderParam {
+                kind: 0,
+                data: ptr::null_mut(),
+            },
+        ];
+        let mut ctx: *mut c_void = ptr::null_mut();
+        // SAFETY: valid handle; params terminated by kind 0; called on the GL thread with the
+        // context current.
+        let rc = unsafe { (r.create)(&mut ctx, mpv.h, params.as_mut_ptr()) };
+        mpv.check(rc, "mpv_render_context_create")?;
+        // SAFETY: valid context; the callback only schedules a redraw.
+        unsafe { (r.set_update_callback)(ctx, Some(on_update), ptr::null_mut()) };
+        Ok(Self {
+            ctx,
+            api,
+            _mpv: mpv,
+        })
+    }
+
+    /// Draws the current frame into framebuffer `fbo` of `w`×`h` pixels.
+    pub fn render(&self, fbo: i32, w: i32, h: i32) {
+        let Some(r) = self.api.render.as_ref() else {
+            return;
+        };
+        let mut target = OpenGlFbo {
+            fbo,
+            w,
+            h,
+            internal_format: 0,
+        };
+        // The window's own framebuffer has its origin at the bottom.
+        let mut flip: c_int = c_int::from(fbo == 0);
+        let mut params = [
+            RenderParam {
+                kind: RENDER_PARAM_OPENGL_FBO,
+                data: (&mut target as *mut OpenGlFbo).cast(),
+            },
+            RenderParam {
+                kind: RENDER_PARAM_FLIP_Y,
+                data: (&mut flip as *mut c_int).cast(),
+            },
+            RenderParam {
+                kind: 0,
+                data: ptr::null_mut(),
+            },
+        ];
+        // SAFETY: valid context, called on the GL thread with the context current.
+        unsafe { (r.render)(self.ctx, params.as_mut_ptr()) };
+    }
+
+    pub fn report_swap(&self) {
+        if let Some(r) = self.api.render.as_ref() {
+            // SAFETY: valid context.
+            unsafe { (r.report_swap)(self.ctx) };
+        }
+    }
+}
+
+impl Drop for RenderContext {
+    fn drop(&mut self) {
+        if let Some(r) = self.api.render.as_ref() {
+            // SAFETY: created by mpv_render_context_create, freed once, before the mpv core.
+            unsafe { (r.free)(self.ctx) };
+        }
+    }
 }

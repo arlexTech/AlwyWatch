@@ -19,6 +19,7 @@ use crate::profiles::ProfileStore;
 mod account;
 mod history;
 mod links;
+mod playback;
 mod profiles;
 mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
@@ -132,6 +133,8 @@ struct State {
     mark_pending: Option<String>,
     /// Short messages for the open player (an invitation arrived).
     player_notes: Option<std::sync::mpsc::Sender<String>>,
+    /// The playing mpv, for the in-window controls.
+    player_mpv: Option<Arc<crate::mpv::Mpv>>,
     admin_users: Vec<AdminUser>,
     armed: Option<(String, i32)>,
     poll_gen: u64,
@@ -280,6 +283,7 @@ impl App {
                 links: Default::default(),
                 forever: None,
                 player_notes: None,
+                player_mpv: None,
                 mark_pending: None,
                 admin_users: vec![],
                 armed: None,
@@ -3080,6 +3084,7 @@ impl App {
             let req = PlayRequest {
                 media: src.direct.clone(),
                 start_ms,
+                view: Some(Self::player_view_link(title.clone())),
                 title,
                 external_subs: subs,
                 tracks: TrackSetup {
@@ -3146,6 +3151,7 @@ impl App {
                                 t.show(r);
                             }
                             t.state.borrow_mut().player_notes = None;
+                            t.player_closed();
                             let in_room = t.in_room();
                             t.room_player_gone();
                             // Said on the page the viewer is back on (after `show` cleared it);
@@ -4592,6 +4598,7 @@ impl App {
         on!(on_history_pick, |a, side, id| a
             .history_pick(side.into(), id.into()));
         on!(on_history_check, |a| a.history_check());
+        on!(on_player_cmd, |a, cmd, arg| a.player_cmd(&cmd, &arg));
         on!(on_history_copy, |a| a.history_copy());
         on!(on_history_toggle_missing, |a| a.history_toggle_missing());
         on!(on_jellyfin_url, |a, url| a.jellyfin_url(url.into()));

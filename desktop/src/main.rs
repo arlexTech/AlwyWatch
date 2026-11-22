@@ -9,6 +9,7 @@ mod mpv;
 mod platform;
 mod player;
 mod profiles;
+mod video;
 
 use std::time::Instant;
 
@@ -229,26 +230,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {}
     }
+    if let Ok(file) = std::env::var("ALWYWATCH_TEST_PLAY") {
+        app.test_play(file);
+    }
     if let Ok(url) = std::env::var("ALWYWATCH_TEST_SEERR_URL") {
         app.test_seerr(url);
     }
     if let Ok(url) = std::env::var("ALWYWATCH_TEST_JELLYFIN_URL") {
         app.test_jellyfin(url);
     }
-    if std::env::var_os("ALWYWATCH_TIMING").is_some() {
-        // Startup measurement used by docs/perf.md: time to the first rendered frame.
-        let weak = ui.as_weak();
-        let _ = ui.window().set_rendering_notifier(move |state, _| {
-            if let slint::RenderingState::AfterRendering = state {
-                eprintln!("first frame after {} ms", t0.elapsed().as_millis());
-                if std::env::var_os("ALWYWATCH_EXIT_AFTER_FIRST_FRAME").is_some()
-                    && let Some(w) = weak.upgrade()
-                {
-                    let _ = w.hide();
-                }
-            }
-        });
-    }
+    // Video inside the window (and the startup measurement used by docs/perf.md).
+    video::install(
+        &ui,
+        std::env::var_os("ALWYWATCH_TIMING").map(|_| {
+            (
+                t0,
+                std::env::var_os("ALWYWATCH_EXIT_AFTER_FIRST_FRAME").is_some(),
+            )
+        }),
+    );
     ui.run()?;
     Ok(())
 }
