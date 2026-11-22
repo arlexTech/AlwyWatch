@@ -87,7 +87,7 @@ user's servers (`together_find(account_ids, state.media)`), open the player at
 `together_position(state, received_at_ms, now_ms)` / `state.position_at(..)`, playing if
 `state.playing`, and run the room's `wait` loop. In the player, as today: send every play,
 pause, seek and title change with `together_update`; on each `wait` answer whose `by` is not
-this seat, follow it (seek when more than 1.5 s off). The player shows "n watching" with the
+this seat, follow it: every half second the player compares itself with the room and plays up to 6 % faster or slower for small drifts, seeking only past 2 s (`together_correction`; seeks only past 1 s when the speed can't change, as with passthrough audio). Not for 2 s after its own change, which the room hasn't echoed yet. The player shows "n watching" with the
 members' avatars and names.
 
 ## 6. Together page

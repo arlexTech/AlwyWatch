@@ -76,7 +76,8 @@ pub struct TrackItem {
 
 /// From the app to a player in a watch together room.
 pub enum ToPlayer {
-    /// Play or pause like the room, at this position (seek when more than 1.5 s apart).
+    /// The room plays or is paused, at this position now. The player follows it continuously
+    /// (slightly faster or slower for small drifts, a seek past 2 s: `together_correction`).
     Sync { playing: bool, position_ms: u64 },
     /// A short message on the video ("Sam paused").
     Note(String),
@@ -278,6 +279,10 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
     let together = req.together.as_ref();
     let mut quiet_until = Instant::now() + Duration::from_secs(3);
     let mut started = false;
+    // The room's last state (playing, position, when): followed continuously, see `follow`.
+    let mut room: Option<(bool, u64, Instant)> = None;
+    let mut next_check = Instant::now();
+    let mut rate = 1.0;
     let mut note: Option<(String, Instant)> = None;
     let send_user = |m: &Mpv| {
         if let Some(t) = together {
@@ -303,22 +308,51 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                         playing,
                         position_ms,
                     } => {
-                        quiet_until = Instant::now() + Duration::from_millis(1500);
-                        let _ = m.command(&["set", "pause", if playing { "no" } else { "yes" }]);
-                        paused = !playing;
-                        let pos = m
-                            .get_f64("time-pos")
-                            .map(|s| (s.max(0.0) * 1000.0) as u64)
-                            .unwrap_or(0);
-                        if pos.abs_diff(position_ms) > 1500 {
-                            seek_to(&m, position_ms);
+                        if paused == playing {
+                            quiet_until = Instant::now() + Duration::from_millis(1500);
+                            let _ =
+                                m.command(&["set", "pause", if playing { "no" } else { "yes" }]);
+                            paused = !playing;
                         }
+                        room = Some((playing, position_ms, Instant::now()));
+                        next_check = Instant::now();
                     }
                     ToPlayer::Note(t) => note = Some((t, Instant::now())),
                     ToPlayer::Quit => {
                         let _ = m.command(&["quit"]);
                     }
                 }
+            }
+        }
+        if let Some((playing, position_ms, at)) = room
+            && started
+            // Only while playing/paused like the room (the room's echo of a change of ours
+            // comes first).
+            && paused != playing
+            && Instant::now() >= next_check
+        {
+            next_check = Instant::now() + Duration::from_millis(500);
+            let expected = position_ms
+                + if playing {
+                    at.elapsed().as_millis() as u64
+                } else {
+                    0
+                };
+            let actual = m
+                .get_f64("time-pos")
+                .map_or(expected, |s| (s.max(0.0) * 1000.0) as u64);
+            // Passthrough audio can't change speed: seeks only.
+            let c =
+                alwywatch_core::together_correction(expected, actual, playing, rate, !req.spdif);
+            if let Some(to) = c.seek_to_ms {
+                quiet_until = Instant::now() + Duration::from_millis(1500);
+                seek_to(&m, to);
+                // Let the seek land (buffering) before judging again.
+                next_check = Instant::now() + Duration::from_secs(2);
+            }
+            if (c.rate - rate).abs() > 0.0001 {
+                rate = c.rate;
+                let _ = m.command(&["set", "speed", &format!("{rate:.3}")]);
             }
         }
         if let Some(rx) = &req.notes {
@@ -357,7 +391,11 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
             }
             // The first one is the start itself, not the viewer moving.
             mpv::EVENT_PLAYBACK_RESTART if !started => started = true,
-            mpv::EVENT_PLAYBACK_RESTART if Instant::now() >= quiet_until => send_user(&m),
+            mpv::EVENT_PLAYBACK_RESTART if Instant::now() >= quiet_until => {
+                send_user(&m);
+                // Our own seek: the room hasn't echoed it yet, don't pull back meanwhile.
+                next_check = Instant::now() + Duration::from_secs(2);
+            }
             mpv::EVENT_END_FILE => {
                 let finished = reason == Some(mpv::END_FILE_EOF);
                 let error = (reason == Some(mpv::END_FILE_ERROR))
@@ -436,6 +474,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
             paused = is_paused;
             if Instant::now() >= quiet_until {
                 send_user(&m);
+                next_check = Instant::now() + Duration::from_secs(2);
             }
             report(snapshot(
                 if paused {

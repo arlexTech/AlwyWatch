@@ -214,6 +214,80 @@ record! {
     }
 }
 
+/// How a member's player follows the room, decided every half second or so: small drifts are
+/// absorbed by playing slightly faster or slower (pitch kept, not noticeable), large ones by a
+/// seek. Hysteresis keeps the rate from flapping: correcting starts past 120 ms and stops
+/// under 40 ms.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+pub struct TogetherCorrection {
+    /// Seek here first (then play at `rate`).
+    pub seek_to_ms: Option<u64>,
+    /// Playback speed to use now (1.0: normal).
+    pub rate: f64,
+}
+
+/// Seek when further apart than this (or [`SEEK_WITHOUT_RATE_MS`] when the player can't change
+/// its speed, as with audio passthrough).
+pub const SEEK_DRIFT_MS: u64 = 2_000;
+pub const SEEK_WITHOUT_RATE_MS: u64 = 1_000;
+/// Fastest/slowest catch-up speed (±6 %).
+const MAX_RATE_DELTA: f64 = 0.06;
+
+/// `expected_ms`: where the room is now; `actual_ms`: where this player is; `current_rate`: the
+/// speed it plays at now; `can_change_rate`: false for players that can't (passthrough audio).
+pub fn together_correction(
+    expected_ms: u64,
+    actual_ms: u64,
+    playing: bool,
+    current_rate: f64,
+    can_change_rate: bool,
+) -> TogetherCorrection {
+    let drift = actual_ms as i64 - expected_ms as i64;
+    let far = if can_change_rate {
+        SEEK_DRIFT_MS
+    } else {
+        SEEK_WITHOUT_RATE_MS
+    };
+    let seek = TogetherCorrection {
+        seek_to_ms: Some(expected_ms),
+        rate: 1.0,
+    };
+    let steady = TogetherCorrection {
+        seek_to_ms: None,
+        rate: 1.0,
+    };
+    if !playing {
+        // Paused: a seek is invisible; the small threshold covers seek inaccuracy.
+        return if drift.unsigned_abs() > 300 {
+            seek
+        } else {
+            steady
+        };
+    }
+    if drift.unsigned_abs() > far {
+        return seek;
+    }
+    let correcting = (current_rate - 1.0).abs() > 0.001;
+    let threshold = if correcting { 40 } else { 120 };
+    if !can_change_rate || drift.unsigned_abs() <= threshold {
+        return steady;
+    }
+    // Ahead (drift > 0): slower; proportional, ±6 % from 300 ms apart (1 s closes in ~17 s).
+    let delta = (drift as f64 / 5_000.0).clamp(-MAX_RATE_DELTA, MAX_RATE_DELTA);
+    // Steps of 0.5 % so players aren't asked for a new speed every tick.
+    let rate = ((1.0 - delta) * 200.0).round() / 200.0;
+    TogetherCorrection {
+        seek_to_ms: None,
+        rate: if (rate - 1.0).abs() < 0.001 {
+            // Under one step but past the threshold: the smallest step.
+            if drift > 0 { 0.995 } else { 1.005 }
+        } else {
+            rate
+        },
+    }
+}
+
 impl TogetherState {
     /// Where playback should be now, on the server clock (`server_now_ms`).
     pub fn position_at(&self, server_now_ms: i64) -> u64 {
@@ -299,6 +373,52 @@ mod tests {
         assert!(s.is_host("a2"));
         assert!(!s.is_host("b"));
         assert!(!s.is_host("unknown"));
+    }
+
+    #[test]
+    fn small_drift_changes_speed_large_drift_seeks() {
+        // In step: nothing.
+        let c = together_correction(10_000, 10_080, true, 1.0, true);
+        assert_eq!((c.seek_to_ms, c.rate), (None, 1.0));
+        // 500 ms ahead: slower, no seek.
+        let c = together_correction(10_000, 10_500, true, 1.0, true);
+        assert_eq!(c.seek_to_ms, None);
+        assert!(c.rate < 1.0 && c.rate >= 0.94, "{}", c.rate);
+        // 500 ms behind: faster.
+        assert!(together_correction(10_000, 9_500, true, 1.0, true).rate > 1.0);
+        // Far apart: seek.
+        assert_eq!(
+            together_correction(10_000, 13_000, true, 1.0, true).seek_to_ms,
+            Some(10_000)
+        );
+        // Correcting: keeps going until within 40 ms, then back to normal.
+        assert!(together_correction(10_000, 10_090, true, 0.98, true).rate < 1.0);
+        assert_eq!(
+            together_correction(10_000, 10_030, true, 0.98, true).rate,
+            1.0
+        );
+    }
+
+    #[test]
+    fn without_speed_control_only_seeks() {
+        let c = together_correction(10_000, 10_800, true, 1.0, false);
+        assert_eq!((c.seek_to_ms, c.rate), (None, 1.0));
+        assert_eq!(
+            together_correction(10_000, 11_200, true, 1.0, false).seek_to_ms,
+            Some(10_000)
+        );
+    }
+
+    #[test]
+    fn paused_members_seek_to_the_room() {
+        assert_eq!(
+            together_correction(10_000, 10_200, false, 1.0, true).seek_to_ms,
+            None
+        );
+        assert_eq!(
+            together_correction(10_000, 10_400, false, 1.0, true).seek_to_ms,
+            Some(10_000)
+        );
     }
 
     #[test]

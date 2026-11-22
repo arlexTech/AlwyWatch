@@ -319,9 +319,13 @@ fun AlwyWatchServerGroup(
                     onDismiss = { stopping = false },
                 )
             }
-            ListRow("Sign out of AlwyWatch", subtitle = "Leaving soon, keep choices and watch together disappear from this device", icon = Icons.Close, iconTint = Danger, onClick = {
-                stopping = true
-            })
+            ListRow(
+                "Sign out of AlwyWatch",
+                subtitle = "Leaving soon, keep choices and watch together disappear from this device",
+                icon = Icons.Close,
+                iconTint = Danger,
+                onClick = { stopping = true },
+            )
         }
         error?.let { Text(it, Modifier.padding(16.dp), color = Danger, style = MaterialTheme.typography.bodySmall) }
     }

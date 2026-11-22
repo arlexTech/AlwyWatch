@@ -218,7 +218,7 @@ TogetherPerson  {user_key, name, media_name, avatar, server_name, last_together_
   invitations, declines, host handover). `started` is false in a lobby and, once true, never
   goes back. `playing` is always false in a lobby. `position_ms` is the position at `at_ms`
   (server clock, Unix ms); clients add the time elapsed since (`now_ms` is the server clock when
-  the answer was made) and seek when more than 1.5 s off (`TogetherState::position_at`).
+  the answer was made, `TogetherState::position_at`) and follow it continuously: slightly faster or slower for small drifts, a seek past 2 s (`together_correction`).
   `by` = member id that made the change, empty for the server's changes (joins, leaves,
   invitations): a player ignores its own echo by comparing `by` with its member id. `members`
   is sorted by name (a user on two devices appears twice, same `user_key`); `host` is the

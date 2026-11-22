@@ -846,7 +846,64 @@ fn PlayerView(
         }
     };
 
-    // Plays or pauses like the room and seeks when more than 1.5 s apart.
+    // Stays in step with the room every half second: slightly faster or slower for small drifts,
+    // a seek past 2 s (`together_correction`, shared with the apps). Not right after our own
+    // change (the room hasn't echoed it yet) nor while a seek lands.
+    let own_hold = StoredValue::new(0.0f64);
+    let seek_hold = StoredValue::new(0.0f64);
+    // False once a speed change didn't close the gap: seeks only.
+    let rate_works = StoredValue::new(true);
+    let rate_check = StoredValue::new((0.0f64, 0u64));
+    let follow = move || {
+        if !alive() || !joined() || room.busy() || off_title.get_value() {
+            return;
+        }
+        let now = together::now_ms();
+        if now < own_hold.get_value() || now < seek_hold.get_value() {
+            return;
+        }
+        let (Some(v), Some((exp, playing))) = (video.get_untracked(), room.expected()) else {
+            return;
+        };
+        // HAVE_FUTURE_DATA; and only while playing/paused like the room.
+        if v.ready_state() < 3 || v.paused() == playing || v.ended() {
+            return;
+        }
+        let at = (v.current_time() * 1000.0) as u64;
+        let current = v.playback_rate();
+        let c = keep_service::together::together_correction(
+            exp,
+            at,
+            playing,
+            current,
+            rate_works.get_value(),
+        );
+        if let Some(to) = c.seek_to_ms {
+            v.set_current_time(to as f64 / 1000.0);
+            seek_hold.set_value(now + 2_000.0);
+        }
+        let drift = at.abs_diff(exp);
+        if (c.rate - current).abs() > 0.0001 {
+            if (current - 1.0).abs() < 0.0001 {
+                rate_check.set_value((now + 6_000.0, drift));
+            }
+            v.set_playback_rate(c.rate);
+        } else if (current - 1.0).abs() > 0.0001 {
+            let (when, before) = rate_check.get_value();
+            if now >= when {
+                if drift * 10 > before * 8 {
+                    rate_works.set_value(false);
+                    v.set_playback_rate(1.0);
+                }
+                rate_check.set_value((now + 6_000.0, drift));
+            }
+        }
+    };
+    if let Ok(h) = set_interval_with_handle(follow, std::time::Duration::from_millis(500)) {
+        on_cleanup(move || h.clear());
+    }
+
+    // Plays or pauses like the room, then follows its position.
     let sync = move || {
         if !joined() {
             return;
@@ -862,9 +919,9 @@ fn PlayerView(
         } else if !playing && !v.paused() {
             let _ = v.pause();
         }
-        if together::drifted((v.current_time() * 1000.0) as u64, exp) {
-            v.set_current_time(exp as f64 / 1000.0);
-        }
+        let _ = exp;
+        own_hold.set_value(0.0);
+        follow();
     };
     // Our own play, pause or seek: tell the room (its own changes, once applied, match it).
     let local_action = move || {
@@ -880,6 +937,7 @@ fn PlayerView(
         let playing = !v.paused();
         let at = (v.current_time() * 1000.0) as u64;
         if together::local_change(playing, at, room_playing, exp) {
+            own_hold.set_value(together::now_ms() + 2_000.0);
             room.send(None, playing, at);
         }
     };

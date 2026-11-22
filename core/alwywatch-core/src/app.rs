@@ -3194,6 +3194,25 @@ pub fn together_position(state: TogetherState, received_at_ms: i64, now_ms: i64)
     state.position_at(state.now_ms + (now_ms - received_at_ms).max(0))
 }
 
+/// How the player should follow the room now (speed or seek), see
+/// [`keep_service::together::together_correction`].
+#[uniffi::export]
+pub fn together_correction(
+    expected_ms: u64,
+    actual_ms: u64,
+    playing: bool,
+    current_rate: f64,
+    can_change_rate: bool,
+) -> keep_service::together::TogetherCorrection {
+    keep_service::together::together_correction(
+        expected_ms,
+        actual_ms,
+        playing,
+        current_rate,
+        can_change_rate,
+    )
+}
+
 /// The built-in avatars, in display order (draw: a disc of `background`, `shape` in
 /// `foreground`; geometry in docs/keep-protocol.md).
 #[uniffi::export]

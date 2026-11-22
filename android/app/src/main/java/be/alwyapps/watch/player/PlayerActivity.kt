@@ -465,6 +465,7 @@ class PlayerActivity : ComponentActivity() {
             lifecycleScope.launch {
                 while (isActive) {
                     player?.let { watchSegments(it) }
+                    roomState?.let { syncToRoom(it) }
                     delay(500)
                 }
             }
@@ -1007,20 +1008,71 @@ class PlayerActivity : ComponentActivity() {
                 ui.togetherNote = "$left left"
             }
         }
+        // Someone else's change wins over our own pending hold.
+        ownHoldUntil = 0L
         syncToRoom(s)
     }
 
-    /** Plays or pauses like the room and seeks when more than 1.5 s apart. */
+    /** Speed used to catch up with the room (1.0: normal), see [syncToRoom]. */
+    private var roomRate = 1.0
+
+    /** False once a speed change didn't close the gap (passthrough audio): seeks only. */
+    private var rateWorks = true
+    private var rateCheckAt = 0L
+    private var rateCheckDrift = 0L
+
+    /** No following before this: our own change, not echoed by the room yet. */
+    private var ownHoldUntil = 0L
+
+    /** No corrections before this: a seek landing. */
+    private var seekHoldUntil = 0L
+
+    /**
+     * Plays or pauses like the room and stays in step with it, every half second: small drifts
+     * by playing slightly faster or slower, a seek past 2 s (the core's `togetherCorrection`).
+     */
     private fun syncToRoom(s: be.alwyapps.watch.core.keep.TogetherState) {
         val p = player ?: return
+        val now = android.os.SystemClock.elapsedRealtime()
         val expected =
             be.alwyapps.watch.core
-                .togetherPosition(s, roomReceivedAt, android.os.SystemClock.elapsedRealtime())
+                .togetherPosition(s, roomReceivedAt, now)
                 .toLong()
+        if (roomSending > 0 || now < ownHoldUntil) return
         applyingRoom = true
         try {
             if (p.playWhenReady != s.playing) p.playWhenReady = s.playing
-            if (abs(p.currentPosition - expected) > 1500) p.seekTo(expected)
+            if (now < seekHoldUntil || p.playbackState != Player.STATE_READY) return
+            val drift = p.currentPosition - expected
+            val c =
+                be.alwyapps.watch.core.togetherCorrection(
+                    expected.coerceAtLeast(0).toULong(),
+                    p.currentPosition.coerceAtLeast(0).toULong(),
+                    s.playing,
+                    roomRate,
+                    rateWorks,
+                )
+            c.seekToMs?.let {
+                p.seekTo(it.toLong())
+                seekHoldUntil = now + 2_000
+            }
+            if (c.rate != roomRate) {
+                if (roomRate == 1.0) {
+                    rateCheckAt = now + 6_000
+                    rateCheckDrift = abs(drift)
+                }
+                roomRate = c.rate
+                p.setPlaybackSpeed(c.rate.toFloat())
+            } else if (roomRate != 1.0 && now >= rateCheckAt) {
+                // Passthrough audio ignores the speed: the gap doesn't close. Seek instead.
+                if (abs(drift) > rateCheckDrift * 8 / 10) {
+                    rateWorks = false
+                    roomRate = 1.0
+                    p.setPlaybackSpeed(1f)
+                }
+                rateCheckAt = now + 6_000
+                rateCheckDrift = abs(drift)
+            }
         } finally {
             applyingRoom = false
         }
@@ -1066,6 +1118,7 @@ class PlayerActivity : ComponentActivity() {
         val playing = p.playWhenReady
         val position = p.currentPosition.coerceAtLeast(0).toULong()
         val (acct, item) = if (newTitle) account to itemId else null to null
+        ownHoldUntil = android.os.SystemClock.elapsedRealtime() + 2_000
         roomSending++
         lifecycleScope.launch {
             try {

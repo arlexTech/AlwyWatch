@@ -29,8 +29,9 @@ pub use error::{CoreError, Result};
 pub use history::{HistoryChange, HistoryCopyResult, HistoryPlan, HistoryProgress};
 pub use keep_service::identity::LinkedIdentity;
 pub use keep_service::together::{
-    TogetherCreate, TogetherInvite, TogetherInvitee, TogetherJoined, TogetherMedia, TogetherMember,
-    TogetherPerson, TogetherRoom, TogetherRooms, TogetherState, TogetherUpdate,
+    TogetherCorrection, TogetherCreate, TogetherInvite, TogetherInvitee, TogetherJoined,
+    TogetherMedia, TogetherMember, TogetherPerson, TogetherRoom, TogetherRooms, TogetherState,
+    TogetherUpdate,
 };
 pub use keep_service::{
     AdminUser, Avatar, AvatarPreset, CountdownResult, LeavingItem, Me, MyVote, Protection, Rights,
