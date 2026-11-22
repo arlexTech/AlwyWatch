@@ -102,12 +102,12 @@ fun LeavingItem.leavesLabel(): String {
     }
 }
 
-/** Short countdown for poster badges: "3 days", "Today", "Overdue", "Not scheduled", "Kept". */
+/** Short countdown for poster badges: "3 days", "Today", "Overdue", "No date", "Kept". */
 fun LeavingItem.shortLabel(): Pair<String, Boolean> {
     val now = System.currentTimeMillis() / 1000
     if (protection == Protection.FOREVER || protection == Protection.UNTIL_WATCHED) return "Kept" to false
     // Past its date but deletion isn't turned on for its collection: nothing is planned yet.
-    if (paused(now)) return "Not scheduled" to false
+    if (paused(now)) return "No date" to false
     val d = effectiveDeletionDate ?: return "Soon" to false
     val days = (d - now) / DAY
     return when {
