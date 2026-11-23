@@ -20,6 +20,47 @@ fn no_seerr() -> String {
     tr!("Requests need an account on this AlwyWatch server: sign in with one in Settings.")
 }
 
+/// Settings → Requests: whether this site's AlwyWatch server takes requests, and as whom.
+/// (The web only requests through it: no request-site address of its own.)
+#[component]
+pub fn RequestsSettings() -> impl IntoView {
+    let c = state::ctx();
+    let (keep, account, me) = (c.keep, c.account, c.me);
+    let seerr_name = RwSignal::new(None::<String>);
+    if let Some(s) = c.seerr()
+        && me.with_untracked(|m| m.as_ref().is_none_or(|m| m.services.requests))
+    {
+        spawn_local(async move {
+            if let Ok(u) = s.me().await {
+                seerr_name.try_set(Some(u.display_name));
+            }
+        });
+    }
+    view! {
+        <section class="group">
+            <h2>{tr!("Requests")}</h2>
+            {move || {
+                let takes = me.with(|m| m.as_ref().is_none_or(|m| m.services.requests));
+                let text = if keep.get().is_none() {
+                    if account.get().is_some() {
+                        tr!("Requests need a Jellyfin or Plex login on this site's servers. Add one: Servers → Add a server.")
+                    } else {
+                        tr!("Requests go through your AlwyWatch server. Connect to it in Account.")
+                    }
+                } else if !takes {
+                    tr!("Your AlwyWatch server doesn't take requests. Ask its owner.")
+                } else {
+                    match seerr_name.get() {
+                        Some(name) => tr!("Through your AlwyWatch server, as {name}", name = name),
+                        None => tr!("Through your AlwyWatch server"),
+                    }
+                };
+                view! { <p>{text}</p> }
+            }}
+        </section>
+    }
+}
+
 /// Where a title's page is.
 pub fn title_href(kind: SeerrMediaType, tmdb_id: i64) -> String {
     let kind = match kind {

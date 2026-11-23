@@ -268,6 +268,12 @@ impl App {
         slint::spawn_local(async move {
             let r = core.keep_me().await;
             let Some(t) = this.upgrade() else { return };
+            // Settings → Account: the AlwyWatch server's state.
+            t.ui().set_alwy_state(sstr(match &r {
+                Ok(_) => "ok",
+                Err(CoreError::Unauthorized) => "expired",
+                Err(_) => "offline",
+            }));
             match r {
                 Ok(me) => {
                     let show = welcome && !me.profile_set;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! One AlwyWatch account for several sign-ins (docs/identity-apps.md): the one-time "Are these
-//! both you?" dialog, Settings → AlwyWatch account → Linked sign-ins (list, Unlink, Link
+//! both you?" dialog, Settings → Account → Linked logins (list, Unlink, Link
 //! another sign-in), and everything refreshed after a link or an unlink.
 //!
 //! The browser keeps one linked account (`Ctx.keep`, A) and several signed-in accounts
@@ -165,7 +165,7 @@ pub fn link_error(e: &Error, server: &str, served: Option<bool>) -> String {
 
 pub fn unlink_error(e: &Error) -> String {
     match e {
-        Error::Status { status: 409 } => tr!("The main sign-in can't be unlinked."),
+        Error::Status { status: 409 } => tr!("The main login can't be unlinked."),
         Error::Unauthorized => {
             tr!("The AlwyWatch server refused: sign in again with this account.")
         }
@@ -435,8 +435,8 @@ pub fn LinkDialog(account: String, prompted: bool) -> impl IntoView {
                 aria-describedby="link-what" on:click=|ev| ev.stop_propagation()>
                 <h2 id="link-title">{tr!("Are these both you?")}</h2>
                 <div class="link-pair">{person(&a)}{person(&b)}</div>
-                <p id="link-what">{tr!("Use one AlwyWatch account for both: the same name, picture, keep choices and watch-together rooms whichever you sign in with. Only link sign-ins that are really yours.")}</p>
-                <p class="muted small">{tr!("This can't be undone as such: unlinking later gives that sign-in a fresh, empty account.")}</p>
+                <p id="link-what">{tr!("Use one AlwyWatch account for both: the same name, picture, keep choices and watch-together rooms whichever you sign in with. Only link logins that are really yours.")}</p>
+                <p class="muted small">{tr!("This can't be undone as such: unlinking later gives that login a fresh, empty account.")}</p>
                 {move || error.get().map(|e| view! { <ErrorText text=e /> })}
                 <div class="actions">
                     <button disabled=move || busy.get() on:click=move |_| close3()>
@@ -468,7 +468,7 @@ pub fn AlsoSignedIn() -> impl IntoView {
     }
 }
 
-/// Settings → AlwyWatch account → Linked sign-ins: shown with two sign-ins or more, or when
+/// Settings → Account → Linked logins: shown with two sign-ins or more, or when
 /// another account of this browser can be linked.
 #[component]
 pub fn LinkedSignins() -> impl IntoView {
@@ -533,9 +533,9 @@ pub fn LinkedSignins() -> impl IntoView {
     view! {
         <Show when=shown>
             <div class="links">
-                <h3>{tr!("Linked sign-ins")}</h3>
+                <h3>{tr!("Linked logins")}</h3>
                 <p class="muted small">{move || if ids().len() > 1 {
-                    tr!("These sign-ins are one AlwyWatch account: same name, avatar, keep choices and watch-together rooms.")
+                    tr!("These logins are one AlwyWatch account: same name, picture, keep choices and watch-together rooms.")
                 } else {
                     tr!("Another account in this browser may be you too. Linking makes them one AlwyWatch account.")
                 }}</p>
@@ -563,7 +563,7 @@ pub fn LinkedSignins() -> impl IntoView {
                 {move || {
                     let list = candidates();
                     (!list.is_empty()).then(|| view! {
-                        <h3 class="small-head">{tr!("Link another sign-in")}</h3>
+                        <h3 class="small-head">{tr!("Link another login")}</h3>
                         {list.into_iter().map(|b| {
                             let acc = b.account.clone();
                             view! {
@@ -579,7 +579,7 @@ pub fn LinkedSignins() -> impl IntoView {
                         }).collect_view()}
                     })
                 }}
-                <p class="muted small">{tr!("Another sign-in of yours isn't listed? Add it in Settings → Servers → Add a server, then link it here.")}</p>
+                <p class="muted small">{tr!("Another login of yours isn't listed? Add it in Settings → Servers → Add a server, then link it here.")}</p>
             </div>
         </Show>
         {move || unlinking.get().map(|i| {
@@ -589,7 +589,7 @@ pub fn LinkedSignins() -> impl IntoView {
                 <div class="dialog-back" on:click=move |_| close()
                     on:keydown=move |ev| if ev.key() == "Escape" { close() }>
                     <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="unlink-title" on:click=|ev| ev.stop_propagation()>
-                        <h2 id="unlink-title">{tr!("Unlink this sign-in?")}</h2>
+                        <h2 id="unlink-title">{tr!("Unlink this login?")}</h2>
                         <p>{question}</p>
                         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
                         <div class="actions">
@@ -750,9 +750,6 @@ mod tests {
             )
             .contains("Can't reach")
         );
-        assert_eq!(
-            unlink_error(&st(409)),
-            "The main sign-in can't be unlinked."
-        );
+        assert_eq!(unlink_error(&st(409)), "The main login can't be unlinked.");
     }
 }

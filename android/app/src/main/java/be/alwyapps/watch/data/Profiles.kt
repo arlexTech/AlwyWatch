@@ -117,6 +117,16 @@ class ProfileStore(
             prefs.edit().putBoolean("auto_sign_in", v).apply()
         }
 
+    /**
+     * The last AlwyWatch address a profile of this device used: "Add a profile" offers it (each
+     * profile's own settings live in its own database).
+     */
+    var lastAlwyWatchUrl: String?
+        get() = prefs.getString("alwywatch_url", null)
+        set(v) {
+            prefs.edit().putString("alwywatch_url", v).apply()
+        }
+
     /** Asked once at the next start (after a switch whose PIN was already checked). */
     var unlockedOnce: String?
         get() = prefs.getString("unlocked_once", null)

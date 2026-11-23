@@ -18,6 +18,9 @@ pub const DEFAULT: &str = "default";
 pub struct Profile {
     pub id: String,
     pub name: String,
+    /// Added without a name: it takes the person's name at their first sign-in.
+    #[serde(default)]
+    pub auto: bool,
 }
 
 thread_local! {
@@ -51,6 +54,7 @@ pub fn list() -> Vec<Profile> {
             Profile {
                 id: DEFAULT.into(),
                 name: tr!("Main"),
+                auto: false,
             },
         );
     }
@@ -94,7 +98,31 @@ fn clean(name: &str) -> String {
     if n.is_empty() { "Profile".into() } else { n }
 }
 
-pub fn add(name: &str) -> String {
+/// A new profile, named after the person once they sign in ("Add a profile").
+pub fn add_new() -> String {
+    let id = add(&tr!("New profile"));
+    let mut l = list();
+    if let Some(p) = l.iter_mut().find(|p| p.id == id) {
+        p.auto = true;
+    }
+    save_list(&l);
+    id
+}
+
+/// The person of this profile is known now: a profile added without a name takes theirs.
+pub fn adopt_name(name: &str) {
+    let me = current();
+    let mut l = list();
+    if let Some(p) = l.iter_mut().find(|p| p.id == me && p.auto)
+        && !name.trim().is_empty()
+    {
+        p.name = clean(name);
+        p.auto = false;
+        save_list(&l);
+    }
+}
+
+fn add(name: &str) -> String {
     let mut b = [0u8; 4];
     if let Some(c) = web_sys::window().and_then(|w| w.crypto().ok()) {
         let _ = c.get_random_values_with_u8_array(&mut b);
@@ -104,6 +132,7 @@ pub fn add(name: &str) -> String {
     l.push(Profile {
         id: id.clone(),
         name: clean(name),
+        auto: false,
     });
     save_list(&l);
     id
@@ -113,6 +142,7 @@ pub fn rename(id: &str, name: &str) {
     let mut l = list();
     if let Some(p) = l.iter_mut().find(|p| p.id == id) {
         p.name = clean(name);
+        p.auto = false;
     }
     save_list(&l);
 }
@@ -143,6 +173,11 @@ pub fn remove(id: &str) {
 
 /// Switches profile: the app starts over as that person.
 pub fn switch(id: &str) {
+    switch_to(id, "/");
+}
+
+/// Switches profile and opens `path` in it.
+pub fn switch_to(id: &str, path: &str) {
     let Some(w) = web_sys::window() else { return };
     if let Some(s) = storage() {
         let _ = s.set_item(CURRENT, id);
@@ -151,7 +186,7 @@ pub fn switch(id: &str) {
     if let Ok(Some(t)) = w.session_storage() {
         let _ = t.clear();
     }
-    let _ = w.location().set_href("/");
+    let _ = w.location().set_href(path);
 }
 
 /// The menu's profile item (several profiles): who is watching, one click to switch.
@@ -177,7 +212,7 @@ pub fn ProfileMenu() -> impl IntoView {
                         <button on:click=move |_| switch(&id)><span class="pdot">{initial(&p.name)}</span>{p.name.clone()}</button>
                     }
                 }).collect_view()}
-                <a href="/settings/profiles">{tr!("Manage profiles")}</a>
+                <a href="/settings/device">{tr!("Manage profiles")}</a>
             </div>
         </details>
     }
@@ -191,21 +226,16 @@ fn initial(name: &str) -> String {
         .unwrap_or_else(|| "?".into())
 }
 
-/// Settings → Profiles.
+/// Settings → This device → Profiles.
 #[component]
 pub fn ProfilesSettings() -> impl IntoView {
     let version = RwSignal::new(0u32);
-    let new_name = RwSignal::new(String::new());
+    let adding = RwSignal::new(false);
     let renaming = RwSignal::new(None::<(String, String)>);
     let me = current();
-    let add_one = move |ev: leptos::ev::SubmitEvent| {
-        ev.prevent_default();
-        let n = new_name.get_untracked();
-        if !n.trim().is_empty() {
-            // A new profile starts empty: its own sign-in.
-            switch(&add(&n));
-        }
-    };
+    // A new profile starts empty: its own sign-in, then it takes the person's name.
+    let sign_in = Callback::new(|()| switch_to(&add_new(), "/signin?step=signin"));
+    let create = Callback::new(|()| switch_to(&add_new(), "/join"));
     view! {
         <section class="group">
             <h2>{tr!("Profiles")}</h2>
@@ -260,12 +290,60 @@ pub fn ProfilesSettings() -> impl IntoView {
                     }
                 }).collect_view()
             }}
-            <form class="name-form" on:submit=add_one>
-                <input placeholder=tr!("New profile's name") maxlength="24" prop:value=move || new_name.get()
-                    on:input=move |ev| new_name.set(event_target_value(&ev)) />
-                <button class="small" type="submit">{tr!("Add and switch")}</button>
-            </form>
+            {move || if adding.get() {
+                view! {
+                    <h3>{tr!("Add a profile")}</h3>
+                    <crate::signin::StartCards on_sign_in=sign_in on_create=create />
+                    <div class="actions"><button class="small subtle" on:click=move |_| adding.set(false)>{tr!("Cancel")}</button></div>
+                }.into_any()
+            } else {
+                view! { <div class="actions"><button class="small" on:click=move |_| adding.set(true)>{tr!("Add a profile")}</button></div> }.into_any()
+            }}
         </section>
+    }
+}
+
+/// Settings → Account for a profile without an AlwyWatch account: its name on this browser.
+#[component]
+pub fn LocalProfile() -> impl IntoView {
+    let me = current();
+    let name = RwSignal::new(
+        list()
+            .into_iter()
+            .find(|p| p.id == me)
+            .map(|p| p.name)
+            .unwrap_or_default(),
+    );
+    let draft = RwSignal::new(None::<String>);
+    view! {
+        <div class="profile-head">
+            <span class="pdot big" aria-hidden="true">{move || initial(&name.get())}</span>
+            <strong class="profile-name">{move || name.get()}</strong>
+        </div>
+        {move || match draft.get() {
+            Some(_) => {
+                let me = me.clone();
+                view! {
+                    <form class="name-form" on:submit=move |ev| {
+                        ev.prevent_default();
+                        if let Some(n) = draft.get_untracked() {
+                            rename(&me, &n);
+                            name.set(clean(&n));
+                        }
+                        draft.set(None);
+                    }>
+                        <input aria-label=tr!("Name") maxlength="24" prop:value=move || draft.get().unwrap_or_default()
+                            on:input=move |ev| draft.set(Some(event_target_value(&ev))) />
+                        <button class="small primary" type="submit">{tr!("Save")}</button>
+                        <button class="small subtle" type="button" on:click=move |_| draft.set(None)>{tr!("Cancel")}</button>
+                    </form>
+                }.into_any()
+            }
+            None => view! {
+                <div class="actions tight"><button class="small" on:click=move |_| draft.set(Some(name.get_untracked()))>{tr!("Change name")}</button></div>
+            }.into_any(),
+        }}
+        <p class="muted small">{tr!("Kept in this browser only.")}</p>
     }
 }
 

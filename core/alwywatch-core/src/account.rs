@@ -229,8 +229,14 @@ impl AlwyWatch {
 
     /// Admins: an invitation to create an account, valid `days` days for `uses` sign-ups.
     pub async fn account_invite(&self, days: i64, uses: i64) -> Result<AccountInvite> {
-        let client = self.core.account_client().ok_or(CoreError::NotFound)?;
-        self.run(|_| async move {
+        // The AlwyWatch account's session, else the Jellyfin/Plex login used for AlwyWatch (the
+        // server accepts any admin).
+        let account = self.core.account_client();
+        self.run(|c| async move {
+            let client = match account {
+                Some(a) => a,
+                None => c.keep()?,
+            };
             let i = client
                 .account_invite(days, uses)
                 .await

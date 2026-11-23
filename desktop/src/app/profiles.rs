@@ -55,6 +55,9 @@ impl App {
                 .unwrap_or_else(|| tr!("Me")),
         ));
         let rows: Vec<ProfileRow> = list.iter().map(|p| profile_row(p, &current)).collect();
+        if let Some(me) = rows.iter().find(|r| r.current) {
+            ui.set_profile_me(me.clone());
+        }
         ui.set_profiles(ModelRc::new(VecModel::from(rows)));
         ui.set_profile_auto(self.profiles.auto_sign_in());
     }

@@ -744,7 +744,7 @@ fn PresetGrid(
     }
 }
 
-/// Settings → AlwyWatch account: my avatar and display name, and changing them.
+/// Settings → Account → How others see you: my picture and display name, and changing them.
 #[component]
 pub fn AccountProfile() -> impl IntoView {
     let c = state::ctx();
@@ -819,13 +819,13 @@ pub fn AccountProfile() -> impl IntoView {
                     <button class="small" on:click={
                         let n = m.name.clone();
                         move |_| { draft.set(n.clone()); editing.update(|e| *e = !*e); }
-                    }>{tr!("Edit name")}</button>
+                    }>{tr!("Change name")}</button>
                     {m.name_is_custom.then(|| view! {
                         <button class="small" disabled=move || busy.get() on:click=move |_| {
                             save_me(busy, message, |k| async move { k.reset_display_name().await }, move |_| editing.set(false));
                         }>{tr!("Reset to {name}", name = reset_to)}</button>
                     })}
-                    <button class="small" on:click=move |_| changing.update(|x| *x = !*x)>{tr!("Change avatar")}</button>
+                    <button class="small" on:click=move |_| changing.update(|x| *x = !*x)>{tr!("Change picture")}</button>
                 </div>
             }
         })}

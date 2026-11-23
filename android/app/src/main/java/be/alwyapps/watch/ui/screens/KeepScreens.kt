@@ -639,9 +639,15 @@ fun TriageScreen() {
     }
 }
 
-/** Admins: per-user rights and the collection countdown. */
+/**
+ * Admins: per-user rights and the collection countdown (the shortcut from Leaving soon shows
+ * both; Settings → Admin opens [people] or [countdown] alone).
+ */
 @Composable
-fun KeepAdminScreen() {
+fun KeepAdminScreen(
+    people: Boolean = true,
+    countdown: Boolean = true,
+) {
     val core = LocalCore.current
     val nav = be.alwyapps.watch.ui.LocalNavigator.current
     val d = LocalDimens.current
@@ -741,124 +747,139 @@ fun KeepAdminScreen() {
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
         item {
-            be.alwyapps.watch.ui
-                .PageTitle(tr("Admin"), tr("Leaving soon: countdown and people's rights"))
-        }
-        item {
-            be.alwyapps.watch.ui.Group(tr("Kept forever")) {
-                be.alwyapps.watch.ui.ListRow(
-                    tr("Who keeps what forever"),
-                    subtitle = tr("Per person, and how much of it someone else keeps too"),
-                    icon = be.alwyapps.watch.ui.Icons.FavoriteFilled,
-                    onClick = { nav.push(Route.KeepForever) },
-                    trailing = {
-                        be.alwyapps.watch.ui
-                            .Chevron()
-                    },
-                    modifier = Modifier.initialFocus(),
-                )
+            when {
+                people && countdown ->
+                    be.alwyapps.watch.ui
+                        .PageTitle(tr("Admin"), tr("Leaving soon: countdown and people's rights"))
+                people ->
+                    be.alwyapps.watch.ui
+                        .PageTitle(tr("People"), tr("What each person may keep, and whose request-site user they request as"))
+                else ->
+                    be.alwyapps.watch.ui
+                        .PageTitle(tr("Leaving soon countdown"))
             }
         }
-        message?.let { item { Text(it, color = Accent) } }
-        item {
-            be.alwyapps.watch.ui.Group(
-                tr("Start countdown"),
-                footer =
-                    tr(
-                        "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr (press twice to confirm).",
-                    ),
-            ) {
-                collections.forEachIndexed { i, (id, title) ->
-                    if (i > 0) {
-                        be.alwyapps.watch.ui
-                            .Divider()
-                    }
-                    be.alwyapps.watch.ui.ListRow(title, icon = be.alwyapps.watch.ui.Icons.Schedule, trailing = {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            for (stagger in listOf(0u, 14u, 30u)) {
-                                val label = if (stagger == 0u) tr("Restart now") else trn("Spread over {n} day", "Spread over {n} days", stagger.toLong())
-                                val isArmed = armed == id to stagger
-                                ActionButton(if (isArmed) tr("Confirm") else label, {
-                                    if (!isArmed) {
-                                        armed = id to stagger
-                                    } else {
-                                        armed = null
-                                        scope.launch {
-                                            message =
-                                                try {
-                                                    val r = core.keepAdminCountdown(id, stagger)
-                                                    tr(
-                                                        "{collection}: {reset} restarted, {skipped} skipped",
-                                                        "collection" to title,
-                                                        "reset" to r.reset,
-                                                        "skipped" to r.skipped,
-                                                    )
-                                                } catch (e: CoreException) {
-                                                    e.message
-                                                }
-                                        }
-                                    }
-                                }, primary = isArmed)
-                            }
-                        }
-                    })
+        if (people && countdown) {
+            item {
+                be.alwyapps.watch.ui.Group(tr("Kept forever")) {
+                    be.alwyapps.watch.ui.ListRow(
+                        tr("Who keeps what forever"),
+                        subtitle = tr("Per person, and how much of it someone else keeps too"),
+                        icon = be.alwyapps.watch.ui.Icons.FavoriteFilled,
+                        onClick = { nav.push(Route.KeepForever) },
+                        trailing = {
+                            be.alwyapps.watch.ui
+                                .Chevron()
+                        },
+                        modifier = Modifier.initialFocus(),
+                    )
                 }
             }
         }
-        item {
-            be.alwyapps.watch.ui.Group(
-                tr("People"),
-                footer =
-                    if (LocalDimens.current.isTv) {
-                        tr("Everyone can keep forever by default. Select a value to change it.")
-                    } else {
-                        tr("Everyone can keep forever by default. Tap a value to change it.")
-                    },
-            ) {
-                users.orEmpty().forEachIndexed { i, u ->
-                    if (i > 0) {
-                        be.alwyapps.watch.ui
-                            .Divider()
-                    }
-                    val r = u.rights
-                    Column(Modifier.padding(bottom = 12.dp)) {
-                        val sameName = users.orEmpty().count { it.name.equals(u.name, true) } > 1
-                        be.alwyapps.watch.ui.ListRow(
-                            if (u.isAdmin) tr("{name} · admin", "name" to u.name) else u.name,
-                            subtitle =
-                                listOfNotNull(
-                                    u.mediaName.takeIf { it.isNotEmpty() && (sameName || !it.equals(u.name, true)) },
-                                    if (u.userKey.startsWith("plex:")) "Plex" else "Jellyfin",
-                                    tr("{count} kept forever", "count" to u.foreverCount),
-                                ).joinToString(" · "),
-                            leading = {
-                                be.alwyapps.watch.ui
-                                    .Avatar(u.avatar, u.name, u.userKey, if (d.isTv) 40.dp else 34.dp)
-                            },
-                        )
-                        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            item {
-                                ActionButton(if (r.canKeepForever) tr("Forever allowed") else tr("Forever blocked"), {
-                                    update(u, r.copy(canKeepForever = !r.canKeepForever))
-                                }, primary = !r.canKeepForever)
-                            }
-                            item {
-                                ActionButton(tr("Max forever: {value}", "value" to (r.maxForever ?: "∞")), {
-                                    val next = listOf<UInt?>(null, 5u, 10u, 25u)
-                                    update(u, r.copy(maxForever = next[(next.indexOf(r.maxForever) + 1) % next.size]))
-                                })
-                            }
-                            if (seerrUsers.isNotEmpty()) {
-                                item {
-                                    val linked = seerrUsers.firstOrNull { it.id == u.seerrUserId }?.name
-                                    ActionButton(tr("Requests as: {name}", "name" to (linked ?: tr("automatic"))), { linking = u })
+        message?.let { item { Text(it, color = Accent) } }
+        if (countdown) {
+            item {
+                be.alwyapps.watch.ui.Group(
+                    tr("Start countdown"),
+                    footer =
+                        tr(
+                            "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr (press twice to confirm).",
+                        ),
+                ) {
+                    collections.forEachIndexed { i, (id, title) ->
+                        if (i > 0) {
+                            be.alwyapps.watch.ui
+                                .Divider()
+                        }
+                        be.alwyapps.watch.ui.ListRow(title, icon = be.alwyapps.watch.ui.Icons.Schedule, trailing = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (stagger in listOf(0u, 14u, 30u)) {
+                                    val label = if (stagger == 0u) tr("Restart now") else trn("Spread over {n} day", "Spread over {n} days", stagger.toLong())
+                                    val isArmed = armed == id to stagger
+                                    ActionButton(if (isArmed) tr("Confirm") else label, {
+                                        if (!isArmed) {
+                                            armed = id to stagger
+                                        } else {
+                                            armed = null
+                                            scope.launch {
+                                                message =
+                                                    try {
+                                                        val r = core.keepAdminCountdown(id, stagger)
+                                                        tr(
+                                                            "{collection}: {reset} restarted, {skipped} skipped",
+                                                            "collection" to title,
+                                                            "reset" to r.reset,
+                                                            "skipped" to r.skipped,
+                                                        )
+                                                    } catch (e: CoreException) {
+                                                        e.message
+                                                    }
+                                            }
+                                        }
+                                    }, primary = isArmed)
                                 }
                             }
-                            item {
-                                ActionButton(tr("Max days: {value}", "value" to (r.maxKeepDays ?: "∞")), {
-                                    val next = listOf<UInt?>(null, 7u, 30u, 90u)
-                                    update(u, r.copy(maxKeepDays = next[(next.indexOf(r.maxKeepDays) + 1) % next.size]))
-                                })
+                        })
+                    }
+                }
+            }
+        }
+        if (people) {
+            item {
+                be.alwyapps.watch.ui.Group(
+                    tr("People"),
+                    footer =
+                        if (LocalDimens.current.isTv) {
+                            tr("Everyone can keep forever by default. Select a value to change it.")
+                        } else {
+                            tr("Everyone can keep forever by default. Tap a value to change it.")
+                        },
+                ) {
+                    users.orEmpty().forEachIndexed { i, u ->
+                        if (i > 0) {
+                            be.alwyapps.watch.ui
+                                .Divider()
+                        }
+                        val r = u.rights
+                        Column(Modifier.padding(bottom = 12.dp)) {
+                            val sameName = users.orEmpty().count { it.name.equals(u.name, true) } > 1
+                            be.alwyapps.watch.ui.ListRow(
+                                if (u.isAdmin) tr("{name} · admin", "name" to u.name) else u.name,
+                                subtitle =
+                                    listOfNotNull(
+                                        u.mediaName.takeIf { it.isNotEmpty() && (sameName || !it.equals(u.name, true)) },
+                                        if (u.userKey.startsWith("plex:")) "Plex" else "Jellyfin",
+                                        tr("{count} kept forever", "count" to u.foreverCount),
+                                    ).joinToString(" · "),
+                                leading = {
+                                    be.alwyapps.watch.ui
+                                        .Avatar(u.avatar, u.name, u.userKey, if (d.isTv) 40.dp else 34.dp)
+                                },
+                            )
+                            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                item {
+                                    ActionButton(if (r.canKeepForever) tr("Forever allowed") else tr("Forever blocked"), {
+                                        update(u, r.copy(canKeepForever = !r.canKeepForever))
+                                    }, primary = !r.canKeepForever)
+                                }
+                                item {
+                                    ActionButton(tr("Max forever: {value}", "value" to (r.maxForever ?: "∞")), {
+                                        val next = listOf<UInt?>(null, 5u, 10u, 25u)
+                                        update(u, r.copy(maxForever = next[(next.indexOf(r.maxForever) + 1) % next.size]))
+                                    })
+                                }
+                                if (seerrUsers.isNotEmpty()) {
+                                    item {
+                                        val linked = seerrUsers.firstOrNull { it.id == u.seerrUserId }?.name
+                                        ActionButton(tr("Requests as: {name}", "name" to (linked ?: tr("automatic"))), { linking = u })
+                                    }
+                                }
+                                item {
+                                    ActionButton(tr("Max days: {value}", "value" to (r.maxKeepDays ?: "∞")), {
+                                        val next = listOf<UInt?>(null, 7u, 30u, 90u)
+                                        update(u, r.copy(maxKeepDays = next[(next.indexOf(r.maxKeepDays) + 1) % next.size]))
+                                    })
+                                }
                             }
                         }
                     }

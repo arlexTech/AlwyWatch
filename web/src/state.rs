@@ -18,6 +18,8 @@ use serde::{Serialize, de::DeserializeOwned};
 const ACCOUNTS: &str = "aw.accounts";
 const DEVICE: &str = "aw.device";
 const KEEP: &str = "aw.keep";
+/// Set by "Sign out of AlwyWatch": logins stay, nothing links them to the AlwyWatch server.
+const KEEP_OFF: &str = "aw.keep.off";
 /// plex.tv account tokens of Plex accounts (the watchlist lives on plex.tv), by account key.
 const PLEX_TV: &str = "aw.plextv";
 /// Copies of server data kept for an instant next start; they go with the accounts.
@@ -214,25 +216,45 @@ impl Ctx {
         remove(LIBS);
         crate::links::account_removed(self, key);
         if self.keep.get_untracked().is_some_and(|k| k.account == key) {
-            self.links.clear();
-            // The room's seat goes with the account (told while its token is still here).
-            self.room.leave("", true);
-            self.set_keep(None);
-            self.me.set(None);
-            self.welcome.set(false);
-            for k in [
-                LEAVING,
-                REQUESTS_MINE,
-                REQUESTS_ALL,
-                REQUESTS_EVERYONE,
-                TOGETHER,
-                ME,
-            ] {
-                remove(k);
-            }
+            self.disconnect_keep();
         }
         if self.expired.get_untracked().as_deref() == Some(key) {
             self.expired.set(None);
+        }
+    }
+
+    /// Stops using the AlwyWatch server with the linked login: what came from it goes (the
+    /// login itself stays signed in).
+    pub fn disconnect_keep(&self) {
+        self.links.clear();
+        // The room's seat goes with the link (told while its token is still here).
+        self.room.leave("", true);
+        self.set_keep(None);
+        self.me.set(None);
+        self.welcome.set(false);
+        for k in [
+            LEAVING,
+            REQUESTS_MINE,
+            REQUESTS_ALL,
+            REQUESTS_EVERYONE,
+            TOGETHER,
+            ME,
+        ] {
+            remove(k);
+        }
+    }
+
+    /// "Sign out of AlwyWatch" was chosen: this profile's logins aren't linked to the AlwyWatch
+    /// server again by themselves (only "Connect to AlwyWatch" does).
+    pub fn keep_off(&self) -> bool {
+        load::<bool>(KEEP_OFF).unwrap_or(false)
+    }
+
+    pub fn set_keep_off(&self, off: bool) {
+        if off {
+            save(KEEP_OFF, &true);
+        } else {
+            remove(KEEP_OFF);
         }
     }
 

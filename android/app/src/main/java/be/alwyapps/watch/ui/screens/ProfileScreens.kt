@@ -280,8 +280,6 @@ fun ProfileSwitcher(
     val services = ctx.services
     val profiles = remember { services.profiles.list() }
     var asking by remember { mutableStateOf<Profile?>(null) }
-    var adding by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
     val switchTo = { id: String -> services.switchProfile(ctx as Activity, id, alreadyUnlocked = true) }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -289,7 +287,6 @@ fun ProfileSwitcher(
         title = {
             Text(
                 when {
-                    adding -> tr("New profile")
                     asking != null -> tr("Switch to {name}", "name" to asking?.name)
                     else -> tr("Who's watching?")
                 },
@@ -299,16 +296,6 @@ fun ProfileSwitcher(
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 val a = asking
                 when {
-                    adding -> {
-                        Text(tr("A profile has its own servers, history and settings."), color = Muted)
-                        Field(
-                            name,
-                            { name = it.take(24) },
-                            Modifier.fillMaxWidth().initialFocus(),
-                            placeholder = { Text(tr("Name")) },
-                            singleLine = true,
-                        )
-                    }
                     a != null -> PinEntry(a, null) { switchTo(a.id) }
                     else ->
                         FlowRow(
@@ -341,25 +328,26 @@ fun ProfileSwitcher(
                                     }
                                 }
                             }
-                            SwitcherTile(tr("Add"), "", Modifier, add = true) { adding = true }
+                            SwitcherTile(tr("Add"), "", Modifier, add = true) { switchTo(addProfile(services)) }
                         }
                 }
             }
         },
         confirmButton = {
             when {
-                adding ->
-                    ActionButton(tr("Create and switch"), {
-                        if (name.isNotBlank()) switchTo(services.profiles.add(name.trim()))
-                    }, primary = true)
                 asking != null -> ActionButton(tr("Back"), { asking = null })
                 onSettings != null -> ActionButton(tr("Settings"), onSettings, icon = Icons.Settings)
                 else -> ActionButton(tr("Close"), onDismiss)
             }
         },
-        dismissButton = { if (adding) ActionButton(tr("Back"), { adding = false }) },
     )
 }
+
+/**
+ * A new, empty profile (one person): it opens on "Add a profile" (sign in to AlwyWatch, create
+ * an account, or Jellyfin or Plex only) and takes its name from the first account there.
+ */
+fun addProfile(services: be.alwyapps.watch.Services): String = services.profiles.add(be.alwyapps.watch.data.UNNAMED)
 
 @Composable
 private fun SwitcherTile(
@@ -404,7 +392,6 @@ fun ProfilesGroup() {
     var version by remember { mutableIntStateOf(0) }
     val profiles = remember(version) { services.profiles.list() }
     val current = services.profile
-    var adding by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Profile?>(null) }
     var pinFor by remember { mutableStateOf<Profile?>(null) }
     var removing by remember { mutableStateOf<Profile?>(null) }
@@ -412,7 +399,7 @@ fun ProfilesGroup() {
 
     Group(
         tr("Profiles"),
-        footer = tr("Several people on this device: each profile has its own servers, history and settings. Downloads are shared."),
+        footer = tr("A profile is one person: their own AlwyWatch account or logins, history and settings. Downloads are shared."),
     ) {
         profiles.forEachIndexed { i, p ->
             if (i > 0) Divider()
@@ -441,7 +428,13 @@ fun ProfilesGroup() {
             )
         }
         Divider()
-        ListRow(tr("Add a profile"), icon = Icons.Add, onClick = { adding = true }, trailing = { Chevron() })
+        ListRow(
+            tr("Add a profile"),
+            subtitle = tr("Someone else on this device"),
+            icon = Icons.Add,
+            onClick = { services.switchProfile(ctx as Activity, addProfile(services), alreadyUnlocked = true) },
+            trailing = { Chevron() },
+        )
         if (profiles.size > 1) {
             Divider()
             var auto by remember { mutableStateOf(services.profiles.autoSignIn) }
@@ -457,38 +450,23 @@ fun ProfilesGroup() {
         }
     }
 
-    if (adding || renaming != null) {
-        var name by remember { mutableStateOf(renaming?.name ?: "") }
+    renaming?.let { r ->
+        var name by remember { mutableStateOf(r.name) }
         androidx.compose.material3.AlertDialog(
-            onDismissRequest = {
-                adding = false
-                renaming = null
-            },
+            onDismissRequest = { renaming = null },
             containerColor = Background,
-            title = { Text(if (adding) tr("New profile") else tr("Rename")) },
+            title = { Text(tr("Rename")) },
             text = {
                 Field(name, { name = it.take(24) }, Modifier.fillMaxWidth(), placeholder = { Text(tr("Name")) }, singleLine = true)
             },
             confirmButton = {
-                ActionButton(if (adding) tr("Create and switch") else tr("Save"), {
-                    val r = renaming
-                    if (r != null) {
-                        services.profiles.rename(r.id, name)
-                        renaming = null
-                        version++
-                    } else {
-                        // A new profile starts empty: its own sign-in.
-                        val id = services.profiles.add(name)
-                        services.switchProfile(ctx as Activity, id, alreadyUnlocked = true)
-                    }
+                ActionButton(tr("Save"), {
+                    services.profiles.rename(r.id, name)
+                    renaming = null
+                    version++
                 }, primary = true)
             },
-            dismissButton = {
-                ActionButton(tr("Cancel"), {
-                    adding = false
-                    renaming = null
-                })
-            },
+            dismissButton = { ActionButton(tr("Cancel"), { renaming = null }) },
         )
     }
 

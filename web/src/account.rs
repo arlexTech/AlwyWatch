@@ -58,6 +58,13 @@ impl Ctx {
         };
         state::save(ACCOUNT, &link);
         self.account.set(Some(link));
+        // Signing in again after "Sign out of AlwyWatch": this profile is on AlwyWatch again,
+        // its logins too.
+        if self.keep_off() {
+            self.set_keep_off(false);
+            spawn_local(crate::signin::check_keep(self.clone()));
+        }
+        crate::profiles::adopt_name(&a.name);
     }
 
     pub fn forget_account(&self) {
@@ -261,7 +268,8 @@ pub fn Join() -> impl IntoView {
             match r {
                 Ok(s) => {
                     c.set_account(&s.token, &s.account);
-                    navigate("/account", Default::default());
+                    // Next: a Jellyfin or Plex login to watch with.
+                    navigate("/signin", Default::default());
                 }
                 Err(net::Error::Unauthorized) => error.set(Some(tr!(
                     "This invitation is unknown, used up or expired. Ask for a new one."
@@ -279,7 +287,7 @@ pub fn Join() -> impl IntoView {
             let invite_needed = o.registration == "invite";
             view! {
                 {pocket.then(|| view! {
-                    <p><button class="primary" on:click=move |_| go("/v1/account/oidc/start?next=/account")>{tr!("Continue with Pocket ID")}</button>
+                    <p><button class="primary" on:click=move |_| go("/v1/account/oidc/start?next=/signin")>{tr!("Continue with Pocket ID")}</button>
                         " "<span class="muted small">{tr!("No invitation needed.")}</span></p>
                 })}
                 {closed.then(|| view! { <p class="muted">{tr!("This server doesn't accept new accounts without an invitation. Ask its owner for one, or sign in with your Jellyfin or Plex login.")}</p> })}
@@ -417,7 +425,7 @@ pub fn Approve() -> impl IntoView {
         } else if !signed_in() {
             view! {
                 <p class="muted">{tr!("Sign in first: the device is then signed in as you.")}</p>
-                <p><A href="/signin" attr:class="button primary" on:click={let n = next.clone(); move |_| crate::signin::return_after_sign_in(&n)}>{tr!("Sign in with Jellyfin or Plex")}</A></p>
+                <p><A href="/signin?step=signin" attr:class="button primary" on:click={let n = next.clone(); move |_| crate::signin::return_after_sign_in(&n)}>{tr!("Sign in with Jellyfin or Plex")}</A></p>
                 <p class="muted small">{tr!("You'll come straight back here. Or use your AlwyWatch account, if you have one:")}</p>
                 <AccountSignIn next=next.clone() />
             }.into_any()
@@ -448,9 +456,10 @@ fn day(t: i64) -> String {
         .unwrap_or_default()
 }
 
-/// `/account`: the AlwyWatch account: ways to sign in, devices, invitations (admins).
+/// Settings → Account → Password & passkeys (`/settings/account/password`, formerly
+/// `/account`): ways to sign in, devices, deleting the account.
 #[component]
-pub fn AccountPage() -> impl IntoView {
+pub fn PasswordAndPasskeys() -> impl IntoView {
     let c = state::ctx();
     let info = RwSignal::new(None::<AccountView>);
     let error = RwSignal::new(use_query_map().with_untracked(|q| q.get("error")).map(|e| {
@@ -518,32 +527,22 @@ pub fn AccountPage() -> impl IntoView {
     }
     let options = options_resource(&c);
     let account = c.account;
-    let c_out = c.clone();
-    let sign_out = move |_| {
-        let c = c_out.clone();
-        spawn_local(async move {
-            if let Some(k) = c.account_client() {
-                let _ = k.account_logout().await;
-            }
-            c.forget_account();
-        });
-    };
     let explain = |e: net::Error| account::explain(&e, false);
     view! {
-        <h1>{tr!("AlwyWatch account")}</h1>
+        <p><A href="/settings/account" attr:class="button small subtle">"‹ "{tr!("Account")}</A></p>
+        <h2>{tr!("Password & passkeys")}</h2>
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         {move || note.get().map(|n| view! { <p class="note">{n}</p> })}
         {move || match account.get() {
             None => view! {
                 <p class="muted">{tr!("Not signed in to an AlwyWatch account in this browser.")}</p>
-                <AccountSignIn next="/account" />
+                <AccountSignIn next="/settings/account/password" />
             }.into_any(),
             Some(a) => view! {
                 <section class="group">
                     <h2>{tr!("Signed in")}</h2>
                     <div class="row">
                         <div><strong>{a.name.clone()}</strong>{a.username.clone().map(|u| view! { <span class="muted">" · "{u}</span> })}</div>
-                        <button on:click=sign_out.clone()>{tr!("Sign out")}</button>
                     </div>
                     {move || info.get().map(|i| i.linked).filter(|l| !l.is_empty()).map(|l| view! {
                         <p class="muted small">{tr!("Also you: {list}", list = l.iter().map(|x| format!("{} ({})", x.name, x.kind)).collect::<Vec<_>>().join(", "))}</p>
@@ -657,7 +656,6 @@ pub fn AccountPage() -> impl IntoView {
                 <DeleteAccount info=i.clone() />
             }
         })}
-        <Invitations />
     }
 }
 
@@ -879,9 +877,9 @@ fn MediaSignIn(info: AccountView, page: Page) -> impl IntoView {
     .into_any()
 }
 
-/// Admins: invitations to create an account.
+/// Settings → Admin → Invitations: a code (and its link) to create an account.
 #[component]
-fn Invitations() -> impl IntoView {
+pub fn Invitations() -> impl IntoView {
     let c = state::ctx();
     let keep = c.keep;
     let made = RwSignal::new(None::<account::Invite>);
@@ -904,12 +902,191 @@ fn Invitations() -> impl IntoView {
                 <button on:click=make.clone()>{tr!("New invitation")}</button>
                 {move || made.get().map(|i| view! {
                     <p>{
-                        let (before, after) = crate::ui::around(&tr!("Send this link: {link}"), "{link}");
-                        view! { {before}<strong class="code">{i.url.clone().unwrap_or_else(|| i.code.clone())}</strong>{after} }
+                        let (before, after) = crate::ui::around(&tr!("Invitation code: {code}"), "{code}");
+                        view! { {before}<strong class="code">{i.code.clone()}</strong>{after} }
                     }</p>
-
+                    {i.url.clone().map(|url| view! {
+                        <p>{
+                            let (before, after) = crate::ui::around(&tr!("Or send this link: {link}"), "{link}");
+                            view! { {before}<a class="accent" href=url.clone()>{url.clone()}</a>{after} }
+                        }</p>
+                    })}
                 })}
                 {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+            </section>
+        </Show>
+    }
+}
+
+/// Settings → Account. With AlwyWatch: how others see you, the AlwyWatch server, password &
+/// passkeys, linked logins, "Sign out of AlwyWatch". Without: this profile's name here, and
+/// "Connect to AlwyWatch".
+#[component]
+pub fn AccountSection() -> impl IntoView {
+    let c = state::ctx();
+    let (keep, account) = (c.keep, c.account);
+    let connected = move || keep.get().is_some() || account.get().is_some();
+    move || {
+        if connected() {
+            view! { <OnAlwyWatch /> }.into_any()
+        } else {
+            view! { <ConnectToAlwyWatch /> }.into_any()
+        }
+    }
+}
+
+#[component]
+fn OnAlwyWatch() -> impl IntoView {
+    let c = state::ctx();
+    let (keep, account, expired) = (c.keep, c.account, c.expired);
+    let host = Ctx::origin()
+        .split_once("://")
+        .map(|(_, h)| h.to_owned())
+        .unwrap_or_else(Ctx::origin);
+    // The page comes from the AlwyWatch server itself: it is reachable; a refused sign-in
+    // shows here.
+    let status = move || {
+        let refused = keep.with(|k| {
+            k.as_ref()
+                .is_some_and(|k| expired.get().as_deref() == Some(k.account.as_str()))
+        });
+        if refused {
+            tr!("Sign-in expired")
+        } else {
+            tr!("Connected")
+        }
+    };
+    let c_out = c.clone();
+    let sign_out = move |_| {
+        let sure = web_sys::window()
+            .and_then(|w| {
+                w.confirm_with_message(&tr!(
+                    "Sign out of AlwyWatch? This profile keeps its Jellyfin and Plex logins and becomes a profile without an AlwyWatch account: Leaving soon and watch together disappear from it."
+                ))
+                .ok()
+            })
+            .unwrap_or(false);
+        if !sure {
+            return;
+        }
+        let c = c_out.clone();
+        spawn_local(async move {
+            if let Some(k) = c.account_client() {
+                let _ = k.account_logout().await;
+            }
+            c.forget_account();
+            if c.keep.get_untracked().is_some() {
+                c.disconnect_keep();
+            }
+            c.set_keep_off(true);
+        });
+    };
+    view! {
+        <section class="group">
+            <h2>{tr!("How others see you")}</h2>
+            {move || match (keep.get(), account.get()) {
+                (Some(_), _) => view! {
+                    <crate::links::AlsoSignedIn />
+                    <crate::profile::AccountProfile />
+                }.into_any(),
+                (None, Some(a)) => view! {
+                    <div class="profile-head">
+                        <crate::profile::Avatar user_key=a.user_key.clone() name=a.name.clone() avatar=Default::default() size=64 />
+                        <strong class="profile-name">{a.name.clone()}</strong>
+                    </div>
+                    <p class="muted small">{tr!("To change your name and picture, add a Jellyfin or Plex login: Servers → Add a server.")}</p>
+                }.into_any(),
+                (None, None) => ().into_any(),
+            }}
+        </section>
+        <section class="group">
+            <h2>{tr!("AlwyWatch")}</h2>
+            <div class="row">
+                <div><strong>{tr!("AlwyWatch server")}</strong>
+                    <div class="muted small">{host}" · "{status}</div></div>
+            </div>
+            <A href="/settings/account/password" attr:class="row link-row">
+                <div><strong>{tr!("Password & passkeys")}</strong>
+                    <div class="muted small">{tr!("Ways to sign in, devices signed in, deleting the account")}</div></div>
+                <span>"›"</span>
+            </A>
+            <Show when=move || keep.get().is_some()><crate::links::LinkedSignins /></Show>
+            <div class="actions">
+                <button on:click=sign_out>{tr!("Sign out of AlwyWatch")}</button>
+            </div>
+        </section>
+    }
+}
+
+/// A profile without an AlwyWatch account: its name in this browser, and the way back.
+#[component]
+fn ConnectToAlwyWatch() -> impl IntoView {
+    let c = state::ctx();
+    let navigate = use_navigate();
+    // Plex logins from before the plex.tv token was kept can't sign in to AlwyWatch.
+    let old_plex = c
+        .accounts
+        .get_untracked()
+        .iter()
+        .any(|s| s.kind == media_api::ServerKind::Plex && c.keep_token(s).is_none());
+    let (c1, n1) = (c.clone(), navigate.clone());
+    let sign_in = move |_| {
+        let (c, navigate) = (c1.clone(), n1.clone());
+        c.set_keep_off(false);
+        spawn_local(async move {
+            // A login on this site's servers connects at once; otherwise, sign in.
+            crate::signin::check_keep(c.clone()).await;
+            if c.keep.get_untracked().is_none() {
+                navigate("/signin?step=signin", Default::default());
+            }
+        });
+    };
+    view! {
+        <section class="group">
+            <h2>{tr!("How others see you")}</h2>
+            <crate::profiles::LocalProfile />
+        </section>
+        <section class="group">
+            <h2>{tr!("Connect to AlwyWatch")}</h2>
+            <p class="muted">{tr!("Your name, settings and servers come with you, and you get Leaving soon and watch together.")}</p>
+            <div class="actions">
+                <button class="primary" on:click=sign_in>{tr!("Sign in")}</button>
+                <button on:click=move |_| navigate("/join", Default::default())>{tr!("Create an account")}</button>
+            </div>
+            {old_plex.then(|| view! { <p class="muted small">{tr!("Plex account: sign out and sign in again to use requests, Leaving soon and watch together.")}</p> })}
+        </section>
+    }
+}
+
+/// Settings → This device → Sign in another device: the code a new device shows ("Sign in
+/// with a code") is approved here.
+#[component]
+pub fn SignInAnotherDevice() -> impl IntoView {
+    let c = state::ctx();
+    let (keep, account) = (c.keep, c.account);
+    let code = RwSignal::new(String::new());
+    let navigate = use_navigate();
+    let submit = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let digits: String = code
+            .get_untracked()
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect();
+        if !digits.is_empty() {
+            navigate(&format!("/q/{digits}"), Default::default());
+        }
+    };
+    view! {
+        <Show when=move || keep.get().is_some() || account.get().is_some()>
+            <section class="group">
+                <h2>{tr!("Sign in another device")}</h2>
+                <p class="muted small">{tr!("On the other device, choose “Sign in with a code” and type the code it shows here (or scan its QR code with your phone).")}</p>
+                <form class="name-form" on:submit=submit.clone()>
+                    <input aria-label=tr!("Code") inputmode="numeric" autocomplete="off" maxlength="12"
+                        prop:value=move || code.get() on:input=move |ev| code.set(event_target_value(&ev)) />
+                    <button class="small primary" type="submit">{tr!("Continue")}</button>
+                </form>
             </section>
         </Show>
     }

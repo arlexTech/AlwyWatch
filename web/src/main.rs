@@ -125,17 +125,32 @@ fn App() -> impl IntoView {
                 <Route path=path!("/together/:code") view=|| view! { <Shell><together::RoomPage /></Shell> } />
                 <Route path=path!("/leaving") view=|| view! { <Shell><keep::Leaving /></Shell> } />
                 <Route path=path!("/leaving/sort") view=|| view! { <Shell><keep::Triage /></Shell> } />
-                <Route path=path!("/admin") view=|| view! { <Shell><keep::Admin /></Shell> } />
+                // Admin is a section of Settings now.
+                <Route path=path!("/admin") view=|| view! { <MovedTo to="/settings/admin" /> } />
                 <Route path=path!("/admin/forever") view=|| view! { <Shell><keep::Forever /></Shell> } />
                 <Route path=path!("/settings") view=|| view! { <Shell><signin::Settings /></Shell> } />
                 <Route path=path!("/settings/:section") view=|| view! { <Shell><signin::Settings /></Shell> } />
-                <Route path=path!("/account") view=|| view! { <Shell><account::AccountPage /></Shell> } />
+                <Route path=path!("/settings/:section/:sub") view=|| view! { <Shell><signin::Settings /></Shell> } />
+                // Pocket ID comes back to /account?link=… and /account?error=… (alwywatch-server).
+                <Route path=path!("/account") view=|| view! { <MovedTo to="/settings/account/password" /> } />
                 <Route path=path!("/account/signed-in") view=|| view! { <Shell><account::SignedInPage /></Shell> } />
                 <Route path=path!("/join") view=|| view! { <Shell><account::Join /></Shell> } />
                 <Route path=path!("/join/:code") view=|| view! { <Shell><account::Join /></Shell> } />
                 <Route path=path!("/q/:code") view=|| view! { <Shell><account::Approve /></Shell> } />
             </Routes>
         </Router>
+    }
+}
+
+/// An old address: the same page at its new one, with its query (`?link=`, `?error=`).
+#[component]
+fn MovedTo(to: &'static str) -> impl IntoView {
+    let search = web_sys::window()
+        .and_then(|w| w.location().search().ok())
+        .unwrap_or_default();
+    let path = format!("{to}{search}");
+    view! {
+        <leptos_router::components::Redirect path=path options=leptos_router::NavigateOptions { replace: true, ..Default::default() } />
     }
 }
 
@@ -161,7 +176,6 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
     let services = move || me.get().map(|m| m.services).unwrap_or_default();
     let requests_on = move || keep_on() && services().requests;
     let leaving_on = move || keep_on() && services().leaving_soon;
-    let admin = move || keep.get().is_some_and(|k| k.is_admin);
     view! {
         <div class="shell">
             <nav class="menu">
@@ -174,8 +188,6 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                     <Show when=requests_on><A href="/requests">{tr!("Requests")}</A></Show>
                     <Show when=keep_on><A href="/together">{tr!("Together")}</A></Show>
                     <Show when=leaving_on><A href="/leaving">{tr!("Leaving soon")}</A></Show>
-                    <Show when=admin><A href="/admin/forever">{tr!("Kept forever")}</A></Show>
-                    <Show when=admin><A href="/admin">{tr!("Admin")}</A></Show>
                 </Show>
                 <A href="/settings">{tr!("Settings")}</A>
             </nav>

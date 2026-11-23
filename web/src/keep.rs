@@ -5,7 +5,7 @@
 use i18n::{tr, trn};
 use keep_service::{
     AdminUser, CountdownRequest, ForeverStats, LeavingItem, Protection, Rights, SeerrUser,
-    VoteKind, VoteRequest,
+    ServerStatus, VoteKind, VoteRequest,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -100,7 +100,7 @@ pub fn Leaving() -> impl IntoView {
         <div class="actions">
             <A href="/leaving/sort" attr:class="button primary">{tr!("Go through them one by one")}</A>
             <Show when=move || state::ctx().keep.get().is_some_and(|k| k.is_admin)>
-                <A href="/admin" attr:class="button">{tr!("Admin")}</A>
+                <A href="/settings/admin" attr:class="button">{tr!("Admin")}</A>
             </Show>
         </div>
         <div class="chips">
@@ -711,7 +711,8 @@ fn countdown_warning() -> String {
 /// A countdown waiting for its confirmation: collection, its title, stagger days.
 type Armed = (i64, String, u32);
 
-/// Admins: people's rights, and the collection countdown (behind a confirmation).
+/// Settings → Admin: people's rights, the collection countdown (behind a confirmation) and
+/// the link to Kept forever.
 #[component]
 pub fn Admin() -> impl IntoView {
     let users = RwSignal::new(None::<Result<Vec<AdminUser>, String>>);
@@ -825,39 +826,7 @@ pub fn Admin() -> impl IntoView {
         });
     };
     view! {
-        <h1>{tr!("Admin")}</h1>
-        <p class="muted">{tr!("Leaving soon: countdown and people's rights")}</p>
-        <section class="group">
-            <h2>{tr!("Kept forever")}</h2>
-            <A href="/admin/forever" attr:class="row link-row">
-                <div><strong>{tr!("Who keeps what forever")}</strong>
-                    <div class="muted small">{tr!("Per person, and how much of it someone else keeps too")}</div></div>
-                <span>"›"</span>
-            </A>
-        </section>
         {move || message.get().map(|m| view! { <p class="accent">{m}</p> })}
-        <section class="group">
-            <h2>{tr!("Start countdown")}</h2>
-            {move || {
-                let list = collections();
-                if list.is_empty() {
-                    return view! { <p class="muted">{tr!("No collection has items leaving.")}</p> }.into_any();
-                }
-                list.into_iter().map(|(id, title)| view! {
-                    <div class="row wrap">
-                        <span>{title.clone()}</span>
-                        <div class="actions tight">
-                            {[0u32, 14, 30].map(|stagger| {
-                                let title = title.clone();
-                                let label = if stagger == 0 { tr!("Restart now") } else { trn!("Spread over {n} day", "Spread over {n} days", stagger) };
-                                view! { <button class="small" on:click=move |_| armed.set(Some((id, title.clone(), stagger)))>{label}</button> }
-                            }).collect_view()}
-                        </div>
-                    </div>
-                }).collect_view().into_any()
-            }}
-            <p class="muted small">{countdown_warning()}" "{tr!("You'll be asked to confirm.")}</p>
-        </section>
         <section class="group">
             <h2>{tr!("People")}</h2>
             {move || match users.get() {
@@ -907,6 +876,36 @@ pub fn Admin() -> impl IntoView {
             }}
             <p class="muted small">{tr!("Everyone can keep forever by default. Click a value to change it.")}</p>
         </section>
+        <section class="group">
+            <h2>{tr!("Leaving soon countdown")}</h2>
+            {move || {
+                let list = collections();
+                if list.is_empty() {
+                    return view! { <p class="muted">{tr!("No collection has items leaving.")}</p> }.into_any();
+                }
+                list.into_iter().map(|(id, title)| view! {
+                    <div class="row wrap">
+                        <span>{title.clone()}</span>
+                        <div class="actions tight">
+                            {[0u32, 14, 30].map(|stagger| {
+                                let title = title.clone();
+                                let label = if stagger == 0 { tr!("Restart now") } else { trn!("Spread over {n} day", "Spread over {n} days", stagger) };
+                                view! { <button class="small" on:click=move |_| armed.set(Some((id, title.clone(), stagger)))>{label}</button> }
+                            }).collect_view()}
+                        </div>
+                    </div>
+                }).collect_view().into_any()
+            }}
+            <p class="muted small">{countdown_warning()}" "{tr!("You'll be asked to confirm.")}</p>
+        </section>
+        <section class="group">
+            <h2>{tr!("Kept forever")}</h2>
+            <A href="/admin/forever" attr:class="row link-row">
+                <div><strong>{tr!("Who keeps what forever")}</strong>
+                    <div class="muted small">{tr!("Per person, and how much of it someone else keeps too")}</div></div>
+                <span>"›"</span>
+            </A>
+        </section>
         {move || armed.get().map(|(_, title, stagger)| view! {
             <div class="dialog-back" on:click=move |_| if !busy.get_untracked() { armed.set(None) }
                 on:keydown=move |ev| if ev.key() == "Escape" && !busy.get_untracked() { armed.set(None) }>
@@ -928,6 +927,121 @@ pub fn Admin() -> impl IntoView {
                 </div>
             </div>
         })}
+    }
+}
+
+/// How long ago, roughly ("5 min", "2 h", "3 days").
+fn ago(seconds: i64) -> String {
+    let s = seconds.max(0);
+    if s < 3600 {
+        tr!("{n} min", n = (s / 60).max(1))
+    } else if s < 2 * 86_400 {
+        tr!("{n} h", n = s / 3600)
+    } else {
+        trn!("{n} day", "{n} days", s / 86_400)
+    }
+}
+
+/// One line of the server status: what, and its state or what to do.
+fn status_line(what: String, state: String, ok: bool) -> impl IntoView {
+    view! {
+        <div class="row">
+            <div><strong>{what}</strong>
+                <div class="small" class:muted=ok class:accent=!ok>{state}</div></div>
+        </div>
+    }
+}
+
+/// The Maintainerr line of the server status.
+fn maintainerr_line(st: &ServerStatus, now: i64) -> (String, bool) {
+    match st.maintainerr.as_str() {
+        "off" => (
+            tr!("Off. Add a [maintainerr] block (url, server) to config.toml and restart."),
+            false,
+        ),
+        "starting" => (tr!("Reading Maintainerr for the first time…"), true),
+        "ok" => (
+            trn!(
+                "Maintainerr {version} · read {time} ago · {n} title leaving",
+                "Maintainerr {version} · read {time} ago · {n} titles leaving",
+                st.leaving_items,
+                version = st.maintainerr_version.clone().unwrap_or_default(),
+                time = ago(now - st.last_sync.unwrap_or(now)),
+            ),
+            true,
+        ),
+        _ => (
+            tr!(
+                "Can't reach Maintainerr. Check [maintainerr] url, the Docker network, and MAINTAINERR_API_KEY if it uses one."
+            ),
+            false,
+        ),
+    }
+}
+
+/// Settings → Admin → Server status: what the AlwyWatch server is connected to, read only
+/// (set in its config.toml and .env), each line with what to do when it's off.
+#[component]
+pub fn ServerStatusView() -> impl IntoView {
+    let status = RwSignal::new(None::<Result<ServerStatus, String>>);
+    spawn_local(async move {
+        let Some(k) = state::ctx().keep_client() else {
+            return status.set(Some(Err(no_keep())));
+        };
+        status.set(Some(k.admin_status().await.map_err(|e| admin_error(&e))));
+    });
+    view! {
+        <section class="group">
+            <h2>{tr!("Server status")}</h2>
+            {move || match status.get() {
+                None => view! { <Loading /> }.into_any(),
+                Some(Err(e)) => view! { <ErrorText text=e /> }.into_any(),
+                Some(Ok(st)) => {
+                    let now = (js_sys::Date::now() / 1000.0) as i64;
+                    let (maintainerr, maintainerr_ok) = maintainerr_line(&st, now);
+                    let on = || tr!("On");
+                    view! {
+                        {st.dry_run.then(|| view! {
+                            <p class="banner" role="status">{tr!("Test mode: nothing is changed in Maintainerr or Seerr. Remove ALWYWATCH_DRY_RUN from .env and restart.")}</p>
+                        })}
+                        {status_line(tr!("AlwyWatch server"), st.version.clone(), true)}
+                        {status_line(tr!("Leaving soon"), maintainerr, maintainerr_ok)}
+                        {status_line(tr!("Requests"), if st.seerr_bridge {
+                            tr!("On: every app requests as each person's Seerr user.")
+                        } else {
+                            tr!("Off: only direct request-site logins work. Turn on with [seerr] in config.toml and SEERR_API_KEY in .env.")
+                        }, st.seerr_bridge)}
+                        {status_line(tr!("Keep until watched (Jellyfin)"), if st.jellyfin_key {
+                            on()
+                        } else {
+                            tr!("Jellyfin keeps don't end by themselves. Set JELLYFIN_API_KEY.")
+                        }, st.jellyfin_key)}
+                        {status_line(tr!("Keep until watched (Plex)"), if st.tautulli {
+                            on()
+                        } else {
+                            tr!("Plex keeps don't end by themselves. Add [tautulli] and TAUTULLI_API_KEY.")
+                        }, st.tautulli)}
+                        {status_line(tr!("Webhooks"), if st.webhooks {
+                            tr!("On: watched titles are noticed at once.")
+                        } else {
+                            tr!("Optional: watched titles are noticed within 15 min. For instant, set WEBHOOK_SECRET.")
+                        }, true)}
+                        {status_line(tr!("Passkeys"), if st.passkeys {
+                            on()
+                        } else {
+                            tr!("Off: set ALWYWATCH_PUBLIC_URL (https).")
+                        }, st.passkeys)}
+                        {status_line("Pocket ID".to_owned(), if st.pocketid { on() } else { tr!("Off") }, true)}
+                        {status_line(tr!("New accounts"), match st.registration.as_str() {
+                            "open" => tr!("Anyone can create one"),
+                            "invite" => tr!("With an invitation"),
+                            _ => tr!("Closed"),
+                        }, true)}
+                    }.into_any()
+                }
+            }}
+            <p class="muted small">{tr!("Read only: these are set in the server's config.toml and .env.")}</p>
+        </section>
     }
 }
 

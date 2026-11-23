@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Signing in with a Jellyfin or Plex account (the servers this AlwyWatch server serves are
-//! listed, nothing to type), and the settings page (accounts, AlwyWatch server link).
+//! The first step (sign in to AlwyWatch or create an account), signing in with a Jellyfin or
+//! Plex login (the servers this AlwyWatch server serves are listed, nothing to type), and the
+//! settings page with its sections (docs/settings.md).
 
 use i18n::tr;
 use keep_service::{KeepClient, ServerEntry, ServerType};
@@ -21,7 +22,10 @@ async fn finish(c: &Ctx, s: Session, served: &[ServerEntry]) {
     if c.expired.get_untracked().as_deref() == Some(state::account_key(&s).as_str()) {
         c.expired.set(None);
     }
-    if c.keep.get_untracked().is_none() && served.iter().any(|e| e.id == s.server_id) {
+    if !c.keep_off()
+        && c.keep.get_untracked().is_none()
+        && served.iter().any(|e| e.id == s.server_id)
+    {
         link(c, &s).await;
     }
     // Signed in to an AlwyWatch account too: this sign-in becomes part of it.
@@ -30,6 +34,9 @@ async fn finish(c: &Ctx, s: Session, served: &[ServerEntry]) {
     {
         crate::account::link_media(c, &s.server_id, &t).await;
     }
+    // A profile added without a name takes the person's.
+    let name = c.me.get_untracked().map(|m| m.name).unwrap_or(s.user_name);
+    crate::profiles::adopt_name(&name);
     // A new account may be the same person as the linked one.
     crate::links::refresh(true).await;
 }
@@ -81,7 +88,7 @@ pub async fn check_keep(c: Ctx) {
         }
         return;
     }
-    if c.accounts.get_untracked().is_empty() {
+    if c.accounts.get_untracked().is_empty() || c.keep_off() {
         return;
     }
     let Ok(served) = KeepClient::servers(&c.http, &Ctx::origin()).await else {
@@ -111,8 +118,61 @@ fn after_sign_in() -> String {
     }
 }
 
+/// The first step of a profile (first visit, "Add a profile"): sign in or create an account.
+#[component]
+pub fn StartCards(on_sign_in: Callback<()>, on_create: Callback<()>) -> impl IntoView {
+    view! {
+        <div class="choices">
+            <button class="choice" on:click=move |_| on_sign_in.run(())>
+                <strong>{tr!("Sign in to AlwyWatch")}</strong>
+                <span class="muted">{tr!("Your name, settings and servers come with you")}</span>
+            </button>
+            <button class="choice" on:click=move |_| on_create.run(())>
+                <strong>{tr!("Create an AlwyWatch account")}</strong>
+                <span class="muted">{tr!("You have an invitation")}</span>
+            </button>
+        </div>
+    }
+}
+
+/// `/signin`, and every page while this profile has no login. A profile with nothing yet
+/// starts with the two cards ("Welcome to AlwyWatch"); `?step=signin` goes straight to the
+/// ways to sign in. With a login or an account already, it adds a server.
 #[component]
 pub fn SignIn() -> impl IntoView {
+    let c = state::ctx();
+    let fresh = c.accounts.get_untracked().is_empty() && c.account.get_untracked().is_none();
+    let step = leptos_router::hooks::use_query_map().with_untracked(|q| q.get("step"));
+    let asked = step.as_deref() == Some("signin");
+    let signing_in = RwSignal::new(asked);
+    let navigate = use_navigate();
+    let create = Callback::new(move |()| navigate("/join", Default::default()));
+    let sign_in = Callback::new(move |()| signing_in.set(true));
+    move || {
+        if fresh && !signing_in.get() {
+            view! {
+                <h1>{tr!("Welcome to AlwyWatch")}</h1>
+                <StartCards on_sign_in=sign_in on_create=create />
+            }
+            .into_any()
+        } else {
+            let to_alwywatch = fresh || asked;
+            view! {
+                <h1>{if to_alwywatch { tr!("Sign in to AlwyWatch") } else { tr!("Add a server") }}</h1>
+                {(fresh && !asked).then(|| view! {
+                    <p><button class="small subtle" on:click=move |_| signing_in.set(false)>"‹ "{tr!("Back")}</button></p>
+                })}
+                <SignInWays to_alwywatch=to_alwywatch />
+            }
+            .into_any()
+        }
+    }
+}
+
+/// The servers to sign in to with a Jellyfin or Plex login; `to_alwywatch`: the AlwyWatch
+/// account's own ways (password, passkey, Pocket ID) too.
+#[component]
+fn SignInWays(to_alwywatch: bool) -> impl IntoView {
     let c = state::ctx();
     let http = c.http.clone();
     let served = LocalResource::new(move || {
@@ -122,8 +182,11 @@ pub fn SignIn() -> impl IntoView {
     let picked = RwSignal::new(None::<ServerEntry>);
     let account = c.account;
     view! {
-        <h1>{tr!("Sign in")}</h1>
-        <p class="muted">{tr!("Use your Jellyfin or Plex account.")}</p>
+        <p class="muted">{if to_alwywatch {
+            tr!("With your Jellyfin or Plex login, or below with your AlwyWatch account.")
+        } else {
+            tr!("Sign in with your Jellyfin or Plex login.")
+        }}</p>
         {move || match served.get() {
             None => view! { <crate::ui::Loading /> }.into_any(),
             Some(None) => view! {
@@ -154,24 +217,20 @@ pub fn SignIn() -> impl IntoView {
                         ServerType::Jellyfin => view! { <JellyfinForm entry=e served=all.clone() /> }.into_any(),
                         ServerType::Plex => view! { <PlexForm entry=e served=all.clone() /> }.into_any(),
                     })}
-                    {move || match account.get() {
-                        Some(a) => view! {
-                            <p class="muted small">{
-                                let (before, after) = crate::ui::around(&tr!("AlwyWatch account: {name}."), "{name}");
-                                view! { {before}<strong>{a.name}</strong>{after} }
-                            }" "
-                                <leptos_router::components::A href="/account">{tr!("Manage")}</leptos_router::components::A></p>
-                        }.into_any(),
-                        None => view! {
-                            <details>
-                                <summary>{tr!("Have an AlwyWatch account instead? Sign in with it")}</summary>
-                                <p class="muted small">{tr!("An AlwyWatch account is optional: your server's owner may have invited you to create one. It is not your Jellyfin or Plex login.")}</p>
-                                <crate::account::AccountSignIn next="/settings" />
-                            </details>
-                        }.into_any(),
-                    }}
                 }.into_any()
             }
+        }}
+        {move || match account.get() {
+            Some(a) => view! {
+                <p class="muted small">{
+                    let (before, after) = crate::ui::around(&tr!("AlwyWatch account: {name}."), "{name}");
+                    view! { {before}<strong>{a.name}</strong>{after} }
+                }" "
+                    <leptos_router::components::A href="/settings/account">{tr!("Manage")}</leptos_router::components::A></p>
+            }.into_any(),
+            None => to_alwywatch.then(|| view! {
+                <crate::account::AccountSignIn next="/" />
+            }).into_any(),
         }}
     }
 }
@@ -413,39 +472,70 @@ fn page_is_https() -> bool {
 }
 
 /// The sections of Settings: the same, in the same order, on every platform
-/// (docs/settings.md). `(id, title)`.
-const SECTIONS: [&str; 6] = [
-    "servers",
-    "alwywatch",
-    "profiles",
-    "playback",
-    "audio",
-    "about",
+/// (docs/settings.md). The web has no "Menu & pages" nor "Downloads"; "Admin" is for admins.
+const SECTIONS: [&str; 7] = [
+    "account", "servers", "requests", "playback", "audio", "device", "admin",
 ];
 
 /// A section's title, in the selected language.
 fn section_title(id: &str) -> String {
     match id {
+        "account" => tr!("Account"),
         "servers" => tr!("Servers"),
-        "alwywatch" => tr!("AlwyWatch & requests"),
-        "profiles" => tr!("Profiles"),
+        "requests" => tr!("Requests"),
         "playback" => tr!("Playback"),
         "audio" => tr!("Audio & subtitles"),
-        _ => tr!("Language & about"),
+        "admin" => tr!("Admin"),
+        _ => tr!("This device"),
     }
 }
 
-/// `/settings` and `/settings/:section`: the sections on the left, one shown at a time.
+/// Section ids of earlier versions (bookmarks, links in the apps) → today's.
+fn current_section(id: &str) -> &str {
+    match id {
+        "alwywatch" | "services" => "account",
+        "profiles" | "about" => "device",
+        other => other,
+    }
+}
+
+/// `/settings`, `/settings/:section` and `/settings/account/password`: the sections on the
+/// left, one shown at a time.
 #[component]
 pub fn Settings() -> impl IntoView {
+    let c = state::ctx();
+    let (keep, me) = (c.keep, c.me);
+    let admin = Memo::new(move |_| {
+        keep.with(|k| k.as_ref().is_some_and(|k| k.is_admin))
+            || me.with(|m| m.as_ref().is_some_and(|m| m.is_admin))
+    });
     let params = leptos_router::hooks::use_params_map();
+    let navigate = use_navigate();
+    // An old section's address shows its new one.
+    Effect::new(move |_| {
+        let Some(id) = params.read().get("section") else {
+            return;
+        };
+        let now = current_section(&id);
+        if now != id {
+            navigate(
+                &format!("/settings/{now}"),
+                leptos_router::NavigateOptions {
+                    replace: true,
+                    ..Default::default()
+                },
+            );
+        }
+    });
     let section = Memo::new(move |_| {
         params
             .read()
             .get("section")
-            .filter(|s| SECTIONS.iter().any(|id| id == s))
-            .unwrap_or_else(|| "servers".into())
+            .map(|s| current_section(&s).to_owned())
+            .filter(|s| SECTIONS.contains(&s.as_str()) && (s != "admin" || admin.get()))
+            .unwrap_or_else(|| "account".into())
     });
+    let sub = Memo::new(move |_| params.read().get("sub"));
     view! {
         <h1>{tr!("Settings")}</h1>
         <div class="settings">
@@ -453,29 +543,39 @@ pub fn Settings() -> impl IntoView {
                 {SECTIONS.iter().map(|id| {
                     let id = *id;
                     view! {
-                        <a href=format!("/settings/{id}") aria-current=move || (section.get() == id).then_some("page")>{section_title(id)}</a>
+                        <Show when=move || id != "admin" || admin.get()>
+                            <a href=format!("/settings/{id}") aria-current=move || (section.get() == id).then_some("page")>{section_title(id)}</a>
+                        </Show>
                     }
                 }).collect_view()}
             </nav>
             <div class="settings-body">
-                {move || match section.get().as_str() {
-                    "alwywatch" => view! { <AlwyWatchSection /> }.into_any(),
-                    "profiles" => view! { <crate::profiles::ProfilesSettings /> }.into_any(),
-                    "playback" => view! { <crate::prefs::PlaybackSettings /> }.into_any(),
-                    "audio" => view! { <crate::prefs::AudioSettings /> }.into_any(),
-                    "about" => view! {
+                {move || match (section.get().as_str(), sub.get().as_deref()) {
+                    ("account", Some("password")) => view! { <crate::account::PasswordAndPasskeys /> }.into_any(),
+                    ("account", _) => view! { <crate::account::AccountSection /> }.into_any(),
+                    ("servers", _) => view! { <ServersSection /> }.into_any(),
+                    ("requests", _) => view! { <crate::request::RequestsSettings /> }.into_any(),
+                    ("playback", _) => view! { <crate::prefs::PlaybackSettings /> }.into_any(),
+                    ("audio", _) => view! { <crate::prefs::AudioSettings /> }.into_any(),
+                    ("admin", _) => view! {
+                        <crate::keep::Admin />
+                        <crate::account::Invitations />
+                        <crate::keep::ServerStatusView />
+                    }.into_any(),
+                    _ => view! {
+                        <crate::profiles::ProfilesSettings />
+                        <crate::account::SignInAnotherDevice />
                         <crate::lang::LanguageSetting />
+                        <section class="group">
+                            <h2>{tr!("Storage")}</h2>
+                            <p class="muted small">{tr!("Accounts and settings are kept in this browser only. Sign out on shared computers.")}</p>
+                        </section>
                         <section class="group">
                             <h2>{tr!("About")}</h2>
                             <p>{format!("AlwyWatch {}", env!("CARGO_PKG_VERSION"))}</p>
                             <p class="muted small">{tr!("Free software under the GNU AGPL v3 or later.")}</p>
                         </section>
-                        <section class="group">
-                            <h2>{tr!("Storage")}</h2>
-                            <p class="muted small">{tr!("Accounts and settings are kept in this browser only. Sign out on shared computers.")}</p>
-                        </section>
                     }.into_any(),
-                    _ => view! { <ServersSection /> }.into_any(),
                 }}
             </div>
         </div>
@@ -505,47 +605,6 @@ fn ServersSection() -> impl IntoView {
                 }).collect_view()
             }}
             <leptos_router::components::A href="/signin" attr:class="button">{tr!("Add a server")}</leptos_router::components::A>
-        </section>
-    }
-}
-
-#[component]
-fn AlwyWatchSection() -> impl IntoView {
-    let c2 = state::ctx();
-    let c3 = c2.clone();
-    view! {
-        <section class="group">
-            <h2>{tr!("You on AlwyWatch")}</h2>
-            {move || match c2.keep.get() {
-                Some(k) => view! {
-                    <p class="muted small">{
-                        let (before, after) = crate::ui::around(&tr!("Signed in as {name} on {site}. Others see this name and avatar.", site = Ctx::origin()), "{name}");
-                        view! { {before}<strong>{k.user_name}</strong>{after} }
-                    }</p>
-                    <crate::links::AlsoSignedIn />
-                    <crate::profile::AccountProfile />
-                    <crate::links::LinkedSignins />
-                }.into_any(),
-                None => {
-                    // Plex accounts from before the plex.tv token was kept can't sign in here.
-                    let old_plex = c2.accounts.get().iter().any(|s| s.kind == media_api::ServerKind::Plex && c2.keep_token(s).is_none());
-                    view! {
-                        <p class="muted">{tr!("None of your logins is on a server this site works with. Add one: Servers → Add a server.")}</p>
-                        {old_plex.then(|| view! { <p class="muted small">{tr!("Plex account: sign out and sign in again to use requests, Leaving soon and watch together.")}</p> })}
-                    }.into_any()
-                }
-            }}
-        </section>
-        <section class="group">
-            <h2>{tr!("Connection and devices")}</h2>
-            <div class="row">
-                <div class="muted small">{move || match c3.account.get() {
-                    Some(a) => tr!("Signed in to the account of {name}. Password, passkeys, Pocket ID and your devices.", name = a.name),
-                    None => tr!("Sign in without a media server, with a password, passkey or Pocket ID; sign a TV in with a code."),
-
-                }}</div>
-                <leptos_router::components::A href="/account" attr:class="button">{tr!("Account")}</leptos_router::components::A>
-            </div>
         </section>
     }
 }

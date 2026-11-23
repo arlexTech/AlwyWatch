@@ -15,6 +15,11 @@ sealed interface Route {
 
     data object AddServer : Route
 
+    /** Connect this profile to AlwyWatch: sign in, or [create] an account (Settings → Account). */
+    data class ConnectAlwyWatch(
+        val create: Boolean,
+    ) : Route
+
     data object Downloads : Route
 
     data object Requests : Route
@@ -26,6 +31,12 @@ sealed interface Route {
     data object Triage : Route
 
     data object KeepAdmin : Route
+
+    /** Settings → Admin → People: rights and whose Seerr user requests go as. */
+    data object AdminPeople : Route
+
+    /** Settings → Admin → Leaving soon countdown. */
+    data object AdminCountdown : Route
 
     /** Admins: who keeps what forever, and the overlaps. */
     data object KeepForever : Route
@@ -108,12 +119,15 @@ sealed interface Route {
             Search -> "search"
             Settings -> "settings"
             AddServer -> "add"
+            is ConnectAlwyWatch -> "connect\u001f${if (create) "create" else "signin"}"
             Downloads -> "downloads"
             Requests -> "requests"
             SeerrConnect -> "seerr-connect"
             LeavingSoon -> "leaving"
             Triage -> "triage"
             KeepAdmin -> "keep-admin"
+            AdminPeople -> "admin-people"
+            AdminCountdown -> "admin-countdown"
             KeepForever -> "keep-forever"
             Together -> "together"
             is Room -> "room\u001f$code"
@@ -140,12 +154,15 @@ sealed interface Route {
                 "search" -> Search
                 "settings" -> Settings
                 "add" -> AddServer
+                "connect" -> ConnectAlwyWatch(p.getOrNull(1) == "create")
                 "downloads" -> Downloads
                 "requests" -> Requests
                 "seerr-connect" -> SeerrConnect
                 "leaving" -> LeavingSoon
                 "triage" -> Triage
                 "keep-admin" -> KeepAdmin
+                "admin-people" -> AdminPeople
+                "admin-countdown" -> AdminCountdown
                 "keep-forever" -> KeepForever
                 "together" -> Together
                 "room" -> p.getOrNull(1)?.let { Room(it) }

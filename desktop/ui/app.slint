@@ -209,6 +209,16 @@ export struct AdminRow {
     forever: string,
     max-forever: string,
     max-days: string,
+    /// "Requests as …" ("" when the AlwyWatch server takes no requests).
+    seerr: string,
+    seerr-id: string, // "" = automatic
+}
+
+/// Settings → Admin → Server status: one line and what to do about it.
+export struct StatusRow {
+    title: string,
+    text: string,
+    ok: bool,
 }
 
 /// A profile of this computer (Settings → Profiles, and "Who's watching?" at start).
@@ -1471,13 +1481,40 @@ export component AppWindow inherits Window {
     callback send-confirm();
     callback send-cancel();
     callback keep-connect(string);
-    /// Accounts that can sync with the AlwyWatch server (selected = the one syncing).
-    in property <[NamedId]> keep-choices;
-    in property <bool> keep-can-switch;
-    callback keep-sync(string);
-    callback keep-choose();
-    callback keep-disconnect();
-    callback account-sign-out();
+    /// "Sign out of AlwyWatch": the account and the server, for this profile (its logins stay).
+    callback alwywatch-sign-out();
+    /// "Connect to AlwyWatch" (a profile without it): sign in (false) or create an account.
+    callback alwy-connect(bool);
+    /// Settings → Account: the AlwyWatch server's address and "" | ok | offline | expired.
+    in property <string> alwy-address;
+    in property <string> alwy-state;
+    /// The profile has AlwyWatch: a server connection or an account.
+    property <bool> alwy-on: root.keep-active || root.alwy-account != "";
+    property <bool> address-edit;
+    property <bool> signout-ask;
+    /// The profile in use (its own name and colours, for a profile without AlwyWatch).
+    in property <ProfileRow> profile-me;
+    // Settings → Requests: the AlwyWatch server takes requests; this profile uses that.
+    in property <bool> seerr-bridge-offered;
+    in property <bool> seerr-via-keep;
+    // Settings → Admin: the server's status, a new invitation.
+    callback admin-open();
+    callback admin-invite();
+    in property <[StatusRow]> admin-status;
+    in property <bool> admin-dry-run;
+    in property <string> admin-status-message;
+    in property <string> invite-made-code;
+    in property <string> invite-made-link;
+    in property <string> invite-made-message;
+    /// Admin → People: Seerr users to request as ("" = automatic), and the row picking one.
+    in property <[NamedId]> admin-seerr-users;
+    property <string> admin-seerr-open;
+    callback admin-seerr(string, string); // user key, Seerr user id ("" = automatic)
+    // Add a profile → Create an AlwyWatch account: the address step leads to the form.
+    in-out property <bool> add-create;
+    in property <bool> create-invite-needed;
+    callback create-check(string); // AlwyWatch server address
+    callback account-create(string, string, string, string, string); // address, invitation, username, password, again
     callback account-manage();
     callback cycle-language();
     in property <string> language-label;
@@ -1534,9 +1571,15 @@ export component AppWindow inherits Window {
     in-out property <string> profile-input; // the dialog's name or PIN field
     in property <string> profile-message;
     in property <bool> profile-gate; // "Who's watching?" before the app
-    // Settings: the section shown (servers | alwywatch | profiles | playback | audio | about).
-    in-out property <string> settings-section: "servers";
-    property <string> shown-section: root.page == Page.profiles ? "profiles" : root.settings-section;
+    // Settings: the section shown (account | servers | requests | playback | audio | device |
+    // admin). Older ids still lead somewhere: alwywatch/services → account, about/profiles →
+    // device.
+    in-out property <string> settings-section: "account";
+    property <string> shown-section: root.page == Page.profiles ? "device"
+        : root.settings-section == "alwywatch" || root.settings-section == "services" ? "account"
+        : root.settings-section == "about" || root.settings-section == "profiles" ? "device"
+        : root.settings-section == "admin" && !root.keep-admin ? "account"
+        : root.settings-section;
     in property <string> audio-lang-label;
     in property <string> sub-mode-label;
     in property <string> sub-lang-label;
@@ -2020,7 +2063,7 @@ export component AppWindow inherits Window {
                                 }
                                 if root.add-step == "choose" && !root.add-from-keep : VerticalLayout {
                                     spacing: 4px;
-                                    Text { text: "AlwyWatch"; color: Palette.text; font-size: 56px; font-weight: 800; letter-spacing: -1.5px; }
+                                    Text { text: @tr("Welcome to AlwyWatch"); color: Palette.text; font-size: 44px; font-weight: 800; letter-spacing: -1px; wrap: word-wrap; }
                                     Text { text: @tr("Your Jellyfin and Plex, fast and beautiful."); color: Palette.muted; font-size: 17px; }
                                     Rectangle { height: 16px; }
                                 }
@@ -2029,10 +2072,11 @@ export component AppWindow inherits Window {
                                     alignment: start;
                                     IconButton { icon: @image-url("icons/arrow_back.svg"); clicked => { root.add-choose("back"); } }
                                     Text {
-                                        text: root.add-step == "alwywatch" ? @tr("AlwyWatch server")
+                                        text: root.add-step == "create" || (root.add-step == "alwywatch" && root.add-create) ? @tr("Create an AlwyWatch account")
+                                            : root.add-step == "alwywatch" ? @tr("Sign in to AlwyWatch")
                                             : root.add-step == "receive" ? @tr("Sign in with a code")
                                             : root.add-step == "account" ? @tr("AlwyWatch account")
-                                            : root.add-step == "direct" ? @tr("Sign in")
+                                            : root.add-step == "direct" ? (root.accounts.length > 0 ? @tr("Add a server") : @tr("Jellyfin or Plex only"))
                                             : root.add-step == "plex" || root.add-step == "plex-servers" ? "Plex" : "Jellyfin";
                                         color: Palette.text;
                                         font-size: 28px;
@@ -2040,16 +2084,21 @@ export component AppWindow inherits Window {
                                         vertical-alignment: center;
                                     }
                                 }
-                                if root.add-step == "choose" && !root.add-from-keep : Text { text: @tr("Sign in"); color: Palette.text; font-size: 17px; font-weight: 700; }
                                 if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
-                                    title: @tr("I was given an AlwyWatch address");
-                                    subtitle: @tr("Something like watch.example.org, from the person who runs your server. Adds requests, watch together and saving titles from deletion.");
+                                    title: @tr("Sign in to AlwyWatch");
+                                    subtitle: @tr("Your name, settings and servers come with you.");
                                     icon: @image-url("icons/hourglass_bottom.svg");
                                     clicked => { root.add-choose("alwywatch"); }
                                 }
                                 if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
-                                    title: @tr("I have a Jellyfin or Plex login");
-                                    subtitle: @tr("Sign in directly. You can add an AlwyWatch address later in Settings.");
+                                    title: @tr("Create an AlwyWatch account");
+                                    subtitle: @tr("You have an invitation.");
+                                    icon: @image-url("icons/add.svg");
+                                    clicked => { root.add-choose("create"); }
+                                }
+                                if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
+                                    title: @tr("Jellyfin or Plex only");
+                                    subtitle: @tr("No account: nothing synced, no Leaving soon or watch together.");
                                     icon: @image-url("icons/person.svg");
                                     clicked => { root.add-choose("direct"); }
                                 }
@@ -2065,7 +2114,31 @@ export component AppWindow inherits Window {
                                     icon: @image-url("icons/play_arrow_fill1.svg");
                                     clicked => { root.add-choose("plex"); }
                                 }
-                                if root.add-step == "alwywatch" : VerticalLayout {
+                                if root.add-step == "alwywatch" && root.add-create : VerticalLayout {
+                                    spacing: 12px;
+                                    Text { text: @tr("Type the address of the AlwyWatch server you were invited to, something like watch.example.org."); color: Palette.muted; wrap: word-wrap; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        cserver := Field { placeholder: "watch.example.org"; text <=> root.keep-address; accepted(t) => { root.create-check(t); } }
+                                        Button { label: @tr("Continue"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.create-check(cserver.text); } }
+                                    }
+                                }
+                                if root.add-step == "create" : VerticalLayout {
+                                    spacing: 12px;
+                                    Text { text: @tr("An account keeps your profile, settings and server list, and signs your devices in. To watch, add your Jellyfin or Plex server afterwards."); color: Palette.muted; wrap: word-wrap; }
+                                    cinvite := Field { placeholder: root.create-invite-needed ? @tr("Invitation code") : @tr("Invitation code (not needed)"); }
+                                    cuser := Field { placeholder: @tr("Username"); }
+                                    cpass := Field { placeholder: @tr("Password"); input-type: password; }
+                                    cpass2 := Field {
+                                        placeholder: @tr("Password again");
+                                        input-type: password;
+                                        accepted => { root.account-create(root.keep-address, cinvite.text, cuser.text, cpass.text, cpass2.text); }
+                                    }
+                                    HorizontalLayout { alignment: start; Button { label: @tr("Create the account"); primary: true; clicked => { root.account-create(root.keep-address, cinvite.text, cuser.text, cpass.text, cpass2.text); } } }
+                                    Text { text: @tr("You can add a passkey once signed in, on the AlwyWatch website."); color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                    if root.transfer-status != "" : Text { text: root.transfer-status; color: Palette.danger; wrap: word-wrap; }
+                                }
+                                if root.add-step == "alwywatch" && !root.add-create : VerticalLayout {
                                     spacing: 12px;
                                     if root.account-note == "" : Text { text: @tr("Type the AlwyWatch address the person who runs your server gave you. You then sign in with your Jellyfin or Plex login, or with a code from a device where you already use AlwyWatch."); color: Palette.muted; wrap: word-wrap; }
                                     if root.account-note != "" : Text { text: root.account-note; color: Palette.text; font-size: 17px; font-weight: 700; wrap: word-wrap; }
@@ -2127,7 +2200,7 @@ export component AppWindow inherits Window {
                                         }
                                     }
                                     Text {
-                                        text: @tr("Or on a device where you're signed in: Settings → AlwyWatch & requests → Add a device, and type this code.");
+                                        text: @tr("Or on a device where you're signed in: Settings → This device → Sign in another device, and type this code.");
                                         color: Palette.muted;
                                         wrap: word-wrap;
                                     }
@@ -2672,6 +2745,15 @@ export component AppWindow inherits Window {
                                         Button { label: u.forever; clicked => { root.admin-rights(u.key, "forever"); } }
                                         Button { label: u.max-forever; clicked => { root.admin-rights(u.key, "max-forever"); } }
                                         Button { label: u.max-days; clicked => { root.admin-rights(u.key, "max-days"); } }
+                                        if u.seerr != "" : Button { label: u.seerr; clicked => { root.admin-seerr-open = root.admin-seerr-open == u.key ? "" : u.key; } }
+                                    }
+                                    if root.admin-seerr-open == u.key : VerticalLayout {
+                                        spacing: 4px;
+                                        Text { text: @tr("Their requests go to this Seerr user:"); color: Palette.muted; font-size: 13px; }
+                                        for su in root.admin-seerr-users : HorizontalLayout {
+                                            alignment: start;
+                                            Button { label: su.title; primary: su.id == u.seerr-id; clicked => { root.admin-seerr-open = ""; root.admin-seerr(u.key, su.id); } }
+                                        }
                                     }
                                 }
                             }
@@ -2770,12 +2852,13 @@ export component AppWindow inherits Window {
                             alignment: start;
                             PageTitle { title: @tr("Settings"); }
                             Rectangle { height: 14px; }
+                                    NavItem { label: @tr("Account"); icon: @image-url("icons/person.svg"); selected: root.shown-section == "account"; clicked => { root.settings-section = "account"; if (root.page != Page.settings) { root.go(Page.settings); } } }
                                     NavItem { label: @tr("Servers"); icon: @image-url("icons/video_library.svg"); selected: root.shown-section == "servers"; clicked => { root.settings-section = "servers"; if (root.page != Page.settings) { root.go(Page.settings); } } }
-                                    NavItem { label: @tr("AlwyWatch & requests"); icon: @image-url("icons/hourglass_bottom.svg"); selected: root.shown-section == "alwywatch"; clicked => { root.settings-section = "alwywatch"; if (root.page != Page.settings) { root.go(Page.settings); } } }
-                                    NavItem { label: @tr("Profiles"); icon: @image-url("icons/person.svg"); selected: root.shown-section == "profiles"; clicked => { root.settings-section = "profiles"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: @tr("Requests"); icon: @image-url("icons/add.svg"); selected: root.shown-section == "requests"; clicked => { root.settings-section = "requests"; if (root.page != Page.settings) { root.go(Page.settings); } } }
                                     NavItem { label: @tr("Playback"); icon: @image-url("icons/play_arrow_fill1.svg"); selected: root.shown-section == "playback"; clicked => { root.settings-section = "playback"; if (root.page != Page.settings) { root.go(Page.settings); } } }
                                     NavItem { label: @tr("Audio & subtitles"); icon: @image-url("icons/subtitles.svg"); selected: root.shown-section == "audio"; clicked => { root.settings-section = "audio"; if (root.page != Page.settings) { root.go(Page.settings); } } }
-                                    NavItem { label: @tr("Language & about"); icon: @image-url("icons/info.svg"); selected: root.shown-section == "about"; clicked => { root.settings-section = "about"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: @tr("This device"); icon: @image-url("icons/info.svg"); selected: root.shown-section == "device"; clicked => { root.settings-section = "device"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    if root.keep-admin : NavItem { label: @tr("Admin"); icon: @image-url("icons/settings.svg"); selected: root.shown-section == "admin"; clicked => { root.settings-section = "admin"; root.admin-open(); if (root.page != Page.settings) { root.go(Page.settings); } } }
                         }
                         ScrollView {
                         VerticalLayout {
@@ -2783,6 +2866,148 @@ export component AppWindow inherits Window {
                             padding-top: 96px;
                             spacing: 22px;
                             alignment: start;
+                            if root.shown-section == "account" : VerticalLayout {
+                                spacing: 22px;
+                                alignment: start;
+                            // A profile with AlwyWatch: how others see me (from the server).
+                            if root.keep-active : Group {
+                                title: @tr("HOW OTHERS SEE YOU");
+                                HorizontalLayout {
+                                    spacing: 14px;
+                                    UserAvatar { avatar: root.me-avatar; size: 56px; y: (parent.height - self.height) / 2; }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text { text: root.me-loaded ? root.me-name : "…"; color: Palette.text; font-size: 17px; font-weight: 700; overflow: elide; }
+                                        Text { text: root.me-detail; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                        if root.me-also != "" : Text { text: root.me-also; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                    }
+                                    if root.me-loaded : Button { label: @tr("Change name"); y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("name"); } }
+                                    if root.me-loaded && root.me-name-custom : Button { label: @tr("Reset"); y: (parent.height - self.height) / 2; clicked => { root.account-name-reset(); } }
+                                    if root.me-loaded : Button { label: @tr("Change picture"); y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("avatar"); } }
+                                }
+                                if root.me-message != "" : Text { text: root.me-message; color: Palette.danger; wrap: word-wrap; }
+                            }
+                            // A profile without AlwyWatch (or an account without a login yet):
+                            // the profile's own name on this computer.
+                            if !root.keep-active : Group {
+                                title: @tr("HOW OTHERS SEE YOU");
+                                HorizontalLayout {
+                                    spacing: 14px;
+                                    Avatar { initial: root.profile-me.initial; tone: root.profile-me.tone; size: 56px; y: (parent.height - self.height) / 2; }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text { text: root.profile-me.name; color: Palette.text; font-size: 17px; font-weight: 700; overflow: elide; }
+                                        Text { text: @tr("The name of this profile on this computer."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                    }
+                                    Button { label: @tr("Change name"); y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("rename", root.profile-me.id); } }
+                                }
+                            }
+                            if root.alwy-on : Group {
+                                title: @tr("ALWYWATCH");
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text { text: @tr("AlwyWatch server"); color: Palette.text; font-weight: 700; }
+                                        Text {
+                                            text: root.alwy-state == "ok" ? @tr("{} · Connected", root.alwy-address)
+                                                : root.alwy-state == "offline" ? @tr("{} · Can't reach", root.alwy-address)
+                                                : root.alwy-state == "expired" ? @tr("{} · Sign-in expired", root.alwy-address)
+                                                : root.alwy-address;
+                                            color: root.alwy-state == "ok" || root.alwy-state == "" ? Palette.muted : Palette.danger;
+                                            font-size: 12px;
+                                            wrap: word-wrap;
+                                        }
+                                        if root.keep-active : Text { text: root.keep-label; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                    }
+                                    if root.keep-active && !root.address-edit : Button { label: @tr("Change address"); y: (parent.height - self.height) / 2; clicked => { root.address-edit = true; } }
+                                }
+                                if root.address-edit : HorizontalLayout {
+                                    spacing: 10px;
+                                    kurl := Field { placeholder: @tr("AlwyWatch server address"); accepted(t) => { root.address-edit = false; root.keep-connect(t); } }
+                                    Button { label: @tr("Connect"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.address-edit = false; root.keep-connect(kurl.text); } }
+                                    Button { label: @tr("Cancel"); y: (parent.height - self.height) / 2; clicked => { root.address-edit = false; } }
+                                }
+                                if root.alwy-account != "" : HorizontalLayout {
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text { text: @tr("Password & passkeys"); color: Palette.text; font-weight: 700; }
+                                        Text { text: @tr("Signed in to the account of {}. Password, passkeys, devices and deleting the account: on the AlwyWatch website.", root.alwy-account); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                    }
+                                    Button { label: @tr("Open the website"); y: (parent.height - self.height) / 2; clicked => { root.account-manage(); } }
+                                }
+                                if root.links.length > 1 || root.link-candidates.length > 0 : VerticalLayout {
+                                    spacing: 10px;
+                                    Rectangle { height: 1px; background: Palette.outline; }
+                                    Text { text: @tr("Linked logins"); color: Palette.text; font-weight: 700; }
+                                    Text {
+                                        text: root.links.length > 1 ? @tr("These logins are one AlwyWatch account: same name, picture, keep choices and watch-together rooms.")
+                                            : @tr("Another login on this computer may be you too. Linking makes them one AlwyWatch account.");
+                                        color: Palette.muted;
+                                        font-size: 12px;
+                                        wrap: word-wrap;
+                                    }
+                                    for l in root.links : HorizontalLayout {
+                                        spacing: 12px;
+                                        ServerMark { server: l.server; y: (parent.height - self.height) / 2; }
+                                        VerticalLayout {
+                                            alignment: center;
+                                            horizontal-stretch: 1;
+                                            Text { text: l.title; color: Palette.text; font-weight: 700; overflow: elide; }
+                                            Text { text: l.detail; color: Palette.muted; font-size: 12px; overflow: elide; }
+                                        }
+                                        if l.main : Badge { label: @tr("MAIN"); tone: Palette.accent; fg: #000; y: (parent.height - self.height) / 2; }
+                                        if l.here : Badge { label: @tr("THIS COMPUTER"); tone: Palette.surface-high; y: (parent.height - self.height) / 2; }
+                                        if !l.main : Button { label: @tr("Unlink"); y: (parent.height - self.height) / 2; clicked => { root.unlink-ask(l.key); } }
+                                    }
+                                    if root.link-candidates.length > 0 : Text { text: @tr("Link another login"); color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+                                    for c in root.link-candidates : HorizontalLayout {
+                                        spacing: 10px;
+                                        Text { text: c.title; color: Palette.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                        Button { label: @tr("Link…"); clicked => { root.link-ask(c.id); } }
+                                    }
+                                }
+                                Rectangle { height: 1px; background: Palette.outline; }
+                                if !root.signout-ask : HorizontalLayout {
+                                    alignment: start;
+                                    Button { label: @tr("Sign out of AlwyWatch"); clicked => { root.signout-ask = true; } }
+                                }
+                                if root.signout-ask : VerticalLayout {
+                                    spacing: 10px;
+                                    Text { text: @tr("Sign out of AlwyWatch?"); color: Palette.text; font-weight: 700; }
+                                    Text {
+                                        text: @tr("This profile keeps its Jellyfin and Plex logins and becomes a profile without an AlwyWatch account: Leaving soon and watch together disappear from it. Your keep choices stay on the server.");
+                                        color: Palette.muted;
+                                        wrap: word-wrap;
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        alignment: start;
+                                        Button { label: @tr("Sign out"); primary: true; clicked => { root.signout-ask = false; root.alwywatch-sign-out(); } }
+                                        Button { label: @tr("Cancel"); clicked => { root.signout-ask = false; } }
+                                    }
+                                }
+                            }
+                            if !root.alwy-on : Group {
+                                title: @tr("CONNECT TO ALWYWATCH");
+                                Text {
+                                    text: @tr("With an AlwyWatch account your name, settings and servers come with you, and you get Leaving soon, requests and watch together. Your Jellyfin and Plex logins stay.");
+                                    color: Palette.muted;
+                                    wrap: word-wrap;
+                                }
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    alignment: start;
+                                    Button { label: @tr("Sign in"); primary: true; clicked => { root.alwy-connect(false); } }
+                                    Button { label: @tr("Create an account"); clicked => { root.alwy-connect(true); } }
+                                }
+                            }
+                            }
                             if root.shown-section == "servers" : VerticalLayout {
                                 spacing: 22px;
                                 alignment: start;
@@ -2811,142 +3036,42 @@ export component AppWindow inherits Window {
                                     Button { label: @tr("Add a server"); has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.go(Page.add); } }
                                     if root.accounts.length >= 2 : Button { label: @tr("Copy watch history"); has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.go(Page.historycopy); } }
                                 }
+                                if root.keep-active : Text { text: @tr("AlwyWatch follows the login showing now when its server is on your AlwyWatch server."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                             }
                             }
-                            if root.shown-section == "alwywatch" : VerticalLayout {
+                            if root.shown-section == "requests" : VerticalLayout {
                                 spacing: 22px;
                                 alignment: start;
-                            if root.keep-active : Group {
-                                title: @tr("YOU ON ALWYWATCH");
-                                HorizontalLayout {
-                                    spacing: 14px;
-                                    UserAvatar { avatar: root.me-avatar; size: 56px; y: (parent.height - self.height) / 2; }
-                                    VerticalLayout {
-                                        alignment: center;
-                                        horizontal-stretch: 1;
-                                        Text { text: root.me-loaded ? root.me-name : "…"; color: Palette.text; font-size: 17px; font-weight: 700; overflow: elide; }
-                                        Text { text: root.me-detail; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
-                                        if root.me-also != "" : Text { text: root.me-also; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
-                                    }
-                                    if root.me-loaded : Button { label: @tr("Edit name"); y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("name"); } }
-                                    if root.me-loaded : Button { label: @tr("Change avatar"); y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("avatar"); } }
-                                }
-                                if root.me-message != "" : Text { text: root.me-message; color: Palette.danger; wrap: word-wrap; }
-                                if root.links.length > 1 || root.link-candidates.length > 0 : VerticalLayout {
-                                    spacing: 10px;
-                                    Rectangle { height: 1px; background: Palette.outline; }
-                                    Text { text: @tr("Linked sign-ins"); color: Palette.text; font-weight: 700; }
-                                    Text {
-                                        text: root.links.length > 1 ? @tr("These sign-ins are one AlwyWatch account: same name, avatar, keep choices and watch-together rooms.")
-                                            : @tr("Another account on this computer may be you too. Linking makes them one AlwyWatch account.");
-                                        color: Palette.muted;
-                                        font-size: 12px;
-                                        wrap: word-wrap;
-                                    }
-                                    for l in root.links : HorizontalLayout {
-                                        spacing: 12px;
-                                        ServerMark { server: l.server; y: (parent.height - self.height) / 2; }
-                                        VerticalLayout {
-                                            alignment: center;
-                                            horizontal-stretch: 1;
-                                            Text { text: l.title; color: Palette.text; font-weight: 700; overflow: elide; }
-                                            Text { text: l.detail; color: Palette.muted; font-size: 12px; overflow: elide; }
-                                        }
-                                        if l.main : Badge { label: @tr("MAIN"); tone: Palette.accent; fg: #000; y: (parent.height - self.height) / 2; }
-                                        if l.here : Badge { label: @tr("THIS COMPUTER"); tone: Palette.surface-high; y: (parent.height - self.height) / 2; }
-                                        if !l.main : Button { label: @tr("Unlink"); y: (parent.height - self.height) / 2; clicked => { root.unlink-ask(l.key); } }
-                                    }
-                                    if root.link-candidates.length > 0 : Text { text: @tr("Link another sign-in"); color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
-                                    for c in root.link-candidates : HorizontalLayout {
-                                        spacing: 10px;
-                                        Text { text: c.title; color: Palette.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                                        Button { label: @tr("Link…"); clicked => { root.link-ask(c.id); } }
-                                    }
+                            if root.keep-active && root.seerr-bridge-offered : Group {
+                                title: @tr("THROUGH YOUR ALWYWATCH SERVER");
+                                SettingToggle {
+                                    title: @tr("Request through your AlwyWatch server");
+                                    subtitle: root.seerr-via-keep ? @tr("Through your AlwyWatch server, as {}", root.seerr-label) : @tr("No other sign-in needed.");
+                                    on: root.seerr-via-keep;
+                                    clicked => { if (root.seerr-via-keep) { root.seerr-disconnect(); } else { root.seerr-bridge(); } }
                                 }
                             }
-                            Group {
-                                title: @tr("CONNECTION AND DEVICES");
-                                if root.alwy-account != "" : HorizontalLayout {
-                                    spacing: 10px;
-                                    VerticalLayout {
-                                        alignment: center;
-                                        horizontal-stretch: 1;
-                                        Text { text: @tr("Signed in to the account of {}", root.alwy-account); color: Palette.text; font-weight: 700; overflow: elide; }
-                                        Text { text: @tr("Password, passkeys, devices and deleting the account: on the AlwyWatch website."); color: Palette.muted; font-size: 12px; }
-                                    }
-                                    Button { label: @tr("Manage or delete…"); clicked => { root.account-manage(); } }
-                                    Button { label: @tr("Sign out"); clicked => { root.account-sign-out(); } }
-                                }
-                                if root.keep-active : HorizontalLayout {
-                                    spacing: 10px;
-                                    Text { text: root.keep-label; color: Palette.text; vertical-alignment: center; }
-                                    Rectangle { horizontal-stretch: 1; }
-                                    if root.keep-can-switch && root.keep-choices.length == 0 : Button { label: @tr("Use another login"); clicked => { root.keep-choose(); } }
-                                    if root.send-step == "" : Button { label: @tr("Add a device"); clicked => { root.send-start(); } }
-                                    // This computer forgets the AlwyWatch server (choices stay on the server).
-                                    Button { label: @tr("Disconnect"); clicked => { root.keep-disconnect(); } }
-                                }
-                                if root.keep-active && root.send-step == "code" : VerticalLayout {
-                                    spacing: 10px;
-                                    Text { text: @tr("On the new device, choose \"Sign in with a code\" and type its code here."); color: Palette.muted; wrap: word-wrap; }
-                                    HorizontalLayout {
-                                        spacing: 10px;
-                                        scode := Field { placeholder: "123456"; accepted(t) => { root.send-lookup(t); } }
-                                        Button { label: @tr("Continue"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.send-lookup(scode.text); } }
-                                        Button { label: @tr("Cancel"); y: (parent.height - self.height) / 2; clicked => { root.send-cancel(); } }
-                                    }
-                                }
-                                if root.keep-active && root.send-step == "confirm" : VerticalLayout {
-                                    spacing: 8px;
-                                    Text { text: @tr("Send your accounts and settings to “{}”?", root.send-device); color: Palette.text; font-weight: 700; wrap: word-wrap; }
-                                    Text { text: @tr("Check number"); color: Palette.muted; font-size: 13px; }
-                                    Text { text: root.send-check; color: Palette.accent; font-size: 40px; font-weight: 800; letter-spacing: 4px; }
-                                    Text { text: @tr("Only send if the new device shows the same number."); color: Palette.muted; font-size: 13px; }
-                                    HorizontalLayout {
-                                        spacing: 10px;
-                                        alignment: start;
-                                        Button { label: @tr("Send"); primary: true; clicked => { root.send-confirm(); } }
-                                        Button { label: @tr("Cancel"); clicked => { root.send-cancel(); } }
-                                    }
-                                }
-                                if root.keep-active && root.send-step == "sent" : HorizontalLayout {
-                                    spacing: 10px;
-                                    Text { text: @tr("Sent. The other device signs in by itself."); color: Palette.accent; vertical-alignment: center; }
-                                    Button { label: @tr("Done"); clicked => { root.send-cancel(); } }
-                                }
-                                if root.keep-active && root.send-error != "" && root.send-step != "" : Text { text: root.send-error; color: Palette.danger; wrap: word-wrap; }
-                                if !root.keep-active : Text {
-                                    text: @tr("Shows what your server will delete and lets you keep it. Your Jellyfin or Plex account is your sign-in there.");
-                                    color: Palette.muted;
-                                    wrap: word-wrap;
-                                }
-                                if !root.keep-active : HorizontalLayout {
-                                    spacing: 10px;
-                                    kurl := Field { placeholder: @tr("AlwyWatch server address"); accepted(t) => { root.keep-connect(t); } }
-                                    Button { label: @tr("Connect"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.keep-connect(kurl.text); } }
-                                }
-                                if root.keep-choices.length > 0 : Text { text: @tr("Choose the login that identifies you there:"); color: Palette.muted; }
-                                for c in root.keep-choices : HorizontalLayout {
-                                    spacing: 10px;
-                                    Text { text: c.title; color: c.selected ? Palette.accent : Palette.text; vertical-alignment: center; }
-                                    Rectangle { horizontal-stretch: 1; }
-                                    if c.selected : Text { text: @tr("Used for AlwyWatch"); color: Palette.muted; vertical-alignment: center; }
-                                    if !c.selected : Button { label: @tr("Use this one"); primary: true; clicked => { root.keep-sync(c.id); } }
-                                }
+                            if root.keep-active && !root.seerr-bridge-offered : Text {
+                                text: @tr("Your AlwyWatch server doesn't take requests. Ask its owner, or use a request site address below.");
+                                color: Palette.muted;
+                                wrap: word-wrap;
                             }
-                            Group {
-                                title: @tr("REQUESTS");
+                            if !root.seerr-via-keep : Group {
+                                title: @tr("REQUEST SITE");
                                 if root.seerr-active : HorizontalLayout {
                                     spacing: 10px;
                                     Text { text: root.seerr-label; color: Palette.text; vertical-alignment: center; }
                                     Rectangle { horizontal-stretch: 1; }
-                                    Button { label: @tr("Disconnect"); clicked => { root.seerr-disconnect(); } }
+                                    Button { label: @tr("Sign out"); clicked => { root.seerr-disconnect(); } }
                                 }
-                                if !root.seerr-active && root.seerr-step == "url" : HorizontalLayout {
-                                    spacing: 10px;
-                                    surl := Field { placeholder: @tr("Request site address (Seerr, Overseerr, Jellyseerr)"); accepted(t) => { root.seerr-url(t); } }
-                                    Button { label: @tr("Connect"); y: (parent.height - self.height) / 2; clicked => { root.seerr-url(surl.text); } }
-                                    if root.keep-active : Button { label: @tr("Use my AlwyWatch server"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.seerr-bridge(); } }
+                                if !root.seerr-active && root.seerr-step == "url" : VerticalLayout {
+                                    spacing: 8px;
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        surl := Field { placeholder: @tr("Request site address (Seerr, Overseerr, Jellyseerr)"); accepted(t) => { root.seerr-url(t); } }
+                                        Button { label: @tr("Connect"); primary: !root.keep-active || !root.seerr-bridge-offered; y: (parent.height - self.height) / 2; clicked => { root.seerr-url(surl.text); } }
+                                    }
+                                    Text { text: @tr("It only accepts the logins it's set up for (Plex or Jellyfin)."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                                 }
                                 if !root.seerr-active && root.seerr-step == "choose" : HorizontalLayout {
                                     spacing: 10px;
@@ -2964,43 +3089,8 @@ export component AppWindow inherits Window {
                                     sp := Field { placeholder: @tr("Password"); input-type: password; accepted => { root.seerr-password(su.text, sp.text); } }
                                     HorizontalLayout { alignment: start; Button { label: @tr("Sign in"); primary: true; clicked => { root.seerr-password(su.text, sp.text); } } }
                                 }
-                                if root.seerr-message != "" && root.page == Page.settings : Text { text: root.seerr-message; color: Palette.danger; }
                             }
-                            }
-                            if root.shown-section == "profiles" : VerticalLayout {
-                                spacing: 22px;
-                                alignment: start;
-                            Text {
-                                text: @tr("Several people on this computer: each profile has its own servers, history and settings. Downloads are shared.");
-                                color: Palette.muted;
-                                wrap: word-wrap;
-                            }
-                            Group {
-                                for p in root.profiles : HorizontalLayout {
-                                    spacing: 12px;
-                                    Avatar { initial: p.initial; tone: p.tone; size: 40px; y: (parent.height - self.height) / 2; }
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Text { text: p.name; color: Palette.text; font-weight: 700; }
-                                        if p.has-pin : Text { text: @tr("Protected by a PIN"); color: Palette.muted; font-size: 12px; }
-                                    }
-                                    Rectangle { horizontal-stretch: 1; }
-                                    if p.current : Text { text: @tr("In use"); color: Palette.muted; vertical-alignment: center; }
-                                    if p.current : Button { label: @tr("Rename"); y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("rename", p.id); } }
-                                    if p.current : Button { label: p.has-pin ? @tr("Change PIN") : @tr("Set a PIN"); y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("pin", p.id); } }
-                                    if !p.current : Button { label: @tr("Switch"); y: (parent.height - self.height) / 2; clicked => { root.profile-open(p.id); } }
-                                    if p.removable : IconButton { icon: @image-url("icons/delete.svg"); tip: @tr("Remove profile"); clicked => { root.profile-dialog-open("remove", p.id); } }
-                                }
-                                HorizontalLayout { alignment: start; Button { label: @tr("Add a profile"); has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.profile-dialog-open("add", ""); } } }
-                            }
-                            if root.profiles.length > 1 : Group {
-                                SettingToggle {
-                                    title: @tr("Skip “Who's watching?” at startup");
-                                    subtitle: @tr("Open the last profile used instead of asking who's watching (a PIN is still asked)");
-                                    on: root.profile-auto;
-                                    clicked => { root.profile-auto-toggle(); }
-                                }
-                            }
+                            if root.seerr-message != "" && root.page == Page.settings : Text { text: root.seerr-message; color: Palette.danger; wrap: word-wrap; }
                             }
                             if root.shown-section == "playback" : VerticalLayout {
                                 spacing: 22px;
@@ -3009,7 +3099,7 @@ export component AppWindow inherits Window {
                                 title: @tr("PLAYBACK");
                                 SettingToggle {
                                     title: @tr("Audio passthrough");
-                                    subtitle: @tr("Send Dolby/DTS untouched to an HDMI or S/PDIF receiver.");
+                                    subtitle: @tr("Send Dolby/DTS untouched to an HDMI or S/PDIF receiver. This device only.");
                                     on: root.spdif;
                                     clicked => { root.toggle-spdif(); }
                                 }
@@ -3065,17 +3155,80 @@ export component AppWindow inherits Window {
                                 Text { text: @tr("A movie or show remembers the tracks picked for it while watching, and its next episodes follow."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                             }
                             }
-                            if root.shown-section == "about" : VerticalLayout {
+                            if root.shown-section == "device" : VerticalLayout {
                                 spacing: 22px;
                                 alignment: start;
                             Group {
-                                title: @tr("LANGUAGE");
-                                SettingChoice { title: @tr("Language"); subtitle: ""; value: root.language-label; clicked => { root.cycle-language(); } }
+                                title: @tr("PROFILES");
+                                Text {
+                                    text: @tr("A profile is one person on this computer, with their own servers, history and settings. Downloads are shared.");
+                                    color: Palette.muted;
+                                    font-size: 12px;
+                                    wrap: word-wrap;
+                                }
+                                for p in root.profiles : HorizontalLayout {
+                                    spacing: 12px;
+                                    Avatar { initial: p.initial; tone: p.tone; size: 40px; y: (parent.height - self.height) / 2; }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: p.name; color: Palette.text; font-weight: 700; }
+                                        if p.has-pin : Text { text: @tr("Protected by a PIN"); color: Palette.muted; font-size: 12px; }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    if p.current : Text { text: @tr("In use"); color: Palette.muted; vertical-alignment: center; }
+                                    if p.current : Button { label: @tr("Rename"); y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("rename", p.id); } }
+                                    if p.current : Button { label: p.has-pin ? @tr("Change PIN") : @tr("Set a PIN"); y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("pin", p.id); } }
+                                    if !p.current : Button { label: @tr("Switch"); y: (parent.height - self.height) / 2; clicked => { root.profile-open(p.id); } }
+                                    if p.removable : IconButton { icon: @image-url("icons/delete.svg"); tip: @tr("Remove profile"); clicked => { root.profile-dialog-open("remove", p.id); } }
+                                }
+                                HorizontalLayout { alignment: start; Button { label: @tr("Add a profile"); has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.profile-dialog-open("add", ""); } } }
+                                if root.profiles.length > 1 : SettingToggle {
+                                    title: @tr("Skip “Who's watching?” at startup");
+                                    subtitle: @tr("Open the last profile used instead of asking who's watching (a PIN is still asked)");
+                                    on: root.profile-auto;
+                                    clicked => { root.profile-auto-toggle(); }
+                                }
+                            }
+                            if root.alwy-on : Group {
+                                title: @tr("SIGN IN ANOTHER DEVICE");
+                                if root.send-step == "" : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: @tr("Signs a new phone, TV or computer in to this profile: its AlwyWatch account, logins and settings."); color: Palette.muted; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Button { label: @tr("Sign in another device"); y: (parent.height - self.height) / 2; clicked => { root.send-start(); } }
+                                }
+                                if root.send-step == "code" : VerticalLayout {
+                                    spacing: 10px;
+                                    Text { text: @tr("On the new device, choose \"Sign in with a code\" and type its code here."); color: Palette.muted; wrap: word-wrap; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        scode := Field { placeholder: "123456"; accepted(t) => { root.send-lookup(t); } }
+                                        Button { label: @tr("Continue"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.send-lookup(scode.text); } }
+                                        Button { label: @tr("Cancel"); y: (parent.height - self.height) / 2; clicked => { root.send-cancel(); } }
+                                    }
+                                }
+                                if root.send-step == "confirm" : VerticalLayout {
+                                    spacing: 8px;
+                                    Text { text: @tr("Send your accounts and settings to “{}”?", root.send-device); color: Palette.text; font-weight: 700; wrap: word-wrap; }
+                                    Text { text: @tr("Check number"); color: Palette.muted; font-size: 13px; }
+                                    Text { text: root.send-check; color: Palette.accent; font-size: 40px; font-weight: 800; letter-spacing: 4px; }
+                                    Text { text: @tr("Only send if the new device shows the same number."); color: Palette.muted; font-size: 13px; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        alignment: start;
+                                        Button { label: @tr("Send"); primary: true; clicked => { root.send-confirm(); } }
+                                        Button { label: @tr("Cancel"); clicked => { root.send-cancel(); } }
+                                    }
+                                }
+                                if root.send-step == "sent" : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: @tr("Sent. The other device signs in by itself."); color: Palette.accent; vertical-alignment: center; }
+                                    Button { label: @tr("Done"); clicked => { root.send-cancel(); } }
+                                }
+                                if root.send-error != "" && root.send-step != "" : Text { text: root.send-error; color: Palette.danger; wrap: word-wrap; }
                             }
                             Group {
-                                title: @tr("ABOUT");
-                                Text { text: root.about; color: Palette.text; }
-                                Text { text: @tr("Free software under the GNU AGPL v3 or later."); color: Palette.muted; font-size: 12px; }
+                                title: @tr("LANGUAGE");
+                                SettingChoice { title: @tr("Language"); subtitle: ""; value: root.language-label; clicked => { root.cycle-language(); } }
                             }
                             Group {
                                 title: @tr("STORAGE");
@@ -3086,6 +3239,47 @@ export component AppWindow inherits Window {
                                     Text { text: root.cache-size; color: Palette.muted; vertical-alignment: center; }
                                     Button { label: @tr("Clear"); clicked => { root.clear-cache(); } }
                                 }
+                            }
+                            Group {
+                                title: @tr("ABOUT");
+                                Text { text: root.about; color: Palette.text; }
+                                Text { text: @tr("Free software under the GNU AGPL v3 or later."); color: Palette.muted; font-size: 12px; }
+                            }
+                            }
+                            if root.shown-section == "admin" : VerticalLayout {
+                                spacing: 22px;
+                                alignment: start;
+                            Group {
+                                title: @tr("LEAVING SOON AND PEOPLE");
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: @tr("People and their rights, who they request as, the Leaving soon countdown and what is kept forever."); color: Palette.muted; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Button { label: @tr("Open"); y: (parent.height - self.height) / 2; clicked => { root.go(Page.keepadmin); } }
+                                }
+                            }
+                            Group {
+                                title: @tr("INVITATIONS");
+                                Text { text: @tr("Someone without Jellyfin or Plex can create an AlwyWatch account with an invitation (works once, for 7 days)."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                HorizontalLayout { alignment: start; Button { label: @tr("New invitation"); has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.admin-invite(); } } }
+                                if root.invite-made-code != "" : VerticalLayout {
+                                    spacing: 6px;
+                                    Text { text: @tr("Invitation code"); color: Palette.muted; font-size: 13px; }
+                                    Text { text: root.invite-made-code; color: Palette.accent; font-size: 28px; font-weight: 800; letter-spacing: 2px; }
+                                    if root.invite-made-link != "" : Text { text: @tr("Or send this link: {}", root.invite-made-link); color: Palette.text; wrap: word-wrap; }
+                                }
+                                if root.invite-made-message != "" : Text { text: root.invite-made-message; color: Palette.danger; wrap: word-wrap; }
+                            }
+                            Group {
+                                title: @tr("SERVER STATUS");
+                                if root.admin-dry-run : Text { text: @tr("Test mode: nothing is changed in Maintainerr or Seerr. Remove ALWYWATCH_DRY_RUN from .env and restart."); color: Palette.accent; font-weight: 700; wrap: word-wrap; }
+                                for s in root.admin-status : VerticalLayout {
+                                    spacing: 2px;
+                                    Text { text: s.title; color: Palette.text; font-weight: 700; }
+                                    Text { text: s.text; color: s.ok ? Palette.muted : Palette.danger; font-size: 13px; wrap: word-wrap; }
+                                }
+                                if root.admin-status-message != "" : Text { text: root.admin-status-message; color: Palette.danger; wrap: word-wrap; }
+                                Text { text: @tr("Read only: these are set in the server's config.toml and .env."); color: Palette.subtle; font-size: 12px; wrap: word-wrap; }
+                                HorizontalLayout { alignment: start; Button { label: @tr("Check again"); clicked => { root.admin-open(); } } }
                             }
                             }
                         }
@@ -3435,7 +3629,7 @@ export component AppWindow inherits Window {
                         wrap: word-wrap;
                     }
                     Text {
-                        text: root.profile-dialog == "add" ? @tr("A new profile starts empty: you sign in to your servers in it.")
+                        text: root.profile-dialog == "add" ? @tr("A profile is one person on this computer. Next you choose how they sign in: with an AlwyWatch account, or with Jellyfin or Plex only.")
                             : root.profile-dialog == "pin" ? @tr("Asked when opening this profile.")
                             : root.profile-dialog == "switch" ? @tr("PIN for {}", root.profile-target.name)
                             : root.profile-dialog == "remove" ? @tr("Their servers, history and settings on this computer are deleted. Downloads only they wanted are deleted too.")

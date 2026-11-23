@@ -70,8 +70,18 @@ import kotlinx.coroutines.launch
 private sealed interface Step {
     data object Choose : Step
 
-    /** "I have an AlwyWatch server": address, then the media servers it serves. */
-    data object AlwyWatch : Step
+    /**
+     * The AlwyWatch server's address, then how to sign in there (a code, a Jellyfin or Plex
+     * login, username and password); or, to [create] an account, its sign-up.
+     */
+    data class AlwyWatch(
+        val create: Boolean,
+    ) : Step
+
+    /** Creating an AlwyWatch account: invitation code, username and password. */
+    data class Register(
+        val url: String,
+    ) : Step
 
     /** Accounts copied from a signed-in device, through this AlwyWatch server. */
     data class Receive(
@@ -112,17 +122,41 @@ private sealed interface Step {
     ) : Step
 }
 
-/** Adds a Jellyfin or Plex account. Calls [onSignedIn] once the token is safely stored. */
+/**
+ * A profile's first screen ("Welcome to AlwyWatch" / "Add a profile": sign in to AlwyWatch,
+ * create an account, or Jellyfin or Plex only), "Add a server" from Settings, and with
+ * [connect] Settings → Account → Connect to AlwyWatch (false: sign in, true: create an
+ * account). Calls [onSignedIn] once the token is safely stored.
+ */
 @Composable
-fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
+fun AddServerScreen(
+    onSignedIn: (accountId: String) -> Unit,
+    connect: Boolean? = null,
+) {
     val core = LocalCore.current
     val ctx = LocalContext.current
     val d = LocalDimens.current
+    val nav = be.alwyapps.watch.ui.LocalNavigator.current
     val scope = rememberCoroutineScope()
     // Steps visited, so Back returns to the previous one (AlwyWatch server list, or direct).
     // Already connected to an AlwyWatch server: the choice offers its servers not added yet.
     val keep = remember { core.keepConnection() }
-    var history by remember { mutableStateOf(listOf<Step>(Step.Choose)) }
+    // No login yet: the profile's first screen (not "Add a server").
+    val logins = remember { core.accounts() }
+    val firstRun = logins.isEmpty()
+
+    fun existingLogin(e: ServerEntry) = logins.firstOrNull { it.serverId == e.id }
+    var history by remember {
+        val signedIn = core.account()
+        mutableStateOf(
+            when {
+                connect != null -> listOf<Step>(Step.AlwyWatch(connect))
+                // Signed in to an AlwyWatch account, no login yet: on with its servers.
+                firstRun && signedIn != null -> listOf(Step.Choose, Step.Known(signedIn.baseUrl))
+                else -> listOf(Step.Choose)
+            },
+        )
+    }
     val step = history.last()
 
     fun go(next: Step) {
@@ -130,7 +164,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
     }
 
     fun back() {
-        if (history.size > 1) history = history.dropLast(1)
+        if (history.size > 1) history = history.dropLast(1) else nav.pop()
     }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -189,10 +223,17 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
     }
 
     // A media server from an AlwyWatch server's list: sign in there, then connect leaving soon.
+    // A login this profile already has there: just use it.
     fun pick(
         url: String,
         entry: ServerEntry,
     ) = attempt {
+        val existing = core.accounts().firstOrNull { it.serverId == entry.id && keepToken(ctx, it) != null }
+        if (existing != null) {
+            useExistingLogin(core, ctx, url, existing)
+            onSignedIn(existing.id)
+            return@attempt
+        }
         core.keepSetPreset(url)
         when (entry.kind) {
             ServerType.JELLYFIN -> {
@@ -218,16 +259,16 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
             .widthIn(max = 600.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        if (step == Step.Choose && keep != null) {
+        if (step == Step.Choose && !firstRun) {
             be.alwyapps.watch.ui
                 .PageTitle(tr("Add a server"))
         } else if (step == Step.Choose) {
-            Column(Modifier.padding(top = 24.dp, bottom = 8.dp)) {
-                Text("AlwyWatch", style = MaterialTheme.typography.displayLarge)
-                Text(tr("Your Jellyfin and Plex, fast and beautiful."), style = MaterialTheme.typography.bodyLarge, color = Muted)
-            }
             // A new profile starts here: a way back to the others.
             val profiles = remember { ctx.services.profiles.list() }
+            Column(Modifier.padding(top = 24.dp, bottom = 8.dp)) {
+                Text(if (profiles.size > 1) tr("Add a profile") else tr("Welcome to AlwyWatch"), style = MaterialTheme.typography.displaySmall)
+                Text(tr("Your Jellyfin and Plex, fast and beautiful."), style = MaterialTheme.typography.bodyLarge, color = Muted)
+            }
             if (profiles.size > 1) {
                 val me = profiles.firstOrNull { it.id == ctx.services.profile }
                 ActionButton(tr("{name} · switch profile", "name" to (me?.name ?: tr("Profile"))), {
@@ -243,10 +284,12 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 })
                 Text(
                     when (step) {
-                        Step.AlwyWatch -> tr("AlwyWatch server")
+                        is Step.AlwyWatch -> if (step.create) tr("Create an AlwyWatch account") else tr("Sign in to AlwyWatch")
+                        is Step.Register -> tr("Create an AlwyWatch account")
                         is Step.Receive -> tr("Sign in with a code")
-                        is Step.AccountLogin, is Step.Known -> tr("AlwyWatch account")
-                        Step.Direct -> tr("Sign in")
+                        is Step.AccountLogin -> tr("AlwyWatch account")
+                        is Step.Known -> tr("Your servers")
+                        Step.Direct -> tr("Jellyfin or Plex only")
                         Step.Plex, is Step.PlexServers, is Step.PlexUsers -> "Plex"
                         else -> "Jellyfin"
                     },
@@ -256,7 +299,13 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
         }
         when (val s = step) {
             Step.Choose ->
-                if (keep != null) {
+                if (firstRun) {
+                    FirstChoices(
+                        onSignIn = { go(Step.AlwyWatch(create = false)) },
+                        onCreate = { go(Step.AlwyWatch(create = true)) },
+                        onDirect = { go(Step.Direct) },
+                    )
+                } else if (keep != null) {
                     ConnectedChoices(
                         keep.baseUrl,
                         busy,
@@ -273,17 +322,32 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                         },
                     )
                 } else {
-                    FirstChoices(onAlwyWatch = { go(Step.AlwyWatch) }, onDirect = { go(Step.Direct) })
+                    // Not on AlwyWatch: Jellyfin or Plex (AlwyWatch is connected from Settings → Account).
+                    LaunchedEffect(Unit) {
+                        core.keepClearPreset()
+                        presetPlexId = null
+                    }
+                    ChoiceCard("Jellyfin", tr("Quick Connect or password"), Icons.Library, { go(Step.JellyfinUrl) }, Modifier.initialFocus())
+                    ChoiceCard("Plex", tr("Sign in on plex.tv"), Icons.Play, { go(Step.Plex) })
                 }
 
-            Step.AlwyWatch ->
+            is Step.AlwyWatch ->
                 AlwyWatchServerPicker(
+                    create = s.create,
+                    initialUrl =
+                        remember {
+                            keep?.baseUrl ?: core.account()?.baseUrl ?: ctx.services.profiles.lastAlwyWatchUrl
+                                .orEmpty()
+                        },
                     busy = busy,
                     onPick = { url, entry -> pick(url, entry) },
                     onError = { error = it },
                     onCopy = { url -> go(Step.Receive(url)) },
                     onAccount = { url -> go(Step.AccountLogin(url)) },
+                    onCreate = { url -> go(Step.Register(url)) },
                 )
+
+            is Step.Register -> RegisterStep(s.url, busy, ::attempt) { history = history.dropLast(1) + Step.Known(s.url) }
 
             is Step.Receive ->
                 ReceiveFromDevice(s.url, onDone = onSignedIn, onAccount = {
@@ -297,6 +361,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     attempt {
                         val r = core.accountLogin(s.url, user, pass, android.os.Build.MODEL ?: "Android")
                         ctx.services.tokens.put(ACCOUNT_TOKEN, r.token)
+                        ctx.services.profiles.lastAlwyWatchUrl = r.account.baseUrl
                         runCatching { core.syncSettings() }
                         history = history.dropLast(1) + Step.Known(s.url)
                     }
@@ -340,7 +405,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                         ?: tr("Signed in as you. Now sign in to the server you watch on."),
                     style = MaterialTheme.typography.titleMedium,
                 )
-                served?.forEach { e -> ServerCard(e) { if (!busy) pick(s.url, e) } }
+                served?.forEach { e -> ServerCard(e, existing = existingLogin(e)) { if (!busy) pick(s.url, e) } }
                 val known = remember(served) { core.knownServers().filter { k -> served.orEmpty().none { it.url.trimEnd('/') == k.url.trimEnd('/') } } }
                 known.forEach { k ->
                     val from = tr("{kind} · from your other devices", "kind" to if (k.kind == "plex") "Plex" else "Jellyfin")
@@ -555,42 +620,63 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
     }
 }
 
-/** "Got an AlwyWatch server address?": lists its servers so nobody types media server URLs. */
+/**
+ * The AlwyWatch server's address (prefilled from this device's other profiles), then the ways
+ * to sign in there: a code (first on TV), a Jellyfin or Plex login on one of its servers,
+ * username and password. With [create]: on to the sign-up.
+ */
 @Composable
 private fun AlwyWatchServerPicker(
+    create: Boolean,
+    initialUrl: String,
     busy: Boolean,
     onPick: (url: String, entry: ServerEntry) -> Unit,
     onError: (String?) -> Unit,
-    onCopy: (url: String) -> Unit = {},
-    onAccount: (url: String) -> Unit = {},
+    onCopy: (url: String) -> Unit,
+    onAccount: (url: String) -> Unit,
+    onCreate: (url: String) -> Unit,
 ) {
     val core = LocalCore.current
+    val tv = LocalDimens.current.isTv
     val scope = rememberCoroutineScope()
-    var url by remember { mutableStateOf("") }
+    val logins = remember { core.accounts() }
+    var url by remember { mutableStateOf(initialUrl.substringAfter("://").trimEnd('/')) }
     var entries by remember { mutableStateOf<Pair<String, List<ServerEntry>>?>(null) }
+    var checking by remember { mutableStateOf(false) }
     val load = {
         onError(null)
-        scope.launch {
-            try {
-                val normalized =
-                    be.alwyapps.watch.core
-                        .normalizeServerUrl(url)
-                entries = normalized to core.keepServers(normalized)
-            } catch (e: CoreException) {
-                onError(e.message)
+        if (!checking) {
+            checking = true
+            scope.launch {
+                try {
+                    val normalized =
+                        be.alwyapps.watch.core
+                            .normalizeServerUrl(url)
+                    val list = core.keepServers(normalized)
+                    if (create) onCreate(normalized) else entries = normalized to list
+                } catch (e: CoreException) {
+                    onError(e.message)
+                } finally {
+                    checking = false
+                }
             }
         }
     }
     Text(
-        tr(
-            "Type the AlwyWatch address the person who runs your server gave you. You then sign in with your Jellyfin or Plex login, or with a code from a device where you already use AlwyWatch.",
-        ),
+        if (create) {
+            tr("Type the AlwyWatch address the person who runs your server gave you with your invitation.")
+        } else {
+            tr("Type the AlwyWatch address the person who runs your server gave you.")
+        },
         color = Muted,
         style = MaterialTheme.typography.bodyMedium,
     )
     Field(
         url,
-        { url = it },
+        {
+            url = it
+            entries = null
+        },
         placeholder = { Text("watch.example.org") },
         pill = true,
         singleLine = true,
@@ -598,28 +684,128 @@ private fun AlwyWatchServerPicker(
         keyboardActions = KeyboardActions(onGo = { load() }),
         modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
     )
-    ActionButton(tr("Continue"), { load() }, primary = entries == null)
+    if (entries == null) ActionButton(if (checking) tr("Checking…") else tr("Continue"), { load() }, primary = true)
     entries?.let { (base, list) ->
-        if (list.isEmpty()) {
-            Text(
-                tr(
-                    "Nothing to sign in to at this address. Check it with the person who runs your server, or go back and sign in to Jellyfin or Plex directly.",
-                ),
-                color = Muted,
+        @Composable
+        fun Code() =
+            ChoiceCard(
+                tr("Sign in with a code"),
+                tr("Scan a QR code with your phone, or approve on a device where you're signed in"),
+                Icons.Download,
+                { onCopy(base) },
             )
+        if (tv) Code()
+        if (list.isNotEmpty()) {
+            Text(tr("With your Jellyfin or Plex login"), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
+            list.forEach { e -> ServerCard(e, existing = logins.firstOrNull { it.serverId == e.id }) { if (!busy) onPick(base, e) } }
         }
-        list.forEach { e -> ServerCard(e) { if (!busy) onPick(base, e) } }
-        // Already signed in elsewhere: copy everything instead of signing in again.
-        Text(tr("Already using AlwyWatch on another device?"), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
-        ChoiceCard(tr("Sign in with a code"), tr("Scan a QR code with your phone, or approve on a device where you're signed in"), Icons.Download, {
-            onCopy(base)
-        })
+        Text(tr("Or"), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
+        if (!tv) Code()
         ChoiceCard(
-            tr("AlwyWatch account (optional)"),
-            tr("Only if your server's owner invited you to create one: username and password"),
+            tr("Username and password"),
+            tr("Your AlwyWatch account's"),
             Icons.Person,
             { onAccount(base) },
         )
+        Text(
+            tr("Passkey or Pocket ID? Choose “Sign in with a code” and approve it on your phone."),
+            color = Subtle,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+/**
+ * Creating an AlwyWatch account: what the server allows (an invitation, open, closed), then
+ * the invitation code, username and password. [onDone] goes on to "Your servers".
+ */
+@Composable
+private fun RegisterStep(
+    url: String,
+    busy: Boolean,
+    attempt: (suspend () -> Unit) -> Unit,
+    onDone: () -> Unit,
+) {
+    val core = LocalCore.current
+    val ctx = LocalContext.current
+    var options by remember { mutableStateOf<be.alwyapps.watch.core.AccountOptions?>(null) }
+    var failed by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(url) {
+        try {
+            options = core.accountOptions(url)
+        } catch (e: CoreException) {
+            failed = e.message
+        }
+    }
+    var invite by remember { mutableStateOf("") }
+    var user by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    val o = options
+    when {
+        failed != null -> Text(failed!!, color = Danger)
+        o == null -> Text(tr("Checking…"), color = Subtle)
+        o.registration == "closed" ->
+            Text(tr("This AlwyWatch server doesn't take new accounts. Ask the person who runs it."), color = Muted)
+        else -> {
+            val submit = {
+                attempt {
+                    val r =
+                        core.accountRegister(
+                            url,
+                            user,
+                            pass,
+                            invite.takeIf { o.registration == "invite" },
+                            android.os.Build.MODEL ?: "Android",
+                        )
+                    ctx.services.tokens.put(ACCOUNT_TOKEN, r.token)
+                    ctx.services.profiles.lastAlwyWatchUrl = r.account.baseUrl
+                    runCatching { core.syncSettings() }
+                    onDone()
+                }
+            }
+            Text(
+                tr("Your AlwyWatch account keeps your name, settings and server list. To watch, you then add your Jellyfin or Plex login."),
+                color = Muted,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (o.registration == "invite") {
+                Field(
+                    invite,
+                    { invite = it.trim() },
+                    label = { Text(tr("Invitation code")) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
+                )
+            }
+            Field(
+                user,
+                { user = it },
+                label = { Text(tr("Username")) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().dpadEscape().then(if (o.registration == "invite") Modifier else Modifier.initialFocus()),
+            )
+            Field(
+                pass,
+                { pass = it },
+                label = { Text(tr("Password")) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
+                modifier = Modifier.fillMaxWidth().dpadEscape(),
+            )
+            ActionButton(if (busy) tr("Creating…") else tr("Create the account"), { submit() }, primary = true)
+            if (o.passkeys || o.pocketid) {
+                Text(
+                    tr(
+                        "Prefer a passkey or Pocket ID? Create the account on {address}, then come back and choose “Sign in with a code”.",
+                        "address" to url.substringAfter("://"),
+                    ),
+                    color = Subtle,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
     }
 }
 
@@ -627,35 +813,46 @@ private fun AlwyWatchServerPicker(
 private fun ServerCard(
     e: ServerEntry,
     modifier: Modifier = Modifier,
+    existing: be.alwyapps.watch.core.Account? = null,
     onClick: () -> Unit,
 ) {
     val plex = e.kind == ServerType.PLEX
     ChoiceCard(
         e.name,
-        if (plex) tr("Plex · sign in on plex.tv") else tr("Jellyfin · Quick Connect or password"),
+        when {
+            existing != null -> tr("Use your login {name}", "name" to existing.userName)
+            plex -> tr("Plex · sign in on plex.tv")
+            else -> tr("Jellyfin · Quick Connect or password")
+        },
         if (plex) Icons.Play else Icons.Library,
         onClick,
         modifier,
     )
 }
 
-/** First run: with or without an AlwyWatch server. */
+/** A profile's first screen: sign in to AlwyWatch, create an account, or Jellyfin or Plex only. */
 @Composable
 private fun FirstChoices(
-    onAlwyWatch: () -> Unit,
+    onSignIn: () -> Unit,
+    onCreate: () -> Unit,
     onDirect: () -> Unit,
 ) {
-    Text(tr("Sign in"), style = MaterialTheme.typography.titleMedium)
     ChoiceCard(
-        tr("I was given an AlwyWatch address"),
-        tr("Something like watch.example.org, from the person who runs your server. Adds requests, watch together and saving titles from deletion."),
+        tr("Sign in to AlwyWatch"),
+        tr("Your name, settings and servers come with you"),
         Icons.Hourglass,
-        onAlwyWatch,
+        onSignIn,
         Modifier.initialFocus(),
     )
     ChoiceCard(
-        tr("I have a Jellyfin or Plex login"),
-        tr("Sign in directly. You can add an AlwyWatch address later in Settings."),
+        tr("Create an AlwyWatch account"),
+        tr("You have an invitation"),
+        Icons.Add,
+        onCreate,
+    )
+    ChoiceCard(
+        tr("Jellyfin or Plex only"),
+        tr("No account: nothing synced, no Leaving soon or watch together"),
         Icons.Person,
         onDirect,
     )
@@ -756,7 +953,7 @@ fun PlexUserPicker(
             }
         }
     }
-    Text(tr("Who's watching?"), style = MaterialTheme.typography.titleMedium)
+    Text(tr("Which Plex user?"), style = MaterialTheme.typography.titleMedium)
     users.forEachIndexed { i, u ->
         ChoiceCard(
             u.title,

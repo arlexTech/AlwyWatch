@@ -184,6 +184,19 @@ impl ProfileStore {
         .is_ok()
     }
 
+    /// The AlwyWatch server address a profile last used: offered to the next profile that
+    /// signs in to AlwyWatch, so nobody types it twice on one computer.
+    pub fn last_address(&self) -> Option<String> {
+        self.raw()["last_address"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+    }
+
+    pub fn set_last_address(&self, url: &str) {
+        self.edit(|v| v["last_address"] = json!(url));
+    }
+
     /// Several profiles: open the last one used at start instead of asking who's watching.
     pub fn auto_sign_in(&self) -> bool {
         self.raw()["auto_sign_in"].as_bool().unwrap_or(false)
@@ -314,6 +327,18 @@ mod tests {
         assert_eq!(s.list().len(), 1);
         // The removed current profile falls back to the default one.
         assert_eq!(s.current(), DEFAULT);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn remembers_the_last_alwywatch_address() {
+        let (s, dir) = store();
+        assert_eq!(s.last_address(), None);
+        s.set_last_address("https://watch.example.org");
+        assert_eq!(
+            s.last_address().as_deref(),
+            Some("https://watch.example.org")
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

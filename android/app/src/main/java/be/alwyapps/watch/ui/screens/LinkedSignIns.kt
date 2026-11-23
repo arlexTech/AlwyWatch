@@ -399,7 +399,7 @@ fun alsoSignedInAs(links: List<LinkedIdentity>?): String? =
         ?.let { tr("Also signed in as {names}", "names" to it) }
 
 /**
- * Settings → AlwyWatch & requests → Your AlwyWatch account → Linked sign-ins: the
+ * Settings → Account → Linked logins: the
  * sign-ins of my account ("Main", "This device"), Unlink for the others, and "Link another
  * sign-in" when an account of this device can join. Shown when there is something to show.
  */
@@ -452,7 +452,7 @@ fun LinkedSignInsGroup(me: Me) {
     }
     if (choosing) {
         be.alwyapps.watch.ui.ChoiceDialog(
-            tr("Link another sign-in"),
+            tr("Link another login"),
             linkable.map { it.id to "${it.userName} · ${it.serverName} (${kindLabel(it.kind)})" },
             null,
             onPick = { id ->
@@ -464,8 +464,8 @@ fun LinkedSignInsGroup(me: Me) {
         )
     }
     Group(
-        tr("Linked sign-ins"),
-        footer = tr("Your sign-ins on different servers, as one AlwyWatch account: the same name, picture, keep choices and rooms."),
+        tr("Linked logins"),
+        footer = tr("Your logins on different servers, as one AlwyWatch account: the same name, picture, keep choices and rooms."),
     ) {
         links.forEachIndexed { i, id ->
             if (i > 0) Divider()
@@ -485,7 +485,7 @@ fun LinkedSignInsGroup(me: Me) {
         if (linkable.isNotEmpty()) {
             if (links.isNotEmpty()) Divider()
             ListRow(
-                tr("Link another sign-in"),
+                tr("Link another login"),
                 subtitle =
                     if (linkable.size == 1) {
                         tr("{name} on {server}", "name" to linkable.single().userName, "server" to linkable.single().serverName)

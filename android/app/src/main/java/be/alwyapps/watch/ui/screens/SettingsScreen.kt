@@ -52,38 +52,46 @@ import be.alwyapps.watch.ui.tr
 import be.alwyapps.watch.ui.trn
 import be.alwyapps.watch.ui.usesRail
 
-/** A page of Settings, opened from the list (`Route.SettingsSection`). */
+/** A page of Settings, opened from the list (`Route.SettingsSection`). Same order on every app. */
 private enum class Section(
     val id: String,
     val title: String,
     val icon: ImageVector,
 ) {
+    ACCOUNT("account", "Account", Icons.Person),
     SERVERS("servers", "Servers", Icons.Library),
-    SERVICES("services", "AlwyWatch & requests", Icons.Hourglass),
-    PROFILES("profiles", "Profiles", Icons.Person),
+    REQUESTS("requests", "Requests", Icons.Add),
     PLAYBACK("playback", "Playback", Icons.Play),
     AUDIO("audio", "Audio & subtitles", Icons.Subtitles),
     INTERFACE("interface", "Menu & pages", Icons.Home),
     DOWNLOADS("downloads", "Downloads", Icons.Download),
-    ABOUT("about", "Language & about", Icons.Info),
+    DEVICE("device", "This device", Icons.Tv),
+    ADMIN("admin", "Admin", Icons.Settings),
     ;
 
     companion object {
-        fun of(id: String) = entries.firstOrNull { it.id == id } ?: ABOUT
+        /** Older ids (a back stack saved by an earlier version) open where their rows went. */
+        fun of(id: String) =
+            when (id) {
+                "services", "alwywatch" -> ACCOUNT
+                "about", "profiles" -> DEVICE
+                else -> entries.firstOrNull { it.id == id } ?: DEVICE
+            }
     }
 }
 
 /** The section's title in the selected language ([Section.title] stays English: a key). */
 private fun Section.label(): String =
     when (this) {
+        Section.ACCOUNT -> tr("Account")
         Section.SERVERS -> tr("Servers")
-        Section.SERVICES -> tr("AlwyWatch & requests")
-        Section.PROFILES -> tr("Profiles")
+        Section.REQUESTS -> tr("Requests")
         Section.PLAYBACK -> tr("Playback")
         Section.AUDIO -> tr("Audio & subtitles")
         Section.INTERFACE -> tr("Menu & pages")
         Section.DOWNLOADS -> tr("Downloads")
-        Section.ABOUT -> tr("Language & about")
+        Section.DEVICE -> tr("This device")
+        Section.ADMIN -> tr("Admin")
     }
 
 /** "5 seconds" for a choice list. */
@@ -128,25 +136,36 @@ fun SettingsScreen(
     val core = LocalCore.current
     val nav = LocalNavigator.current
     val d = LocalDimens.current
+    val ctx = LocalContext.current
     val settings = remember { PlayerSettings(core) }
     val accounts = remember { core.accounts() }
     val keep = remember { core.keepConnection() }
+    val account = remember { core.account() }
     val seerr = remember { core.seerrConnection() }
     val rail = usesRail()
+    androidx.compose.runtime.LaunchedEffect(Unit) { MyAccount.refresh(core) }
+    val admin = keep?.isAdmin == true || MyAccount.me?.isAdmin == true
 
     fun on(b: Boolean) = if (b) tr("on") else tr("off")
 
     fun summary(s: Section): String =
         when (s) {
+            Section.ACCOUNT -> {
+                val address = (keep?.baseUrl ?: account?.baseUrl)?.substringAfter("://")?.trimEnd('/')
+                if (address == null) {
+                    tr("No AlwyWatch account · connect to AlwyWatch")
+                } else {
+                    listOfNotNull(MyAccount.me?.name ?: account?.name ?: keep?.userName, address).joinToString(" · ")
+                }
+            }
             Section.SERVERS ->
                 accounts.joinToString(" · ") { "${it.serverName} (${kindName(it.kind)})" }.ifEmpty { tr("No server yet") }
-            Section.SERVICES ->
-                listOf(
-                    keep?.let { tr("AlwyWatch server {address}", "address" to it.baseUrl.substringAfter("://").trimEnd('/')) }
-                        ?: tr("No AlwyWatch server"),
-                    if (seerr != null) tr("requests on") else tr("requests off"),
-                ).joinToString(" · ")
-            Section.PROFILES -> tr("Who's watching on this device, PINs")
+            Section.REQUESTS ->
+                when {
+                    seerr == null -> tr("Off")
+                    seerr.viaKeep -> tr("Through your AlwyWatch server")
+                    else -> tr("Request site {address}", "address" to seerr.baseUrl.substringAfter("://").trimEnd('/'))
+                }
             Section.PLAYBACK ->
                 tr(
                     "Skip intros {intros} · next episode {next} · −{back} s / +{forward} s",
@@ -180,21 +199,28 @@ fun SettingsScreen(
                     tr("quitting"),
                 ).joinToString(", ").replaceFirstChar { it.uppercase() }
             Section.DOWNLOADS -> tr("When to delete, manage downloads")
-            Section.ABOUT ->
+            Section.DEVICE ->
                 listOfNotNull(
+                    trn(
+                        "{n} profile",
+                        "{n} profiles",
+                        ctx.services.profiles
+                            .list()
+                            .size,
+                    ),
                     I18n
                         .languages()
                         .firstOrNull { it.first == I18n.language }
                         ?.second,
                     "AlwyWatch ${BuildConfig.VERSION_NAME}",
-                    tr("image cache"),
                 ).joinToString(" · ")
+            Section.ADMIN -> tr("People, countdown, invitations, server status")
         }
 
     SettingsPage(tr("Settings"), "Settings") {
         Group(null) {
             Section.entries
-                .filter { it != Section.DOWNLOADS || !d.isTv }
+                .filter { (it != Section.DOWNLOADS || !d.isTv) && (it != Section.ADMIN || admin) }
                 .forEachIndexed { i, s ->
                     if (i > 0) Divider()
                     ListRow(
@@ -218,22 +244,74 @@ fun SettingsSectionScreen(
     val s = Section.of(id)
     SettingsPage(s.label(), s.title) {
         when (s) {
+            Section.ACCOUNT -> AccountSection()
             Section.SERVERS -> ServersSection(onAccountChanged)
-            Section.SERVICES -> {
-                val core = LocalCore.current
+            Section.REQUESTS -> {
                 var version by remember { mutableIntStateOf(0) }
-                val accounts = remember(version) { core.accounts() }
-                if (remember(version) { core.keepConnection() } != null) AlwyWatchAccountGroup()
-                AlwyWatchServerGroup(accounts, version) { version++ }
                 RequestsGroup(version) { version++ }
             }
-            Section.PROFILES -> ProfilesGroup()
             Section.PLAYBACK -> PlaybackSection()
             Section.AUDIO -> AudioSection()
             Section.INTERFACE -> InterfaceSection()
             Section.DOWNLOADS -> DownloadsSection()
-            Section.ABOUT -> AboutSection()
+            Section.DEVICE -> {
+                ProfilesGroup()
+                OtherDevicesGroup()
+                AboutSection()
+            }
+            Section.ADMIN -> AdminSection()
         }
+    }
+}
+
+/**
+ * Account: with AlwyWatch, how others see you, the AlwyWatch server, password and passkeys,
+ * linked logins and signing out; without, this profile's name and "Connect to AlwyWatch".
+ */
+@Composable
+private fun AccountSection() {
+    val core = LocalCore.current
+    val d = LocalDimens.current
+    var version by remember { mutableIntStateOf(0) }
+    if (!remember(version) { hasAlwyWatch(core) }) {
+        LocalProfileGroups()
+        return
+    }
+    val keep = remember(version) { core.keepConnection() }
+    val account = remember(version) { core.account() }
+    if (keep != null) {
+        AlwyWatchAccountGroup()
+    } else if (account != null) {
+        // Signed in to the account only (no login on a server it serves yet).
+        Group(tr("Your AlwyWatch account")) {
+            ListRow(
+                account.name,
+                subtitle = tr("How others see you"),
+                leading = {
+                    be.alwyapps.watch.ui
+                        .DefaultAvatar(account.name, if (d.isTv) 52.dp else 46.dp)
+                },
+            )
+        }
+    }
+    AlwyWatchConnectionGroup(version) { version++ }
+}
+
+/** This device: sending this profile's logins and settings to a new device (AlwyWatch profiles). */
+@Composable
+private fun OtherDevicesGroup() {
+    val core = LocalCore.current
+    if (!remember { hasAlwyWatch(core) }) return
+    var adding by remember { mutableStateOf(false) }
+    if (adding) SendToDeviceDialog { adding = false }
+    Group(tr("Other devices")) {
+        ListRow(
+            tr("Sign in another device"),
+            subtitle = tr("On the new phone, tablet or TV, choose “Sign in with a code”, then type its code here"),
+            icon = Icons.Add,
+            onClick = { adding = true },
+            trailing = { Chevron() },
+        )
     }
 }
 
@@ -246,19 +324,12 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
     val d = LocalDimens.current
     var version by remember { mutableIntStateOf(0) }
     val accounts = remember(version) { core.accounts() }
-    // Which accounts sync with the AlwyWatch server (and which servers it serves).
-    val keep = remember(version) { core.keepConnection() }
-    var served by remember(version) { mutableStateOf<Set<String>?>(null) }
-    androidx.compose.runtime.LaunchedEffect(keep?.baseUrl) {
-        val url = keep?.baseUrl ?: return@LaunchedEffect
-        served = runCatching { core.keepServers(url).map { it.id }.toSet() }.getOrNull()
-    }
     var removing by remember { mutableStateOf<be.alwyapps.watch.core.Account?>(null) }
     removing?.let { a ->
         be.alwyapps.watch.ui.ConfirmDialog(
-            tr("Remove {name}?", "name" to a.userName),
-            tr("You'll be signed out of {server} on this device. Its downloads stay until you delete them.", "server" to a.serverName),
-            confirm = tr("Remove"),
+            tr("Sign out of {server}?", "server" to a.serverName),
+            tr("{name} is signed out of {server} on this device. Its downloads stay until you delete them.", "name" to a.userName, "server" to a.serverName),
+            confirm = tr("Sign out"),
             onConfirm = {
                 core.removeAccount(a.id)
                 ctx.services.tokens.remove(a.id)
@@ -274,29 +345,16 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
     var together by remember { mutableStateOf(core.getSetting(COMBINED_KEY) != "0") }
     Group(
         tr("Your servers"),
-        footer =
-            if (keep != null) {
-                tr(
-                    "Only one of these logins is used for AlwyWatch (leaving soon, keep choices, requests). Change it in Settings → AlwyWatch & requests.",
-                )
-            } else {
-                null
-            },
+        // The login shown now is also the one AlwyWatch uses (when the AlwyWatch server serves it).
+        footer = if (accounts.size > 1 && hasAlwyWatch(core)) tr("AlwyWatch uses the login showing now.") else null,
     ) {
         // Together: the preferred account is also the one in use (search, leaving soon…).
         val main = if (together && accounts.size > 1) core.getSetting(PREFERRED_KEY)?.takeIf { p -> accounts.any { it.id == p } } ?: current else current
         accounts.forEachIndexed { i, a ->
             if (i > 0) Divider()
-            val sync =
-                when {
-                    keep?.accountId == a.id -> tr("Used for AlwyWatch")
-                    keep != null && served?.contains(a.serverId) == true -> tr("Not used for AlwyWatch")
-                    keep != null && served == null -> null
-                    else -> null
-                }
             ListRow(
-                a.userName,
-                subtitle = listOfNotNull("${a.serverName} · ${kindName(a.kind)}", sync).joinToString("\n"),
+                tr("{name} on {server}", "name" to a.userName, "server" to a.serverName),
+                subtitle = kindName(a.kind),
                 // Plex or Jellyfin, at a glance.
                 leading = {
                     be.alwyapps.watch.ui
@@ -314,11 +372,11 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
                     },
                 trailing = {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (a.id == main) Value(if (together && accounts.size > 1) tr("Preferred") else tr("In use"))
+                        if (a.id == main) Value(if (together && accounts.size > 1) tr("Preferred") else tr("Showing now"))
                         if (a.kind == ServerKind.PLEX) {
                             IconAction(Icons.Person, tr("Switch Plex user"), { nav.push(Route.PlexSwitch(a.id)) })
                         }
-                        IconAction(Icons.Delete, tr("Remove {name}", "name" to a.userName), { removing = a })
+                        IconAction(Icons.Close, tr("Sign out of {server}", "server" to a.serverName), { removing = a })
                     }
                 },
             )
@@ -338,21 +396,21 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
                 subtitle =
                     if (together) {
                         if (d.isTv) {
-                            tr("Select an account above to make it the preferred one")
+                            tr("Select a login above to make it the preferred one")
                         } else {
-                            tr("Tap an account above to make it the preferred one")
+                            tr("Tap a login above to make it the preferred one")
                         }
                     } else {
                         if (d.isTv) {
-                            tr("One server at a time: select an account above to switch")
+                            tr("One server at a time: select a login above to switch")
                         } else {
-                            tr("One server at a time: tap an account above to switch")
+                            tr("One server at a time: tap a login above to switch")
                         }
                     },
             )
         }
         SyncGroup(accounts)
-        Group(tr("Moving between servers"), footer = tr("A one-time copy, one way. Each person copies their own history, with their own accounts.")) {
+        Group(tr("Moving between servers"), footer = tr("A one-time copy, one way. Each person copies their own history, with their own logins.")) {
             ListRow(
                 tr("Copy watch history"),
                 subtitle = tr("What you watched and where you stopped, from one server to another (Plex to Jellyfin)"),

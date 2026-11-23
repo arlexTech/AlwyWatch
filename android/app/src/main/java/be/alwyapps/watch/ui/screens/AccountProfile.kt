@@ -214,7 +214,7 @@ private fun AvatarGrid(
 
 private fun Modifier.semanticsLabel(label: String) = semantics { contentDescription = label }
 
-// ----- Settings → AlwyWatch account -----------------------------------------------------------
+// ----- Settings → Account -----------------------------------------------------------
 
 /** Settings: my display name and avatar on the AlwyWatch server, and changing them. */
 @Composable
@@ -327,8 +327,6 @@ fun AlwyWatchAccountGroup() {
         )
         error?.let { Text(it, Modifier.padding(16.dp), color = Danger, style = MaterialTheme.typography.bodySmall) }
     }
-    // One AlwyWatch account for my Plex and Jellyfin sign-ins.
-    LinkedSignInsGroup(me)
 }
 
 /** The display name, checked as it is typed. */

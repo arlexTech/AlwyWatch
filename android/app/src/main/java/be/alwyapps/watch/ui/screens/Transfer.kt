@@ -191,7 +191,7 @@ fun ReceiveFromDevice(
             }
         }
         Text(
-            tr("Or on a device where you're signed in: Settings → AlwyWatch & requests → Add a device, and type this code."),
+            tr("Or on a device where you're signed in: Settings → This device → Sign in another device, and type this code."),
             color = Muted,
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -202,7 +202,7 @@ fun ReceiveFromDevice(
 }
 
 /**
- * Signed-in device: "Add a device". Type the new device's code, compare the check number,
+ * Signed-in device: "Sign in another device". Type the new device's code, compare the check number,
  * send the accounts sealed to that device.
  */
 @Composable
@@ -233,7 +233,7 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Background,
-        title = { Text(if (sent) tr("Sent") else tr("Add a device")) },
+        title = { Text(if (sent) tr("Sent") else tr("Sign in another device")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 be.alwyapps.watch.ui

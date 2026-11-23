@@ -231,6 +231,16 @@ private fun Root(core: AlwyWatch) {
                 // "Are these both you?" (two sign-ins of one person), looked for after the start.
                 be.alwyapps.watch.ui.screens
                     .IdentityPrompt()
+                // AlwyWatch uses the login showing now: follow it when it changes (after the
+                // first frame; nothing to do when it already is the one).
+                val appCtx = androidx.compose.ui.platform.LocalContext.current
+                androidx.compose.runtime.LaunchedEffect(acct) {
+                    appCtx.services.scope.launch {
+                        (core.keepConnection()?.baseUrl ?: core.account()?.baseUrl)?.let { appCtx.services.profiles.lastAlwyWatchUrl = it }
+                        be.alwyapps.watch.ui.screens
+                            .followShownLogin(core, appCtx, acct)
+                    }
+                }
                 val openRoom = be.alwyapps.watch.together.TogetherInbox.openRoom
                 androidx.compose.runtime.LaunchedEffect(openRoom) {
                     if (openRoom != null) {
@@ -294,6 +304,11 @@ private fun Root(core: AlwyWatch) {
                                         account = it
                                         nav.reset(Route.Home)
                                     })
+                                is Route.ConnectAlwyWatch ->
+                                    AddServerScreen(onSignedIn = {
+                                        account = it
+                                        nav.reset(Route.Home)
+                                    }, connect = r.create)
                                 Route.Downloads ->
                                     androidx.compose.foundation.layout.Column {
                                         be.alwyapps.watch.ui
@@ -337,6 +352,8 @@ private fun Root(core: AlwyWatch) {
                                         .HistoryCopyScreen()
                                 Route.Triage -> TriageScreen()
                                 Route.KeepAdmin -> KeepAdminScreen()
+                                Route.AdminPeople -> KeepAdminScreen(people = true, countdown = false)
+                                Route.AdminCountdown -> KeepAdminScreen(people = false, countdown = true)
                                 Route.KeepForever -> KeepForeverScreen()
                                 Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
                                 // Combined home: a page of another account's server runs as that account.
