@@ -51,7 +51,9 @@ class Services(
     }
 
     /** The profile this process runs for (switching restarts the app). */
-    val profile: String by lazy { profiles.current() }
+    val profile: String by lazy {
+        profiles.current().also { runCatching { profiles.pruneEmpty(keep = it) } }
+    }
     val tokens by lazy { TokenStore(app, profile) }
 
     val core: Deferred<AlwyWatch> =

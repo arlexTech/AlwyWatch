@@ -17,6 +17,8 @@ data class Profile(
     val id: String,
     val name: String,
     val hasPin: Boolean,
+    /** No name of its own yet: it takes its account's (a new one shows as "New profile"). */
+    val unnamed: Boolean = false,
 )
 
 /**
@@ -25,7 +27,7 @@ data class Profile(
  * profile on a shared device; tokens themselves stay encrypted by the Android Keystore.
  */
 class ProfileStore(
-    context: Context,
+    private val context: Context,
 ) {
     private val prefs = context.getSharedPreferences("profiles", Context.MODE_PRIVATE)
 
@@ -42,7 +44,18 @@ class ProfileStore(
         val a = raw()
         return (0 until a.length()).map { i ->
             val o = a.getJSONObject(i)
-            Profile(o.getString("id"), o.getString("name"), o.has("pin"))
+            val id = o.getString("id")
+            val stored = o.getString("name")
+            val unnamed = stored == UNNAMED
+            // Only the first profile is "Me": an added one is "New profile" until it has a login.
+            val name =
+                if (unnamed && id != DEFAULT) {
+                    be.alwyapps.watch.ui
+                        .tr("New profile")
+                } else {
+                    stored
+                }
+            Profile(id, name, o.has("pin"), unnamed)
         }
     }
 
@@ -69,6 +82,23 @@ class ProfileStore(
         id: String,
         name: String,
     ) = edit(id) { it.put("name", name.trim().ifEmpty { "Profile" }) }
+
+    /**
+     * Added profiles left before any login (no token stored): removed with their few files, so
+     * starting to add a profile and going back leaves nothing behind. Not [keep] (the one this
+     * process runs).
+     */
+    @Synchronized
+    fun pruneEmpty(keep: String) {
+        for (p in list()) {
+            if (p.id == DEFAULT || p.id == keep || !p.unnamed) continue
+            val tokens = "tokens-${p.id}"
+            if (context.getSharedPreferences(tokens, Context.MODE_PRIVATE).all.isNotEmpty()) continue
+            java.io.File(context.filesDir, "profiles/${p.id}").deleteRecursively()
+            context.deleteSharedPreferences(tokens)
+            remove(p.id)
+        }
+    }
 
     @Synchronized
     fun remove(id: String) {

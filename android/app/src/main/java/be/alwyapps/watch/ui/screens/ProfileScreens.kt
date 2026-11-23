@@ -253,7 +253,7 @@ fun currentProfile(
     core: be.alwyapps.watch.core.AlwyWatch,
 ): Profile? {
     val p = services.profiles.list().firstOrNull { it.id == services.profile } ?: return null
-    if (p.name != be.alwyapps.watch.data.UNNAMED) return p
+    if (!p.unnamed) return p
     val name =
         runCatching {
             core.account()?.name?.takeIf { it.isNotBlank() } ?: core.accounts().let { all ->
