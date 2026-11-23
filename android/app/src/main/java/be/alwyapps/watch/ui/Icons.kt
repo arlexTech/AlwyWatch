@@ -9,6 +9,14 @@ import androidx.compose.ui.unit.dp
 
 /** The few icons the app uses (no icon library: only these paths ship). */
 object Icons {
+    /** A scan frame (four corners and a line), drawn here rather than taken from Material Symbols. */
+    val QrCode by lazy {
+        icon(
+            "QrCode",
+            "M120-840h240v80H200v160h-80v-240ZM600-840h240v240h-80v-160H600v-80ZM120-360h80v160h160v80H120v-240ZM760-360h80v240H600v-80h160v-160ZM120-520h720v80H120v-80Z",
+        )
+    }
+
     val Add by lazy {
         icon(
             "Add",

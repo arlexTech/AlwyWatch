@@ -29,6 +29,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 # QR code of the Quick Connect address (Nayuki's encoder: no dependencies, ~30 KB of code).
 qrcodegen = "1.8"
+# Reads the QR code another device shows ("Sign in another device" on the phone): pure Rust,
+# no image library (default features off), so no camera SDK or Play Services is needed.
+rqrr = { version = "0.11", default-features = false }
 
 [dev-dependencies]
 tempfile = { workspace = true }

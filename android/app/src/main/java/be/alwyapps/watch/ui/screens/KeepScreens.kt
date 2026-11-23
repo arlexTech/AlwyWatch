@@ -221,7 +221,8 @@ fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
                 Text(tr("Keep what you still want to watch"), style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             ActionButton(
-                tr("Go through them one by one"),
+                // A phone's row is narrow: the long label squeezed the title into a column.
+                if (d.isTv) tr("Go through them one by one") else tr("One by one"),
                 { nav.push(Route.Triage) },
                 Modifier
                     .focusRequester(sort)

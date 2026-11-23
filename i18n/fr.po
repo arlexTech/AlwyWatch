@@ -600,7 +600,7 @@ msgid "Watched"
 msgstr "Vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt:748
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:254
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:255
 #: desktop/ui/app.slint:1024
 msgid "See all"
 msgstr "Tout voir"
@@ -1270,7 +1270,7 @@ msgid "People"
 msgstr "Personnes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:74
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:756
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:757
 msgid "What each person may keep, and whose request-site user they request as"
 msgstr "Ce que chacun peut garder, et sous quel utilisateur du site de demandes il fait ses demandes"
 
@@ -1286,12 +1286,12 @@ msgstr "Invitez quelqu'un par e-mail ou avec un lien, aussi sur Jellyfin"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:88
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:220
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:337
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:338
 msgid "Leaving soon"
 msgstr "Bientôt supprimés"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:90
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:759
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:760
 #: web/src/keep.rs:880
 msgid "Leaving soon countdown"
 msgstr "Compte à rebours de Bientôt supprimés"
@@ -1307,7 +1307,7 @@ msgid "Kept forever"
 msgstr "Gardé pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:99
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:767
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:768
 #: web/src/keep.rs:905
 msgid "Per person, and how much of it someone else keeps too"
 msgstr "Par personne, et la part que d'autres gardent aussi"
@@ -1544,7 +1544,7 @@ msgstr "Combien de personnes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:473
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:963
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:278
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:304
 msgid "Sending…"
 msgstr "Envoi…"
 
@@ -1867,7 +1867,7 @@ msgid "Only foreign-language parts"
 msgstr "Seulement les passages en langue étrangère"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:869
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:684
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:685
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:678
 msgid "Automatic"
 msgstr "Automatique"
@@ -2376,7 +2376,7 @@ msgid "Nothing downloaded."
 msgstr "Aucun téléchargement."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:58
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:361
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:362
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt:298
 msgid "All"
 msgstr "Tout"
@@ -2408,7 +2408,7 @@ msgid "Shared: someone else keeps it forever too. Choose a person to see their t
 msgstr "Partagé : quelqu'un d'autre le garde aussi pour toujours. Choisissez une personne pour voir ses titres."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:148
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:463
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:464
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:449
 msgid "Nothing here."
 msgstr "Rien ici."
@@ -2613,40 +2613,40 @@ msgid_plural "Leaves in {n} days"
 msgstr[0] "Supprimé dans {n} jour"
 msgstr[1] "Supprimé dans {n} jours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:339
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:340
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:421
 msgid "{count} title"
 msgid_plural "{count} titles"
 msgstr[0] "{count} titre"
 msgstr[1] "{count} titres"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:444
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:445
 msgid "{n} other keeps it"
 msgid_plural "{n} others keep it"
 msgstr[0] "{n} autre personne le garde"
 msgstr[1] "{n} autres personnes le gardent"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:539
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:540
 #: desktop/ui/app.slint:2727
 msgid "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever"
 msgid_plural "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever"
 msgstr[0] "{n} restant  ·  ← peut être supprimé   → jusqu'à ce que je l'aie vu   ↑ garder pour toujours"
 msgstr[1] "{n} restants  ·  ← peut être supprimé   → jusqu'à ce que je l'aie vu   ↑ garder pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:545
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:546
 msgid "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgid_plural "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgstr[0] "{n} restant  ·  Glissez à gauche : peut être supprimé · à droite : jusqu'à ce que je l'aie vu · en haut : garder pour toujours"
 msgstr[1] "{n} restants  ·  Glissez à gauche : peut être supprimé · à droite : jusqu'à ce que je l'aie vu · en haut : garder pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:797
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:798
 #: web/src/keep.rs:892
 msgid "Spread over {n} day"
 msgid_plural "Spread over {n} days"
 msgstr[0] "Réparti sur {n} jour"
 msgstr[1] "Réparti sur {n} jours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:903
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:904
 #: web/src/keep.rs:669
 msgid "{n} person keeps it"
 msgid_plural "{n} people keep it"
@@ -2691,7 +2691,7 @@ msgid "Everyone's choices count and the longest one wins. “Fine to delete”: 
 msgstr "Les choix de chacun comptent et le plus long l'emporte. « Peut être supprimé » : le titre n'est supprimé que si personne d'autre ne le garde."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:114
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:361
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:362
 #: web/src/keep.rs:519
 msgid "Kept"
 msgstr "Gardés"
@@ -2735,13 +2735,13 @@ msgid "You keep it forever"
 msgstr "Vous le gardez pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:172
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:613
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:614
 #: web/src/keep.rs:201
 msgid "Until I watch it"
 msgstr "Jusqu'à ce que je l'aie vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:180
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:619
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:620
 #: web/src/keep.rs:202
 msgid "Keep 30 days"
 msgstr "Garder 30 jours"
@@ -2759,7 +2759,7 @@ msgid "Keep forever"
 msgstr "Garder pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:183
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:620
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:621
 #: web/src/keep.rs:205
 msgid "Fine to delete"
 msgstr "Peut être supprimé"
@@ -2774,160 +2774,160 @@ msgstr "Retirer mon choix"
 msgid "Keep what you still want to watch"
 msgstr "Gardez ce que vous voulez encore regarder"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:224
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:350
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:225
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:351
 #: web/src/keep.rs:101
 msgid "Go through them one by one"
 msgstr "Les passer en revue un par un"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:340
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:225
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:516
+#: web/src/keep.rs:632
+msgid "One by one"
+msgstr "Un par un"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:341
 msgid "{count} with your choice"
 msgstr "{count} avec votre choix"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:344
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:345
 msgid "What the server will delete, soonest first. Keep what you still want to watch or love."
 msgstr "Ce que le serveur va supprimer, les plus proches en premier. Gardez ce que vous voulez encore regarder ou ce que vous adorez."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:357
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:753
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:358
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:754
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:94
 msgid "Admin"
 msgstr "Administration"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:361
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:362
 msgid "Within a week"
 msgstr "Sous une semaine"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:361
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:362
 msgid "My choices"
 msgstr "Mes choix"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:371
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:372
 msgid "{count} of these are not scheduled: their date has passed but the server's owner hasn't turned deletion on yet. Your choices still count when it is."
 msgstr "{count} ne sont pas programmés : leur date est passée mais la personne qui gère votre serveur n'a pas encore activé la suppression. Vos choix compteront quand ce sera fait."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:392
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:393
 msgid "Can't reach your AlwyWatch server ({address}). This is the last list it sent."
 msgstr "Impossible de joindre votre serveur AlwyWatch ({address}). Voici la dernière liste reçue."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:393
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:394
 msgid "Can't reach your AlwyWatch server ({address})."
 msgstr "Impossible de joindre votre serveur AlwyWatch ({address})."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:394
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:395
 msgid "Can't reach your AlwyWatch server. This is the last list it sent."
 msgstr "Impossible de joindre votre serveur AlwyWatch. Voici la dernière liste reçue."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:395
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:396
 msgid "Can't reach your AlwyWatch server."
 msgstr "Impossible de joindre votre serveur AlwyWatch."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:515
-#: web/src/keep.rs:632
-#: desktop/ui/app.slint:2724
-msgid "One by one"
-msgstr "Un par un"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:535
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:536
 msgid "All done, thanks! {count} sorted."
 msgstr "C'est fini, merci ! {count} triés."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:535
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:536
 #: web/src/keep.rs:647
 msgid "Nothing to sort right now."
 msgstr "Rien à trier pour le moment."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:618
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:619
 #: desktop/ui/app.slint:2750
 msgid "Forever"
 msgstr "Pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:659
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:660
 #: web/src/keep.rs:757
 msgid "Collection {id}"
 msgstr "Collection {id}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:679
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:680
 msgid "Requests of {name}"
 msgstr "Demandes de {name}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:685
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:686
 msgid "Their own Seerr account (created if needed)"
 msgstr "Son propre compte Seerr (créé si besoin)"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:753
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:754
 #: desktop/ui/app.slint:2765
 msgid "Leaving soon: countdown and people's rights"
 msgstr "Bientôt supprimés : compte à rebours et droits de chacun"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:766
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:767
 #: web/src/keep.rs:904
 msgid "Who keeps what forever"
 msgstr "Qui garde quoi pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:783
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:784
 msgid "Start countdown"
 msgstr "Lancer le compte à rebours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:785
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:786
 msgid "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr (press twice to confirm)."
 msgstr "Tous les éléments ont déjà dépassé leur date. Avant d'activer une collection dans Maintainerr, relancez son compte à rebours pour que chacun ait tout le délai pour voter. Cela modifie les dates de suppression dans Maintainerr (appuyez deux fois pour confirmer)."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:797
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:798
 #: web/src/keep.rs:892
 #: desktop/ui/app.slint:2777
 msgid "Restart now"
 msgstr "Relancer maintenant"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:799
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:800
 msgid "Confirm"
 msgstr "Confirmer"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:808
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:809
 msgid "{collection}: {reset} restarted, {skipped} skipped"
 msgstr "{collection} : {reset} relancés, {skipped} ignorés"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:833
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:834
 msgid "Everyone can keep forever by default. Select a value to change it."
 msgstr "Par défaut, tout le monde peut garder pour toujours. Sélectionnez une valeur pour la modifier."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:835
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:836
 msgid "Everyone can keep forever by default. Tap a value to change it."
 msgstr "Par défaut, tout le monde peut garder pour toujours. Touchez une valeur pour la modifier."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:847
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:848
 msgid "{name} · admin"
 msgstr "{name} · admin"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:852
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:853
 msgid "{count} kept forever"
 msgstr "{count} gardés pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:861
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:862
 #: web/src/keep.rs:852
 msgid "Forever allowed"
 msgstr "Pour toujours autorisé"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:861
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:862
 #: web/src/keep.rs:852
 msgid "Forever blocked"
 msgstr "Pour toujours bloqué"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:866
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:867
 msgid "Max forever: {value}"
 msgstr "Max. pour toujours : {value}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:874
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:875
 #: desktop/src/app.rs:733
 #: web/src/keep.rs:867
 msgid "Requests as: {name}"
 msgstr "Demande en tant que : {name}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:874
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:875
 msgid "automatic"
 msgstr "automatique"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:878
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:879
 msgid "Max days: {value}"
 msgstr "Jours max. : {value}"
 
@@ -3184,6 +3184,24 @@ msgstr "Supprimer {name} ?"
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:535
 msgid "Their servers, history and settings on this device are deleted. Downloads only they wanted are deleted too."
 msgstr "Ses serveurs, son historique et ses paramètres sur cet appareil seront supprimés, ainsi que les téléchargements que ce profil était seul à vouloir."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/QrScanner.kt:74
+msgid "Point at the QR code on the other device"
+msgstr "Visez le code QR affiché sur l'autre appareil"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/QrScanner.kt:108
+msgid "Or close this and type the code it shows."
+msgstr "Ou fermez ceci et saisissez le code qu'il affiche."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/QrScanner.kt:149
+msgid "No camera on this device."
+msgstr "Pas d'appareil photo sur cet appareil."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/QrScanner.kt:201
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/QrScanner.kt:214
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/QrScanner.kt:220
+msgid "The camera could not start."
+msgstr "L'appareil photo n'a pas pu démarrer."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt:202
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:262
@@ -3673,7 +3691,7 @@ msgid "Other devices"
 msgstr "Autres appareils"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:309
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:236
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:253
 #: web/src/account.rs:1156
 msgid "Sign in another device"
 msgstr "Connecter un autre appareil"
@@ -4390,44 +4408,52 @@ msgid "Waiting for the other device…"
 msgstr "En attente de l'autre appareil…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:227
+msgid "Without the camera, type the code instead."
+msgstr "Sans l'appareil photo, saisissez plutôt le code."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:237
 #: core/keep-service/src/account.rs:249
 #: desktop/src/app.rs:4817
 msgid "Unknown or expired code."
 msgstr "Code inconnu ou expiré."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:236
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:253
 msgid "Sent"
 msgstr "Envoyé"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:243
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:260
 msgid "Your accounts and settings are on their way. The other device signs in by itself."
 msgstr "Vos comptes et paramètres sont en route. L'autre appareil se connecte tout seul."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:245
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:262
 msgid "On the new device, choose “Sign in with a code”, then type the code it shows here."
 msgstr "Sur le nouvel appareil, choisissez « Se connecter avec un code », puis saisissez ici le code affiché."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:263
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:279
+msgid "Scan the QR code"
+msgstr "Scanner le code QR"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:289
 msgid "Send your accounts and settings to “{device}”?"
 msgstr "Envoyer vos comptes et paramètres à « {device} » ?"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:264
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:290
 #: desktop/ui/app.slint:3261
 msgid "Check number"
 msgstr "Numéro de contrôle"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:266
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:292
 #: desktop/ui/app.slint:3263
 msgid "Only send if the new device shows the same number."
 msgstr "N'envoyez que si le nouvel appareil affiche le même numéro."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:275
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:301
 #: desktop/ui/app.slint:3274
 #: desktop/ui/app.slint:3549
 msgid "Done"
 msgstr "Terminé"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:278
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:304
 #: desktop/ui/app.slint:3267
 msgid "Send"
 msgstr "Envoyer"

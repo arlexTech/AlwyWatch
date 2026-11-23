@@ -215,6 +215,16 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var sent by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(false) }
+    val hasCamera =
+        remember {
+            ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_CAMERA_ANY)
+        }
+    val askCamera =
+        androidx.activity.compose.rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts
+                .RequestPermission(),
+        ) { ok -> if (ok) scanning = true else error = tr("Without the camera, type the code instead.") }
 
     fun lookUp() {
         if (busy || code.length != 6) return
@@ -229,6 +239,13 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
                 busy = false
             }
         }
+    }
+    if (scanning) {
+        QrScanner(onCode = {
+            scanning = false
+            code = it
+            lookUp()
+        }, onClose = { scanning = false })
     }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -258,6 +275,16 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = { lookUp() }),
                         )
+                        if (hasCamera) {
+                            ActionButton(tr("Scan the QR code"), {
+                                error = null
+                                val granted =
+                                    androidx.core.content.ContextCompat
+                                        .checkSelfPermission(ctx, android.Manifest.permission.CAMERA) ==
+                                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                                if (granted) scanning = true else askCamera.launch(android.Manifest.permission.CAMERA)
+                            }, icon = be.alwyapps.watch.ui.Icons.QrCode)
+                        }
                     }
                     else -> {
                         Text(tr("Send your accounts and settings to “{device}”?", "device" to r.device), style = MaterialTheme.typography.titleSmall)

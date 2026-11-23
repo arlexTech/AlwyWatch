@@ -50,6 +50,7 @@ then **small APK** (see CLAUDE.md). This file states why each one is here and wh
 | `wasm-bindgen` (pinned `=`), `wasm-bindgen-futures`, `js-sys`, `web-sys` | web | Browser APIs from Rust; the pin must equal the installed `wasm-bindgen-cli` | Only the `web-sys` features used |
 | `ring` | keep-service, server | X25519, HKDF, ChaCha20-Poly1305 for device transfer; already in the tree through rustls. Server: also passkey signatures (P-256, Ed25519, RSA) | Browser random source on wasm32. `webauthn-rs` rejected: needs OpenSSL, the server image is static (`scratch`) |
 | `qrcodegen` | core | QR code of the Quick Connect address on the new device (Nayuki's encoder, no dependencies, a few KB in the APK) | Drawn by each UI from the module grid |
+| `rqrr` (default features off) | core | Reads another device's sign-in QR code from the phone camera, so "Sign in another device" sends the logins without typing | Pure Rust, no image library; frames come from Android's own camera2 API (no CameraX, ZXing or Play Services, nothing proprietary). Small next to the 10.5 MB arm64 APK; CAMERA permission asked only when "Scan the QR code" is pressed |
 | `argon2` (+ `rand_core` with `getrandom` for salts) | server | AlwyWatch account passwords (Argon2id, pure Rust; alwymail's choice) | Server only, not in the apps |
 | `wiremock`, `tempfile`, `tower` | tests only | Mock HTTP servers, temp dirs, router `oneshot` in server tests | Dev-dependencies |
 

@@ -13,6 +13,9 @@
          device's speech recognition service, never to AlwyWatch servers. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- Only to scan another device's sign-in QR code; asked when that button is pressed. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <!-- One APK for phone, tablet and TV: neither touch nor leanback is required. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

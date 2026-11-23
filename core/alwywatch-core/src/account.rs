@@ -619,9 +619,66 @@ pub fn quick_connect_url(url: String, code: String) -> String {
     format!("{}/q/{}", url.trim_end_matches('/'), code.trim())
 }
 
+/// The sign-in code in a camera frame showing another device's "Sign in with a code" QR code:
+/// `luma` is the frame's brightness plane (`width` × `height`, `row_stride` bytes a row).
+/// None until a readable code of ours is in view.
+#[uniffi::export]
+pub fn qr_sign_in_code(luma: Vec<u8>, width: u32, height: u32, row_stride: u32) -> Option<String> {
+    let (w, h, stride) = (width as usize, height as usize, row_stride as usize);
+    if w == 0 || h == 0 || stride < w || luma.len() < stride * (h - 1) + w {
+        return None;
+    }
+    let mut img = rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| luma[y * stride + x]);
+    img.detect_grids()
+        .into_iter()
+        .filter_map(|g| g.decode().ok().map(|(_, text)| text))
+        .find_map(|t| sign_in_code_of(&t))
+}
+
+/// `…/q/123456` (the address in the QR code), or six digits on their own.
+fn sign_in_code_of(text: &str) -> Option<String> {
+    let t = text.trim();
+    let tail = t.rsplit_once("/q/").map_or(t, |(_, c)| c);
+    let code: String = tail
+        .chars()
+        .take_while(|c| !matches!(c, '?' | '#' | '/'))
+        .collect();
+    (code.len() == 6 && code.bytes().all(|b| b.is_ascii_digit())).then_some(code)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sign_in_qr_code_is_read_back_from_a_frame() {
+        let q = qr_code("https://watch.example.org/q/058405".into()).unwrap();
+        // Drawn as a camera would see it: 4 px a module, a quiet zone, inside a wider row.
+        let (scale, quiet) = (4usize, 4usize);
+        let side = (q.size as usize + 2 * quiet) * scale;
+        let stride = side + 16;
+        let mut luma = vec![255u8; stride * side];
+        for y in 0..side {
+            for x in 0..side {
+                let (mx, my) = (x / scale, y / scale);
+                let n = q.size as usize;
+                let dark = (quiet..quiet + n).contains(&mx)
+                    && (quiet..quiet + n).contains(&my)
+                    && q.modules[(my - quiet) * n + (mx - quiet)];
+                if dark {
+                    luma[y * stride + x] = 0;
+                }
+            }
+        }
+        assert_eq!(
+            qr_sign_in_code(luma, side as u32, side as u32, stride as u32).as_deref(),
+            Some("058405")
+        );
+        assert_eq!(qr_sign_in_code(vec![255; 100], 10, 10, 10), None);
+        assert_eq!(sign_in_code_of("123456").as_deref(), Some("123456"));
+        assert_eq!(sign_in_code_of("https://x/q/12345"), None);
+        assert_eq!(sign_in_code_of("https://evil/other"), None);
+    }
 
     #[test]
     fn qr_codes_are_square_and_hold_the_address() {

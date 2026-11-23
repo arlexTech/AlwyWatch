@@ -25,7 +25,9 @@ mod settings_sync;
 mod sync;
 mod tracks;
 
-pub use account::{AccountSignedIn, AlwyAccount, KnownServer, QrCode, qr_code, quick_connect_url};
+pub use account::{
+    AccountSignedIn, AlwyAccount, KnownServer, QrCode, qr_code, qr_sign_in_code, quick_connect_url,
+};
 pub use app::*;
 pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
 pub use error::{CoreError, Result};
