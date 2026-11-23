@@ -21,10 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -175,6 +177,19 @@ fun AddServerScreen(
         back()
         error = null
     }
+
+    // The AlwyWatch address and what it serves: kept while going on to a way of signing in and
+    // back, so Back never asks for the address again.
+    val alwyUrl =
+        remember {
+            mutableStateOf(
+                (keep?.baseUrl ?: core.account()?.baseUrl ?: ctx.services.profiles.lastAlwyWatchUrl)
+                    .orEmpty()
+                    .substringAfter("://")
+                    .trimEnd('/'),
+            )
+        }
+    val alwyFound = remember { mutableStateOf<Pair<String, List<ServerEntry>>?>(null) }
 
     // Plex Home: the account's own token, kept to switch user later from Settings.
     var plexHomeToken by remember { mutableStateOf<String?>(null) }
@@ -334,11 +349,8 @@ fun AddServerScreen(
             is Step.AlwyWatch ->
                 AlwyWatchServerPicker(
                     create = s.create,
-                    initialUrl =
-                        remember {
-                            keep?.baseUrl ?: core.account()?.baseUrl ?: ctx.services.profiles.lastAlwyWatchUrl
-                                .orEmpty()
-                        },
+                    urlState = alwyUrl,
+                    found = alwyFound,
                     busy = busy,
                     onPick = { url, entry -> pick(url, entry) },
                     onError = { error = it },
@@ -395,8 +407,13 @@ fun AddServerScreen(
                     modifier = Modifier.fillMaxWidth().dpadEscape(),
                 )
                 ActionButton(if (busy) tr("Signing in…") else tr("Sign in"), { submit() }, primary = true)
+                // Most people have no AlwyWatch password: their Jellyfin or Plex login is the way in.
+                ActionButton(tr("I don't have a password"), {
+                    error = null
+                    back()
+                })
                 Text(
-                    tr("No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone."),
+                    tr("Sign in with your Jellyfin or Plex login instead, or with a code approved on your phone (passkey, Pocket ID)."),
                     color = Subtle,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -634,7 +651,8 @@ fun AddServerScreen(
 @Composable
 private fun AlwyWatchServerPicker(
     create: Boolean,
-    initialUrl: String,
+    urlState: MutableState<String>,
+    found: MutableState<Pair<String, List<ServerEntry>>?>,
     busy: Boolean,
     onPick: (url: String, entry: ServerEntry) -> Unit,
     onError: (String?) -> Unit,
@@ -646,11 +664,17 @@ private fun AlwyWatchServerPicker(
     val tv = LocalDimens.current.isTv
     val scope = rememberCoroutineScope()
     val logins = remember { core.accounts() }
-    var url by remember { mutableStateOf(initialUrl.substringAfter("://").trimEnd('/')) }
-    var entries by remember { mutableStateOf<Pair<String, List<ServerEntry>>?>(null) }
+    val ctx = LocalContext.current
+    var url by urlState
+    var entries by found
     var checking by remember { mutableStateOf(false) }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
     val load = {
         onError(null)
+        // The address is typed: the keyboard goes, the answer shows.
+        keyboard?.hide()
+        if (!tv) focus.clearFocus()
         if (!checking) {
             checking = true
             scope.launch {
@@ -659,6 +683,9 @@ private fun AlwyWatchServerPicker(
                         be.alwyapps.watch.core
                             .normalizeServerUrl(url)
                     val list = core.keepServers(normalized)
+                    // Remembered at once: next time (and on this device's other profiles) it's
+                    // already filled in.
+                    ctx.services.profiles.lastAlwyWatchUrl = normalized
                     if (create) onCreate(normalized) else entries = normalized to list
                 } catch (e: CoreException) {
                     onError(e.message)
@@ -692,6 +719,19 @@ private fun AlwyWatchServerPicker(
     )
     if (entries == null) ActionButton(if (checking) tr("Checking…") else tr("Continue"), { load() }, primary = true)
     entries?.let { (base, list) ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Check, null, Modifier.size(20.dp), tint = Accent)
+            Text(
+                if (list.isEmpty()) {
+                    tr("AlwyWatch found")
+                } else {
+                    tr("AlwyWatch found · {servers}", "servers" to list.joinToString(", ") { it.name })
+                },
+                color = Accent,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+
         @Composable
         fun Code() =
             ChoiceCard(

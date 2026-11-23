@@ -291,7 +291,7 @@ msgstr "Êtes-vous toujours là ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt:193
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt:524
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:464
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:481
 msgid "Continue"
 msgstr "Continuer"
 
@@ -631,8 +631,8 @@ msgid "Cancel"
 msgstr "Annuler"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/I18n.kt:13
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:397
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:538
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:409
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:555
 msgid "Sign in"
 msgstr "Se connecter"
 
@@ -641,7 +641,7 @@ msgid "Leaves in {days} days"
 msgstr "Supprimé dans {days} jours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Rows.kt:51
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:281
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:296
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:599
 msgid "Back"
 msgstr "Retour"
@@ -831,378 +831,389 @@ msgstr "Impossible d'ouvrir cette image."
 msgid "Opening…"
 msgstr "Ouverture…"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:264
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:279
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:385
 #: web/src/signin.rs:179
 msgid "Add a server"
 msgstr "Ajouter un serveur"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:269
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:284
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:432
 #: web/src/profiles.rs:222
 msgid "Add a profile"
 msgstr "Ajouter un profil"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:269
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:284
 #: web/src/signin.rs:170
 #: desktop/ui/app.slint:2109
 msgid "Welcome to AlwyWatch"
 msgstr "Bienvenue dans AlwyWatch"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:270
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:285
 #: desktop/ui/app.slint:2110
 msgid "Your Jellyfin and Plex, fast and beautiful."
 msgstr "Votre Jellyfin et votre Plex, rapides et beaux."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:274
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:289
 msgid "{name} · switch profile"
 msgstr "{name} · changer de profil"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:274
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:289
 msgid "Profile"
 msgstr "Profil"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:287
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:288
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:892
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:302
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:303
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:932
 msgid "Create an AlwyWatch account"
 msgstr "Créer un compte AlwyWatch"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:287
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:885
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:302
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:925
 #: web/src/signin.rs:131
 msgid "Sign in to AlwyWatch"
 msgstr "Se connecter à AlwyWatch"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:289
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:698
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:304
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:738
 #: desktop/ui/app.slint:2120
 msgid "Sign in with a code"
 msgstr "Se connecter avec un code"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:290
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:305
 #: web/src/account.rs:207
 #: desktop/ui/app.slint:2121
 msgid "AlwyWatch account"
 msgstr "Compte AlwyWatch"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:291
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:306
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:347
 msgid "Your servers"
 msgstr "Vos serveurs"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:292
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:898
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:307
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:938
 #: web/src/signin.rs:139
 msgid "Jellyfin or Plex only"
 msgstr "Jellyfin ou Plex uniquement"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:330
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:437
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:936
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:345
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:454
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:976
 msgid "Quick Connect or password"
 msgstr "Connexion rapide ou mot de passe"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:331
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:438
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:941
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:346
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:455
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:981
 msgid "Sign in on plex.tv"
 msgstr "Se connecter sur plex.tv"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:376
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:388
 #: desktop/ui/app.slint:2220
 msgid "Your AlwyWatch account keeps your profile, settings and server list. To watch, you then sign in to your server."
 msgstr "Votre compte AlwyWatch conserve votre profil, vos paramètres et votre liste de serveurs. Pour regarder, connectez-vous ensuite à votre serveur."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:383
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:524
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:827
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:395
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:541
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:867
 msgid "Username"
 msgstr "Nom d'utilisateur"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:390
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:531
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:834
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:402
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:548
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:874
 msgid "Password"
 msgstr "Mot de passe"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:397
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:538
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:409
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:555
 #: web/src/account.rs:456
 msgid "Signing in…"
 msgstr "Connexion…"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:399
-#: desktop/ui/app.slint:2228
-msgid "No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone."
-msgstr "Pas de mot de passe (clé d'accès ou authentification unique) ? Revenez en arrière, choisissez « Se connecter avec un code » et validez sur votre téléphone."
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:411
+msgid "I don't have a password"
+msgstr "Je n'ai pas de mot de passe"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:410
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:416
+msgid "Sign in with your Jellyfin or Plex login instead, or with a code approved on your phone (passkey, Pocket ID)."
+msgstr "Connectez-vous plutôt avec vos identifiants Jellyfin ou Plex, ou avec un code validé sur votre téléphone (clé d'accès, Pocket ID)."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:427
 #: desktop/src/app.rs:4489
 msgid "Signed in as {name}. Now sign in to the server you watch on."
 msgstr "Connecté en tant que {name}. Connectez-vous maintenant au serveur sur lequel vous regardez."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:411
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:428
 msgid "Signed in as you. Now sign in to the server you watch on."
 msgstr "Vous êtes connecté. Connectez-vous maintenant au serveur sur lequel vous regardez."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:417
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:434
 msgid "{kind} · from your other devices"
 msgstr "{kind} · depuis vos autres appareils"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:429
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:932
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:446
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:972
 #: desktop/ui/app.slint:2094
 msgid "Another server"
 msgstr "Un autre serveur"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:429
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:446
 msgid "Jellyfin or Plex by its address"
 msgstr "Jellyfin ou Plex par son adresse"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:456
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:473
 msgid "Server address"
 msgstr "Adresse du serveur"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:463
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:480
 #: desktop/ui/app.slint:2270
 msgid "Your Jellyfin server's address, as you use it in a browser."
 msgstr "L'adresse de votre serveur Jellyfin, telle que vous l'utilisez dans un navigateur."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:464
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:693
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:775
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:481
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:720
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:815
 msgid "Checking…"
 msgstr "Vérification…"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:478
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:495
 #: desktop/ui/app.slint:2284
 msgid "QUICK CONNECT"
 msgstr "CONNEXION RAPIDE"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:491
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:508
 #: desktop/ui/app.slint:2286
 msgid "In a Jellyfin app where you're signed in, open your profile → Quick Connect and enter this code."
 msgstr "Dans une application Jellyfin où vous êtes connecté, ouvrez votre profil → Quick Connect et saisissez ce code."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:495
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:512
 msgid "Waiting for approval…"
 msgstr "En attente de validation…"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:517
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:534
 #: desktop/ui/app.slint:2289
 msgid "Or with your password"
 msgstr "Ou avec votre mot de passe"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:595
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:612
 msgid "Sign in on plex.tv in your browser, then come back here."
 msgstr "Connectez-vous sur plex.tv dans votre navigateur, puis revenez ici."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:596
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:613
 msgid "Open plex.tv"
 msgstr "Ouvrir plex.tv"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:597
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:614
 msgid "Or, on any device"
 msgstr "Ou, sur n'importe quel appareil"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:599
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:616
 msgid "PLEX.TV/LINK"
 msgstr "PLEX.TV/LINK"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:601
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:618
 msgid "Go to plex.tv/link and enter this code."
 msgstr "Allez sur plex.tv/link et saisissez ce code."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:602
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:619
 #: web/src/setup.rs:257
 #: web/src/signin.rs:426
 msgid "Waiting for Plex…"
 msgstr "En attente de Plex…"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:612
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:629
 #: desktop/ui/app.slint:2313
 msgid "Choose a server"
 msgstr "Choisir un serveur"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:613
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:630
 msgid "This Plex account has no servers."
 msgstr "Ce compte Plex n'a aucun serveur."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:617
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:634
 msgid "Your server"
 msgstr "Votre serveur"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:617
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:634
 msgid "Shared with you"
 msgstr "Partagé avec vous"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:673
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:700
 msgid "Type the AlwyWatch address the person who runs your server gave you with your invitation."
 msgstr "Saisissez l'adresse AlwyWatch que vous a donnée la personne qui gère votre serveur avec votre invitation."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:675
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:702
 msgid "Type the AlwyWatch address the person who runs your server gave you."
 msgstr "Saisissez l'adresse AlwyWatch que vous a donnée la personne qui gère votre serveur."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:699
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:726
+msgid "AlwyWatch found"
+msgstr "AlwyWatch trouvé"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:728
+msgid "AlwyWatch found · {servers}"
+msgstr "AlwyWatch trouvé · {servers}"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:739
 msgid "Scan a QR code with your phone, or approve on a device where you're signed in"
 msgstr "Scannez un code QR avec votre téléphone, ou validez sur un appareil où vous êtes connecté"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:705
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:745
 msgid "With your Jellyfin or Plex login"
 msgstr "Avec vos identifiants Jellyfin ou Plex"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:708
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:748
 msgid "Or"
 msgstr "Ou"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:711
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:751
 #: desktop/ui/app.slint:2213
 msgid "Username and password"
 msgstr "Nom d'utilisateur et mot de passe"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:712
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:752
 msgid "Your AlwyWatch account's"
 msgstr "Ceux de votre compte AlwyWatch"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:717
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:757
 msgid "Passkey or Pocket ID? Choose “Sign in with a code” and approve it on your phone."
 msgstr "Clé d'accès ou Pocket ID ? Choisissez “Se connecter avec un code” et validez sur votre téléphone."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:777
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:817
 msgid "This AlwyWatch server doesn't take new accounts. Ask the person who runs it."
 msgstr "Ce serveur AlwyWatch n'accepte pas de nouveaux comptes. Demandez à la personne qui le gère."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:800
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:840
 #: web/src/account.rs:387
 msgid "{name} invited you"
 msgstr "{name} vous invite"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:803
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:843
 #: desktop/src/app/invites.rs:342
 #: web/src/account.rs:375
 msgid "This username and password will also be your {server} (Jellyfin) login."
 msgstr "Ce nom d'utilisateur et ce mot de passe serviront aussi à vous connecter à {server} (Jellyfin)."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:804
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:844
 msgid "Your AlwyWatch account keeps your name, settings and server list. To watch, you then add your Jellyfin or Plex login."
 msgstr "Votre compte AlwyWatch garde votre nom, vos paramètres et votre liste de serveurs. Pour regarder, ajoutez ensuite vos identifiants Jellyfin ou Plex."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:812
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:852
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:503
 #: web/src/account.rs:365
 msgid "Invitation code"
 msgstr "Code d'invitation"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:818
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:858
 msgid "{problem} Ask the person who invited you for a new one."
 msgstr "{problem} Demandez-en une nouvelle à la personne qui vous a invité."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:841
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:881
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:474
 #: desktop/ui/app.slint:3379
 msgid "Creating…"
 msgstr "Création…"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:841
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:881
 #: web/src/account.rs:378
 #: desktop/ui/app.slint:2186
 msgid "Create the account"
 msgstr "Créer le compte"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:844
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:884
 msgid "Prefer a passkey or Pocket ID? Create the account on {address}, then come back and choose “Sign in with a code”."
 msgstr "Vous préférez une clé d'accès ou Pocket ID ? Créez le compte sur {address}, puis revenez et choisissez “Se connecter avec un code”."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:867
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:907
 msgid "Use your login {name}"
 msgstr "Utiliser votre connexion {name}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:868
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:908
 #: desktop/src/app.rs:4202
 msgid "Plex · sign in on plex.tv"
 msgstr "Plex · se connecter sur plex.tv"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:869
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:909
 #: desktop/src/app.rs:4203
 msgid "Jellyfin · Quick Connect or password"
 msgstr "Jellyfin · Connexion rapide ou mot de passe"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:886
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:926
 #: web/src/signin.rs:132
 msgid "Your name, settings and servers come with you"
 msgstr "Votre nom, vos paramètres et vos serveurs vous suivent"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:893
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:933
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:335
 #: web/src/signin.rs:136
 msgid "You have an invitation"
 msgstr "Vous avez une invitation"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:899
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:939
 msgid "No account: nothing synced, no Leaving soon or watch together"
 msgstr "Sans compte : rien n'est synchronisé, ni Bientôt supprimés ni Regarder ensemble"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:926
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:966
 msgid "Checking your AlwyWatch server…"
 msgstr "Vérification de votre serveur AlwyWatch…"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:928
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:968
 #: desktop/ui/app.slint:2084
 msgid "From your AlwyWatch server"
 msgstr "Depuis votre serveur AlwyWatch"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:992
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1032
 msgid "Wrong PIN."
 msgstr "Code PIN incorrect."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1000
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1040
 msgid "Which Plex user?"
 msgstr "Quel utilisateur Plex ?"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1004
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1044
 msgid "Account owner"
 msgstr "Titulaire du compte"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1004
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1044
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:172
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:312
 msgid "PIN"
 msgstr "Code PIN"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1020
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1060
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:229
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:478
 msgid "PIN for {name}"
 msgstr "Code PIN de {name}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1090
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1130
 msgid "Sign in to Plex again to switch user."
 msgstr "Reconnectez-vous à Plex pour changer d'utilisateur."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1108
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1148
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:377
 msgid "Switch Plex user"
 msgstr "Changer d'utilisateur Plex"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1108
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1148
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:491
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:356
 msgid "{name} on {server}"
 msgstr "{name} sur {server}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1111
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1151
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:379
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:106
 msgid "Loading…"
 msgstr "Chargement…"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1112
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1152
 msgid "This Plex account has no other users (it is not a Plex Home)."
 msgstr "Ce compte Plex n'a pas d'autres utilisateurs (ce n'est pas un Plex Home)."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1120
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1160
 msgid "This user has no access to {server}."
 msgstr "Cet utilisateur n'a pas accès à {server}."
 
@@ -7401,6 +7412,10 @@ msgstr "Saisissez l'adresse AlwyWatch que vous a donnée la personne qui gère v
 #: desktop/ui/app.slint:2207
 msgid "Scan a QR code with your phone, or approve on a device where you're signed in."
 msgstr "Scannez un QR code avec votre téléphone, ou validez sur un appareil où vous êtes connecté."
+
+#: desktop/ui/app.slint:2228
+msgid "No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone."
+msgstr "Pas de mot de passe (clé d'accès ou authentification unique) ? Revenez en arrière, choisissez « Se connecter avec un code » et validez sur votre téléphone."
 
 #: desktop/ui/app.slint:2257
 msgid "Check number: {}. It must match if the other device shows one."
