@@ -83,6 +83,11 @@ CREATE TABLE IF NOT EXISTS invites (
     code_hash TEXT PRIMARY KEY, created_by TEXT NOT NULL, created INTEGER NOT NULL,
     expires INTEGER NOT NULL, uses_left INTEGER NOT NULL
 );
+-- Forgot-password links: one waiting per account, an hour long, used once.
+CREATE TABLE IF NOT EXISTS password_resets (
+    token_hash TEXT PRIMARY KEY, account TEXT NOT NULL, created INTEGER NOT NULL,
+    expires INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, actor TEXT NOT NULL,
     action TEXT NOT NULL, detail TEXT NOT NULL
@@ -90,7 +95,7 @@ CREATE TABLE IF NOT EXISTS log (
 ";
 
 /// Columns added after the first release (older databases get them on open).
-const ADDED_COLUMNS: [(&str, &str, &str); 11] = [
+const ADDED_COLUMNS: [(&str, &str, &str); 12] = [
     ("users", "custom_name", "TEXT"),
     ("users", "avatar_preset", "TEXT"),
     ("users", "avatar_type", "TEXT"),
@@ -104,6 +109,8 @@ const ADDED_COLUMNS: [(&str, &str, &str); 11] = [
     ("invites", "like_user", "TEXT"),
     ("invites", "note", "TEXT"),
     ("invites", "used_by", "TEXT NOT NULL DEFAULT ''"),
+    // Where "forgot password" sends its link (from the invitation, or set in the account).
+    ("accounts", "email", "TEXT"),
 ];
 
 fn migrate(c: &Connection) -> rusqlite::Result<()> {

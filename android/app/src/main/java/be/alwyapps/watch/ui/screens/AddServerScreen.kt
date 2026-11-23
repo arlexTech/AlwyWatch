@@ -153,8 +153,8 @@ fun AddServerScreen(
         mutableStateOf(
             when {
                 connect != null -> listOf<Step>(Step.AlwyWatch(connect))
-                // Signed in to an AlwyWatch account, no login yet: on with its servers.
-                firstRun && signedIn != null -> listOf(Step.Choose, Step.Known(signedIn.baseUrl))
+                // Signed in to an AlwyWatch account: straight to its servers.
+                signedIn != null -> listOf(Step.Choose, Step.Known(signedIn.baseUrl))
                 else -> listOf(Step.Choose)
             },
         )
@@ -285,8 +285,8 @@ fun AddServerScreen(
                 Text(tr("Your Jellyfin and Plex, fast and beautiful."), style = MaterialTheme.typography.bodyLarge, color = Muted)
             }
             if (profiles.size > 1) {
-                val me = profiles.firstOrNull { it.id == ctx.services.profile }
-                ActionButton(tr("{name} · switch profile", "name" to (me?.name ?: tr("Profile"))), {
+                // This new profile is still empty: back to the list to use another one.
+                ActionButton(tr("Use another profile"), {
                     ProfileSession.open = false
                     (ctx as android.app.Activity).recreate()
                 }, icon = Icons.Person)
@@ -375,6 +375,7 @@ fun AddServerScreen(
             is Step.AccountLogin -> {
                 var user by remember { mutableStateOf("") }
                 var pass by remember { mutableStateOf("") }
+                var resetSent by remember { mutableStateOf(false) }
                 val submit = {
                     attempt {
                         val r = core.accountLogin(s.url, user, pass, android.os.Build.MODEL ?: "Android")
@@ -407,6 +408,23 @@ fun AddServerScreen(
                     modifier = Modifier.fillMaxWidth().dpadEscape(),
                 )
                 ActionButton(if (busy) tr("Signing in…") else tr("Sign in"), { submit() }, primary = true)
+                ActionButton(tr("Forgot password?"), {
+                    resetSent = false
+                    if (user.isBlank()) {
+                        error = tr("Type your username or email first, then choose “Forgot password?”.")
+                    } else {
+                        attempt {
+                            core.accountForgotPassword(s.url, user)
+                            resetSent = true
+                        }
+                    }
+                })
+                if (resetSent) {
+                    Text(
+                        tr("If this account has an email address, a link to set a new password is on its way. It works for an hour."),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
                 // Most people have no AlwyWatch password: their Jellyfin or Plex login is the way in.
                 ActionButton(tr("I don't have a password"), {
                     error = null
@@ -789,6 +807,7 @@ private fun RegisterStep(
     var invite by remember { mutableStateOf("") }
     var user by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
     // What the typed invitation gives (null: not checked yet), or why it doesn't work.
     var info by remember { mutableStateOf<be.alwyapps.watch.core.InviteInfo?>(null) }
     var inviteProblem by remember { mutableStateOf<String?>(null) }
@@ -802,7 +821,8 @@ private fun RegisterStep(
         try {
             val i = core.accountInviteInfo(url, code)
             info = i
-            if (user.isEmpty()) i.suggestedUsername?.let { user = it }
+            // Its address, for "forgot password" (the username is theirs to choose).
+            if (email.isEmpty()) i.email?.let { email = it }
         } catch (e: CoreException.Network) {
             // Offline for a moment: the sign-up itself will say.
         } catch (e: CoreException) {
@@ -824,6 +844,7 @@ private fun RegisterStep(
                             user,
                             pass,
                             code.takeIf { o.registration == "invite" },
+                            email.trim().ifEmpty { null },
                             android.os.Build.MODEL ?: "Android",
                         )
                     ctx.services.tokens.put(ACCOUNT_TOKEN, r.token)
@@ -874,7 +895,15 @@ private fun RegisterStep(
                 label = { Text(tr("Password")) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth().dpadEscape(),
+            )
+            Field(
+                email,
+                { email = it.trim() },
+                label = { Text(tr("Email (to reset a forgotten password)")) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submit() }),
                 modifier = Modifier.fillMaxWidth().dpadEscape(),
             )
@@ -930,7 +959,7 @@ private fun FirstChoices(
     )
     ChoiceCard(
         tr("Create an AlwyWatch account"),
-        tr("You have an invitation"),
+        tr("If someone invited you"),
         Icons.Add,
         onCreate,
     )

@@ -332,7 +332,7 @@ fun LocalProfileGroups() {
         Divider()
         ListRow(
             tr("Create an account"),
-            subtitle = tr("You have an invitation"),
+            subtitle = tr("If someone invited you"),
             icon = Icons.Add,
             onClick = { nav.push(Route.ConnectAlwyWatch(create = true)) },
             trailing = { Chevron() },

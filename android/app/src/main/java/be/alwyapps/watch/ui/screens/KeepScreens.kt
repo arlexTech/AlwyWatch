@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -661,6 +662,8 @@ fun KeepAdminScreen(
     // Seerr's users, to link people to the Seerr account they already have.
     var seerrUsers by remember { mutableStateOf<List<be.alwyapps.watch.core.keep.SeerrUser>>(emptyList()) }
     var linking by remember { mutableStateOf<AdminUser?>(null) }
+    // The person whose limits are open (by key: the list's copy is the fresh one).
+    var editing by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         try {
             users = core.keepAdminUsers()
@@ -742,6 +745,16 @@ fun KeepAdminScreen(
             }
         }
     }
+    users?.firstOrNull { it.userKey == editing }?.let { u ->
+        PersonDialog(
+            u,
+            seerrName = seerrUsers.firstOrNull { it.id == u.seerrUserId }?.name,
+            hasSeerr = seerrUsers.isNotEmpty(),
+            onRights = { update(u, it) },
+            onSeerr = { linking = u },
+            onDismiss = { editing = null },
+        )
+    }
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = d.gutter, vertical = 16.dp),
@@ -754,7 +767,7 @@ fun KeepAdminScreen(
                         .PageTitle(tr("Admin"), tr("Leaving soon: countdown and people's rights"))
                 people ->
                     be.alwyapps.watch.ui
-                        .PageTitle(tr("People"), tr("What each person may keep, and whose request-site user they request as"))
+                        .PageTitle(tr("People"), tr("What each person may keep, and who they request as"))
                 else ->
                     be.alwyapps.watch.ui
                         .PageTitle(tr("Leaving soon countdown"))
@@ -831,9 +844,9 @@ fun KeepAdminScreen(
                     tr("People"),
                     footer =
                         if (LocalDimens.current.isTv) {
-                            tr("Everyone can keep forever by default. Select a value to change it.")
+                            tr("No limits by default. Select a person to change theirs.")
                         } else {
-                            tr("Everyone can keep forever by default. Tap a value to change it.")
+                            tr("No limits by default. Tap a person to change theirs.")
                         },
                 ) {
                     users.orEmpty().forEachIndexed { i, u ->
@@ -841,53 +854,124 @@ fun KeepAdminScreen(
                             be.alwyapps.watch.ui
                                 .Divider()
                         }
-                        val r = u.rights
-                        Column(Modifier.padding(bottom = 12.dp)) {
-                            val sameName = users.orEmpty().count { it.name.equals(u.name, true) } > 1
-                            be.alwyapps.watch.ui.ListRow(
-                                if (u.isAdmin) tr("{name} · admin", "name" to u.name) else u.name,
-                                subtitle =
-                                    listOfNotNull(
-                                        u.mediaName.takeIf { it.isNotEmpty() && (sameName || !it.equals(u.name, true)) },
-                                        if (u.userKey.startsWith("plex:")) "Plex" else "Jellyfin",
-                                        tr("{count} kept forever", "count" to u.foreverCount),
-                                    ).joinToString(" · "),
-                                leading = {
-                                    be.alwyapps.watch.ui
-                                        .Avatar(u.avatar, u.name, u.userKey, if (d.isTv) 40.dp else 34.dp)
-                                },
-                            )
-                            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                item {
-                                    ActionButton(if (r.canKeepForever) tr("Forever allowed") else tr("Forever blocked"), {
-                                        update(u, r.copy(canKeepForever = !r.canKeepForever))
-                                    }, primary = !r.canKeepForever)
-                                }
-                                item {
-                                    ActionButton(tr("Max forever: {value}", "value" to (r.maxForever ?: "∞")), {
-                                        val next = listOf<UInt?>(null, 5u, 10u, 25u)
-                                        update(u, r.copy(maxForever = next[(next.indexOf(r.maxForever) + 1) % next.size]))
-                                    })
-                                }
-                                if (seerrUsers.isNotEmpty()) {
-                                    item {
-                                        val linked = seerrUsers.firstOrNull { it.id == u.seerrUserId }?.name
-                                        ActionButton(tr("Requests as: {name}", "name" to (linked ?: tr("automatic"))), { linking = u })
+                        val sameName = users.orEmpty().count { it.name.equals(u.name, true) } > 1
+                        val seerrName = seerrUsers.firstOrNull { it.id == u.seerrUserId }?.name
+                        be.alwyapps.watch.ui.ListRow(
+                            if (u.isAdmin) tr("{name} · admin", "name" to u.name) else u.name,
+                            subtitle =
+                                listOfNotNull(
+                                    u.mediaName.takeIf { it.isNotEmpty() && (sameName || !it.equals(u.name, true)) },
+                                    if (u.userKey.startsWith("plex:")) "Plex" else "Jellyfin",
+                                    rightsSummary(u.rights, seerrName),
+                                ).joinToString(" · "),
+                            leading = {
+                                be.alwyapps.watch.ui
+                                    .Avatar(u.avatar, u.name, u.userKey, if (d.isTv) 40.dp else 34.dp)
+                            },
+                            onClick = { editing = u.userKey },
+                            trailing = {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (u.foreverCount > 0u) {
+                                        androidx.compose.material3.Icon(
+                                            be.alwyapps.watch.ui.Icons.FavoriteFilled,
+                                            null,
+                                            Modifier.size(16.dp),
+                                            tint = Accent,
+                                        )
+                                        be.alwyapps.watch.ui
+                                            .Value(u.foreverCount.toString())
                                     }
+                                    be.alwyapps.watch.ui
+                                        .Chevron()
                                 }
-                                item {
-                                    ActionButton(tr("Max days: {value}", "value" to (r.maxKeepDays ?: "∞")), {
-                                        val next = listOf<UInt?>(null, 7u, 30u, 90u)
-                                        update(u, r.copy(maxKeepDays = next[(next.indexOf(r.maxKeepDays) + 1) % next.size]))
-                                    })
-                                }
-                            }
-                        }
+                            },
+                        )
                     }
                 }
             }
         }
     }
+}
+
+/** One line for a person's limits: "No limits", or what differs from the default. */
+private fun rightsSummary(
+    r: Rights,
+    seerr: String?,
+): String {
+    val parts = mutableListOf<String>()
+    val most = r.maxForever
+    when {
+        !r.canKeepForever -> parts += tr("Can't keep forever")
+        most != null -> parts += tr("Up to {n} forever", "n" to most)
+    }
+    r.maxKeepDays?.let { parts += trn("{n} day at most", "{n} days at most", it.toLong()) }
+    seerr?.let { parts += tr("Requests as {name}", "name" to it) }
+    return parts.joinToString(" · ").ifEmpty { tr("No limits") }
+}
+
+/** A person's limits, one clear row each (opened from the People list). */
+@Composable
+private fun PersonDialog(
+    u: AdminUser,
+    seerrName: String?,
+    hasSeerr: Boolean,
+    onRights: (Rights) -> Unit,
+    onSeerr: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val r = u.rights
+    val none = "none"
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = be.alwyapps.watch.ui.Background,
+        icon = {
+            be.alwyapps.watch.ui
+                .Avatar(u.avatar, u.name, u.userKey, 48.dp)
+        },
+        title = { Text(u.name) },
+        text = {
+            Column {
+                Text(
+                    trn("Keeps {n} title forever.", "Keeps {n} titles forever.", u.foreverCount.toLong()),
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                be.alwyapps.watch.ui.ToggleRow(
+                    tr("May keep forever"),
+                    r.canKeepForever,
+                    { onRights(r.copy(canKeepForever = it)) },
+                )
+                if (r.canKeepForever) {
+                    be.alwyapps.watch.ui.ChoiceRow(
+                        tr("Titles kept forever"),
+                        listOf(none to tr("No limit")) + listOf(5, 10, 25, 50).map { "$it" to tr("Up to {n}", "n" to it) },
+                        r.maxForever?.toString() ?: none,
+                        { onRights(r.copy(maxForever = it.toUIntOrNull())) },
+                    )
+                }
+                be.alwyapps.watch.ui.ChoiceRow(
+                    tr("Keep for at most"),
+                    listOf(none to tr("No limit")) + listOf(7, 30, 90, 180).map { "$it" to trn("{n} day", "{n} days", it.toLong()) },
+                    r.maxKeepDays?.toString() ?: none,
+                    { onRights(r.copy(maxKeepDays = it.toUIntOrNull())) },
+                    subtitle = tr("How long one “keep for a while” can last"),
+                )
+                if (hasSeerr) {
+                    be.alwyapps.watch.ui.ListRow(
+                        tr("Requests as"),
+                        subtitle = seerrName ?: tr("Automatic: their own Seerr account"),
+                        onClick = onSeerr,
+                        trailing = {
+                            be.alwyapps.watch.ui
+                                .Chevron()
+                        },
+                    )
+                }
+            }
+        },
+        confirmButton = { ActionButton(tr("Done"), onDismiss, primary = true) },
+    )
 }
 
 @Composable

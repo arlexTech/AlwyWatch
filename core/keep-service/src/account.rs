@@ -16,6 +16,9 @@ pub struct AccountOptions {
     pub registration: String,
     pub passkeys: bool,
     pub pocketid: bool,
+    /// "Forgot password" can email a link (the server has email set up).
+    #[serde(default)]
+    pub password_reset: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,6 +49,9 @@ pub struct AccountView {
     /// The person's key (as in rooms and profiles).
     pub user_key: String,
     pub has_password: bool,
+    /// Where "forgot password" sends its link.
+    #[serde(default)]
+    pub email: Option<String>,
     #[serde(default)]
     pub passkeys: Vec<PasskeyView>,
     #[serde(default)]
@@ -104,8 +110,37 @@ pub struct RegisterRequest {
     pub password: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub invite: Option<String>,
+    /// For "forgot password" (an invitation's email is offered).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     #[serde(default)]
     pub device: String,
+}
+
+/// `POST /v1/account/password/forgot`: a username or an email address. Always answered the
+/// same (nothing says which accounts exist).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ForgotRequest {
+    pub login: String,
+    /// The email's language.
+    #[serde(default)]
+    pub lang: String,
+}
+
+/// `POST /v1/account/password/reset`: the emailed link's token and the new password. Signs
+/// every device out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResetRequest {
+    pub token: String,
+    pub password: String,
+}
+
+/// `PUT /v1/account/email`: None removes it. `current`: the password, when the account has one.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmailChange {
+    pub email: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -214,9 +249,8 @@ pub struct InviteInfo {
     pub inviter: String,
     /// The Jellyfin server the account also gets a login on.
     pub jellyfin: Option<String>,
+    /// Who it was sent to: offered as the account's email.
     pub email: Option<String>,
-    /// A username to offer (from the email address), free on both.
-    pub suggested_username: Option<String>,
     pub expires: i64,
 }
 

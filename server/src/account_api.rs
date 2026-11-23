@@ -13,7 +13,8 @@ use axum::response::{IntoResponse, Redirect, Response};
 use serde::{Deserialize, Serialize};
 
 use keep_service::account::{
-    AccountOptions, AccountView, Approved, LinkedView, PasskeyView, SessionView, SignedIn,
+    AccountOptions, AccountView, Approved, EmailChange, ForgotRequest, LinkedView, PasskeyView,
+    ResetRequest, SessionView, SignedIn,
 };
 
 use crate::accounts::{self, AccountError, AccountRow, SESSION_PREFIX};
@@ -130,6 +131,7 @@ pub async fn options(State(s): State<Shared>) -> Json<AccountOptions> {
         .into(),
         passkeys: a.rp.is_some(),
         pocketid: a.pocketid.is_some(),
+        password_reset: a.mail.is_some() && crate::invites::site(&s).is_some(),
     })
 }
 
@@ -147,6 +149,7 @@ fn view(s: &Shared, a: &AccountRow, current: Option<&str>) -> Result<AccountView
             .unwrap_or_default(),
         user_key: a.person.clone(),
         has_password: a.has_password,
+        email: a.email.clone(),
         passkeys: db
             .passkeys(&a.id)
             .map_err(internal)?
@@ -202,7 +205,21 @@ pub struct Register {
     #[serde(default)]
     invite: Option<String>,
     #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
     device: String,
+}
+
+/// An optional email address as typed: trimmed, None when empty, refused when not one.
+fn email_of(e: Option<&str>) -> Result<Option<String>, Error> {
+    match e.map(str::trim).filter(|e| !e.is_empty()) {
+        None => Ok(None),
+        Some(e) if crate::mail::valid_address(e) => Ok(Some(e.to_owned())),
+        Some(e) => Err(Error(
+            StatusCode::BAD_REQUEST,
+            format!("'{e}' is not an email address"),
+        )),
+    }
 }
 
 /// Password hashing takes tens of milliseconds of CPU: off the async workers, so it never holds
@@ -242,6 +259,7 @@ pub async fn register(
     let username = r.username.trim().to_owned();
     accounts::check_username(&username).map_err(account_err)?;
     accounts::check_password(&r.password).map_err(account_err)?;
+    let email = email_of(r.email.as_deref())?;
     // Whether this person may sign up at all comes first: nothing about which usernames exist
     // is said to someone who can't.
     let code = r
@@ -286,6 +304,7 @@ pub async fn register(
         r.password,
         code.filter(|_| invite.is_some()),
         invite,
+        email,
         r.device,
     ));
     task.await.map_err(internal)?
@@ -297,6 +316,7 @@ async fn make_account(
     password: String,
     code: Option<String>,
     invite: Option<accounts::InviteRow>,
+    email: Option<String>,
     device: String,
 ) -> Result<Json<SignedIn>, Error> {
     // The invitation is taken first (only one sign-up can have its last use), and given back
@@ -347,6 +367,9 @@ async fn make_account(
         }
     };
     s.db.log(&a.person, "account", "created with a password");
+    if email.is_some() {
+        s.db.set_email(&a.id, email.as_deref()).map_err(internal)?;
+    }
     let mut new_login = None;
     if let Some((server, key, _)) = &jellyfin {
         match crate::invites::join_jellyfin_login(&s, server, key, &a.person, &username, &password)
@@ -563,6 +586,168 @@ pub async fn set_media_sign_in(
             "media sign-ins turned off"
         },
     );
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /v1/account/password/forgot`: emails a link to set a new password to the accounts a
+/// username or email address names. Always the same answer, sent before the email goes out:
+/// neither the reply nor its timing says which accounts exist.
+pub async fn forgot_password(
+    State(s): State<Shared>,
+    headers: HeaderMap,
+    Json(r): Json<ForgotRequest>,
+) -> Result<StatusCode, Error> {
+    let ip = crate::limit::client(&headers);
+    if !s.limits.password_resets.allow(&ip) {
+        return Err(too_many());
+    }
+    if s.config.accounts.mail.is_none() || crate::invites::site(&s).is_none() {
+        return Err(Error(
+            StatusCode::NOT_IMPLEMENTED,
+            "this server can't send emails: ask the person who runs it to set a new password for you".into(),
+        ));
+    }
+    let login = r.login.trim().to_owned();
+    if login.is_empty() || login.len() > 254 {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    let lang = if r.lang.is_empty() {
+        "en".to_owned()
+    } else {
+        r.lang
+    };
+    tokio::spawn(async move {
+        let (Some(mailer), Some(site)) =
+            (s.config.accounts.mail.as_ref(), crate::invites::site(&s))
+        else {
+            return;
+        };
+        let found = match s.db.accounts_to_reset(&login) {
+            Ok(f) => f,
+            Err(e) => return eprintln!("[account] forgot password: {e}"),
+        };
+        for a in found {
+            let (Some(to), Some(username)) = (a.email.as_deref(), a.username.as_deref()) else {
+                continue;
+            };
+            // One email every 5 minutes per account at most.
+            let token = match s.db.new_reset(&a.id, 300) {
+                Ok(Some(t)) => t,
+                Ok(None) => continue,
+                Err(e) => {
+                    eprintln!("[account] forgot password: {e}");
+                    continue;
+                }
+            };
+            let link = format!("{site}/reset/{token}");
+            let (subject, text, html) = reset_email(&lang, username, &link);
+            match mailer.send(to, "AlwyWatch", &subject, text, html).await {
+                Ok(()) => {
+                    s.db.log(&a.person, "account", "password reset link emailed")
+                }
+                Err(e) => eprintln!("[account] a password reset email failed: {e}"),
+            }
+        }
+    });
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The "forgot password" email: (subject, text, HTML).
+fn reset_email(lang: &str, username: &str, link: &str) -> (String, String, String) {
+    use crate::mail::esc;
+    use i18n::tr_in;
+    let subject = tr_in!(lang, "Set a new AlwyWatch password");
+    let intro = tr_in!(
+        lang,
+        "Someone asked to set a new password for the AlwyWatch account “{username}”.",
+        username = username
+    );
+    let button = tr_in!(lang, "Set a new password");
+    let expiry = tr_in!(
+        lang,
+        "This link works once, for an hour. Devices signed in to the account are signed out."
+    );
+    let ignore = tr_in!(
+        lang,
+        "Not you? Ignore this email: your password stays as it is."
+    );
+    let text = format!("{intro}\n\n{button}: {link}\n\n{expiry}\n{ignore}\n");
+    let html = format!(
+        "<!doctype html><html><body style=\"margin:0;background:#f6f6f8;font-family:system-ui,\
+         -apple-system,Segoe UI,Roboto,sans-serif\"><div style=\"max-width:520px;margin:0 auto;\
+         padding:32px 20px\"><div style=\"background:#fff;border-radius:16px;padding:28px\">\
+         <div style=\"font-size:22px;font-weight:700;margin-bottom:16px\">AlwyWatch</div>\
+         <p style=\"font-size:16px;line-height:1.5;color:#222\">{}</p>\
+         <p style=\"margin:28px 0\"><a href=\"{}\" style=\"background:#7c6cf0;color:#fff;\
+         text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;\
+         display:inline-block\">{}</a></p>\
+         <p style=\"font-size:13px;color:#777;line-height:1.5\">{}<br>{}</p>\
+         <p style=\"font-size:12px;color:#999;word-break:break-all\">{}</p>\
+         </div></div></body></html>",
+        esc(&intro),
+        esc(link),
+        esc(&button),
+        esc(&expiry),
+        esc(&ignore),
+        esc(link),
+    );
+    (subject, text, html)
+}
+
+/// `POST /v1/account/password/reset`: the emailed link's token and a new password. Every
+/// device signed in to the account is signed out.
+pub async fn reset_password(
+    State(s): State<Shared>,
+    headers: HeaderMap,
+    Json(r): Json<ResetRequest>,
+) -> Result<StatusCode, Error> {
+    let ip = crate::limit::client(&headers);
+    if s.limits.account_logins.blocked(&ip) {
+        return Err(too_many());
+    }
+    // Before the link is used: a too-short password doesn't spend it.
+    accounts::check_password(&r.password).map_err(account_err)?;
+    let Some(id) = s.db.take_reset(&r.token).map_err(internal)? else {
+        s.limits.account_logins.hit(&ip);
+        return Err(Error(
+            StatusCode::GONE,
+            "this link was already used or has expired: ask for a new one".into(),
+        ));
+    };
+    let hash = hash_off(&r.password).await?;
+    s.db.set_password(&id, Some(&hash)).map_err(internal)?;
+    s.db.end_other_sessions(&id, None).map_err(internal)?;
+    if let Some(a) = s.db.account(&id).map_err(internal)? {
+        s.db.log(&a.person, "account", "new password from an emailed link");
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `PUT /v1/account/email`: sets or removes where "forgot password" writes (asks for the
+/// password when there is one: whoever holds a session must not be able to take the account
+/// over with a reset sent to them).
+pub async fn set_email(
+    State(s): State<Shared>,
+    headers: HeaderMap,
+    session: Session,
+    Json(r): Json<EmailChange>,
+) -> Result<StatusCode, Error> {
+    let a = &session.account;
+    if let Some(hash) = s.db.password_hash(&a.id).map_err(internal)? {
+        let ip = crate::limit::client(&headers);
+        if s.limits.account_logins.blocked(&ip) {
+            return Err(too_many());
+        }
+        if !verify_off(Some(hash), r.current.as_deref().unwrap_or("")).await {
+            s.limits.account_logins.hit(&ip);
+            return Err(Error(
+                StatusCode::FORBIDDEN,
+                "the current password is wrong".into(),
+            ));
+        }
+    }
+    let email = email_of(r.email.as_deref())?;
+    s.db.set_email(&a.id, email.as_deref()).map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

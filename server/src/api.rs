@@ -106,6 +106,15 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/account/claim", post(account_api::claim))
         .route("/v1/account/session", post(account_api::session_from_media))
         .route("/v1/account/password", put(account_api::set_password))
+        .route(
+            "/v1/account/password/forgot",
+            post(account_api::forgot_password),
+        )
+        .route(
+            "/v1/account/password/reset",
+            post(account_api::reset_password),
+        )
+        .route("/v1/account/email", put(account_api::set_email))
         .route("/v1/account/username", put(account_api::set_username))
         .route(
             "/v1/account/media-sign-in",

@@ -40,7 +40,7 @@ fn jellyfin_target<'a>(
     Some((server, s.config.secrets.jellyfin_key(&server.id)?))
 }
 
-fn site(s: &Shared) -> Option<String> {
+pub(crate) fn site(s: &Shared) -> Option<String> {
     s.config.accounts.rp.as_ref().map(|rp| rp.origin.clone())
 }
 
@@ -372,8 +372,8 @@ pub async fn check(
     Path(code): Path<String>,
 ) -> Result<Json<InviteInfo>, Error> {
     let ip = crate::limit::client(&headers);
-    // Every look counts (a right code also asks Jellyfin which names are free), and on its own
-    // counter: wrong codes don't lock people on the same address out of signing in.
+    // Every look counts, on its own counter: wrong codes don't lock people on the same
+    // address out of signing in.
     if !s.limits.invite_checks.allow(&ip) {
         return Err(Error(
             StatusCode::TOO_MANY_REQUESTS,
@@ -391,10 +391,6 @@ pub async fn check(
         .jellyfin
         .as_deref()
         .and_then(|j| jellyfin_target(&s, j));
-    let suggested = match &i.extra.email {
-        None => None,
-        Some(e) => suggest_username(&s, e, target).await,
-    };
     Ok(Json(InviteInfo {
         inviter: s
             .db
@@ -404,49 +400,8 @@ pub async fn check(
             .unwrap_or_else(|| "AlwyWatch".into()),
         jellyfin: target.map(|(x, _)| x.name.clone()),
         email: i.extra.email,
-        suggested_username: suggested,
         expires: i.expires,
     }))
-}
-
-/// From "jane.doe+tv@example.org": "jane.doe", or "jane.doe2"… when taken (here or on the
-/// Jellyfin server).
-async fn suggest_username(
-    s: &Shared,
-    email: &str,
-    target: Option<(&crate::config::ServerConf, &str)>,
-) -> Option<String> {
-    let local = email.split('@').next()?.split('+').next()?;
-    let base: String = local
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
-        .take(28)
-        .collect::<String>()
-        .to_ascii_lowercase();
-    let base = base.trim_matches(['.', '_', '-']).to_owned();
-    if base.chars().count() < 3 {
-        return None;
-    }
-    let taken_jf: Vec<String> = match target {
-        Some((server, key)) => Jellyfin::new(&s.http, server, key)
-            .users()
-            .await
-            .map(|u| u.into_iter().map(|u| u.name.to_lowercase()).collect())
-            .unwrap_or_default(),
-        None => vec![],
-    };
-    for n in 0..20 {
-        let name = if n == 0 {
-            base.clone()
-        } else {
-            format!("{base}{}", n + 1)
-        };
-        let free_here = s.db.account_by_username(&name).ok().flatten().is_none();
-        if free_here && !taken_jf.contains(&name.to_lowercase()) {
-            return Some(name);
-        }
-    }
-    None
 }
 
 /// For `register`: the Jellyfin login an invitation makes, before the account exists. Returns

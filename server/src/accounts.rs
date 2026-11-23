@@ -130,6 +130,8 @@ pub struct AccountRow {
     /// person still watches, votes and joins rooms, but no longer sets the account's
     /// username or password nor signs new devices in to it.
     pub media_locked: bool,
+    /// Where "forgot password" sends its link.
+    pub email: Option<String>,
 }
 
 fn row_account(r: &rusqlite::Row<'_>) -> rusqlite::Result<AccountRow> {
@@ -140,10 +142,14 @@ fn row_account(r: &rusqlite::Row<'_>) -> rusqlite::Result<AccountRow> {
         has_password: r.get::<_, Option<String>>(3)?.is_some(),
         created: r.get(4)?,
         media_locked: r.get::<_, i64>(5)? != 0,
+        email: r.get(6)?,
     })
 }
 
-const ACCOUNT_COLS: &str = "id, person, username, password, created, media_locked";
+const ACCOUNT_COLS: &str = "id, person, username, password, created, media_locked, email";
+
+/// How long a "forgot password" link works.
+pub const RESET_SECS: i64 = 3600;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionRow {
@@ -215,6 +221,7 @@ impl Db {
             has_password: password_hash.is_some(),
             created: now,
             media_locked: false,
+            email: None,
         })
     }
 
@@ -306,6 +313,71 @@ impl Db {
             params![account, hash],
         )?;
         Ok(())
+    }
+
+    pub fn set_email(&self, account: &str, email: Option<&str>) -> rusqlite::Result<()> {
+        self.c().execute(
+            "UPDATE accounts SET email = ?2 WHERE id = ?1",
+            params![account, email],
+        )?;
+        Ok(())
+    }
+
+    /// "Forgot password": the accounts a username or an email address names that have an
+    /// email to write to (an address can be on a few accounts; at most 5).
+    pub fn accounts_to_reset(&self, login: &str) -> rusqlite::Result<Vec<AccountRow>> {
+        let c = self.c();
+        let mut st = c.prepare(&format!(
+            "SELECT {ACCOUNT_COLS} FROM accounts
+             WHERE email IS NOT NULL AND email != '' AND username IS NOT NULL
+               AND (username = ?1 OR lower(email) = lower(?1))
+             ORDER BY created LIMIT 5"
+        ))?;
+        st.query_map([login], row_account)?.collect()
+    }
+
+    /// A new "forgot password" link's token for `account` (only its hash is stored), ending
+    /// the one before. None when one was made in the last `min_gap` seconds (no flood of
+    /// emails to someone's inbox).
+    pub fn new_reset(&self, account: &str, min_gap: i64) -> rusqlite::Result<Option<String>> {
+        let now = now();
+        let mut c = self.c();
+        let tx = c.transaction()?;
+        tx.execute("DELETE FROM password_resets WHERE expires < ?1", [now])?;
+        let recent: bool = tx.query_row(
+            "SELECT COUNT(*) FROM password_resets WHERE account = ?1 AND created > ?2",
+            params![account, now - min_gap],
+            |r| r.get::<_, i64>(0).map(|n| n > 0),
+        )?;
+        if recent {
+            return Ok(None);
+        }
+        tx.execute("DELETE FROM password_resets WHERE account = ?1", [account])?;
+        let token = new_token();
+        tx.execute(
+            "INSERT INTO password_resets(token_hash, account, created, expires)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![sha256_hex(token.as_bytes()), account, now, now + RESET_SECS],
+        )?;
+        tx.commit()?;
+        Ok(Some(token))
+    }
+
+    /// Uses a "forgot password" token: its account, once, while it is valid.
+    pub fn take_reset(&self, token: &str) -> rusqlite::Result<Option<String>> {
+        let mut c = self.c();
+        let tx = c.transaction()?;
+        let hash = sha256_hex(token.trim().as_bytes());
+        let found: Option<(String, i64)> = tx
+            .query_row(
+                "SELECT account, expires FROM password_resets WHERE token_hash = ?1",
+                [&hash],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        tx.execute("DELETE FROM password_resets WHERE token_hash = ?1", [&hash])?;
+        tx.commit()?;
+        Ok(found.filter(|(_, exp)| *exp >= now()).map(|(a, _)| a))
     }
 
     pub fn set_media_locked(&self, account: &str, locked: bool) -> rusqlite::Result<()> {

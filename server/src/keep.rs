@@ -97,6 +97,8 @@ pub struct Limits {
     pub claims: crate::limit::Limiter,
     /// Passkey and Pocket ID sign-ins started, per client address.
     pub flow_starts: crate::limit::Limiter,
+    /// "Forgot password" requests, per address.
+    pub password_resets: crate::limit::Limiter,
 }
 
 impl Default for Limits {
@@ -121,6 +123,7 @@ impl Default for Limits {
             settings_tests: Limiter::new(60, min(60)),
             claims: Limiter::new(10, min(10)),
             flow_starts: Limiter::new(30, min(10)),
+            password_resets: Limiter::new(10, min(60)),
         }
     }
 }

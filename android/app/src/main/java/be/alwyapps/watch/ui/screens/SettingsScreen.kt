@@ -381,6 +381,18 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
                 },
             )
         }
+        // Logins linked to the AlwyWatch account but not signed in on this device: a way to.
+        androidx.compose.runtime.LaunchedEffect(Unit) { if (hasAlwyWatch(core)) Identity.refreshLinks(core) }
+        Identity.links.orEmpty().filter { l -> accounts.none { it.serverId == l.serverId } }.forEach { l ->
+            Divider()
+            ListRow(
+                tr("{name} on {server}", "name" to l.mediaName, "server" to l.serverName),
+                subtitle = tr("Linked to your account, not signed in on this device"),
+                icon = Icons.Add,
+                onClick = { nav.push(Route.AddServer) },
+                trailing = { Value(tr("Sign in")) },
+            )
+        }
         Divider()
         ListRow(tr("Add a server"), icon = Icons.Add, onClick = { nav.push(Route.AddServer) }, trailing = { Chevron() })
     }

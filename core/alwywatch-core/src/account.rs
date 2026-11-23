@@ -206,9 +206,8 @@ pub struct InviteInfo {
     pub inviter: String,
     /// The Jellyfin server the account also gets a login on (its name).
     pub jellyfin: Option<String>,
+    /// Who it was sent to: offered as the account's email (for "forgot password").
     pub email: Option<String>,
-    /// A username to offer, free on AlwyWatch and Jellyfin.
-    pub suggested_username: Option<String>,
     /// Unix seconds.
     pub expires: i64,
 }
@@ -332,6 +331,7 @@ impl AlwyWatch {
         username: String,
         password: String,
         invite: Option<String>,
+        email: Option<String>,
         device: String,
     ) -> Result<AccountSignedIn> {
         let pw = password.clone();
@@ -347,6 +347,7 @@ impl AlwyWatch {
                         invite: invite
                             .map(|i| i.trim().to_owned())
                             .filter(|i| !i.is_empty()),
+                        email: email.map(|e| e.trim().to_owned()).filter(|e| !e.is_empty()),
                         device,
                     },
                 )
@@ -457,6 +458,26 @@ impl AlwyWatch {
         .await
     }
 
+    /// "Forgot password" on the AlwyWatch server at `url`: emails a link to set a new one to
+    /// the account `login` (username or email) names, if it has an email. The answer is the
+    /// same whether or not one does; an error only when the server can't send emails.
+    pub async fn account_forgot_password(&self, url: String, login: String) -> Result<()> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            KeepClient::password_forgot(
+                &c.http,
+                &base,
+                &account::ForgotRequest {
+                    login: login.trim().to_owned(),
+                    lang: i18n::language().to_owned(),
+                },
+            )
+            .await
+            .map_err(|e| explain(e, false))
+        })
+        .await
+    }
+
     /// Before signing up with an invitation `code` on the AlwyWatch server at `url` (no
     /// sign-in): who invited, and whether it also makes a Jellyfin login. An `Invalid` error
     /// saying so when the code is unknown, used or expired.
@@ -470,7 +491,6 @@ impl AlwyWatch {
                 inviter: i.inviter,
                 jellyfin: i.jellyfin,
                 email: i.email,
-                suggested_username: i.suggested_username,
                 expires: i.expires,
             })
         })

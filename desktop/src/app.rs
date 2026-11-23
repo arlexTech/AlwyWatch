@@ -4533,6 +4533,35 @@ impl App {
         .ok();
     }
 
+    /// "Forgot password?": asks the server to email a link (the web page sets the new one).
+    fn account_forgot(self: &Rc<Self>, url: String, login: String) {
+        let ui = self.ui();
+        ui.set_transfer_status(SharedString::new());
+        ui.set_account_info(SharedString::new());
+        if login.trim().is_empty() {
+            ui.set_transfer_status(sstr(tr!(
+                "Type your username or email first, then choose “Forgot password?”."
+            )));
+            return;
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let url = match normalize_server_url(url) {
+                Ok(u) => u,
+                Err(e) => return report(&this, e),
+            };
+            let r = core.account_forgot_password(url, login).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(()) => t.ui().set_account_info(sstr(tr!(
+                    "If this account has an email address, a link to set a new password is on its way. It works for an hour."
+                ))),
+                Err(e) => t.ui().set_transfer_status(sstr(e.to_string())),
+            }
+        })
+        .ok();
+    }
+
     /// Settings: the AlwyWatch account row.
     fn refresh_account_settings(&self) {
         self.ui().set_alwy_account(sstr(
@@ -4627,8 +4656,12 @@ impl App {
                 Err(e) => return report(&this, e),
             };
             let invite = Some(invites::invite_code(&invite)).filter(|i| !i.is_empty());
+            let email = this
+                .upgrade()
+                .map(|t| t.ui().get_create_email().trim().to_owned())
+                .filter(|e| !e.is_empty());
             let r = core
-                .account_register(url.clone(), user, pass, invite, crate::hostname())
+                .account_register(url.clone(), user, pass, invite, email, crate::hostname())
                 .await;
             let Some(t) = this.upgrade() else { return };
             match r {
@@ -5350,6 +5383,8 @@ impl App {
         });
         on!(on_seerr_request, |a, all| a.seerr_request(all));
         on!(on_transfer_receive, |a, url| a.transfer_receive(url.into()));
+        on!(on_account_forgot, |a, url, login| a
+            .account_forgot(url.into(), login.into()));
         on!(on_account_login, |a, url, u, p| a.account_login(
             url.into(),
             u.into(),

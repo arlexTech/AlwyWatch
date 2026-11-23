@@ -625,6 +625,47 @@ impl KeepClient {
         Ok(())
     }
 
+    /// Account session: sets or removes (None) the email "forgot password" writes to.
+    /// `current`: the password, when the account has one.
+    pub async fn account_set_email(
+        &self,
+        email: Option<&str>,
+        current: Option<&str>,
+    ) -> Result<()> {
+        net::send(
+            self.req(Method::PUT, "/account/email")
+                .json(&account::EmailChange {
+                    email: email.map(str::to_owned),
+                    current: current.map(str::to_owned),
+                }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Public: "forgot password": emails a link to the account's address, if any (always
+    /// answered the same).
+    pub async fn password_forgot(
+        http: &Client,
+        base_url: &str,
+        r: &account::ForgotRequest,
+    ) -> Result<()> {
+        net::send(Self::public(http, Method::POST, base_url, "/account/password/forgot").json(r))
+            .await?;
+        Ok(())
+    }
+
+    /// Public: sets a new password with the emailed link's token.
+    pub async fn password_reset(
+        http: &Client,
+        base_url: &str,
+        r: &account::ResetRequest,
+    ) -> Result<()> {
+        net::send(Self::public(http, Method::POST, base_url, "/account/password/reset").json(r))
+            .await?;
+        Ok(())
+    }
+
     /// Account session: signs one of my devices out.
     pub async fn account_end_session(&self, id: &str) -> Result<()> {
         net::send(self.req(

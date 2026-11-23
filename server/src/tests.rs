@@ -3150,7 +3150,7 @@ async fn accounts_sign_up_with_an_invitation_and_sign_in() {
     assert_eq!(st, StatusCode::OK);
     assert_eq!(
         o,
-        json!({"registration": "invite", "passkeys": true, "pocketid": true})
+        json!({"registration": "invite", "passkeys": true, "pocketid": true, "password_reset": false})
     );
 
     // No invitation: refused. Only admins make invitations.
@@ -4213,4 +4213,120 @@ async fn a_media_sign_in_opens_its_account_in_a_browser() {
         )
         .await;
     assert_eq!(st, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn a_forgotten_password_is_set_again_with_an_emailed_link_once() {
+    let e = env().await;
+    let token = e.sign_up("dana").await;
+    // An email is set with the password, and shown on the account.
+    let (st, _, _) = e
+        .anon(
+            "PUT",
+            "/v1/account/email",
+            Some(&token),
+            Some(json!({"email": "dana@example.org", "current": "wrong"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, _, _) = e
+        .anon(
+            "PUT",
+            "/v1/account/email",
+            Some(&token),
+            Some(json!({"email": "not an address", "current": "password1"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+    let (st, _, _) = e
+        .anon(
+            "PUT",
+            "/v1/account/email",
+            Some(&token),
+            Some(json!({"email": " Dana@Example.org ", "current": "password1"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (_, _, me) = e.anon("GET", "/v1/account", Some(&token), None).await;
+    assert_eq!(me["email"], "Dana@Example.org");
+    // Found by username or (any case) email.
+    let db = &e.state.db;
+    assert_eq!(db.accounts_to_reset("dana@example.org").unwrap().len(), 1);
+    assert_eq!(db.accounts_to_reset("DANA").unwrap().len(), 1);
+    assert!(db.accounts_to_reset("nobody").unwrap().is_empty());
+    let id = me["id"].as_str().unwrap().to_owned();
+    // Without email set up, asking is refused plainly.
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/password/forgot",
+            None,
+            Some(json!({"login": "dana"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NOT_IMPLEMENTED);
+    // The link (as the email would carry it); a second one right after is not made.
+    let link = db.new_reset(&id, 300).unwrap().unwrap();
+    assert!(db.new_reset(&id, 300).unwrap().is_none());
+    let reset = async |token: &str, password: &str| {
+        e.anon(
+            "POST",
+            "/v1/account/password/reset",
+            None,
+            Some(json!({"token": token, "password": password})),
+        )
+        .await
+        .0
+    };
+    // Too short: refused without spending the link.
+    assert_eq!(reset(&link, "short").await, StatusCode::BAD_REQUEST);
+    assert_eq!(reset(&link, "new-password").await, StatusCode::NO_CONTENT);
+    assert_eq!(reset(&link, "other-password").await, StatusCode::GONE);
+    // Signed out everywhere; the new password works.
+    let (st, _, _) = e.anon("GET", "/v1/account", Some(&token), None).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/login",
+            None,
+            Some(json!({"username": "dana", "password": "new-password"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn an_invitation_offers_its_email_and_no_username() {
+    let e = env().await;
+    let (_, inv) = e
+        .call(
+            "POST",
+            "/v1/account/invites",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({})),
+        )
+        .await;
+    let code = inv["code"].as_str().unwrap();
+    let (st, _, info) = e
+        .anon(
+            "GET",
+            &format!("/v1/account/invites/check/{code}"),
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{info}");
+    assert!(info.get("suggested_username").is_none());
+    let (st, _, r) = e
+        .anon(
+            "POST",
+            "/v1/account/register",
+            None,
+            Some(json!({"username": "erin", "password": "password1", "invite": code, "email": "erin@example.org"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(r["account"]["email"], "erin@example.org");
 }

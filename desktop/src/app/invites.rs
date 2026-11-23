@@ -346,10 +346,12 @@ impl App {
                                 })
                                 .unwrap_or_default(),
                         ));
-                        if let Some(name) = i.suggested_username
-                            && ui.get_create_username().trim().is_empty()
+                        // The invitation's address, for "forgot password" (the username is
+                        // theirs to choose).
+                        if let Some(email) = i.email
+                            && ui.get_create_email().trim().is_empty()
                         {
-                            ui.set_create_username(sstr(name));
+                            ui.set_create_email(sstr(email));
                         }
                     }
                     Err(e) => {

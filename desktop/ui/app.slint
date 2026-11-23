@@ -1555,6 +1555,11 @@ export component AppWindow inherits Window {
     in property <string> create-invite-note;
     in property <bool> create-invite-bad;
     in-out property <string> create-username;
+    // Prefilled from the invitation: where "forgot password" sends its link.
+    in-out property <string> create-email;
+    // "Forgot password?": what happened (not an error).
+    in property <string> account-info;
+    callback account-forgot(string, string); // AlwyWatch server address, username or email
     callback create-invite-edited(string, string); // address, code
     callback create-check(string); // AlwyWatch server address
     callback account-create(string, string, string, string, string); // address, invitation, username, password, again
@@ -2135,7 +2140,7 @@ export component AppWindow inherits Window {
                                 }
                                 if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
                                     title: @tr("Create an AlwyWatch account");
-                                    subtitle: @tr("You have an invitation.");
+                                    subtitle: @tr("If someone invited you");
                                     icon: @image-url("icons/add.svg");
                                     clicked => { root.add-choose("create"); }
                                 }
@@ -2177,6 +2182,7 @@ export component AppWindow inherits Window {
                                     if root.create-invite-from != "" : Text { text: root.create-invite-from; color: Palette.text; font-size: 17px; font-weight: 700; wrap: word-wrap; }
                                     if root.create-invite-note != "" : Text { text: root.create-invite-note; color: root.create-invite-bad ? Palette.danger : Palette.muted; wrap: word-wrap; }
                                     cuser := Field { placeholder: @tr("Username"); text <=> root.create-username; }
+                                    Field { placeholder: @tr("Email (to reset a forgotten password)"); text <=> root.create-email; }
                                     cpass := Field { placeholder: @tr("Password"); input-type: password; }
                                     cpass2 := Field {
                                         placeholder: @tr("Password again");
@@ -2224,7 +2230,13 @@ export component AppWindow inherits Window {
                                         input-type: password;
                                         accepted => { root.account-login(root.keep-address, auser.text, apass.text); }
                                     }
-                                    HorizontalLayout { alignment: start; Button { label: @tr("Sign in"); primary: true; clicked => { root.account-login(root.keep-address, auser.text, apass.text); } } }
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        spacing: 10px;
+                                        Button { label: @tr("Sign in"); primary: true; clicked => { root.account-login(root.keep-address, auser.text, apass.text); } }
+                                        Button { label: @tr("Forgot password?"); clicked => { root.account-forgot(root.keep-address, auser.text); } }
+                                    }
+                                    if root.account-info != "" : Text { text: root.account-info; color: Palette.text; wrap: word-wrap; }
                                     Text { text: @tr("No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone."); color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                                     if root.transfer-status != "" : Text { text: root.transfer-status; color: Palette.danger; wrap: word-wrap; }
                                 }

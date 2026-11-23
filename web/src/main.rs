@@ -142,6 +142,8 @@ fn App() -> impl IntoView {
                 <Route path=path!("/join") view=|| view! { <Shell><account::Join /></Shell> } />
                 <Route path=path!("/join/:code") view=|| view! { <Shell><account::Join /></Shell> } />
                 <Route path=path!("/q/:code") view=|| view! { <Shell><account::Approve /></Shell> } />
+                <Route path=path!("/forgot") view=|| view! { <Shell><account::Forgot /></Shell> } />
+                <Route path=path!("/reset/:token") view=|| view! { <Shell><account::Reset /></Shell> } />
             </Routes>
         </Router>
         </Show>
@@ -165,8 +167,9 @@ fn MovedTo(to: &'static str) -> impl IntoView {
 fn open_page(path: &str) -> bool {
     matches!(
         path,
-        "/signin" | "/settings" | "/account" | "/account/signed-in" | "/join"
+        "/signin" | "/settings" | "/account" | "/account/signed-in" | "/join" | "/forgot"
     ) || path.starts_with("/settings/")
+        || path.starts_with("/reset/")
         || path.starts_with("/join/")
         || path.starts_with("/q/")
 }

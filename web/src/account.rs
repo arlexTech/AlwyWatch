@@ -222,6 +222,9 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
                     }
                 }}
             </div>
+            {move || options.get().flatten().filter(|o| o.password_reset).map(|_| view! {
+                <p class="muted small"><A href="/forgot">{tr!("Forgot password?")}</A></p>
+            })}
             {move || options.get().flatten().filter(|o| o.registration != "closed").map(|_| view! {
                 <p class="muted small">{tr!("No account yet?")}" "<A href="/join">{tr!("Create one with an invitation")}</A></p>
             })}
@@ -276,9 +279,12 @@ fn JoinForm(invite: Option<(String, account::InviteInfo)>) -> impl IntoView {
     let jellyfin = info.as_ref().and_then(|i| i.jellyfin.clone());
     let inviter = info.as_ref().map(|i| i.inviter.clone());
     let code = RwSignal::new(invite.as_ref().map(|(c, _)| c.clone()).unwrap_or_default());
-    let user = RwSignal::new(
+    // The username is theirs to choose; the invitation's address is offered for "forgot
+    // password".
+    let user = RwSignal::new(String::new());
+    let email = RwSignal::new(
         info.as_ref()
-            .and_then(|i| i.suggested_username.clone())
+            .and_then(|i| i.email.clone())
             .unwrap_or_default(),
     );
     let pass = RwSignal::new(String::new());
@@ -306,6 +312,7 @@ fn JoinForm(invite: Option<(String, account::InviteInfo)>) -> impl IntoView {
                     username: user.get_untracked().trim().to_owned(),
                     password: password.clone(),
                     invite: (!invite.is_empty()).then_some(invite),
+                    email: Some(email.get_untracked().trim().to_owned()).filter(|e| !e.is_empty()),
                     device: DEVICE.into(),
                 },
             )
@@ -371,6 +378,8 @@ fn JoinForm(invite: Option<(String, account::InviteInfo)>) -> impl IntoView {
                     prop:value=move || pass.get() on:input=move |ev| pass.set(event_target_value(&ev)) /></label>
                 <label>{tr!("Password again")}<input type="password" autocomplete="new-password" minlength="8"
                     prop:value=move || pass2.get() on:input=move |ev| pass2.set(event_target_value(&ev)) /></label>
+                <label>{tr!("Email (to reset a forgotten password)")}<input type="email" autocomplete="email" autocapitalize="off" spellcheck="false"
+                    prop:value=move || email.get() on:input=move |ev| email.set(event_target_value(&ev)) /></label>
                 {jellyfin.map(|server| view! {
                     <p class="muted small">{tr!("This username and password will also be your {server} (Jellyfin) login.", server = server)}</p>
                 })}
@@ -669,6 +678,7 @@ pub fn PasswordAndPasskeys() -> impl IntoView {
             let o = options.get().flatten();
             view! {
                 <Password info=i.clone() page=page />
+                <Email info=i.clone() page=page />
                 <MediaSignIn info=i.clone() page=page />
                 <section class="group">
                     <h2>{tr!("Passkeys")}</h2>
@@ -868,6 +878,176 @@ fn Password(info: AccountView, page: Page) -> impl IntoView {
                     <button on:click=move |_| open.set(true)>{if has { tr!("Change") } else { tr!("Set a password") }}</button></div> }.into_any()
             }}
         </section>
+    }
+}
+
+/// Where "forgot password" sends its link. Changing it asks for the password (when there is
+/// one): a borrowed session must not be enough to take the account.
+#[component]
+fn Email(info: AccountView, page: Page) -> impl IntoView {
+    let c = state::ctx();
+    let open = RwSignal::new(false);
+    let current = RwSignal::new(String::new());
+    let email = RwSignal::new(info.email.clone().unwrap_or_default());
+    let has = info.has_password;
+    let shown = info.email.clone();
+    let submit = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let c = c.clone();
+        let (cur, e) = (current.get_untracked(), email.get_untracked());
+        page.run(
+            Box::pin(async move {
+                let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
+                let e = e.trim();
+                k.account_set_email((!e.is_empty()).then_some(e), has.then_some(cur.as_str()))
+                    .await
+                    .map_err(|e| match e {
+                        net::Error::Status { status: 403 } => tr!("The current password is wrong."),
+                        e => account::explain(&e, false),
+                    })
+            }),
+            tr!("Email saved."),
+        );
+        open.set(false);
+    };
+    view! {
+        <section class="group">
+            <h2>{tr!("Email")}</h2>
+            {move || if open.get() {
+                view! {
+                    <form class="form" on:submit=submit.clone()>
+                        <label>{tr!("Email")}<input type="email" autocomplete="email" autocapitalize="off" spellcheck="false"
+                            prop:value=move || email.get() on:input=move |ev| email.set(event_target_value(&ev)) /></label>
+                        {has.then(|| view! { <label>{tr!("Current password")}<input type="password" autocomplete="current-password"
+                            prop:value=move || current.get() on:input=move |ev| current.set(event_target_value(&ev)) /></label> })}
+                        <div class="actions"><button class="primary" type="submit">{tr!("Save")}</button>
+                            <button type="button" on:click=move |_| open.set(false)>{tr!("Cancel")}</button></div>
+                    </form>
+                }.into_any()
+            } else {
+                let shown = shown.clone();
+                view! { <div class="row"><div class="muted">{shown.clone().unwrap_or_else(|| tr!("None: a forgotten password can't be reset by email."))}</div>
+                    <button on:click=move |_| open.set(true)>{if shown.is_some() { tr!("Change") } else { tr!("Add an email") }}</button></div> }.into_any()
+            }}
+        </section>
+    }
+}
+
+/// `/forgot`: emails a link to set a new password.
+#[component]
+pub fn Forgot() -> impl IntoView {
+    let c = state::ctx();
+    let login = RwSignal::new(String::new());
+    let error = RwSignal::new(None::<String>);
+    let sent = RwSignal::new(false);
+    let busy = RwSignal::new(false);
+    let submit = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let c = c.clone();
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            let r = KeepClient::password_forgot(
+                &c.http,
+                &Ctx::origin(),
+                &account::ForgotRequest {
+                    login: login.get_untracked().trim().to_owned(),
+                    lang: i18n::language().to_owned(),
+                },
+            )
+            .await;
+            busy.set(false);
+            match r {
+                Ok(()) => sent.set(true),
+                Err(net::Error::Status { status: 501 }) => error.set(Some(tr!(
+                    "This server can't send emails. Ask the person who runs it to set a new password for you."
+                ))),
+                Err(e) => error.set(Some(account::explain(&e, false))),
+            }
+        });
+    };
+    view! {
+        <h1>{tr!("Forgot password")}</h1>
+        {move || if sent.get() {
+            view! {
+                <p>{tr!("If this account has an email address, a link to set a new password is on its way. It works for an hour.")}</p>
+                <p class="muted small">{tr!("Nothing after a few minutes? Check your spam folder, or ask the person who runs your server.")}</p>
+                <p><A href="/signin?step=signin" attr:class="button">{tr!("Back to sign in")}</A></p>
+            }.into_any()
+        } else {
+            view! {
+                <form class="form" on:submit=submit.clone()>
+                    <p class="muted">{tr!("Type your username or the email address of your AlwyWatch account.")}</p>
+                    <label>{tr!("Username or email")}<input autocomplete="username" autocapitalize="off" spellcheck="false" required
+                        prop:value=move || login.get() on:input=move |ev| login.set(event_target_value(&ev)) /></label>
+                    <div class="actions"><button class="primary" type="submit" disabled=move || busy.get()>{tr!("Send me a link")}</button></div>
+                    {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+                </form>
+            }.into_any()
+        }}
+    }
+}
+
+/// `/reset/:token`: the emailed link: a new password, then signing in with it.
+#[component]
+pub fn Reset() -> impl IntoView {
+    let c = state::ctx();
+    let token = use_params_map()
+        .with_untracked(|p| p.get("token"))
+        .unwrap_or_default();
+    let pass = RwSignal::new(String::new());
+    let pass2 = RwSignal::new(String::new());
+    let error = RwSignal::new(None::<String>);
+    let done = RwSignal::new(false);
+    let busy = RwSignal::new(false);
+    let submit = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        if pass.get_untracked() != pass2.get_untracked() {
+            return error.set(Some(tr!("The two passwords differ.")));
+        }
+        let (c, token) = (c.clone(), token.clone());
+        busy.set(true);
+        error.set(None);
+        spawn_local(async move {
+            let r = KeepClient::password_reset(
+                &c.http,
+                &Ctx::origin(),
+                &account::ResetRequest {
+                    token,
+                    password: pass.get_untracked(),
+                },
+            )
+            .await;
+            busy.set(false);
+            match r {
+                Ok(()) => done.set(true),
+                Err(net::Error::Status { status: 410 }) => error.set(Some(tr!(
+                    "This link was already used or has expired. Ask for a new one."
+                ))),
+                Err(e) => error.set(Some(account::explain(&e, false))),
+            }
+        });
+    };
+    view! {
+        <h1>{tr!("Set a new password")}</h1>
+        {move || if done.get() {
+            view! {
+                <p>{tr!("Your new password is set. Devices signed in to your account were signed out: sign in again with it.")}</p>
+                <p><A href="/signin?step=signin" attr:class="button primary">{tr!("Sign in")}</A></p>
+            }.into_any()
+        } else {
+            view! {
+                <form class="form" on:submit=submit.clone()>
+                    <label>{tr!("New password")}<input type="password" autocomplete="new-password" minlength="8" required
+                        prop:value=move || pass.get() on:input=move |ev| pass.set(event_target_value(&ev)) /></label>
+                    <label>{tr!("Password again")}<input type="password" autocomplete="new-password" minlength="8" required
+                        prop:value=move || pass2.get() on:input=move |ev| pass2.set(event_target_value(&ev)) /></label>
+                    <div class="actions"><button class="primary" type="submit" disabled=move || busy.get()>{tr!("Save")}</button></div>
+                    {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+                    <p class="muted small"><A href="/forgot">{tr!("Ask for a new link")}</A></p>
+                </form>
+            }.into_any()
+        }}
     }
 }
 

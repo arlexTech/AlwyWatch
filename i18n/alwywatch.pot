@@ -280,13 +280,13 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt:189
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:592
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:604
 msgid "Are you still watching?"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt:193
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt:524
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:481
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:499
 msgid "Continue"
 msgstr ""
 
@@ -569,7 +569,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt:351
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:533
-#: desktop/ui/app.slint:1940
+#: desktop/ui/app.slint:1945
 msgid "Add to my list"
 msgstr ""
 
@@ -595,7 +595,7 @@ msgid "Watched"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt:748
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:255
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:256
 #: desktop/ui/app.slint:1024
 msgid "See all"
 msgstr ""
@@ -626,8 +626,8 @@ msgid "Cancel"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/I18n.kt:13
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:409
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:555
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:410
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:573
 msgid "Sign in"
 msgstr ""
 
@@ -648,8 +648,8 @@ msgid "Delete"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Scaffold.kt:107
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:388
-#: web/src/main.rs:191
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:400
+#: web/src/main.rs:194
 msgid "Home"
 msgstr ""
 
@@ -671,7 +671,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Scaffold.kt:123
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:565
-#: web/src/main.rs:195
+#: web/src/main.rs:198
 msgid "Together"
 msgstr ""
 
@@ -716,7 +716,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt:206
 #: web/src/profile.rs:629
-#: desktop/ui/app.slint:3539
+#: desktop/ui/app.slint:3551
 msgid "Upload a picture"
 msgstr ""
 
@@ -747,7 +747,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt:306
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:289
-#: web/src/account.rs:1059
+#: web/src/account.rs:1235
 msgid "How others see you"
 msgstr ""
 
@@ -768,7 +768,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt:322
 #: web/src/profile.rs:828
-#: desktop/ui/app.slint:2936
+#: desktop/ui/app.slint:2948
 msgid "Change picture"
 msgstr ""
 
@@ -827,7 +827,7 @@ msgid "Opening…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:279
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:385
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:397
 #: web/src/signin.rs:179
 msgid "Add a server"
 msgstr ""
@@ -840,44 +840,40 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:284
 #: web/src/signin.rs:170
-#: desktop/ui/app.slint:2109
+#: desktop/ui/app.slint:2114
 msgid "Welcome to AlwyWatch"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:285
-#: desktop/ui/app.slint:2110
+#: desktop/ui/app.slint:2115
 msgid "Your Jellyfin and Plex, fast and beautiful."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:289
-msgid "{name} · switch profile"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:289
-msgid "Profile"
+msgid "Use another profile"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:302
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:303
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:932
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:961
 msgid "Create an AlwyWatch account"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:302
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:925
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:954
 #: web/src/signin.rs:131
 msgid "Sign in to AlwyWatch"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:304
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:738
-#: desktop/ui/app.slint:2120
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:756
+#: desktop/ui/app.slint:2125
 msgid "Sign in with a code"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:305
 #: web/src/account.rs:207
-#: desktop/ui/app.slint:2121
+#: desktop/ui/app.slint:2126
 msgid "AlwyWatch account"
 msgstr ""
 
@@ -887,341 +883,364 @@ msgid "Your servers"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:307
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:938
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:967
 #: web/src/signin.rs:139
 msgid "Jellyfin or Plex only"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:345
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:454
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:976
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:472
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1005
 msgid "Quick Connect or password"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:346
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:455
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:981
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:473
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1010
 msgid "Sign in on plex.tv"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:388
-#: desktop/ui/app.slint:2220
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:389
+#: desktop/ui/app.slint:2226
 msgid "Your AlwyWatch account keeps your profile, settings and server list. To watch, you then sign in to your server."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:395
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:541
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:867
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:396
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:559
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:888
 msgid "Username"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:402
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:548
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:874
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:403
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:566
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:895
 msgid "Password"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:409
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:555
-#: web/src/account.rs:456
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:410
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:573
+#: web/src/account.rs:461
 msgid "Signing in…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:411
+#: web/src/account.rs:226
+#: desktop/ui/app.slint:2237
+msgid "Forgot password?"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:414
+#: desktop/src/app.rs:4542
+msgid "Type your username or email first, then choose “Forgot password?”."
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:424
+#: desktop/src/app.rs:4556
+#: web/src/account.rs:969
+msgid "If this account has an email address, a link to set a new password is on its way. It works for an hour."
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:429
 msgid "I don't have a password"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:416
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:434
 msgid "Sign in with your Jellyfin or Plex login instead, or with a code approved on your phone (passkey, Pocket ID)."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:427
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:445
 #: desktop/src/app.rs:4489
 msgid "Signed in as {name}. Now sign in to the server you watch on."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:428
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:446
 msgid "Signed in as you. Now sign in to the server you watch on."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:434
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:452
 msgid "{kind} · from your other devices"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:446
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:972
-#: desktop/ui/app.slint:2094
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:464
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1001
+#: desktop/ui/app.slint:2099
 msgid "Another server"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:446
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:464
 msgid "Jellyfin or Plex by its address"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:473
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:491
 msgid "Server address"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:480
-#: desktop/ui/app.slint:2270
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:498
+#: desktop/ui/app.slint:2282
 msgid "Your Jellyfin server's address, as you use it in a browser."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:481
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:720
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:815
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:499
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:738
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:835
 msgid "Checking…"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:495
-#: desktop/ui/app.slint:2284
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:513
+#: desktop/ui/app.slint:2296
 msgid "QUICK CONNECT"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:508
-#: desktop/ui/app.slint:2286
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:526
+#: desktop/ui/app.slint:2298
 msgid "In a Jellyfin app where you're signed in, open your profile → Quick Connect and enter this code."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:512
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:530
 msgid "Waiting for approval…"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:534
-#: desktop/ui/app.slint:2289
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:552
+#: desktop/ui/app.slint:2301
 msgid "Or with your password"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:612
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:630
 msgid "Sign in on plex.tv in your browser, then come back here."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:613
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:631
 msgid "Open plex.tv"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:614
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:632
 msgid "Or, on any device"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:616
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:634
 msgid "PLEX.TV/LINK"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:618
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:636
 msgid "Go to plex.tv/link and enter this code."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:619
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:637
 #: web/src/setup.rs:257
 #: web/src/signin.rs:426
 msgid "Waiting for Plex…"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:629
-#: desktop/ui/app.slint:2313
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:647
+#: desktop/ui/app.slint:2325
 msgid "Choose a server"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:630
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:648
 msgid "This Plex account has no servers."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:634
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:652
 msgid "Your server"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:634
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:652
 msgid "Shared with you"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:700
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:718
 msgid "Type the AlwyWatch address the person who runs your server gave you with your invitation."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:702
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:720
 msgid "Type the AlwyWatch address the person who runs your server gave you."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:726
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:744
 msgid "AlwyWatch found"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:728
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:746
 msgid "AlwyWatch found · {servers}"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:739
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:757
 msgid "Scan a QR code with your phone, or approve on a device where you're signed in"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:745
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:763
 msgid "With your Jellyfin or Plex login"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:748
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:766
 msgid "Or"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:751
-#: desktop/ui/app.slint:2213
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:769
+#: desktop/ui/app.slint:2219
 msgid "Username and password"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:752
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:770
 msgid "Your AlwyWatch account's"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:757
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:775
 msgid "Passkey or Pocket ID? Choose “Sign in with a code” and approve it on your phone."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:817
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:837
 msgid "This AlwyWatch server doesn't take new accounts. Ask the person who runs it."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:840
-#: web/src/account.rs:387
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:861
+#: web/src/account.rs:392
 msgid "{name} invited you"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:843
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:864
 #: desktop/src/app/invites.rs:342
-#: web/src/account.rs:375
+#: web/src/account.rs:380
 msgid "This username and password will also be your {server} (Jellyfin) login."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:844
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:865
 msgid "Your AlwyWatch account keeps your name, settings and server list. To watch, you then add your Jellyfin or Plex login."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:852
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:873
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:503
-#: web/src/account.rs:365
+#: web/src/account.rs:368
 msgid "Invitation code"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:858
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:879
 msgid "{problem} Ask the person who invited you for a new one."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:881
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:904
+#: web/src/account.rs:377
+#: desktop/ui/app.slint:2185
+msgid "Email (to reset a forgotten password)"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:910
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:474
-#: desktop/ui/app.slint:3379
+#: desktop/ui/app.slint:3391
 msgid "Creating…"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:881
-#: web/src/account.rs:378
-#: desktop/ui/app.slint:2186
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:910
+#: web/src/account.rs:383
+#: desktop/ui/app.slint:2192
 msgid "Create the account"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:884
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:913
 msgid "Prefer a passkey or Pocket ID? Create the account on {address}, then come back and choose “Sign in with a code”."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:907
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:936
 msgid "Use your login {name}"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:908
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:937
 #: desktop/src/app.rs:4202
 msgid "Plex · sign in on plex.tv"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:909
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:938
 #: desktop/src/app.rs:4203
 msgid "Jellyfin · Quick Connect or password"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:926
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:955
 #: web/src/signin.rs:132
 msgid "Your name, settings and servers come with you"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:933
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:962
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:335
 #: web/src/signin.rs:136
-msgid "You have an invitation"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:939
-msgid "No account: nothing synced, no Leaving soon or watch together"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:966
-msgid "Checking your AlwyWatch server…"
+msgid "If someone invited you"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:968
-#: desktop/ui/app.slint:2084
+msgid "No account: nothing synced, no Leaving soon or watch together"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:995
+msgid "Checking your AlwyWatch server…"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:997
+#: desktop/ui/app.slint:2089
 msgid "From your AlwyWatch server"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1032
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1061
 msgid "Wrong PIN."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1040
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1069
 msgid "Which Plex user?"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1044
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1073
 msgid "Account owner"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1044
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1073
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:172
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:312
 msgid "PIN"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1060
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1089
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:229
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:478
 msgid "PIN for {name}"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1130
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1159
 msgid "Sign in to Plex again to switch user."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1148
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1177
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:377
 msgid "Switch Plex user"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1148
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1177
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:491
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:356
 msgid "{name} on {server}"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1151
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1180
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:379
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:106
 msgid "Loading…"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1152
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1181
 msgid "This Plex account has no other users (it is not a Plex Home)."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1160
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:1189
 msgid "This user has no access to {server}."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:112
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:579
-#: desktop/src/app.rs:5689
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:591
+#: desktop/src/app.rs:5724
 msgid "{n} minute"
 msgid_plural "{n} minutes"
 msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:113
-#: desktop/src/app.rs:5691
+#: desktop/src/app.rs:5726
 msgid "{n} hour"
 msgid_plural "{n} hours"
 msgstr[0] ""
@@ -1229,14 +1248,14 @@ msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:114
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:461
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:122
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:123
 msgid "{n} day"
 msgid_plural "{n} days"
 msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:165
-#: desktop/src/app.rs:5707
+#: desktop/src/app.rs:5742
 #: web/src/keep.rs:964
 msgid "Maintainerr {version} · read {time} ago · {n} title leaving"
 msgid_plural "Maintainerr {version} · read {time} ago · {n} titles leaving"
@@ -1265,7 +1284,6 @@ msgid "People"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:74
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:757
 msgid "What each person may keep, and whose request-site user they request as"
 msgstr ""
 
@@ -1280,13 +1298,13 @@ msgid "Invite someone by email or with a link, also to Jellyfin"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:88
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:220
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:338
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:221
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:339
 msgid "Leaving soon"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:90
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:760
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:773
 #: web/src/keep.rs:880
 msgid "Leaving soon countdown"
 msgstr ""
@@ -1302,7 +1320,7 @@ msgid "Kept forever"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:99
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:768
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:781
 #: web/src/keep.rs:905
 msgid "Per person, and how much of it someone else keeps too"
 msgstr ""
@@ -1313,39 +1331,39 @@ msgid "Server status"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:132
-#: desktop/ui/app.slint:3458
+#: desktop/ui/app.slint:3470
 msgid "Read only: change these in Server settings (web app)."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:139
-#: desktop/ui/app.slint:3451
+#: desktop/ui/app.slint:3463
 msgid "Test mode: nothing is changed in Maintainerr or Seerr. Turn it off in Server settings (web app)."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:162
-#: desktop/src/app.rs:5702
+#: desktop/src/app.rs:5737
 msgid "Off. Set up Maintainerr in Server settings (web app)."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:163
-#: desktop/src/app.rs:5705
+#: desktop/src/app.rs:5740
 #: web/src/keep.rs:962
 msgid "Reading Maintainerr for the first time…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:172
-#: desktop/src/app.rs:5717
+#: desktop/src/app.rs:5752
 msgid "Can't reach Maintainerr. Check its address and API key in Server settings (web app)."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:180
-#: desktop/src/app.rs:5724
+#: desktop/src/app.rs:5759
 #: web/src/keep.rs:1010
 msgid "On: every app requests as each person's Seerr user."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:182
-#: desktop/src/app.rs:5726
+#: desktop/src/app.rs:5761
 msgid "Off: only direct request-site logins work. Set up Seerr in Server settings (web app)."
 msgstr ""
 
@@ -1355,12 +1373,12 @@ msgid "Keeps end by themselves once watched."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:192
-#: desktop/src/app.rs:5730
+#: desktop/src/app.rs:5765
 msgid "Jellyfin keeps don't end by themselves. Add the Jellyfin server's key in Server settings (web app)."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:202
-#: desktop/src/app.rs:5735
+#: desktop/src/app.rs:5770
 msgid "Plex keeps don't end by themselves. Set up Tautulli in Server settings (web app)."
 msgstr ""
 
@@ -1375,13 +1393,13 @@ msgid "On: watched titles are noticed at once."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:212
-#: desktop/src/app.rs:5746
+#: desktop/src/app.rs:5781
 msgid "Optional: watched titles are noticed within 15 min. For instant, add the webhooks shown in Server settings (web app)."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:216
-#: desktop/src/app.rs:5770
-#: web/src/account.rs:674
+#: desktop/src/app.rs:5805
+#: web/src/account.rs:680
 msgid "Passkeys"
 msgstr ""
 
@@ -1427,7 +1445,7 @@ msgid "Server settings"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:259
-#: desktop/ui/app.slint:3317
+#: desktop/ui/app.slint:3329
 msgid "Media servers, Seerr, Maintainerr, Tautulli, email and sign-up are set up in the web app."
 msgstr ""
 
@@ -1440,7 +1458,7 @@ msgid "End this invitation?"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:350
-#: desktop/ui/app.slint:3442
+#: desktop/ui/app.slint:3454
 msgid "Its code and link stop working. Accounts already made with it stay."
 msgstr ""
 
@@ -1460,28 +1478,28 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:387
 #: web/src/admin.rs:1143
-#: desktop/ui/app.slint:3327
+#: desktop/ui/app.slint:3339
 msgid "Email (optional)"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:395
-#: desktop/ui/app.slint:3329
+#: desktop/ui/app.slint:3341
 msgid "Empty: you get a link and a code to send them yourself."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:397
-#: desktop/ui/app.slint:3329
+#: desktop/ui/app.slint:3341
 msgid "AlwyWatch emails them a link that works once."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:405
 #: web/src/admin.rs:1149
-#: desktop/ui/app.slint:3340
+#: desktop/ui/app.slint:3352
 msgid "Set up email in Server settings to send invitations by email"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:406
-#: desktop/ui/app.slint:3341
+#: desktop/ui/app.slint:3353
 msgid "For now, you get a link and a code to send them yourself."
 msgstr ""
 
@@ -1491,18 +1509,18 @@ msgid "Also make a Jellyfin login on {server}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:419
-#: desktop/ui/app.slint:3347
+#: desktop/ui/app.slint:3359
 msgid "Same username and password as their AlwyWatch account"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:426
-#: desktop/ui/app.slint:3352
+#: desktop/ui/app.slint:3364
 msgid "Jellyfin server"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:437
 #: web/src/admin.rs:1180
-#: desktop/ui/app.slint:3358
+#: desktop/ui/app.slint:3370
 msgid "With the same access as"
 msgstr ""
 
@@ -1513,7 +1531,7 @@ msgid "Jellyfin's defaults"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:441
-#: desktop/ui/app.slint:3359
+#: desktop/ui/app.slint:3371
 msgid "Libraries, parental rating and permissions are copied from this user"
 msgstr ""
 
@@ -1528,30 +1546,30 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:459
 #: web/src/admin.rs:1201
-#: desktop/ui/app.slint:3365
+#: desktop/ui/app.slint:3377
 msgid "Valid for"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:464
-#: desktop/ui/app.slint:3371
+#: desktop/ui/app.slint:3383
 msgid "How many people"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:473
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:963
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:304
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:305
 msgid "Sending…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:475
 #: web/src/admin.rs:1222
-#: desktop/ui/app.slint:3379
+#: desktop/ui/app.slint:3391
 msgid "Send invitation"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:476
 #: web/src/admin.rs:1222
-#: desktop/ui/app.slint:3379
+#: desktop/ui/app.slint:3391
 msgid "Create link"
 msgstr ""
 
@@ -1561,7 +1579,7 @@ msgid "Sent to {email}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:506
-#: desktop/ui/app.slint:3389
+#: desktop/ui/app.slint:3401
 msgid "Or the link"
 msgstr ""
 
@@ -1571,7 +1589,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:523
 #: web/src/admin.rs:102
-#: desktop/ui/app.slint:3409
+#: desktop/ui/app.slint:3421
 msgid "Copy"
 msgstr ""
 
@@ -1635,7 +1653,7 @@ msgid "Can't reach it"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:198
-#: desktop/ui/app.slint:3031
+#: desktop/ui/app.slint:3043
 msgid "Sign out of AlwyWatch?"
 msgstr ""
 
@@ -1651,7 +1669,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:213
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:235
-#: web/src/account.rs:646
+#: web/src/account.rs:651
 msgid "Password & passkeys"
 msgstr ""
 
@@ -1660,7 +1678,7 @@ msgid "Connected with your login {name}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:223
-#: web/src/account.rs:1029
+#: web/src/account.rs:1205
 msgid "Connected"
 msgstr ""
 
@@ -1673,8 +1691,8 @@ msgid "Also deleting the account: opens {address}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:251
-#: web/src/account.rs:1088
-#: desktop/ui/app.slint:3027
+#: web/src/account.rs:1264
+#: desktop/ui/app.slint:3039
 msgid "Sign out of AlwyWatch"
 msgstr ""
 
@@ -1684,7 +1702,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:274
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:189
-#: desktop/ui/app.slint:2247
+#: desktop/ui/app.slint:2259
 msgid "Scan with your phone, or open"
 msgstr ""
 
@@ -1707,7 +1725,7 @@ msgid "Profile on this device"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:322
-#: web/src/account.rs:1123
+#: web/src/account.rs:1299
 msgid "Connect to AlwyWatch"
 msgstr ""
 
@@ -1720,8 +1738,8 @@ msgid "With your AlwyWatch account, a code, or your Jellyfin or Plex login"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:334
-#: web/src/account.rs:1127
-#: desktop/ui/app.slint:3056
+#: web/src/account.rs:1303
+#: desktop/ui/app.slint:3068
 msgid "Create an account"
 msgstr ""
 
@@ -1745,7 +1763,7 @@ msgid "Connecting…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:413
-#: desktop/ui/app.slint:3104
+#: desktop/ui/app.slint:3116
 msgid "Your AlwyWatch server doesn't take requests. Ask its owner, or use a request site address below."
 msgstr ""
 
@@ -1772,7 +1790,7 @@ msgid "Continue watching"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1647
-#: desktop/src/app.rs:5563
+#: desktop/src/app.rs:5598
 #: web/src/keep.rs:221
 msgid "Kept until {n} person has watched it"
 msgid_plural "Kept until {n} people have watched it"
@@ -1813,17 +1831,17 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:522
 #: web/src/together.rs:1132
-#: desktop/ui/app.slint:1933
+#: desktop/ui/app.slint:1938
 msgid "Watch in your room"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:542
-#: desktop/ui/app.slint:1950
+#: desktop/ui/app.slint:1955
 msgid "Watched or not"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:568
-#: desktop/ui/app.slint:1940
+#: desktop/ui/app.slint:1945
 msgid "In my list"
 msgstr ""
 
@@ -1856,14 +1874,14 @@ msgid "None"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:859
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:678
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:690
 #: desktop/src/app.rs:3195
 msgid "Only foreign-language parts"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:869
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:685
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:678
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:688
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:690
 msgid "Automatic"
 msgstr ""
 
@@ -1896,7 +1914,7 @@ msgid "Container"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:984
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:701
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:713
 msgid "Size"
 msgstr ""
 
@@ -1985,7 +2003,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1402
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt:622
-#: desktop/ui/app.slint:2023
+#: desktop/ui/app.slint:2028
 msgid "Episodes"
 msgstr ""
 
@@ -2006,14 +2024,14 @@ msgid "downloading {progress}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1566
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:94
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:95
 #: desktop/src/app.rs:3591
 msgid "Not scheduled for deletion"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1570
 #: web/src/keep.rs:278
-#: desktop/ui/app.slint:1993
+#: desktop/ui/app.slint:1998
 msgid "The server doesn't plan to delete this. You can still say you want it kept, in case it does later."
 msgstr ""
 
@@ -2025,7 +2043,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1596
 #: web/src/keep.rs:388
-#: desktop/ui/app.slint:2000
+#: desktop/ui/app.slint:2005
 msgid "Looking it up…"
 msgstr ""
 
@@ -2037,7 +2055,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1598
 #: web/src/keep.rs:411
-#: desktop/ui/app.slint:2000
+#: desktop/ui/app.slint:2005
 msgid "Change my choice"
 msgstr ""
 
@@ -2048,37 +2066,37 @@ msgid "This title is never deleted automatically."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1645
-#: desktop/src/app.rs:5562
+#: desktop/src/app.rs:5597
 #: web/src/keep.rs:220
 msgid "Kept until the person who asked has watched it"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1651
-#: desktop/src/app.rs:5569
+#: desktop/src/app.rs:5604
 #: web/src/keep.rs:227
 msgid "On the deletion list"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1658
-#: desktop/src/app.rs:5585
+#: desktop/src/app.rs:5620
 #: web/src/keep.rs:237
 msgid "In “{list}”"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1659
-#: desktop/src/app.rs:5588
+#: desktop/src/app.rs:5623
 #: web/src/keep.rs:240
 msgid "deletion isn't turned on yet"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1665
-#: desktop/src/app.rs:5594
+#: desktop/src/app.rs:5629
 #: web/src/keep.rs:246
 msgid "date {date}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1673
-#: desktop/src/app.rs:5599
+#: desktop/src/app.rs:5634
 #: web/src/keep.rs:250
 msgid "{n} forever"
 msgid_plural "{n} forever"
@@ -2086,7 +2104,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1677
-#: desktop/src/app.rs:5602
+#: desktop/src/app.rs:5637
 #: web/src/keep.rs:251
 msgid "{n} until watched"
 msgid_plural "{n} until watched"
@@ -2094,7 +2112,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1681
-#: desktop/src/app.rs:5609
+#: desktop/src/app.rs:5644
 #: web/src/keep.rs:252
 msgid "{n} for a while"
 msgid_plural "{n} for a while"
@@ -2107,7 +2125,7 @@ msgid "kept by {list}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1689
-#: desktop/src/app.rs:5538
+#: desktop/src/app.rs:5573
 #: web/src/request.rs:84
 msgid "Saga · {name}"
 msgstr ""
@@ -2271,7 +2289,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt:412
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsScreen.kt:31
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:827
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:839
 msgid "Manage downloads"
 msgstr ""
 
@@ -2284,7 +2302,7 @@ msgid "Another profile's download"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt:521
-#: desktop/ui/app.slint:2348
+#: desktop/ui/app.slint:2360
 msgid "Resume"
 msgstr ""
 
@@ -2371,7 +2389,7 @@ msgid "Nothing downloaded."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:58
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:362
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:363
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt:298
 msgid "All"
 msgstr ""
@@ -2403,7 +2421,7 @@ msgid "Shared: someone else keeps it forever too. Choose a person to see their t
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:148
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:464
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:465
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:449
 msgid "Nothing here."
 msgstr ""
@@ -2448,12 +2466,12 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt:101
-#: desktop/ui/app.slint:2850
+#: desktop/ui/app.slint:2862
 msgid "Marks what you watched on one server as watched on the other, and copies where you stopped. It only adds: nothing gets unmarked, and a resume point never goes back."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt:108
-#: desktop/ui/app.slint:2854
+#: desktop/ui/app.slint:2866
 msgid "Sign in to both servers first: Settings → Servers → Add a server."
 msgstr ""
 
@@ -2471,7 +2489,7 @@ msgid "Pick two different servers."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt:131
-#: desktop/ui/app.slint:2872
+#: desktop/ui/app.slint:2884
 msgid "Check what will change"
 msgstr ""
 
@@ -2493,12 +2511,12 @@ msgid "{count} not on that server"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt:158
-#: desktop/ui/app.slint:2886
+#: desktop/ui/app.slint:2898
 msgid "Hide missing titles"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt:158
-#: desktop/ui/app.slint:2886
+#: desktop/ui/app.slint:2898
 msgid "Show missing titles"
 msgstr ""
 
@@ -2508,8 +2526,8 @@ msgid "Done: {copied} titles copied, {failed} failed (try again)."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt:173
-#: desktop/ui/app.slint:2882
-#: desktop/ui/app.slint:3459
+#: desktop/ui/app.slint:2894
+#: desktop/ui/app.slint:3471
 msgid "Check again"
 msgstr ""
 
@@ -2529,7 +2547,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt:253
 #: desktop/src/app.rs:2283
-#: desktop/src/app.rs:5221
+#: desktop/src/app.rs:5254
 msgid "New in {library}"
 msgstr ""
 
@@ -2601,349 +2619,389 @@ msgstr ""
 msgid "Movie"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:101
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:102
 #: desktop/src/app.rs:500
 msgid "Leaves in {n} day"
 msgid_plural "Leaves in {n} days"
 msgstr[0] ""
 msgstr[1] ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:340
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:341
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:421
 msgid "{count} title"
 msgid_plural "{count} titles"
 msgstr[0] ""
 msgstr[1] ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:445
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:446
 msgid "{n} other keeps it"
 msgid_plural "{n} others keep it"
 msgstr[0] ""
 msgstr[1] ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:540
-#: desktop/ui/app.slint:2727
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:541
+#: desktop/ui/app.slint:2739
 msgid "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever"
 msgid_plural "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever"
 msgstr[0] ""
 msgstr[1] ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:546
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:547
 msgid "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgid_plural "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgstr[0] ""
 msgstr[1] ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:798
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:811
 #: web/src/keep.rs:892
 msgid "Spread over {n} day"
 msgid_plural "Spread over {n} days"
 msgstr[0] ""
 msgstr[1] ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:904
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:907
+msgid "{n} day at most"
+msgid_plural "{n} days at most"
+msgstr[0] ""
+msgstr[1] ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:935
+msgid "Keeps {n} title forever."
+msgid_plural "Keeps {n} titles forever."
+msgstr[0] ""
+msgstr[1] ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:988
 #: web/src/keep.rs:669
 msgid "{n} person keeps it"
 msgid_plural "{n} people keep it"
 msgstr[0] ""
 msgstr[1] ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:91
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:92
 #: desktop/src/app.rs:487
 #: web/src/keep.rs:26
 msgid "Kept until watched"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:93
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:116
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:94
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:117
 #: desktop/src/app.rs:489
 msgid "No date"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:98
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:120
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:99
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:121
 #: desktop/src/app.rs:497
 msgid "Any day now"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:99
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:100
 #: desktop/src/app.rs:498
 msgid "Leaves today"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:100
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:101
 #: desktop/src/app.rs:499
 msgid "Leaves tomorrow"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:103
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:104
 msgid "{status} (extended)"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:109
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:110
 #: web/src/keep.rs:210
 msgid "Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:114
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:362
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:115
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:363
 #: web/src/keep.rs:519
 msgid "Kept"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:117
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:118
 #: web/src/keep.rs:525
 msgid "Soon"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:121
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:122
 #: web/src/keep.rs:530
 msgid "Today"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:130
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:131
 #: desktop/src/app.rs:514
 #: web/src/keep.rs:50
 msgid "You're fine with it going"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:131
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:132
 #: desktop/src/app.rs:515
 msgid "You keep it a while"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:132
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:133
 #: desktop/src/app.rs:516
 #: web/src/keep.rs:48
 msgid "You keep it until you watch it"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:133
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:134
 #: desktop/src/app.rs:518
 msgid "You keep it forever ({reason})"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:133
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:134
 #: desktop/src/app.rs:519
 #: web/src/keep.rs:47
 msgid "You keep it forever"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:172
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:614
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:173
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:615
 #: web/src/keep.rs:201
 msgid "Until I watch it"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:180
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:620
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:181
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:621
 #: web/src/keep.rs:202
 msgid "Keep 30 days"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:181
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:182
 #: web/src/keep.rs:203
 #: desktop/ui/app.slint:381
 msgid "Keep 7 days"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:182
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:183
 #: web/src/keep.rs:204
 #: desktop/ui/app.slint:382
 msgid "Keep forever"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:183
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:621
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:184
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:622
 #: web/src/keep.rs:205
 msgid "Fine to delete"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:184
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:185
 #: web/src/keep.rs:207
 #: desktop/ui/app.slint:384
 msgid "Remove my choice"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:221
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:222
 msgid "Keep what you still want to watch"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:225
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:351
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:226
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:352
 #: web/src/keep.rs:101
 msgid "Go through them one by one"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:225
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:516
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:226
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:517
 #: web/src/keep.rs:632
 msgid "One by one"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:341
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:342
 msgid "{count} with your choice"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:345
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:346
 msgid "What the server will delete, soonest first. Keep what you still want to watch or love."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:358
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:754
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:359
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:767
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:94
 msgid "Admin"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:362
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:363
 msgid "Within a week"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:362
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:363
 msgid "My choices"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:372
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:373
 msgid "{count} of these are not scheduled: their date has passed but the server's owner hasn't turned deletion on yet. Your choices still count when it is."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:393
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:394
 msgid "Can't reach your AlwyWatch server ({address}). This is the last list it sent."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:394
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:395
 msgid "Can't reach your AlwyWatch server ({address})."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:395
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:396
 msgid "Can't reach your AlwyWatch server. This is the last list it sent."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:396
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:397
 msgid "Can't reach your AlwyWatch server."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:536
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:537
 msgid "All done, thanks! {count} sorted."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:536
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:537
 #: web/src/keep.rs:647
 msgid "Nothing to sort right now."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:619
-#: desktop/ui/app.slint:2750
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:620
+#: desktop/ui/app.slint:2762
 msgid "Forever"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:660
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:661
 #: web/src/keep.rs:757
 msgid "Collection {id}"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:680
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:683
 msgid "Requests of {name}"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:686
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:689
 msgid "Their own Seerr account (created if needed)"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:754
-#: desktop/ui/app.slint:2765
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:767
+#: desktop/ui/app.slint:2777
 msgid "Leaving soon: countdown and people's rights"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:767
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:770
+msgid "What each person may keep, and who they request as"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:780
 #: web/src/keep.rs:904
 msgid "Who keeps what forever"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:784
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:797
 msgid "Start countdown"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:786
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:799
 msgid "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr (press twice to confirm)."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:798
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:811
 #: web/src/keep.rs:892
-#: desktop/ui/app.slint:2777
+#: desktop/ui/app.slint:2789
 msgid "Restart now"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:800
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:813
 msgid "Confirm"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:809
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:822
 msgid "{collection}: {reset} restarted, {skipped} skipped"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:834
-msgid "Everyone can keep forever by default. Select a value to change it."
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:847
+msgid "No limits by default. Select a person to change theirs."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:836
-msgid "Everyone can keep forever by default. Tap a value to change it."
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:849
+msgid "No limits by default. Tap a person to change theirs."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:848
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:860
 msgid "{name} · admin"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:853
-msgid "{count} kept forever"
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:904
+msgid "Can't keep forever"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:862
-#: web/src/keep.rs:852
-msgid "Forever allowed"
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:905
+msgid "Up to {n} forever"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:862
-#: web/src/keep.rs:852
-msgid "Forever blocked"
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:908
+msgid "Requests as {name}"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:867
-msgid "Max forever: {value}"
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:909
+msgid "No limits"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:875
-#: desktop/src/app.rs:733
-#: web/src/keep.rs:867
-msgid "Requests as: {name}"
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:941
+msgid "May keep forever"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:875
-msgid "automatic"
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:947
+msgid "Titles kept forever"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:879
-msgid "Max days: {value}"
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:948
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:955
+msgid "No limit"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:948
+msgid "Up to {n}"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:954
+msgid "Keep for at most"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:958
+msgid "How long one “keep for a while” can last"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:962
+#: web/src/keep.rs:862
+msgid "Requests as"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:963
+msgid "Automatic: their own Seerr account"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:973
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:302
+#: desktop/ui/app.slint:3286
+msgid "Done"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:130
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt:94
-#: desktop/ui/app.slint:1813
+#: desktop/ui/app.slint:1818
 msgid "Recommended"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:131
-#: desktop/ui/app.slint:1814
+#: desktop/ui/app.slint:1819
 msgid "Browse"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:132
-#: desktop/ui/app.slint:1815
+#: desktop/ui/app.slint:1820
 msgid "Collections"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:133
-#: desktop/ui/app.slint:1816
+#: desktop/ui/app.slint:1821
 msgid "Categories"
 msgstr ""
 
@@ -3043,7 +3101,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:431
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:482
-#: web/src/account.rs:733
+#: web/src/account.rs:739
 msgid "Unlink"
 msgstr ""
 
@@ -3060,7 +3118,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:467
 #: web/src/links.rs:536
-#: desktop/ui/app.slint:2996
+#: desktop/ui/app.slint:3008
 msgid "Linked logins"
 msgstr ""
 
@@ -3070,7 +3128,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:477
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:93
-#: web/src/account.rs:792
+#: web/src/account.rs:798
 msgid "This device"
 msgstr ""
 
@@ -3082,7 +3140,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:136
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:291
-#: desktop/ui/app.slint:3870
+#: desktop/ui/app.slint:3882
 msgid "Who's watching?"
 msgstr ""
 
@@ -3115,12 +3173,12 @@ msgid "A profile is one person: their own AlwyWatch account or logins, history a
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:408
-#: desktop/ui/app.slint:3224
+#: desktop/ui/app.slint:3236
 msgid "Protected by a PIN"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:419
-#: desktop/ui/app.slint:3227
+#: desktop/ui/app.slint:3239
 msgid "In use"
 msgstr ""
 
@@ -3138,13 +3196,13 @@ msgid "Skip “Who's watching?” at start"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:448
-#: desktop/ui/app.slint:3236
+#: desktop/ui/app.slint:3248
 msgid "Open the last profile used instead of asking who's watching (a PIN is still asked)"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:458
 #: web/src/profiles.rs:286
-#: desktop/ui/app.slint:3228
+#: desktop/ui/app.slint:3240
 msgid "Rename"
 msgstr ""
 
@@ -3153,22 +3211,22 @@ msgid "Protect {name} with a PIN"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:483
-#: desktop/ui/app.slint:3810
+#: desktop/ui/app.slint:3822
 msgid "Asked when opening this profile."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:488
-#: desktop/ui/app.slint:3821
+#: desktop/ui/app.slint:3833
 msgid "New 4-digit PIN"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:488
-#: desktop/ui/app.slint:3821
+#: desktop/ui/app.slint:3833
 msgid "4-digit PIN"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:506
-#: desktop/ui/app.slint:3831
+#: desktop/ui/app.slint:3843
 msgid "Remove PIN"
 msgstr ""
 
@@ -3374,7 +3432,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:264
 #: web/src/request.rs:198
-#: desktop/ui/app.slint:2431
+#: desktop/ui/app.slint:2443
 msgid "Request all seasons"
 msgstr ""
 
@@ -3401,13 +3459,13 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt:246
 #: web/src/browse.rs:606
-#: desktop/ui/app.slint:1861
+#: desktop/ui/app.slint:1866
 msgid "Movies, shows, episodes…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt:258
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:862
-#: desktop/ui/app.slint:3289
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:874
+#: desktop/ui/app.slint:3301
 msgid "Clear"
 msgstr ""
 
@@ -3510,8 +3568,8 @@ msgid "or sign in with your password:"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt:204
-#: web/src/admin.rs:866
-#: desktop/ui/app.slint:3137
+#: web/src/account.rs:911
+#: web/src/account.rs:915
 msgid "Email"
 msgstr ""
 
@@ -3524,7 +3582,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt:198
-#: desktop/ui/app.slint:2462
+#: desktop/ui/app.slint:2474
 msgid "PART OF THE SAGA"
 msgstr ""
 
@@ -3569,27 +3627,27 @@ msgid_plural "{n} profiles"
 msgstr[0] ""
 msgstr[1] ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:593
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:605
 msgid "After {n} hour"
 msgid_plural "After {n} hours"
 msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:86
-#: web/src/account.rs:645
+#: web/src/account.rs:650
 #: web/src/signin.rs:531
 msgid "Account"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:87
 #: web/src/signin.rs:532
-#: desktop/ui/app.slint:2905
+#: desktop/ui/app.slint:2917
 msgid "Servers"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:89
 #: web/src/signin.rs:534
-#: desktop/ui/app.slint:2907
+#: desktop/ui/app.slint:2919
 msgid "Playback"
 msgstr ""
 
@@ -3687,7 +3745,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:309
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:253
-#: web/src/account.rs:1156
+#: web/src/account.rs:1332
 msgid "Sign in another device"
 msgstr ""
 
@@ -3712,7 +3770,7 @@ msgid "Preferred"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:375
-#: desktop/ui/app.slint:3074
+#: desktop/ui/app.slint:3086
 msgid "Showing now"
 msgstr ""
 
@@ -3720,386 +3778,390 @@ msgstr ""
 msgid "Sign out of {server}"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:388
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:390
+msgid "Linked to your account, not signed in on this device"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:400
 msgid "Together, the home mixes every server; a title on several is shown once, from the preferred one."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:390
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:402
 msgid "Show all servers together"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:399
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:411
 msgid "Select a login above to make it the preferred one"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:401
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:413
 msgid "Tap a login above to make it the preferred one"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:405
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:417
 msgid "One server at a time: select a login above to switch"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:407
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:419
 msgid "One server at a time: tap a login above to switch"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:413
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:425
 msgid "Moving between servers"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:413
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:425
 msgid "A one-time copy, one way. Each person copies their own history, with their own logins."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:416
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:428
 msgid "What you watched and where you stopped, from one server to another (Plex to Jellyfin)"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:442
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:454
 msgid "Keep in sync"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:444
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:456
 msgid "Both ways: what you watch, unwatch or where you stop on one server is copied to the other. Right away for what you watch in AlwyWatch, every 6 hours for other apps. Changed on both since the last sync: the further one wins."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:455
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:467
 msgid "{server} ({kind}) and {other} ({otherKind})"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:462
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:474
 msgid "Syncing now…"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:463
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:475
 msgid "Last sync failed: {reason}"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:471
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:483
 msgid "Last synced {time} · nothing to change"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:473
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:485
 msgid "Last synced {time} · {count} updated"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:476
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:488
 msgid "Waiting for the first sync"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:505
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:517
 msgid "Syncing…"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:505
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:517
 msgid "Sync now"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:539
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:551
 #: web/src/prefs.rs:183
 msgid "Intros and credits"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:542
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:554
 #: web/src/prefs.rs:185
-#: desktop/ui/app.slint:3156
+#: desktop/ui/app.slint:3168
 msgid "Skip intros automatically"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:548
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:560
 #: web/src/prefs.rs:185
-#: desktop/ui/app.slint:3157
+#: desktop/ui/app.slint:3169
 msgid "Otherwise a Skip intro button appears."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:553
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:565
 #: web/src/prefs.rs:190
-#: desktop/ui/app.slint:3162
+#: desktop/ui/app.slint:3174
 msgid "Play the next episode automatically"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:559
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:571
 msgid "A countdown during the credits, which Back cancels. Off: playback stops at the end of the episode."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:563
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:575
 #: web/src/prefs.rs:195
 #: web/src/prefs.rs:196
 msgid "Next episode countdown"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:569
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:581
 msgid "Remote and resuming"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:571
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:583
 msgid "Skip back"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:578
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:590
 msgid "Skip forward"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:585
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:597
 msgid "Rewind when resuming"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:593
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:605
 msgid "Never"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:596
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:608
 msgid "Pauses when the remote has not been touched for that long."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:599
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:611
 msgid "Picture"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:602
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:614
 msgid "Match display refresh rate"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:608
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:620
 msgid "Switches the TV to the video's frame rate (no judder)."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:615
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:627
 msgid "Tunneled playback"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:621
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:633
 msgid "Lower power on some TV devices, but breaks playback on others."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:640
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:652
 #: web/src/prefs.rs:205
-#: desktop/ui/app.slint:3171
+#: desktop/ui/app.slint:3183
 msgid "In rooms you create, what the others may do. You can always do everything."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:646
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:658
 #: web/src/prefs.rs:207
-#: desktop/ui/app.slint:3177
+#: desktop/ui/app.slint:3189
 msgid "Others can change what's playing"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:649
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:661
 #: web/src/prefs.rs:207
-#: desktop/ui/app.slint:3178
+#: desktop/ui/app.slint:3190
 msgid "Next episode, another title."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:652
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:664
 #: web/src/prefs.rs:212
-#: desktop/ui/app.slint:3183
+#: desktop/ui/app.slint:3195
 msgid "Others can pause and play"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:654
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:666
 #: web/src/prefs.rs:217
-#: desktop/ui/app.slint:3189
+#: desktop/ui/app.slint:3201
 msgid "Others can move forward or back"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:666
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:678
 #: web/src/prefs.rs:236
 msgid "Languages"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:667
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:679
 msgid "A movie or show remembers the tracks picked for it (on its page or while watching), and its next episodes follow."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:670
-#: desktop/ui/app.slint:3201
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:682
+#: desktop/ui/app.slint:3213
 msgid "Audio language"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:670
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:682
 msgid "Original (the file's default)"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:678
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:690
 #: desktop/src/app.rs:3196
 #: web/src/prefs.rs:244
 msgid "Always"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:684
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:696
 #: web/src/prefs.rs:238
-#: desktop/ui/app.slint:3202
+#: desktop/ui/app.slint:3214
 msgid "Automatic: when the audio is not in your subtitle language."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:694
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:706
 #: web/src/prefs.rs:249
 #: web/src/prefs.rs:250
 msgid "Subtitle language"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:694
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:706
 msgid "Device language ({language})"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:699
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:711
 msgid "Subtitle look"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:701
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:713
 msgid "Small"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:701
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:713
 msgid "Normal"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:701
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:713
 msgid "Large"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:701
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:713
 msgid "Huge"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:707
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:719
 msgid "Colour"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:707
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:719
 msgid "White"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:707
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:719
 msgid "Yellow"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:713
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:725
 msgid "Background box"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:716
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:728
 msgid "Otherwise a dark outline keeps them readable."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:719
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:731
 msgid "Raise subtitles"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:722
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:734
 msgid "Higher on the screen (TVs that crop the edges)."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:734
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:746
 msgid "Libraries in the menu"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:737
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:749
 msgid "Select a library to show or hide it; arrows change the order."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:739
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:751
 msgid "Tap a library to show or hide it; arrows change the order."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:769
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:781
 msgid "Shown"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:769
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:781
 msgid "Hidden"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:777
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:789
 msgid "Move up"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:778
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:790
 msgid "Move down"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:785
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:797
 msgid "Pages and app"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:788
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:800
 msgid "Theme music on show pages"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:794
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:806
 msgid "Quietly, when the server has the show's theme."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:799
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:811
 msgid "Clock"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:802
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:814
 msgid "In the corner of every page."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:806
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:818
 msgid "Confirm before quitting"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:809
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:821
 msgid "Back on the home asks first."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:817
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:829
 msgid "Delete downloads"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:817
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:829
 msgid "For new downloads; a show's \"next episodes\" keeps its own choice."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:820
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:832
 msgid "When to delete"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:836
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:845
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:848
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:857
 #: web/src/lang.rs:57
 msgid "Language"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:839
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:851
 msgid "Same as the device"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:858
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:870
 #: web/src/signin.rs:626
 msgid "Storage"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:858
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:870
 msgid "Posters and backdrops kept to show pages instantly; they come back when needed."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:859
-#: desktop/ui/app.slint:3286
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:871
+#: desktop/ui/app.slint:3298
 msgid "Image cache"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:861
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:873
 #: desktop/src/app.rs:4019
 msgid "{size} MB"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:870
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:882
 #: web/src/signin.rs:630
 msgid "About"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:870
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:882
 #: web/src/signin.rs:632
-#: desktop/ui/app.slint:3295
+#: desktop/ui/app.slint:3307
 msgid "Free software under the GNU AGPL v3 or later."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:871
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:883
 msgid "Core {version}"
 msgstr ""
 
@@ -4116,7 +4178,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:965
-#: desktop/ui/app.slint:4043
+#: desktop/ui/app.slint:4055
 msgid "Send {n} invitation"
 msgid_plural "Send {n} invitations"
 msgstr[0] ""
@@ -4138,13 +4200,13 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:253
 #: web/src/together.rs:1205
-#: desktop/ui/app.slint:2575
+#: desktop/ui/app.slint:2587
 msgid "New room"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:272
 #: web/src/together.rs:1207
-#: desktop/ui/app.slint:2576
+#: desktop/ui/app.slint:2588
 msgid "Invite people first, choose what to watch afterwards."
 msgstr ""
 
@@ -4204,7 +4266,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:420
 #: web/src/together.rs:1273
-#: desktop/ui/app.slint:2608
+#: desktop/ui/app.slint:2620
 msgid "Open"
 msgstr ""
 
@@ -4285,7 +4347,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:738
 #: web/src/together.rs:1425
-#: desktop/ui/app.slint:2652
+#: desktop/ui/app.slint:2664
 msgid "Choose what to watch"
 msgstr ""
 
@@ -4297,7 +4359,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:753
 #: web/src/together.rs:1428
-#: desktop/ui/app.slint:2660
+#: desktop/ui/app.slint:2672
 msgid "Start watching"
 msgstr ""
 
@@ -4347,7 +4409,7 @@ msgid "Hasn't joined yet"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:913
-#: desktop/ui/app.slint:3998
+#: desktop/ui/app.slint:4010
 msgid "Search by name"
 msgstr ""
 
@@ -4370,7 +4432,7 @@ msgid "Recent"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:964
-#: desktop/ui/app.slint:4043
+#: desktop/ui/app.slint:4055
 msgid "Send invitations"
 msgstr ""
 
@@ -4379,8 +4441,8 @@ msgid "Paused for now. Invite people, then start: everyone starts at {time} at t
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:164
-#: desktop/src/app.rs:4766
-#: desktop/src/app.rs:4783
+#: desktop/src/app.rs:4799
+#: desktop/src/app.rs:4816
 msgid "Nothing to copy: that device has no accounts."
 msgstr ""
 
@@ -4389,7 +4451,7 @@ msgid "SIGN IN WITH A CODE"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:194
-#: desktop/ui/app.slint:2252
+#: desktop/ui/app.slint:2264
 msgid "Or on a device where you're signed in: Settings → This device → Sign in another device, and type this code."
 msgstr ""
 
@@ -4398,7 +4460,7 @@ msgid "Check number: {number}. It must match if the other device shows one."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:199
-#: desktop/ui/app.slint:2261
+#: desktop/ui/app.slint:2273
 msgid "Waiting for the other device…"
 msgstr ""
 
@@ -4407,8 +4469,8 @@ msgid "Without the camera, type the code instead."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:237
-#: core/keep-service/src/account.rs:249
-#: desktop/src/app.rs:4817
+#: core/keep-service/src/account.rs:283
+#: desktop/src/app.rs:4850
 msgid "Unknown or expired code."
 msgstr ""
 
@@ -4428,28 +4490,22 @@ msgstr ""
 msgid "Scan the QR code"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:289
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:290
 msgid "Send your accounts and settings to “{device}”?"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:290
-#: desktop/ui/app.slint:3261
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:291
+#: desktop/ui/app.slint:3273
 msgid "Check number"
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:292
-#: desktop/ui/app.slint:3263
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:293
+#: desktop/ui/app.slint:3275
 msgid "Only send if the new device shows the same number."
 msgstr ""
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:301
-#: desktop/ui/app.slint:3274
-#: desktop/ui/app.slint:3549
-msgid "Done"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:304
-#: desktop/ui/app.slint:3267
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:305
+#: desktop/ui/app.slint:3279
 msgid "Send"
 msgstr ""
 
@@ -4458,15 +4514,15 @@ msgstr ""
 msgid "Nothing saved yet. On a movie or show, press the bookmark to keep it here."
 msgstr ""
 
-#: core/alwywatch-core/src/account.rs:424
+#: core/alwywatch-core/src/account.rs:427
 msgid "Set up email and this site's address in Server settings (web app) first."
 msgstr ""
 
-#: core/alwywatch-core/src/account.rs:429
+#: core/alwywatch-core/src/account.rs:432
 msgid "The email could not be sent. Check the email settings in Server settings (web app)."
 msgstr ""
 
-#: core/alwywatch-core/src/account.rs:602
+#: core/alwywatch-core/src/account.rs:624
 msgid "too long for a QR code"
 msgstr ""
 
@@ -4479,7 +4535,7 @@ msgid "There is no Jellyfin server at this address."
 msgstr ""
 
 #: core/alwywatch-core/src/app.rs:1065
-#: core/keep-service/src/account.rs:247
+#: core/keep-service/src/account.rs:281
 #: web/src/signin.rs:504
 msgid "Wrong username or password."
 msgstr ""
@@ -4564,23 +4620,23 @@ msgstr ""
 msgid "Syncing {server} and {other}"
 msgstr ""
 
-#: core/keep-service/src/account.rs:248
+#: core/keep-service/src/account.rs:282
 msgid "This sign-in has ended. Sign in again."
 msgstr ""
 
-#: core/keep-service/src/account.rs:250
+#: core/keep-service/src/account.rs:284
 msgid "This username is already taken."
 msgstr ""
 
-#: core/keep-service/src/account.rs:252
+#: core/keep-service/src/account.rs:286
 msgid "Too many attempts. Try again in a few minutes."
 msgstr ""
 
-#: core/keep-service/src/account.rs:255
+#: core/keep-service/src/account.rs:289
 msgid "Check what you typed: usernames are 3 to 32 letters, digits, dots, dashes or underscores; passwords at least 8 characters."
 msgstr ""
 
-#: core/keep-service/src/account.rs:259
+#: core/keep-service/src/account.rs:293
 msgid "This server doesn't offer that."
 msgstr ""
 
@@ -5080,6 +5136,11 @@ msgstr ""
 msgid "{when} (extended)"
 msgstr ""
 
+#: desktop/src/app.rs:733
+#: web/src/keep.rs:867
+msgid "Requests as: {name}"
+msgstr ""
+
 #: desktop/src/app.rs:734
 #: web/src/keep.rs:865
 msgid "Requests as: automatic"
@@ -5212,223 +5273,224 @@ msgstr ""
 msgid "unreadable transfer"
 msgstr ""
 
-#: desktop/src/app.rs:4587
-#: web/src/account.rs:407
+#: desktop/src/app.rs:4616
+#: web/src/account.rs:412
 msgid "This server doesn't accept new accounts without an invitation. Ask its owner for one, or sign in with your Jellyfin or Plex login."
 msgstr ""
 
-#: desktop/src/app.rs:4619
-#: web/src/account.rs:293
+#: desktop/src/app.rs:4648
+#: web/src/account.rs:295
+#: web/src/account.rs:1002
 msgid "The two passwords differ."
 msgstr ""
 
-#: desktop/src/app.rs:4800
+#: desktop/src/app.rs:4833
 msgid "Type the 6 digits the new device shows."
 msgstr ""
 
-#: desktop/src/app.rs:5433
+#: desktop/src/app.rs:5468
 #: desktop/src/player.rs:835
 #: web/src/prefs.rs:74
 msgid "English"
 msgstr ""
 
-#: desktop/src/app.rs:5434
+#: desktop/src/app.rs:5469
 #: desktop/src/player.rs:834
 #: web/src/prefs.rs:75
 msgid "French"
 msgstr ""
 
-#: desktop/src/app.rs:5435
+#: desktop/src/app.rs:5470
 #: desktop/src/player.rs:840
 #: web/src/prefs.rs:76
 msgid "Dutch"
 msgstr ""
 
-#: desktop/src/app.rs:5436
+#: desktop/src/app.rs:5471
 #: desktop/src/player.rs:836
 #: web/src/prefs.rs:77
 msgid "German"
 msgstr ""
 
-#: desktop/src/app.rs:5437
+#: desktop/src/app.rs:5472
 #: desktop/src/player.rs:837
 #: web/src/prefs.rs:78
 msgid "Spanish"
 msgstr ""
 
-#: desktop/src/app.rs:5438
+#: desktop/src/app.rs:5473
 #: desktop/src/player.rs:838
 #: web/src/prefs.rs:79
 msgid "Italian"
 msgstr ""
 
-#: desktop/src/app.rs:5439
+#: desktop/src/app.rs:5474
 #: desktop/src/player.rs:841
 #: web/src/prefs.rs:80
 msgid "Portuguese"
 msgstr ""
 
-#: desktop/src/app.rs:5440
+#: desktop/src/app.rs:5475
 #: desktop/src/player.rs:839
 #: web/src/prefs.rs:81
 msgid "Japanese"
 msgstr ""
 
-#: desktop/src/app.rs:5441
+#: desktop/src/app.rs:5476
 #: desktop/src/player.rs:842
 #: web/src/prefs.rs:82
 msgid "Korean"
 msgstr ""
 
-#: desktop/src/app.rs:5442
+#: desktop/src/app.rs:5477
 #: desktop/src/player.rs:843
 #: web/src/prefs.rs:83
 msgid "Chinese"
 msgstr ""
 
-#: desktop/src/app.rs:5443
+#: desktop/src/app.rs:5478
 #: desktop/src/player.rs:845
 #: web/src/prefs.rs:84
 msgid "Arabic"
 msgstr ""
 
-#: desktop/src/app.rs:5444
+#: desktop/src/app.rs:5479
 #: desktop/src/player.rs:844
 #: web/src/prefs.rs:85
 msgid "Russian"
 msgstr ""
 
-#: desktop/src/app.rs:5445
+#: desktop/src/app.rs:5480
 #: desktop/src/player.rs:846
 #: web/src/prefs.rs:86
 msgid "Polish"
 msgstr ""
 
-#: desktop/src/app.rs:5446
+#: desktop/src/app.rs:5481
 #: web/src/prefs.rs:87
 msgid "Swedish"
 msgstr ""
 
-#: desktop/src/app.rs:5447
+#: desktop/src/app.rs:5482
 #: web/src/prefs.rs:88
 msgid "Turkish"
 msgstr ""
 
-#: desktop/src/app.rs:5448
+#: desktop/src/app.rs:5483
 #: web/src/prefs.rs:89
 msgid "Hindi"
 msgstr ""
 
-#: desktop/src/app.rs:5612
+#: desktop/src/app.rs:5647
 msgid "kept by {people}"
 msgstr ""
 
-#: desktop/src/app.rs:5635
+#: desktop/src/app.rs:5670
 msgid "Jan"
 msgstr ""
 
-#: desktop/src/app.rs:5636
+#: desktop/src/app.rs:5671
 msgid "Feb"
 msgstr ""
 
-#: desktop/src/app.rs:5637
+#: desktop/src/app.rs:5672
 msgid "Mar"
 msgstr ""
 
-#: desktop/src/app.rs:5638
+#: desktop/src/app.rs:5673
 msgid "Apr"
 msgstr ""
 
-#: desktop/src/app.rs:5639
+#: desktop/src/app.rs:5674
 msgid "May"
 msgstr ""
 
-#: desktop/src/app.rs:5640
+#: desktop/src/app.rs:5675
 msgid "Jun"
 msgstr ""
 
-#: desktop/src/app.rs:5641
+#: desktop/src/app.rs:5676
 msgid "Jul"
 msgstr ""
 
-#: desktop/src/app.rs:5642
+#: desktop/src/app.rs:5677
 msgid "Aug"
 msgstr ""
 
-#: desktop/src/app.rs:5643
+#: desktop/src/app.rs:5678
 msgid "Sep"
 msgstr ""
 
-#: desktop/src/app.rs:5644
+#: desktop/src/app.rs:5679
 msgid "Oct"
 msgstr ""
 
-#: desktop/src/app.rs:5645
+#: desktop/src/app.rs:5680
 msgid "Nov"
 msgstr ""
 
-#: desktop/src/app.rs:5646
+#: desktop/src/app.rs:5681
 msgid "Dec"
 msgstr ""
 
-#: desktop/src/app.rs:5648
+#: desktop/src/app.rs:5683
 msgid "{day} {month} {year}"
 msgstr ""
 
-#: desktop/src/app.rs:5741
+#: desktop/src/app.rs:5776
 msgid "They end by themselves for Jellyfin and Plex users."
 msgstr ""
 
-#: desktop/src/app.rs:5744
+#: desktop/src/app.rs:5779
 msgid "Webhooks on: watched titles are noticed at once."
 msgstr ""
 
-#: desktop/src/app.rs:5751
+#: desktop/src/app.rs:5786
 msgid "Anyone can create an account."
 msgstr ""
 
-#: desktop/src/app.rs:5752
+#: desktop/src/app.rs:5787
 msgid "Nobody can create an account."
 msgstr ""
 
-#: desktop/src/app.rs:5753
+#: desktop/src/app.rs:5788
 msgid "New accounts need an invitation."
 msgstr ""
 
-#: desktop/src/app.rs:5758
+#: desktop/src/app.rs:5793
 msgid "Version {version}"
 msgstr ""
 
-#: desktop/src/app.rs:5762
+#: desktop/src/app.rs:5797
 msgid "Leaving soon (Maintainerr)"
 msgstr ""
 
-#: desktop/src/app.rs:5766
+#: desktop/src/app.rs:5801
 msgid "Requests (Seerr)"
 msgstr ""
 
-#: desktop/src/app.rs:5767
+#: desktop/src/app.rs:5802
 msgid "Keep until watched"
 msgstr ""
 
-#: desktop/src/app.rs:5768
+#: desktop/src/app.rs:5803
 msgid "Accounts"
 msgstr ""
 
-#: desktop/src/app.rs:5772
-#: desktop/src/app.rs:5780
+#: desktop/src/app.rs:5807
+#: desktop/src/app.rs:5815
 msgid "On."
 msgstr ""
 
-#: desktop/src/app.rs:5774
+#: desktop/src/app.rs:5809
 msgid "Off: set this site's address (https) in Server settings (web app)."
 msgstr ""
 
-#: desktop/src/app.rs:5779
+#: desktop/src/app.rs:5814
 msgid "Pocket ID"
 msgstr ""
 
-#: desktop/src/app.rs:5780
+#: desktop/src/app.rs:5815
 msgid "Off."
 msgstr ""
 
@@ -5491,363 +5553,425 @@ msgstr ""
 msgid "Sign in with Pocket ID"
 msgstr ""
 
-#: web/src/account.rs:226
+#: web/src/account.rs:229
 msgid "No account yet?"
 msgstr ""
 
-#: web/src/account.rs:226
+#: web/src/account.rs:229
 msgid "Create one with an invitation"
 msgstr ""
 
-#: web/src/account.rs:255
+#: web/src/account.rs:258
 msgid "This invitation can't be used"
 msgstr ""
 
-#: web/src/account.rs:256
+#: web/src/account.rs:259
 msgid "It was already used, ended or expired. Ask the person who invited you for a new one."
 msgstr ""
 
-#: web/src/account.rs:338
+#: web/src/account.rs:341
 msgid "This invitation can't be used any more. Ask {name} for a new one."
 msgstr ""
 
-#: web/src/account.rs:342
+#: web/src/account.rs:345
 msgid "This invitation is unknown, used up or expired. Ask for a new one."
 msgstr ""
 
-#: web/src/account.rs:347
+#: web/src/account.rs:350
 msgid "This username is taken, here or on {server}: choose another."
 msgstr ""
 
-#: web/src/account.rs:372
-#: desktop/ui/app.slint:2182
+#: web/src/account.rs:375
+#: web/src/account.rs:1039
+#: desktop/ui/app.slint:2188
 msgid "Password again"
 msgstr ""
 
-#: web/src/account.rs:380
+#: web/src/account.rs:385
 msgid "You can add a passkey once signed in."
 msgstr ""
 
-#: web/src/account.rs:389
+#: web/src/account.rs:394
 msgid "Create your AlwyWatch account: it comes with a login on {server}, to watch right away."
 msgstr ""
 
-#: web/src/account.rs:390
+#: web/src/account.rs:395
 msgid "Create your AlwyWatch account. It keeps your profile, settings and server list, and signs your devices in."
 msgstr ""
 
-#: web/src/account.rs:397
-#: desktop/ui/app.slint:2171
+#: web/src/account.rs:402
+#: desktop/ui/app.slint:2176
 msgid "An account keeps your profile, settings and server list, and signs your devices in. To watch, add your Jellyfin or Plex server afterwards."
 msgstr ""
 
-#: web/src/account.rs:404
+#: web/src/account.rs:409
 msgid "Continue with Pocket ID"
 msgstr ""
 
-#: web/src/account.rs:405
+#: web/src/account.rs:410
 msgid "No invitation needed."
 msgstr ""
 
-#: web/src/account.rs:490
+#: web/src/account.rs:495
 msgid "This code was already used."
 msgstr ""
 
-#: web/src/account.rs:516
+#: web/src/account.rs:521
 msgid "Sign a device in"
 msgstr ""
 
-#: web/src/account.rs:518
+#: web/src/account.rs:523
 msgid "Code {code}"
 msgstr ""
 
-#: web/src/account.rs:522
+#: web/src/account.rs:527
 msgid "Done. The device signs itself in within a few seconds."
 msgstr ""
 
-#: web/src/account.rs:525
+#: web/src/account.rs:530
 msgid "Sign in first: the device is then signed in as you."
 msgstr ""
 
-#: web/src/account.rs:526
+#: web/src/account.rs:531
 #: web/src/signin.rs:179
 msgid "Sign in with Jellyfin or Plex"
 msgstr ""
 
-#: web/src/account.rs:527
+#: web/src/account.rs:532
 msgid "You'll come straight back here. Or use your AlwyWatch account, if you have one:"
 msgstr ""
 
-#: web/src/account.rs:535
+#: web/src/account.rs:540
 msgid "Sign {device} in to your account?"
 msgstr ""
 
-#: web/src/account.rs:538
+#: web/src/account.rs:543
 msgid "Only approve a device you are setting up yourself, right now."
 msgstr ""
 
-#: web/src/account.rs:540
+#: web/src/account.rs:545
 msgid "Approve"
 msgstr ""
 
-#: web/src/account.rs:572
-#: web/src/account.rs:591
+#: web/src/account.rs:577
+#: web/src/account.rs:596
 msgid "Pocket ID is linked."
 msgstr ""
 
-#: web/src/account.rs:584
+#: web/src/account.rs:589
 msgid "Sign in to your AlwyWatch account, then link Pocket ID again."
 msgstr ""
 
-#: web/src/account.rs:594
+#: web/src/account.rs:599
 msgid "This Pocket ID is already used by another account."
 msgstr ""
 
-#: web/src/account.rs:597
+#: web/src/account.rs:602
 msgid "Pocket ID could not be linked. Try again from this page."
 msgstr ""
 
-#: web/src/account.rs:652
+#: web/src/account.rs:657
 msgid "Not signed in to an AlwyWatch account in this browser."
 msgstr ""
 
-#: web/src/account.rs:657
+#: web/src/account.rs:662
 msgid "Signed in"
 msgstr ""
 
-#: web/src/account.rs:662
+#: web/src/account.rs:667
 msgid "Also you: {list}"
 msgstr ""
 
-#: web/src/account.rs:675
+#: web/src/account.rs:681
 msgid "Sign in with your fingerprint, face or device PIN instead of a password."
 msgstr ""
 
-#: web/src/account.rs:682
+#: web/src/account.rs:688
 msgid "added {date}, last used {used}"
 msgstr ""
 
-#: web/src/account.rs:683
+#: web/src/account.rs:689
 msgid "added {date}"
 msgstr ""
 
-#: web/src/account.rs:688
-#: web/src/account.rs:704
-#: web/src/account.rs:727
+#: web/src/account.rs:694
+#: web/src/account.rs:710
+#: web/src/account.rs:733
 msgid "Signed out."
 msgstr ""
 
-#: web/src/account.rs:690
+#: web/src/account.rs:696
 msgid "This is your only way to sign in: add a password or Pocket ID first."
 msgstr ""
 
-#: web/src/account.rs:693
+#: web/src/account.rs:699
 msgid "Passkey removed."
 msgstr ""
 
-#: web/src/account.rs:710
+#: web/src/account.rs:716
 msgid "Passkey added."
 msgstr ""
 
-#: web/src/account.rs:711
+#: web/src/account.rs:717
 msgid "Add a passkey"
 msgstr ""
 
-#: web/src/account.rs:722
+#: web/src/account.rs:728
 msgid "Linked: you can sign in with Pocket ID."
 msgstr ""
 
-#: web/src/account.rs:722
+#: web/src/account.rs:728
 msgid "Pocket ID is this server's single sign-on. Link it to sign in without a password."
 msgstr ""
 
-#: web/src/account.rs:729
+#: web/src/account.rs:735
 msgid "This is your only way to sign in: add a password or passkey first."
 msgstr ""
 
-#: web/src/account.rs:732
+#: web/src/account.rs:738
 msgid "Pocket ID unlinked."
 msgstr ""
 
-#: web/src/account.rs:744
+#: web/src/account.rs:750
 msgid "Link Pocket ID"
 msgstr ""
 
-#: web/src/account.rs:751
+#: web/src/account.rs:757
 msgid "Devices"
 msgstr ""
 
-#: web/src/account.rs:756
+#: web/src/account.rs:762
 msgid "Device"
 msgstr ""
 
-#: web/src/account.rs:757
+#: web/src/account.rs:763
 msgid "this browser"
 msgstr ""
 
-#: web/src/account.rs:757
+#: web/src/account.rs:763
 msgid "last seen {date}"
 msgstr ""
 
-#: web/src/account.rs:768
+#: web/src/account.rs:774
 msgid "To sign a TV or another device in, choose “Sign in with a code” on it and open the address it shows (or scan its QR code)."
 msgstr ""
 
-#: web/src/account.rs:793
+#: web/src/account.rs:799
 msgid "Passkey ({device})"
 msgstr ""
 
-#: web/src/account.rs:842
+#: web/src/account.rs:848
+#: web/src/account.rs:901
 msgid "The current password is wrong."
 msgstr ""
 
-#: web/src/account.rs:846
+#: web/src/account.rs:852
 msgid "Password saved. Your other devices stay signed in only if they use a passkey or Pocket ID."
 msgstr ""
 
-#: web/src/account.rs:854
+#: web/src/account.rs:860
 msgid "This account has no username yet, so it can't have a password. Add a passkey below to sign in without Jellyfin or Plex."
 msgstr ""
 
-#: web/src/account.rs:858
+#: web/src/account.rs:864
+#: web/src/account.rs:917
 msgid "Current password"
 msgstr ""
 
-#: web/src/account.rs:860
+#: web/src/account.rs:866
+#: web/src/account.rs:1037
 msgid "New password"
 msgstr ""
 
-#: web/src/account.rs:867
+#: web/src/account.rs:873
 msgid "Set."
 msgstr ""
 
-#: web/src/account.rs:867
-#: desktop/ui/app.slint:3425
+#: web/src/account.rs:873
+#: desktop/ui/app.slint:3437
 msgid "None yet."
 msgstr ""
 
-#: web/src/account.rs:868
+#: web/src/account.rs:874
+#: web/src/account.rs:926
 msgid "Change"
 msgstr ""
 
-#: web/src/account.rs:868
+#: web/src/account.rs:874
 msgid "Set a password"
 msgstr ""
 
-#: web/src/account.rs:892
-msgid "The password is wrong."
-msgstr ""
-
-#: web/src/account.rs:900
-msgid "Delete account"
-msgstr ""
-
 #: web/src/account.rs:905
-msgid "This deletes your AlwyWatch account: its username, password, passkeys and the devices signed in with it. You keep using AlwyWatch with your Plex or Jellyfin sign-in, and your profile and keep requests stay with it."
+msgid "Email saved."
 msgstr ""
 
-#: web/src/account.rs:907
-msgid "This deletes your AlwyWatch account and everything stored for it: username, password, passkeys, profile, picture and synced settings. Devices signed in with it are signed out."
+#: web/src/account.rs:925
+msgid "None: a forgotten password can't be reset by email."
 msgstr ""
 
-#: web/src/account.rs:909
-msgid "It can't be undone."
+#: web/src/account.rs:926
+msgid "Add an email"
 msgstr ""
 
-#: web/src/account.rs:910
-msgid "Your password"
+#: web/src/account.rs:958
+msgid "This server can't send emails. Ask the person who runs it to set a new password for you."
 msgstr ""
 
-#: web/src/account.rs:913
-msgid "Delete my account"
+#: web/src/account.rs:966
+msgid "Forgot password"
 msgstr ""
 
-#: web/src/account.rs:918
-msgid "Removes the account for good."
+#: web/src/account.rs:970
+msgid "Nothing after a few minutes? Check your spam folder, or ask the person who runs your server."
 msgstr ""
 
-#: web/src/account.rs:919
-msgid "Delete account…"
-msgstr ""
-
-#: web/src/account.rs:946
-msgid "Add a password, passkey or Pocket ID first: it would be your only way in."
-msgstr ""
-
-#: web/src/account.rs:952
-msgid "Plex and Jellyfin sign-ins can change this account again."
-msgstr ""
-
-#: web/src/account.rs:954
-msgid "Done. Only this account's own sign-in changes it now."
-msgstr ""
-
-#: web/src/account.rs:964
-msgid "Plex and Jellyfin sign-ins"
-msgstr ""
-
-#: web/src/account.rs:968
-msgid "Turned off: a Plex or Jellyfin sign-in can't set this account's password or sign a new device in to it. You still watch, vote and join rooms with them."
-msgstr ""
-
-#: web/src/account.rs:969
-msgid "Turn back on"
-msgstr ""
-
-#: web/src/account.rs:975
-msgid "On: whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it."
+#: web/src/account.rs:971
+msgid "Back to sign in"
 msgstr ""
 
 #: web/src/account.rs:976
-#: web/src/account.rs:984
-msgid "Turn off"
+msgid "Type your username or the email address of your AlwyWatch account."
 msgstr ""
 
-#: web/src/account.rs:981
-msgid "This account has its own way to sign in now. Do you want to stop Plex and Jellyfin sign-ins from changing it?"
+#: web/src/account.rs:977
+msgid "Username or email"
 msgstr ""
 
-#: web/src/account.rs:982
-msgid "Today, whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it. Turned off, only this account's own sign-in can. Watching, votes and rooms keep working with Plex and Jellyfin either way, and you can turn it back on here."
+#: web/src/account.rs:979
+msgid "Send me a link"
 msgstr ""
 
-#: web/src/account.rs:985
-msgid "Keep it on"
+#: web/src/account.rs:1020
+msgid "This link was already used or has expired. Ask for a new one."
 msgstr ""
 
-#: web/src/account.rs:1027
-msgid "Sign-in expired"
+#: web/src/account.rs:1028
+#: server/src/account_api.rs:658
+msgid "Set a new password"
 msgstr ""
 
-#: web/src/account.rs:1036
-msgid "Sign out of AlwyWatch? This profile keeps its Jellyfin and Plex logins and becomes a profile without an AlwyWatch account: Leaving soon and watch together disappear from it."
+#: web/src/account.rs:1031
+msgid "Your new password is set. Devices signed in to your account were signed out: sign in again with it."
 msgstr ""
 
-#: web/src/account.rs:1070
-msgid "To change your name and picture, add a Jellyfin or Plex login: Servers → Add a server."
+#: web/src/account.rs:1043
+msgid "Ask for a new link"
+msgstr ""
+
+#: web/src/account.rs:1068
+msgid "The password is wrong."
 msgstr ""
 
 #: web/src/account.rs:1076
-msgid "AlwyWatch"
+msgid "Delete account"
+msgstr ""
+
+#: web/src/account.rs:1081
+msgid "This deletes your AlwyWatch account: its username, password, passkeys and the devices signed in with it. You keep using AlwyWatch with your Plex or Jellyfin sign-in, and your profile and keep requests stay with it."
 msgstr ""
 
 #: web/src/account.rs:1083
-msgid "Ways to sign in, devices signed in, deleting the account"
+msgid "This deletes your AlwyWatch account and everything stored for it: username, password, passkeys, profile, picture and synced settings. Devices signed in with it are signed out."
 msgstr ""
 
-#: web/src/account.rs:1124
-msgid "Your name, settings and servers come with you, and you get Leaving soon and watch together."
+#: web/src/account.rs:1085
+msgid "It can't be undone."
 msgstr ""
 
-#: web/src/account.rs:1129
-msgid "Plex account: sign out and sign in again to use requests, Leaving soon and watch together."
+#: web/src/account.rs:1086
+msgid "Your password"
+msgstr ""
+
+#: web/src/account.rs:1089
+msgid "Delete my account"
+msgstr ""
+
+#: web/src/account.rs:1094
+msgid "Removes the account for good."
+msgstr ""
+
+#: web/src/account.rs:1095
+msgid "Delete account…"
+msgstr ""
+
+#: web/src/account.rs:1122
+msgid "Add a password, passkey or Pocket ID first: it would be your only way in."
+msgstr ""
+
+#: web/src/account.rs:1128
+msgid "Plex and Jellyfin sign-ins can change this account again."
+msgstr ""
+
+#: web/src/account.rs:1130
+msgid "Done. Only this account's own sign-in changes it now."
+msgstr ""
+
+#: web/src/account.rs:1140
+msgid "Plex and Jellyfin sign-ins"
+msgstr ""
+
+#: web/src/account.rs:1144
+msgid "Turned off: a Plex or Jellyfin sign-in can't set this account's password or sign a new device in to it. You still watch, vote and join rooms with them."
+msgstr ""
+
+#: web/src/account.rs:1145
+msgid "Turn back on"
+msgstr ""
+
+#: web/src/account.rs:1151
+msgid "On: whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it."
+msgstr ""
+
+#: web/src/account.rs:1152
+#: web/src/account.rs:1160
+msgid "Turn off"
 msgstr ""
 
 #: web/src/account.rs:1157
+msgid "This account has its own way to sign in now. Do you want to stop Plex and Jellyfin sign-ins from changing it?"
+msgstr ""
+
+#: web/src/account.rs:1158
+msgid "Today, whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it. Turned off, only this account's own sign-in can. Watching, votes and rooms keep working with Plex and Jellyfin either way, and you can turn it back on here."
+msgstr ""
+
+#: web/src/account.rs:1161
+msgid "Keep it on"
+msgstr ""
+
+#: web/src/account.rs:1203
+msgid "Sign-in expired"
+msgstr ""
+
+#: web/src/account.rs:1212
+msgid "Sign out of AlwyWatch? This profile keeps its Jellyfin and Plex logins and becomes a profile without an AlwyWatch account: Leaving soon and watch together disappear from it."
+msgstr ""
+
+#: web/src/account.rs:1246
+msgid "To change your name and picture, add a Jellyfin or Plex login: Servers → Add a server."
+msgstr ""
+
+#: web/src/account.rs:1252
+msgid "AlwyWatch"
+msgstr ""
+
+#: web/src/account.rs:1259
+msgid "Ways to sign in, devices signed in, deleting the account"
+msgstr ""
+
+#: web/src/account.rs:1300
+msgid "Your name, settings and servers come with you, and you get Leaving soon and watch together."
+msgstr ""
+
+#: web/src/account.rs:1305
+msgid "Plex account: sign out and sign in again to use requests, Leaving soon and watch together."
+msgstr ""
+
+#: web/src/account.rs:1333
 msgid "On the other device, choose “Sign in with a code” and type the code it shows here (or scan its QR code with your phone)."
 msgstr ""
 
-#: web/src/account.rs:1159
+#: web/src/account.rs:1335
 msgid "Code"
 msgstr ""
 
@@ -5857,7 +5981,7 @@ msgid "Only admins of this AlwyWatch server can see this."
 msgstr ""
 
 #: web/src/admin.rs:102
-#: desktop/ui/app.slint:3409
+#: desktop/ui/app.slint:3421
 msgid "Copied"
 msgstr ""
 
@@ -6529,7 +6653,7 @@ msgid "Kept by me"
 msgstr ""
 
 #: web/src/keep.rs:114
-#: desktop/ui/app.slint:2510
+#: desktop/ui/app.slint:2522
 msgid "Nothing is leaving. Nothing to do."
 msgstr ""
 
@@ -6577,16 +6701,20 @@ msgstr ""
 msgid "{server} · {count} kept forever"
 msgstr ""
 
+#: web/src/keep.rs:852
+msgid "Forever allowed"
+msgstr ""
+
+#: web/src/keep.rs:852
+msgid "Forever blocked"
+msgstr ""
+
 #: web/src/keep.rs:855
 msgid "Max forever: {limit}"
 msgstr ""
 
 #: web/src/keep.rs:858
 msgid "Max days: {limit}"
-msgstr ""
-
-#: web/src/keep.rs:862
-msgid "Requests as"
 msgstr ""
 
 #: web/src/keep.rs:877
@@ -6702,7 +6830,7 @@ msgid "This can't be undone as such: unlinking later gives that login a fresh, e
 msgstr ""
 
 #: web/src/links.rs:538
-#: desktop/ui/app.slint:2998
+#: desktop/ui/app.slint:3010
 msgid "These logins are one AlwyWatch account: same name, picture, keep choices and watch-together rooms."
 msgstr ""
 
@@ -6715,7 +6843,7 @@ msgid "This browser"
 msgstr ""
 
 #: web/src/links.rs:576
-#: desktop/ui/app.slint:3021
+#: desktop/ui/app.slint:3033
 msgid "Link…"
 msgstr ""
 
@@ -6728,7 +6856,7 @@ msgid "Unlink this login?"
 msgstr ""
 
 #: web/src/links.rs:598
-#: desktop/ui/app.slint:3616
+#: desktop/ui/app.slint:3628
 msgid "Unlinking…"
 msgstr ""
 
@@ -6740,15 +6868,15 @@ msgstr ""
 msgid "Not found"
 msgstr ""
 
-#: web/src/main.rs:233
+#: web/src/main.rs:236
 msgid "{name} on {server} was signed out by the server."
 msgstr ""
 
-#: web/src/main.rs:237
+#: web/src/main.rs:240
 msgid "Sign in again"
 msgstr ""
 
-#: web/src/main.rs:238
+#: web/src/main.rs:241
 msgid "Dismiss"
 msgstr ""
 
@@ -6787,8 +6915,8 @@ msgid "Subtitles off"
 msgstr ""
 
 #: web/src/player.rs:1372
-#: desktop/ui/app.slint:2644
-#: desktop/ui/app.slint:3169
+#: desktop/ui/app.slint:2656
+#: desktop/ui/app.slint:3181
 msgid "WATCH TOGETHER"
 msgstr ""
 
@@ -6813,12 +6941,12 @@ msgid "This picture couldn't be prepared. Try another one."
 msgstr ""
 
 #: web/src/profile.rs:561
-#: desktop/ui/app.slint:3651
+#: desktop/ui/app.slint:3663
 msgid "Move and zoom"
 msgstr ""
 
 #: web/src/profile.rs:569
-#: desktop/ui/app.slint:3697
+#: desktop/ui/app.slint:3709
 msgid "Zoom"
 msgstr ""
 
@@ -6859,7 +6987,7 @@ msgid "Display name"
 msgstr ""
 
 #: web/src/profile.rs:973
-#: desktop/ui/app.slint:3498
+#: desktop/ui/app.slint:3510
 msgid "Welcome! This is how others see you"
 msgstr ""
 
@@ -6868,12 +6996,12 @@ msgid "In watch together rooms and invitations. You can change it later in Setti
 msgstr ""
 
 #: web/src/profiles.rs:103
-#: desktop/ui/app.slint:3798
+#: desktop/ui/app.slint:3810
 msgid "New profile"
 msgstr ""
 
 #: web/src/profiles.rs:223
-#: desktop/ui/app.slint:3867
+#: desktop/ui/app.slint:3879
 msgid "Manage profiles"
 msgstr ""
 
@@ -6886,8 +7014,8 @@ msgid "in use"
 msgstr ""
 
 #: web/src/profiles.rs:283
-#: desktop/ui/app.slint:3230
-#: desktop/ui/app.slint:3835
+#: desktop/ui/app.slint:3242
+#: desktop/ui/app.slint:3847
 msgid "Switch"
 msgstr ""
 
@@ -7281,7 +7409,7 @@ msgstr ""
 
 #: web/src/together.rs:1434
 #: web/src/together.rs:1616
-#: desktop/ui/app.slint:2675
+#: desktop/ui/app.slint:2687
 msgid "Invite"
 msgstr ""
 
@@ -7370,512 +7498,524 @@ msgstr ""
 msgid "SUBTITLES"
 msgstr ""
 
-#: desktop/ui/app.slint:1834
+#: desktop/ui/app.slint:1839
 msgid "Nothing in progress or recently added."
 msgstr ""
 
-#: desktop/ui/app.slint:1922
+#: desktop/ui/app.slint:1927
 msgid "Resume from {}"
 msgstr ""
 
-#: desktop/ui/app.slint:2037
+#: desktop/ui/app.slint:2042
 msgid "Mark as"
 msgstr ""
 
-#: desktop/ui/app.slint:2038
+#: desktop/ui/app.slint:2043
 msgid "Season watched"
 msgstr ""
 
-#: desktop/ui/app.slint:2039
+#: desktop/ui/app.slint:2044
 msgid "Season unwatched"
 msgstr ""
 
-#: desktop/ui/app.slint:2040
+#: desktop/ui/app.slint:2045
 msgid "All episodes watched"
 msgstr ""
 
-#: desktop/ui/app.slint:2041
+#: desktop/ui/app.slint:2046
 msgid "All episodes unwatched"
 msgstr ""
 
-#: desktop/ui/app.slint:2097
+#: desktop/ui/app.slint:2102
 msgid "Password, or a code from another Jellyfin app"
 msgstr ""
 
-#: desktop/ui/app.slint:2132
+#: desktop/ui/app.slint:2137
 msgid "Your name, settings and servers come with you."
 msgstr ""
 
-#: desktop/ui/app.slint:2138
-msgid "You have an invitation."
-msgstr ""
-
-#: desktop/ui/app.slint:2144
+#: desktop/ui/app.slint:2149
 msgid "No account: nothing synced, no Leaving soon or watch together."
 msgstr ""
 
-#: desktop/ui/app.slint:2162
+#: desktop/ui/app.slint:2167
 msgid "Type the address of the AlwyWatch server you were invited to, something like watch.example.org."
 msgstr ""
 
-#: desktop/ui/app.slint:2173
+#: desktop/ui/app.slint:2178
 msgid "Invitation code (not needed)"
 msgstr ""
 
-#: desktop/ui/app.slint:2187
+#: desktop/ui/app.slint:2193
 msgid "You can add a passkey once signed in, on the AlwyWatch website."
 msgstr ""
 
-#: desktop/ui/app.slint:2192
+#: desktop/ui/app.slint:2198
 msgid "Type the AlwyWatch address the person who runs your server gave you. You then sign in with your Jellyfin or Plex login, or with a code from a device where you already use AlwyWatch."
 msgstr ""
 
-#: desktop/ui/app.slint:2207
+#: desktop/ui/app.slint:2213
 msgid "Scan a QR code with your phone, or approve on a device where you're signed in."
 msgstr ""
 
-#: desktop/ui/app.slint:2228
+#: desktop/ui/app.slint:2240
 msgid "No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone."
 msgstr ""
 
-#: desktop/ui/app.slint:2257
+#: desktop/ui/app.slint:2269
 msgid "Check number: {}. It must match if the other device shows one."
 msgstr ""
 
-#: desktop/ui/app.slint:2307
+#: desktop/ui/app.slint:2319
 msgid "Finish signing in to Plex in your browser. You can also go to plex.tv/link and enter:"
 msgstr ""
 
-#: desktop/ui/app.slint:2330
+#: desktop/ui/app.slint:2342
 msgid "Available offline"
 msgstr ""
 
-#: desktop/ui/app.slint:2331
+#: desktop/ui/app.slint:2343
 msgid "Nothing downloaded yet. Use the download button on a movie or an episode."
 msgstr ""
 
-#: desktop/ui/app.slint:2349
+#: desktop/ui/app.slint:2361
 msgid "Delete download"
 msgstr ""
 
-#: desktop/ui/app.slint:2361
+#: desktop/ui/app.slint:2373
 msgid "Ask for a movie or a show; it is added when ready."
 msgstr ""
 
-#: desktop/ui/app.slint:2363
+#: desktop/ui/app.slint:2375
 msgid "Find a movie or a show…"
 msgstr ""
 
-#: desktop/ui/app.slint:2377
+#: desktop/ui/app.slint:2389
 msgid "My requests"
 msgstr ""
 
-#: desktop/ui/app.slint:2438
+#: desktop/ui/app.slint:2450
 msgid "Request selected"
 msgstr ""
 
-#: desktop/ui/app.slint:2502
+#: desktop/ui/app.slint:2514
 msgid "What the server will delete, soonest first. Keep what you want to watch or love. Everyone's choices count and the longest one wins."
 msgstr ""
 
-#: desktop/ui/app.slint:2571
+#: desktop/ui/app.slint:2583
 msgid "Your rooms and your invitations. Rooms are private: only the people invited see them."
 msgstr ""
 
-#: desktop/ui/app.slint:2668
+#: desktop/ui/app.slint:2680
 msgid "Back to the video"
 msgstr ""
 
-#: desktop/ui/app.slint:2683
+#: desktop/ui/app.slint:2695
 msgid "Waiting for {} to start"
 msgstr ""
 
-#: desktop/ui/app.slint:2691
+#: desktop/ui/app.slint:2703
 msgid "IN THE ROOM"
 msgstr ""
 
-#: desktop/ui/app.slint:2695
+#: desktop/ui/app.slint:2707
 msgid "INVITED"
 msgstr ""
 
-#: desktop/ui/app.slint:2697
+#: desktop/ui/app.slint:2709
 msgid "Nobody yet. Invite people: they join directly, no code needed."
 msgstr ""
 
-#: desktop/ui/app.slint:2697
+#: desktop/ui/app.slint:2709
 msgid "Nobody is waiting to join."
 msgstr ""
 
-#: desktop/ui/app.slint:2725
+#: desktop/ui/app.slint:2737
 msgid "Nothing left to sort. Thanks!"
 msgstr ""
 
-#: desktop/ui/app.slint:2767
+#: desktop/ui/app.slint:2779
 msgid "START COUNTDOWN"
 msgstr ""
 
-#: desktop/ui/app.slint:2769
+#: desktop/ui/app.slint:2781
 msgid "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr. Click twice to confirm."
 msgstr ""
 
-#: desktop/ui/app.slint:2778
+#: desktop/ui/app.slint:2790
 msgid "Spread over 14 days"
 msgstr ""
 
-#: desktop/ui/app.slint:2779
+#: desktop/ui/app.slint:2791
 msgid "Spread over 30 days"
 msgstr ""
 
-#: desktop/ui/app.slint:2783
+#: desktop/ui/app.slint:2795
 msgid "PEOPLE"
 msgstr ""
 
-#: desktop/ui/app.slint:2801
+#: desktop/ui/app.slint:2813
 msgid "Their requests go to this Seerr user:"
 msgstr ""
 
-#: desktop/ui/app.slint:2810
+#: desktop/ui/app.slint:2822
 msgid "KEPT FOREVER"
 msgstr ""
 
-#: desktop/ui/app.slint:2832
+#: desktop/ui/app.slint:2844
 msgid "Titles"
 msgstr ""
 
-#: desktop/ui/app.slint:2856
+#: desktop/ui/app.slint:2868
 msgid "FROM"
 msgstr ""
 
-#: desktop/ui/app.slint:2860
+#: desktop/ui/app.slint:2872
 msgid "TO"
 msgstr ""
 
-#: desktop/ui/app.slint:2868
+#: desktop/ui/app.slint:2880
 msgid "You can use the rest of the app meanwhile: this page shows where it is when you come back."
 msgstr ""
 
-#: desktop/ui/app.slint:2923
-#: desktop/ui/app.slint:2943
+#: desktop/ui/app.slint:2935
+#: desktop/ui/app.slint:2955
 msgid "HOW OTHERS SEE YOU"
 msgstr ""
 
-#: desktop/ui/app.slint:2935
+#: desktop/ui/app.slint:2947
 msgid "Reset"
 msgstr ""
 
-#: desktop/ui/app.slint:2951
+#: desktop/ui/app.slint:2963
 msgid "The name of this profile on this computer."
 msgstr ""
 
-#: desktop/ui/app.slint:2957
+#: desktop/ui/app.slint:2969
 msgid "ALWYWATCH"
 msgstr ""
 
-#: desktop/ui/app.slint:2965
+#: desktop/ui/app.slint:2977
 msgid "{} · Connected"
 msgstr ""
 
-#: desktop/ui/app.slint:2966
+#: desktop/ui/app.slint:2978
 msgid "{} · Can't reach"
 msgstr ""
 
-#: desktop/ui/app.slint:2967
+#: desktop/ui/app.slint:2979
 msgid "{} · Sign-in expired"
 msgstr ""
 
-#: desktop/ui/app.slint:2975
+#: desktop/ui/app.slint:2987
 msgid "Change address"
 msgstr ""
 
-#: desktop/ui/app.slint:2979
+#: desktop/ui/app.slint:2991
 msgid "AlwyWatch server address"
 msgstr ""
 
-#: desktop/ui/app.slint:2980
-#: desktop/ui/app.slint:3121
+#: desktop/ui/app.slint:2992
+#: desktop/ui/app.slint:3133
 msgid "Connect"
 msgstr ""
 
-#: desktop/ui/app.slint:2989
+#: desktop/ui/app.slint:3001
 msgid "Signed in to the account of {}. Password, passkeys, devices and deleting the account: on the AlwyWatch website."
 msgstr ""
 
-#: desktop/ui/app.slint:2991
+#: desktop/ui/app.slint:3003
 msgid "Open the website"
 msgstr ""
 
-#: desktop/ui/app.slint:2999
+#: desktop/ui/app.slint:3011
 msgid "Another login on this computer may be you too. Linking makes them one AlwyWatch account."
 msgstr ""
 
-#: desktop/ui/app.slint:3013
+#: desktop/ui/app.slint:3025
 msgid "MAIN"
 msgstr ""
 
-#: desktop/ui/app.slint:3014
+#: desktop/ui/app.slint:3026
 msgid "THIS COMPUTER"
 msgstr ""
 
-#: desktop/ui/app.slint:3033
+#: desktop/ui/app.slint:3045
 msgid "This profile keeps its Jellyfin and Plex logins and becomes a profile without an AlwyWatch account: Leaving soon and watch together disappear from it. Your keep choices stay on the server."
 msgstr ""
 
-#: desktop/ui/app.slint:3046
+#: desktop/ui/app.slint:3058
 msgid "CONNECT TO ALWYWATCH"
 msgstr ""
 
-#: desktop/ui/app.slint:3048
+#: desktop/ui/app.slint:3060
 msgid "With an AlwyWatch account your name, settings and servers come with you, and you get Leaving soon, requests and watch together. Your Jellyfin and Plex logins stay."
 msgstr ""
 
-#: desktop/ui/app.slint:3064
+#: desktop/ui/app.slint:3076
 msgid "YOUR JELLYFIN AND PLEX SERVERS"
 msgstr ""
 
-#: desktop/ui/app.slint:3073
+#: desktop/ui/app.slint:3085
 msgid "Switch to this one"
 msgstr ""
 
-#: desktop/ui/app.slint:3076
+#: desktop/ui/app.slint:3088
 msgid "Click again to sign out"
 msgstr ""
 
-#: desktop/ui/app.slint:3088
+#: desktop/ui/app.slint:3100
 msgid "AlwyWatch follows the login showing now when its server is on your AlwyWatch server."
 msgstr ""
 
-#: desktop/ui/app.slint:3095
+#: desktop/ui/app.slint:3107
 msgid "THROUGH YOUR ALWYWATCH SERVER"
 msgstr ""
 
-#: desktop/ui/app.slint:3097
+#: desktop/ui/app.slint:3109
 msgid "Request through your AlwyWatch server"
 msgstr ""
 
-#: desktop/ui/app.slint:3098
+#: desktop/ui/app.slint:3110
 msgid "Through your AlwyWatch server, as {}"
 msgstr ""
 
-#: desktop/ui/app.slint:3098
+#: desktop/ui/app.slint:3110
 msgid "No other sign-in needed."
 msgstr ""
 
-#: desktop/ui/app.slint:3109
+#: desktop/ui/app.slint:3121
 msgid "REQUEST SITE"
 msgstr ""
 
-#: desktop/ui/app.slint:3120
+#: desktop/ui/app.slint:3132
 msgid "Request site address (Seerr, Overseerr, Jellyseerr)"
 msgstr ""
 
-#: desktop/ui/app.slint:3123
+#: desktop/ui/app.slint:3135
 msgid "It only accepts the logins it's set up for (Plex or Jellyfin)."
 msgstr ""
 
-#: desktop/ui/app.slint:3131
+#: desktop/ui/app.slint:3143
 msgid "Finish signing in to Plex in your browser…"
 msgstr ""
 
-#: desktop/ui/app.slint:3136
+#: desktop/ui/app.slint:3148
 msgid "Quick Connect code: {}"
 msgstr ""
 
-#: desktop/ui/app.slint:3148
+#: desktop/ui/app.slint:3160
 msgid "PLAYBACK"
 msgstr ""
 
-#: desktop/ui/app.slint:3150
+#: desktop/ui/app.slint:3162
 msgid "Audio passthrough"
 msgstr ""
 
-#: desktop/ui/app.slint:3151
+#: desktop/ui/app.slint:3163
 msgid "Send Dolby/DTS untouched to an HDMI or S/PDIF receiver. This device only."
 msgstr ""
 
-#: desktop/ui/app.slint:3163
+#: desktop/ui/app.slint:3175
 msgid "A 10 second countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode."
 msgstr ""
 
-#: desktop/ui/app.slint:3200
+#: desktop/ui/app.slint:3212
 msgid "LANGUAGES"
 msgstr ""
 
-#: desktop/ui/app.slint:3204
+#: desktop/ui/app.slint:3216
 msgid "A movie or show remembers the tracks picked for it while watching, and its next episodes follow."
 msgstr ""
 
-#: desktop/ui/app.slint:3211
+#: desktop/ui/app.slint:3223
 msgid "PROFILES"
 msgstr ""
 
-#: desktop/ui/app.slint:3213
+#: desktop/ui/app.slint:3225
 msgid "A profile is one person on this computer, with their own servers, history and settings. Downloads are shared."
 msgstr ""
 
-#: desktop/ui/app.slint:3229
+#: desktop/ui/app.slint:3241
 msgid "Change PIN"
 msgstr ""
 
-#: desktop/ui/app.slint:3229
+#: desktop/ui/app.slint:3241
 msgid "Set a PIN"
 msgstr ""
 
-#: desktop/ui/app.slint:3231
+#: desktop/ui/app.slint:3243
 msgid "Remove profile"
 msgstr ""
 
-#: desktop/ui/app.slint:3235
+#: desktop/ui/app.slint:3247
 msgid "Skip “Who's watching?” at startup"
 msgstr ""
 
-#: desktop/ui/app.slint:3242
+#: desktop/ui/app.slint:3254
 msgid "SIGN IN ANOTHER DEVICE"
 msgstr ""
 
-#: desktop/ui/app.slint:3245
+#: desktop/ui/app.slint:3257
 msgid "Signs a new phone, TV or computer in to this profile: its AlwyWatch account, logins and settings."
 msgstr ""
 
-#: desktop/ui/app.slint:3250
+#: desktop/ui/app.slint:3262
 msgid "On the new device, choose \"Sign in with a code\" and type its code here."
 msgstr ""
 
-#: desktop/ui/app.slint:3260
+#: desktop/ui/app.slint:3272
 msgid "Send your accounts and settings to “{}”?"
 msgstr ""
 
-#: desktop/ui/app.slint:3273
+#: desktop/ui/app.slint:3285
 msgid "Sent. The other device signs in by itself."
 msgstr ""
 
-#: desktop/ui/app.slint:3279
+#: desktop/ui/app.slint:3291
 msgid "LANGUAGE"
 msgstr ""
 
-#: desktop/ui/app.slint:3283
+#: desktop/ui/app.slint:3295
 msgid "STORAGE"
 msgstr ""
 
-#: desktop/ui/app.slint:3293
+#: desktop/ui/app.slint:3305
 msgid "ABOUT"
 msgstr ""
 
-#: desktop/ui/app.slint:3302
+#: desktop/ui/app.slint:3314
 msgid "LEAVING SOON AND PEOPLE"
 msgstr ""
 
-#: desktop/ui/app.slint:3305
+#: desktop/ui/app.slint:3317
 msgid "People and their rights, who they request as, the Leaving soon countdown and what is kept forever."
 msgstr ""
 
-#: desktop/ui/app.slint:3310
+#: desktop/ui/app.slint:3322
 msgid "ALWYWATCH SERVER"
 msgstr ""
 
-#: desktop/ui/app.slint:3323
+#: desktop/ui/app.slint:3335
 msgid "INVITE SOMEONE"
 msgstr ""
 
-#: desktop/ui/app.slint:3324
+#: desktop/ui/app.slint:3336
 msgid "A new person gets an AlwyWatch account, and a Jellyfin login if you like."
 msgstr ""
 
-#: desktop/ui/app.slint:3346
+#: desktop/ui/app.slint:3358
 msgid "Also make a Jellyfin login on {}"
 msgstr ""
 
-#: desktop/ui/app.slint:3363
+#: desktop/ui/app.slint:3375
 msgid "Personal note (optional): a few words in the email"
 msgstr ""
 
-#: desktop/ui/app.slint:3384
+#: desktop/ui/app.slint:3396
 msgid "Sent to {}"
 msgstr ""
 
-#: desktop/ui/app.slint:3423
+#: desktop/ui/app.slint:3435
 msgid "INVITATIONS"
 msgstr ""
 
-#: desktop/ui/app.slint:3450
+#: desktop/ui/app.slint:3462
 msgid "SERVER STATUS"
 msgstr ""
 
-#: desktop/ui/app.slint:3499
+#: desktop/ui/app.slint:3511
 msgid "Your avatar"
 msgstr ""
 
-#: desktop/ui/app.slint:3506
+#: desktop/ui/app.slint:3518
 msgid "People you watch with see this name and avatar. You can change them later in Settings."
 msgstr ""
 
-#: desktop/ui/app.slint:3507
+#: desktop/ui/app.slint:3519
 msgid "Shown to the people you watch with, instead of your name on {}."
 msgstr ""
 
-#: desktop/ui/app.slint:3508
+#: desktop/ui/app.slint:3520
 msgid "Pick one, or use a picture of your own."
 msgstr ""
 
-#: desktop/ui/app.slint:3546
+#: desktop/ui/app.slint:3558
 msgid "Reset to {}"
 msgstr ""
 
-#: desktop/ui/app.slint:3581
+#: desktop/ui/app.slint:3593
 msgid "Unlink this sign-in?"
 msgstr ""
 
-#: desktop/ui/app.slint:3598
+#: desktop/ui/app.slint:3610
 msgid "Use one AlwyWatch account for both: the same name, picture, keep choices and watch-together rooms everywhere you sign in with either. Only link sign-ins that are really yours."
 msgstr ""
 
-#: desktop/ui/app.slint:3603
+#: desktop/ui/app.slint:3615
 msgid "This can't be undone as such: unlinking later gives that sign-in a fresh, empty account."
 msgstr ""
 
-#: desktop/ui/app.slint:3706
+#: desktop/ui/app.slint:3718
 msgid "Drag or use the arrow keys to move · wheel, slider or + and − to zoom"
 msgstr ""
 
-#: desktop/ui/app.slint:3800
-#: desktop/ui/app.slint:3811
-#: desktop/ui/app.slint:3877
+#: desktop/ui/app.slint:3812
+#: desktop/ui/app.slint:3823
+#: desktop/ui/app.slint:3889
 msgid "PIN for {}"
 msgstr ""
 
-#: desktop/ui/app.slint:3800
+#: desktop/ui/app.slint:3812
 msgid "Protect {} with a PIN"
 msgstr ""
 
-#: desktop/ui/app.slint:3801
+#: desktop/ui/app.slint:3813
 msgid "Switch to {}"
 msgstr ""
 
-#: desktop/ui/app.slint:3802
+#: desktop/ui/app.slint:3814
 msgid "Remove {}?"
 msgstr ""
 
-#: desktop/ui/app.slint:3809
+#: desktop/ui/app.slint:3821
 msgid "A profile is one person on this computer. Next you choose how they sign in: with an AlwyWatch account, or with Jellyfin or Plex only."
 msgstr ""
 
-#: desktop/ui/app.slint:3812
+#: desktop/ui/app.slint:3824
 msgid "Their servers, history and settings on this computer are deleted. Downloads only they wanted are deleted too."
 msgstr ""
 
-#: desktop/ui/app.slint:3834
+#: desktop/ui/app.slint:3846
 msgid "Create and switch"
 msgstr ""
 
-#: desktop/ui/app.slint:3940
+#: desktop/ui/app.slint:3952
 msgid "Paused for now. Invite people, then start: everyone starts at {} at the same moment, once all of them have loaded it."
 msgstr ""
 
-#: desktop/ui/app.slint:3959
+#: desktop/ui/app.slint:3971
 msgid "Start at {}"
 msgstr ""
 
-#: desktop/ui/app.slint:3994
+#: desktop/ui/app.slint:4006
 msgid "They get an invitation and join directly."
+msgstr ""
+
+#: server/src/account_api.rs:652
+msgid "Set a new AlwyWatch password"
+msgstr ""
+
+#: server/src/account_api.rs:653
+msgid "Someone asked to set a new password for the AlwyWatch account “{username}”."
+msgstr ""
+
+#: server/src/account_api.rs:659
+msgid "This link works once, for an hour. Devices signed in to the account are signed out."
+msgstr ""
+
+#: server/src/account_api.rs:663
+msgid "Not you? Ignore this email: your password stays as it is."
 msgstr ""
 
 #: server/src/invites.rs:243

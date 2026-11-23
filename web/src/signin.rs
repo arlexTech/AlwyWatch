@@ -133,7 +133,7 @@ pub fn StartCards(
             </button>
             <button class="choice" on:click=move |_| on_create.run(())>
                 <strong>{tr!("Create an AlwyWatch account")}</strong>
-                <span class="muted">{tr!("You have an invitation")}</span>
+                <span class="muted">{tr!("If someone invited you")}</span>
             </button>
             <button class="choice" on:click=move |_| on_media.run(())>
                 <strong>{tr!("Jellyfin or Plex only")}</strong>
