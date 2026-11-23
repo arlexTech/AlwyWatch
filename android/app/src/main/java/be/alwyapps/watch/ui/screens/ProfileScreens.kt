@@ -56,6 +56,7 @@ import be.alwyapps.watch.ui.Value
 import be.alwyapps.watch.ui.ambientGlow
 import be.alwyapps.watch.ui.dpadEscape
 import be.alwyapps.watch.ui.initialFocus
+import be.alwyapps.watch.ui.tr
 
 /** Open for this process once the profile was picked (and its PIN checked). */
 object ProfileSession {
@@ -132,7 +133,7 @@ private fun WhoIsWatching(
     ) {
         val a = asking
         if (a == null) {
-            Text("Who's watching?", style = MaterialTheme.typography.displaySmall)
+            Text(tr("Who's watching?"), style = MaterialTheme.typography.displaySmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 profiles.forEachIndexed { i, p ->
                     ProfileTile(p, if (i == 0) Modifier.initialFocus() else Modifier) {
@@ -168,7 +169,7 @@ private fun ProfileTile(
         ) {
             Avatar(p.name, 96)
             Text(p.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, textAlign = TextAlign.Center)
-            if (p.hasPin) Text("PIN", style = MaterialTheme.typography.labelSmall, color = Muted)
+            if (p.hasPin) Text(tr("PIN"), style = MaterialTheme.typography.labelSmall, color = Muted)
         }
     }
 }
@@ -225,7 +226,7 @@ private fun PinEntry(
         }
     }
     Avatar(p.name, 96)
-    Text("PIN for ${p.name}", style = MaterialTheme.typography.titleLarge)
+    Text(tr("PIN for {name}", "name" to p.name), style = MaterialTheme.typography.titleLarge)
     Field(
         pin,
         {
@@ -239,8 +240,8 @@ private fun PinEntry(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { check() }),
     )
-    if (wrong > 0) Text("Wrong PIN", color = Danger)
-    onBack?.let { ActionButton("Back", it) }
+    if (wrong > 0) Text(tr("Wrong PIN"), color = Danger)
+    onBack?.let { ActionButton(tr("Back"), it) }
 }
 
 /**
@@ -288,9 +289,9 @@ fun ProfileSwitcher(
         title = {
             Text(
                 when {
-                    adding -> "New profile"
-                    asking != null -> "Switch to ${asking?.name}"
-                    else -> "Who's watching?"
+                    adding -> tr("New profile")
+                    asking != null -> tr("Switch to {name}", "name" to asking?.name)
+                    else -> tr("Who's watching?")
                 },
             )
         },
@@ -299,12 +300,12 @@ fun ProfileSwitcher(
                 val a = asking
                 when {
                     adding -> {
-                        Text("A profile has its own servers, history and settings.", color = Muted)
+                        Text(tr("A profile has its own servers, history and settings."), color = Muted)
                         Field(
                             name,
                             { name = it.take(24) },
                             Modifier.fillMaxWidth().initialFocus(),
-                            placeholder = { Text("Name") },
+                            placeholder = { Text(tr("Name")) },
                             singleLine = true,
                         )
                     }
@@ -319,9 +320,9 @@ fun ProfileSwitcher(
                                 SwitcherTile(
                                     p.name,
                                     if (current) {
-                                        "Current"
+                                        tr("Current")
                                     } else if (p.hasPin) {
-                                        "PIN"
+                                        tr("PIN")
                                     } else {
                                         ""
                                     },
@@ -340,7 +341,7 @@ fun ProfileSwitcher(
                                     }
                                 }
                             }
-                            SwitcherTile("Add", "", Modifier, add = true) { adding = true }
+                            SwitcherTile(tr("Add"), "", Modifier, add = true) { adding = true }
                         }
                 }
             }
@@ -348,15 +349,15 @@ fun ProfileSwitcher(
         confirmButton = {
             when {
                 adding ->
-                    ActionButton("Create and switch", {
+                    ActionButton(tr("Create and switch"), {
                         if (name.isNotBlank()) switchTo(services.profiles.add(name.trim()))
                     }, primary = true)
-                asking != null -> ActionButton("Back", { asking = null })
-                onSettings != null -> ActionButton("Settings", onSettings, icon = Icons.Settings)
-                else -> ActionButton("Close", onDismiss)
+                asking != null -> ActionButton(tr("Back"), { asking = null })
+                onSettings != null -> ActionButton(tr("Settings"), onSettings, icon = Icons.Settings)
+                else -> ActionButton(tr("Close"), onDismiss)
             }
         },
-        dismissButton = { if (adding) ActionButton("Back", { adding = false }) },
+        dismissButton = { if (adding) ActionButton(tr("Back"), { adding = false }) },
     )
 }
 
@@ -409,12 +410,15 @@ fun ProfilesGroup() {
     var removing by remember { mutableStateOf<Profile?>(null) }
     var switching by remember { mutableStateOf<Profile?>(null) }
 
-    Group("Profiles", footer = "Several people on this device: each profile has its own servers, history and settings. Downloads are shared.") {
+    Group(
+        tr("Profiles"),
+        footer = tr("Several people on this device: each profile has its own servers, history and settings. Downloads are shared."),
+    ) {
         profiles.forEachIndexed { i, p ->
             if (i > 0) Divider()
             ListRow(
                 p.name,
-                subtitle = if (p.hasPin) "Protected by a PIN" else null,
+                subtitle = if (p.hasPin) tr("Protected by a PIN") else null,
                 leading = { Avatar(p.name, 34) },
                 onClick =
                     if (p.id == current) {
@@ -425,30 +429,30 @@ fun ProfilesGroup() {
                 trailing = {
                     androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (p.id == current) {
-                            Value("In use")
+                            Value(tr("In use"))
                             be.alwyapps.watch.ui
-                                .IconAction(Icons.Settings, "PIN", { pinFor = p })
+                                .IconAction(Icons.Settings, tr("PIN"), { pinFor = p })
                         } else {
                             be.alwyapps.watch.ui
-                                .IconAction(Icons.Delete, "Remove ${p.name}", { removing = p })
+                                .IconAction(Icons.Delete, tr("Remove {name}", "name" to p.name), { removing = p })
                         }
                     }
                 },
             )
         }
         Divider()
-        ListRow("Add a profile", icon = Icons.Add, onClick = { adding = true }, trailing = { Chevron() })
+        ListRow(tr("Add a profile"), icon = Icons.Add, onClick = { adding = true }, trailing = { Chevron() })
         if (profiles.size > 1) {
             Divider()
             var auto by remember { mutableStateOf(services.profiles.autoSignIn) }
             be.alwyapps.watch.ui.ToggleRow(
-                "Skip “Who's watching?” at start",
+                tr("Skip “Who's watching?” at start"),
                 auto,
                 {
                     auto = it
                     services.profiles.autoSignIn = it
                 },
-                subtitle = "Open the last profile used instead of asking who's watching (a PIN is still asked)",
+                subtitle = tr("Open the last profile used instead of asking who's watching (a PIN is still asked)"),
             )
         }
     }
@@ -461,12 +465,12 @@ fun ProfilesGroup() {
                 renaming = null
             },
             containerColor = Background,
-            title = { Text(if (adding) "New profile" else "Rename") },
+            title = { Text(if (adding) tr("New profile") else tr("Rename")) },
             text = {
-                Field(name, { name = it.take(24) }, Modifier.fillMaxWidth(), placeholder = { Text("Name") }, singleLine = true)
+                Field(name, { name = it.take(24) }, Modifier.fillMaxWidth(), placeholder = { Text(tr("Name")) }, singleLine = true)
             },
             confirmButton = {
-                ActionButton(if (adding) "Create and switch" else "Save", {
+                ActionButton(if (adding) tr("Create and switch") else tr("Save"), {
                     val r = renaming
                     if (r != null) {
                         services.profiles.rename(r.id, name)
@@ -480,7 +484,7 @@ fun ProfilesGroup() {
                 }, primary = true)
             },
             dismissButton = {
-                ActionButton("Cancel", {
+                ActionButton(tr("Cancel"), {
                     adding = false
                     renaming = null
                 })
@@ -493,17 +497,17 @@ fun ProfilesGroup() {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { pinFor = null },
             containerColor = Background,
-            title = { Text(if (p.hasPin) "PIN for ${p.name}" else "Protect ${p.name} with a PIN") },
+            title = { Text(if (p.hasPin) tr("PIN for {name}", "name" to p.name) else tr("Protect {name} with a PIN", "name" to p.name)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     be.alwyapps.watch.ui
                         .NoAutofill()
-                    Text("Asked when opening this profile.", color = Muted)
+                    Text(tr("Asked when opening this profile."), color = Muted)
                     Field(
                         pin,
                         { pin = it.filter(Char::isDigit).take(4) },
                         Modifier.fillMaxWidth(),
-                        placeholder = { Text(if (p.hasPin) "New 4-digit PIN" else "4-digit PIN") },
+                        placeholder = { Text(if (p.hasPin) tr("New 4-digit PIN") else tr("4-digit PIN")) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
@@ -511,7 +515,7 @@ fun ProfilesGroup() {
                 }
             },
             confirmButton = {
-                ActionButton("Save", {
+                ActionButton(tr("Save"), {
                     if (pin.length == 4) {
                         services.profiles.setPin(p.id, pin)
                         pinFor = null
@@ -521,13 +525,13 @@ fun ProfilesGroup() {
             },
             dismissButton = {
                 if (p.hasPin) {
-                    ActionButton("Remove PIN", {
+                    ActionButton(tr("Remove PIN"), {
                         services.profiles.setPin(p.id, null)
                         pinFor = null
                         version++
                     })
                 } else {
-                    ActionButton("Cancel", { pinFor = null })
+                    ActionButton(tr("Cancel"), { pinFor = null })
                 }
             },
         )
@@ -537,21 +541,21 @@ fun ProfilesGroup() {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { switching = null },
             containerColor = Background,
-            title = { Text("Switch to ${p.name}") },
+            title = { Text(tr("Switch to {name}", "name" to p.name)) },
             text = {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) { PinEntry(p, null) { services.switchProfile(ctx as Activity, p.id, alreadyUnlocked = true) } }
             },
-            confirmButton = { ActionButton("Cancel", { switching = null }) },
+            confirmButton = { ActionButton(tr("Cancel"), { switching = null }) },
         )
     }
 
     removing?.let { p ->
         ConfirmDialog(
-            "Remove ${p.name}?",
-            "Their servers, history and settings on this device are deleted. Downloads only they wanted are deleted too.",
-            confirm = "Remove",
+            tr("Remove {name}?", "name" to p.name),
+            tr("Their servers, history and settings on this device are deleted. Downloads only they wanted are deleted too."),
+            confirm = tr("Remove"),
             onConfirm = {
                 runCatching { core.releaseProfileDownloads(p.id) }
                 java.io.File(ctx.filesDir, "profiles/${p.id}").deleteRecursively()

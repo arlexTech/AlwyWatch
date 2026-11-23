@@ -49,6 +49,7 @@ import be.alwyapps.watch.ui.ToggleRow
 import be.alwyapps.watch.ui.UiPrefs
 import be.alwyapps.watch.ui.Value
 import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import be.alwyapps.watch.ui.usesRail
 
 /** A page of Settings, opened from the list (`Route.SettingsSection`). */
@@ -72,19 +73,37 @@ private enum class Section(
     }
 }
 
+/** The section's title in the selected language ([Section.title] stays English: a key). */
+private fun Section.label(): String =
+    when (this) {
+        Section.SERVERS -> tr("Servers")
+        Section.SERVICES -> tr("AlwyWatch & requests")
+        Section.PROFILES -> tr("Profiles")
+        Section.PLAYBACK -> tr("Playback")
+        Section.AUDIO -> tr("Audio & subtitles")
+        Section.INTERFACE -> tr("Menu & pages")
+        Section.DOWNLOADS -> tr("Downloads")
+        Section.ABOUT -> tr("Language & about")
+    }
+
+/** "5 seconds" for a choice list. */
+private fun seconds(n: Int) = trn("{n} second", "{n} seconds", n)
+
 private fun kindName(kind: ServerKind) = if (kind == ServerKind.PLEX) "Plex" else "Jellyfin"
 
 /** The scrolling column every Settings page uses. */
 @Composable
 private fun SettingsPage(
     title: String,
+    /** English, whatever the language: the key of the remembered row. */
+    key: String,
     content: @Composable () -> Unit,
 ) {
     val d = LocalDimens.current
     // Back on this page: the row that was opened gets the focus (else its first row, TV).
     // TV: rows scroll into view just enough (the default keeps the focused row a third of the
     // way down: a page opening on a row under its first group had its title half off screen).
-    androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalRowMemory provides "settings.$title") {
+    androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalRowMemory provides "settings.$key") {
         be.alwyapps.watch.ui.MinimalScrollSpec {
             Column(
                 Modifier
@@ -115,41 +134,52 @@ fun SettingsScreen(
     val seerr = remember { core.seerrConnection() }
     val rail = usesRail()
 
-    fun on(b: Boolean) = if (b) "on" else "off"
+    fun on(b: Boolean) = if (b) tr("on") else tr("off")
 
     fun summary(s: Section): String =
         when (s) {
             Section.SERVERS ->
-                accounts.joinToString(" · ") { "${it.serverName} (${kindName(it.kind)})" }.ifEmpty { "No server yet" }
+                accounts.joinToString(" · ") { "${it.serverName} (${kindName(it.kind)})" }.ifEmpty { tr("No server yet") }
             Section.SERVICES ->
                 listOf(
-                    keep?.let { "AlwyWatch server ${it.baseUrl.substringAfter("://").trimEnd('/')}" } ?: "No AlwyWatch server",
-                    if (seerr != null) "requests on" else "requests off",
+                    keep?.let { tr("AlwyWatch server {address}", "address" to it.baseUrl.substringAfter("://").trimEnd('/')) }
+                        ?: tr("No AlwyWatch server"),
+                    if (seerr != null) tr("requests on") else tr("requests off"),
                 ).joinToString(" · ")
-            Section.PROFILES -> "Who's watching on this device, PINs"
+            Section.PROFILES -> tr("Who's watching on this device, PINs")
             Section.PLAYBACK ->
-                "Skip intros ${on(settings.autoSkipIntro)} · next episode ${on(settings.autoPlayNext)} · " +
-                    "−${settings.seekBackS} s / +${settings.seekForwardS} s"
+                tr(
+                    "Skip intros {intros} · next episode {next} · −{back} s / +{forward} s",
+                    "intros" to on(settings.autoSkipIntro),
+                    "next" to on(settings.autoPlayNext),
+                    "back" to settings.seekBackS,
+                    "forward" to settings.seekForwardS,
+                )
             Section.AUDIO ->
                 listOf(
-                    languageName(settings.audioLanguage.ifEmpty { null }) ?: "Original audio",
-                    "subtitles " +
-                        when (settings.subtitleMode) {
-                            "forced" -> "forced only"
-                            "always" -> "always"
-                            "off" -> "off"
-                            else -> "automatic"
-                        },
-                    settings.subtitleSize,
+                    languageName(settings.audioLanguage.ifEmpty { null }) ?: tr("Original audio"),
+                    when (settings.subtitleMode) {
+                        "forced" -> tr("subtitles forced only")
+                        "always" -> tr("subtitles always")
+                        "off" -> tr("subtitles off")
+                        else -> tr("subtitles automatic")
+                    },
+                    when (settings.subtitleSize) {
+                        "small" -> tr("small")
+                        "normal" -> tr("normal")
+                        "large" -> tr("large")
+                        "huge" -> tr("huge")
+                        else -> settings.subtitleSize
+                    },
                 ).joinToString(" · ")
             Section.INTERFACE ->
                 listOfNotNull(
-                    "libraries in the menu".takeIf { rail },
-                    "clock".takeIf { d.isTv },
-                    "theme music",
-                    "quitting",
+                    tr("libraries in the menu").takeIf { rail },
+                    tr("clock").takeIf { d.isTv },
+                    tr("theme music"),
+                    tr("quitting"),
                 ).joinToString(", ").replaceFirstChar { it.uppercase() }
-            Section.DOWNLOADS -> "When to delete, manage downloads"
+            Section.DOWNLOADS -> tr("When to delete, manage downloads")
             Section.ABOUT ->
                 listOfNotNull(
                     I18n
@@ -157,18 +187,18 @@ fun SettingsScreen(
                         .firstOrNull { it.first == I18n.language }
                         ?.second,
                     "AlwyWatch ${BuildConfig.VERSION_NAME}",
-                    "image cache",
+                    tr("image cache"),
                 ).joinToString(" · ")
         }
 
-    SettingsPage("Settings") {
+    SettingsPage(tr("Settings"), "Settings") {
         Group(null) {
             Section.entries
                 .filter { it != Section.DOWNLOADS || !d.isTv }
                 .forEachIndexed { i, s ->
                     if (i > 0) Divider()
                     ListRow(
-                        s.title,
+                        s.label(),
                         subtitle = summary(s),
                         icon = s.icon,
                         onClick = { nav.push(Route.SettingsSection(s.id)) },
@@ -186,7 +216,7 @@ fun SettingsSectionScreen(
     onAccountChanged: (String?) -> Unit,
 ) {
     val s = Section.of(id)
-    SettingsPage(s.title) {
+    SettingsPage(s.label(), s.title) {
         when (s) {
             Section.SERVERS -> ServersSection(onAccountChanged)
             Section.SERVICES -> {
@@ -226,9 +256,9 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
     var removing by remember { mutableStateOf<be.alwyapps.watch.core.Account?>(null) }
     removing?.let { a ->
         be.alwyapps.watch.ui.ConfirmDialog(
-            "Remove ${a.userName}?",
-            "You'll be signed out of ${a.serverName} on this device. Its downloads stay until you delete them.",
-            confirm = "Remove",
+            tr("Remove {name}?", "name" to a.userName),
+            tr("You'll be signed out of {server} on this device. Its downloads stay until you delete them.", "server" to a.serverName),
+            confirm = tr("Remove"),
             onConfirm = {
                 core.removeAccount(a.id)
                 ctx.services.tokens.remove(a.id)
@@ -243,11 +273,12 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
     // Several servers: shown together (one preferred for titles on both) or one at a time.
     var together by remember { mutableStateOf(core.getSetting(COMBINED_KEY) != "0") }
     Group(
-        "Your servers",
+        tr("Your servers"),
         footer =
             if (keep != null) {
-                "Only one of these logins is used for AlwyWatch (leaving soon, keep choices, requests). " +
-                    "Change it in Settings → AlwyWatch & requests."
+                tr(
+                    "Only one of these logins is used for AlwyWatch (leaving soon, keep choices, requests). Change it in Settings → AlwyWatch & requests.",
+                )
             } else {
                 null
             },
@@ -258,8 +289,8 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
             if (i > 0) Divider()
             val sync =
                 when {
-                    keep?.accountId == a.id -> "Used for AlwyWatch"
-                    keep != null && served?.contains(a.serverId) == true -> "Not used for AlwyWatch"
+                    keep?.accountId == a.id -> tr("Used for AlwyWatch")
+                    keep != null && served?.contains(a.serverId) == true -> tr("Not used for AlwyWatch")
                     keep != null && served == null -> null
                     else -> null
                 }
@@ -283,22 +314,22 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
                     },
                 trailing = {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (a.id == main) Value(if (together && accounts.size > 1) "Preferred" else "In use")
+                        if (a.id == main) Value(if (together && accounts.size > 1) tr("Preferred") else tr("In use"))
                         if (a.kind == ServerKind.PLEX) {
-                            IconAction(Icons.Person, "Switch Plex user", { nav.push(Route.PlexSwitch(a.id)) })
+                            IconAction(Icons.Person, tr("Switch Plex user"), { nav.push(Route.PlexSwitch(a.id)) })
                         }
-                        IconAction(Icons.Delete, "Remove ${a.userName}", { removing = a })
+                        IconAction(Icons.Delete, tr("Remove {name}", "name" to a.userName), { removing = a })
                     }
                 },
             )
         }
         Divider()
-        ListRow("Add a server", icon = Icons.Add, onClick = { nav.push(Route.AddServer) }, trailing = { Chevron() })
+        ListRow(tr("Add a server"), icon = Icons.Add, onClick = { nav.push(Route.AddServer) }, trailing = { Chevron() })
     }
     if (accounts.size > 1) {
-        Group("Home", footer = "Together, the home mixes every server; a title on several is shown once, from the preferred one.") {
+        Group(tr("Home"), footer = tr("Together, the home mixes every server; a title on several is shown once, from the preferred one.")) {
             ToggleRow(
-                "Show all servers together",
+                tr("Show all servers together"),
                 together,
                 {
                     together = it
@@ -306,17 +337,25 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
                 },
                 subtitle =
                     if (together) {
-                        "${if (d.isTv) "Select" else "Tap"} an account above to make it the preferred one"
+                        if (d.isTv) {
+                            tr("Select an account above to make it the preferred one")
+                        } else {
+                            tr("Tap an account above to make it the preferred one")
+                        }
                     } else {
-                        "One server at a time: ${if (d.isTv) "select" else "tap"} an account above to switch"
+                        if (d.isTv) {
+                            tr("One server at a time: select an account above to switch")
+                        } else {
+                            tr("One server at a time: tap an account above to switch")
+                        }
                     },
             )
         }
         SyncGroup(accounts)
-        Group("Moving between servers", footer = "A one-time copy, one way. Each person copies their own history, with their own accounts.") {
+        Group(tr("Moving between servers"), footer = tr("A one-time copy, one way. Each person copies their own history, with their own accounts.")) {
             ListRow(
-                "Copy watch history",
-                subtitle = "What you watched and where you stopped, from one server to another (Plex to Jellyfin)",
+                tr("Copy watch history"),
+                subtitle = tr("What you watched and where you stopped, from one server to another (Plex to Jellyfin)"),
                 icon = Icons.Refresh,
                 onClick = { nav.push(Route.HistoryCopy) },
                 trailing = { Chevron() },
@@ -342,11 +381,11 @@ private fun SyncGroup(accounts: List<be.alwyapps.watch.core.Account>) {
         accounts.flatMapIndexed { i, a -> accounts.drop(i + 1).filter { it.serverId != a.serverId }.map { a to it } }
     if (candidates.isEmpty()) return
     Group(
-        "Keep in sync",
+        tr("Keep in sync"),
         footer =
-            "Both ways: what you watch, unwatch or where you stop on one server is copied to the other. " +
-                "Right away for what you watch in AlwyWatch, every 6 hours for other apps. " +
-                "Changed on both since the last sync: the further one wins.",
+            tr(
+                "Both ways: what you watch, unwatch or where you stop on one server is copied to the other. Right away for what you watch in AlwyWatch, every 6 hours for other apps. Changed on both since the last sync: the further one wins.",
+            ),
     ) {
         candidates.forEachIndexed { i, (a, b) ->
             if (i > 0) Divider()
@@ -354,18 +393,29 @@ private fun SyncGroup(accounts: List<be.alwyapps.watch.core.Account>) {
             val status = remember(version, on) { runCatching { core.syncStatus(a.id, b.id) }.getOrNull() }
             val subtitle =
                 when {
-                    !on -> "${a.serverName} (${kindName(a.kind)}) and ${b.serverName} (${kindName(b.kind)})"
-                    state.running -> "Syncing now…"
-                    status?.error != null -> "Last sync failed: ${status.error}"
+                    !on ->
+                        tr(
+                            "{server} ({kind}) and {other} ({otherKind})",
+                            "server" to a.serverName,
+                            "kind" to kindName(a.kind),
+                            "other" to b.serverName,
+                            "otherKind" to kindName(b.kind),
+                        )
+                    state.running -> tr("Syncing now…")
+                    status?.error != null -> tr("Last sync failed: {reason}", "reason" to status.error)
                     status?.lastRunAt != null -> {
                         val at =
                             java.text.DateFormat
-                                .getTimeInstance(java.text.DateFormat.SHORT)
+                                .getTimeInstance(java.text.DateFormat.SHORT, java.util.Locale.forLanguageTag(I18n.language))
                                 .format(java.util.Date(status.lastRunAt!! * 1000))
                         val changed = status.changes.toInt()
-                        "Last synced $at · " + if (changed == 0) "nothing to change" else "$changed updated"
+                        if (changed == 0) {
+                            tr("Last synced {time} · nothing to change", "time" to at)
+                        } else {
+                            tr("Last synced {time} · {count} updated", "time" to at, "count" to changed)
+                        }
                     }
-                    else -> "Waiting for the first sync"
+                    else -> tr("Waiting for the first sync")
                 }
             ToggleRow(
                 "${a.serverName} ⇄ ${b.serverName}",
@@ -394,7 +444,7 @@ private fun SyncGroup(accounts: List<be.alwyapps.watch.core.Account>) {
         if (pairs.isNotEmpty()) {
             Divider()
             ListRow(
-                if (state.running) "Syncing…" else "Sync now",
+                if (state.running) tr("Syncing…") else tr("Sync now"),
                 icon = Icons.Refresh,
                 onClick = {
                     if (!state.running) {
@@ -428,89 +478,89 @@ private fun PlaybackSection() {
     val core = LocalCore.current
     val d = LocalDimens.current
     val settings = remember { PlayerSettings(core) }
-    Group("Intros and credits") {
+    Group(tr("Intros and credits")) {
         var autoSkip by remember { mutableStateOf(settings.autoSkipIntro) }
         ToggleRow(
-            "Skip intros automatically",
+            tr("Skip intros automatically"),
             autoSkip,
             {
                 autoSkip = it
                 settings.autoSkipIntro = it
             },
-            subtitle = "Otherwise a Skip intro button appears.",
+            subtitle = tr("Otherwise a Skip intro button appears."),
         )
         Divider()
         var autoNext by remember { mutableStateOf(settings.autoPlayNext) }
         ToggleRow(
-            "Play the next episode automatically",
+            tr("Play the next episode automatically"),
             autoNext,
             {
                 autoNext = it
                 settings.autoPlayNext = it
             },
-            subtitle = "A countdown during the credits, which Back cancels. Off: playback stops at the end of the episode.",
+            subtitle = tr("A countdown during the credits, which Back cancels. Off: playback stops at the end of the episode."),
         )
         Divider()
         SecondsRow(
-            "Next episode countdown",
-            listOf("5" to "5 seconds", "10" to "10 seconds", "15" to "15 seconds", "30" to "30 seconds"),
+            tr("Next episode countdown"),
+            listOf("5" to seconds(5), "10" to seconds(10), "15" to seconds(15), "30" to seconds(30)),
             { settings.countdownS },
             { settings.countdownS = it },
         )
     }
-    Group("Remote and resuming") {
+    Group(tr("Remote and resuming")) {
         SecondsRow(
-            "Skip back",
-            listOf("5" to "5 seconds", "10" to "10 seconds", "15" to "15 seconds", "30" to "30 seconds"),
+            tr("Skip back"),
+            listOf("5" to seconds(5), "10" to seconds(10), "15" to seconds(15), "30" to seconds(30)),
             { settings.seekBackS },
             { settings.seekBackS = it },
         )
         Divider()
         SecondsRow(
-            "Skip forward",
-            listOf("10" to "10 seconds", "15" to "15 seconds", "30" to "30 seconds", "60" to "1 minute"),
+            tr("Skip forward"),
+            listOf("10" to seconds(10), "15" to seconds(15), "30" to seconds(30), "60" to trn("{n} minute", "{n} minutes", 1)),
             { settings.seekForwardS },
             { settings.seekForwardS = it },
         )
         Divider()
         SecondsRow(
-            "Rewind when resuming",
-            listOf("0" to "Off", "5" to "5 seconds", "10" to "10 seconds", "30" to "30 seconds"),
+            tr("Rewind when resuming"),
+            listOf("0" to tr("Off"), "5" to seconds(5), "10" to seconds(10), "30" to seconds(30)),
             { settings.resumeRewindS },
             { settings.resumeRewindS = it },
         )
         Divider()
         SecondsRow(
-            "Are you still watching?",
-            listOf("0" to "Never", "2" to "After 2 hours", "3" to "After 3 hours", "4" to "After 4 hours"),
+            tr("Are you still watching?"),
+            listOf("0" to tr("Never")) + listOf(2, 3, 4).map { "$it" to trn("After {n} hour", "After {n} hours", it) },
             { settings.stillWatchingH },
             { settings.stillWatchingH = it },
-            subtitle = "Pauses when the remote has not been touched for that long.",
+            subtitle = tr("Pauses when the remote has not been touched for that long."),
         )
     }
-    Group("Picture") {
+    Group(tr("Picture")) {
         var matchRate by remember { mutableStateOf(settings.matchFrameRate) }
         ToggleRow(
-            "Match display refresh rate",
+            tr("Match display refresh rate"),
             matchRate,
             {
                 matchRate = it
                 settings.matchFrameRate = it
             },
-            subtitle = "Switches the TV to the video's frame rate (no judder).",
+            subtitle = tr("Switches the TV to the video's frame rate (no judder)."),
         )
         // Tunneling only exists on TV devices.
         if (d.isTv) {
             Divider()
             var tunneling by remember { mutableStateOf(settings.tunneling) }
             ToggleRow(
-                "Tunneled playback",
+                tr("Tunneled playback"),
                 tunneling,
                 {
                     tunneling = it
                     settings.tunneling = it
                 },
-                subtitle = "Lower power on some TV devices, but breaks playback on others.",
+                subtitle = tr("Lower power on some TV devices, but breaks playback on others."),
             )
         }
     }
@@ -527,23 +577,23 @@ private fun TogetherRightsGroup() {
         rights = r
         runCatching { core.setTogetherRights(r) }
     }
-    Group("Watch together") {
+    Group(tr("Watch together")) {
         Text(
-            "In rooms you create, what the others may do. You can always do everything.",
+            tr("In rooms you create, what the others may do. You can always do everything."),
             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         ToggleRow(
-            "Others can change what's playing",
+            tr("Others can change what's playing"),
             rights.changeTitle,
             { change(rights.copy(changeTitle = it)) },
-            subtitle = "Next episode, another title.",
+            subtitle = tr("Next episode, another title."),
         )
         Divider()
-        ToggleRow("Others can pause and play", rights.playPause, { change(rights.copy(playPause = it)) })
+        ToggleRow(tr("Others can pause and play"), rights.playPause, { change(rights.copy(playPause = it)) })
         Divider()
-        ToggleRow("Others can move forward or back", rights.seek, { change(rights.copy(seek = it)) })
+        ToggleRow(tr("Others can move forward or back"), rights.seek, { change(rights.copy(seek = it)) })
     }
 }
 
@@ -555,25 +605,25 @@ private fun AudioSection() {
         listOf("eng", "fra", "nld", "deu", "spa", "ita", "por", "jpn", "kor", "zho", "ara", "rus", "pol", "swe", "tur", "hin")
             .map { it to (languageName(it) ?: it) }
     Group(
-        "Languages",
-        footer = "A movie or show remembers the tracks picked for it (on its page or while watching), and its next episodes follow.",
+        tr("Languages"),
+        footer = tr("A movie or show remembers the tracks picked for it (on its page or while watching), and its next episodes follow."),
     ) {
         var audio by remember { mutableStateOf(settings.audioLanguage) }
-        ChoiceRow("Audio language", listOf("" to "Original (the file's default)") + languages, audio, {
+        ChoiceRow(tr("Audio language"), listOf("" to tr("Original (the file's default)")) + languages, audio, {
             audio = it
             settings.audioLanguage = it
         })
         Divider()
         var mode by remember { mutableStateOf(settings.subtitleMode) }
         ChoiceRow(
-            "Subtitles",
-            listOf("auto" to "Automatic", "forced" to "Only foreign-language parts", "always" to "Always", "off" to "Off"),
+            tr("Subtitles"),
+            listOf("auto" to tr("Automatic"), "forced" to tr("Only foreign-language parts"), "always" to tr("Always"), "off" to tr("Off")),
             mode,
             {
                 mode = it
                 settings.subtitleMode = it
             },
-            subtitle = "Automatic: when the audio is not in your subtitle language.",
+            subtitle = tr("Automatic: when the audio is not in your subtitle language."),
         )
         Divider()
         var subLang by remember { mutableStateOf(settings.subtitleLanguage) }
@@ -583,35 +633,35 @@ private fun AudioSection() {
                     .getDefault()
                     .language,
             ) ?: "?"
-        ChoiceRow("Subtitle language", listOf("" to "Device language ($device)") + languages, subLang, {
+        ChoiceRow(tr("Subtitle language"), listOf("" to tr("Device language ({language})", "language" to device)) + languages, subLang, {
             subLang = it
             settings.subtitleLanguage = it
         })
     }
-    Group("Subtitle look") {
+    Group(tr("Subtitle look")) {
         var size by remember { mutableStateOf(settings.subtitleSize) }
-        ChoiceRow("Size", listOf("small" to "Small", "normal" to "Normal", "large" to "Large", "huge" to "Huge"), size, {
+        ChoiceRow(tr("Size"), listOf("small" to tr("Small"), "normal" to tr("Normal"), "large" to tr("Large"), "huge" to tr("Huge")), size, {
             size = it
             settings.subtitleSize = it
         })
         Divider()
         var color by remember { mutableStateOf(settings.subtitleColor) }
-        ChoiceRow("Colour", listOf("white" to "White", "yellow" to "Yellow"), color, {
+        ChoiceRow(tr("Colour"), listOf("white" to tr("White"), "yellow" to tr("Yellow")), color, {
             color = it
             settings.subtitleColor = it
         })
         Divider()
         var box by remember { mutableStateOf(settings.subtitleBackground) }
-        ToggleRow("Background box", box, {
+        ToggleRow(tr("Background box"), box, {
             box = it
             settings.subtitleBackground = it
-        }, subtitle = "Otherwise a dark outline keeps them readable.")
+        }, subtitle = tr("Otherwise a dark outline keeps them readable."))
         Divider()
         var raised by remember { mutableStateOf(settings.subtitleRaised) }
-        ToggleRow("Raise subtitles", raised, {
+        ToggleRow(tr("Raise subtitles"), raised, {
             raised = it
             settings.subtitleRaised = it
-        }, subtitle = "Higher on the screen (TVs that crop the edges).")
+        }, subtitle = tr("Higher on the screen (TVs that crop the edges)."))
     }
 }
 
@@ -622,7 +672,15 @@ private fun InterfaceSection() {
     val settings = remember { PlayerSettings(core) }
     val prefs = remember { UiPrefs(core, d.isTv) }
     if (usesRail()) {
-        Group("Libraries in the menu", footer = "${if (d.isTv) "Select" else "Tap"} a library to show or hide it; arrows change the order.") {
+        Group(
+            tr("Libraries in the menu"),
+            footer =
+                if (d.isTv) {
+                    tr("Select a library to show or hide it; arrows change the order.")
+                } else {
+                    tr("Tap a library to show or hide it; arrows change the order.")
+                },
+        ) {
             val account = LocalAccount.current
             val libs =
                 remember(account) {
@@ -650,7 +708,7 @@ private fun InterfaceSection() {
                 val shown = id !in hidden
                 ListRow(
                     lib.title,
-                    subtitle = if (shown) "Shown" else "Hidden",
+                    subtitle = if (shown) tr("Shown") else tr("Hidden"),
                     icon = if (lib.kind == LibraryKind.SHOWS) Icons.Tv else Icons.Movie,
                     onClick = {
                         hidden = if (shown) hidden + id else hidden - id
@@ -658,39 +716,39 @@ private fun InterfaceSection() {
                     },
                     trailing = {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (n > 0) IconAction(Icons.ChevronUp, "Move up", { move(id, -1) })
-                            if (n < order.lastIndex) IconAction(Icons.ChevronDown, "Move down", { move(id, 1) })
+                            if (n > 0) IconAction(Icons.ChevronUp, tr("Move up"), { move(id, -1) })
+                            if (n < order.lastIndex) IconAction(Icons.ChevronDown, tr("Move down"), { move(id, 1) })
                         }
                     },
                 )
             }
         }
     }
-    Group("Pages and app") {
+    Group(tr("Pages and app")) {
         var theme by remember { mutableStateOf(settings.themeMusic) }
         ToggleRow(
-            "Theme music on show pages",
+            tr("Theme music on show pages"),
             theme,
             {
                 theme = it
                 settings.themeMusic = it
             },
-            subtitle = "Quietly, when the server has the show's theme.",
+            subtitle = tr("Quietly, when the server has the show's theme."),
         )
         if (d.isTv) {
             Divider()
             var clock by remember { mutableStateOf(prefs.clock) }
-            ToggleRow("Clock", clock, {
+            ToggleRow(tr("Clock"), clock, {
                 clock = it
                 prefs.clock = it
-            }, subtitle = "In the corner of every page.")
+            }, subtitle = tr("In the corner of every page."))
         }
         Divider()
         var confirm by remember { mutableStateOf(prefs.confirmQuit) }
-        ToggleRow("Confirm before quitting", confirm, {
+        ToggleRow(tr("Confirm before quitting"), confirm, {
             confirm = it
             prefs.confirmQuit = it
-        }, subtitle = "Back on the home asks first.")
+        }, subtitle = tr("Back on the home asks first."))
     }
 }
 
@@ -698,17 +756,17 @@ private fun InterfaceSection() {
 private fun DownloadsSection() {
     val core = LocalCore.current
     val nav = LocalNavigator.current
-    Group("Delete downloads", footer = "For new downloads; a show's \"next episodes\" keeps its own choice.") {
+    Group(tr("Delete downloads"), footer = tr("For new downloads; a show's \"next episodes\" keeps its own choice.")) {
         var rule by remember { mutableStateOf(core.defaultDeleteRule()) }
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("When to delete", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+            Text(tr("When to delete"), style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
             RuleChips(rule) {
                 rule = it
                 core.setDefaultDeleteRule(it)
             }
         }
         Divider()
-        ListRow("Manage downloads", icon = Icons.Download, onClick = { nav.push(Route.ManageDownloads) }, trailing = { Chevron() })
+        ListRow(tr("Manage downloads"), icon = Icons.Download, onClick = { nav.push(Route.ManageDownloads) }, trailing = { Chevron() })
     }
 }
 
@@ -739,11 +797,11 @@ private fun AboutSection() {
         )
     }
     var cacheMb by remember { mutableStateOf(core.imageCacheBytes().toLong() / (1024 * 1024)) }
-    Group("Storage", footer = "Posters and backdrops kept to show pages instantly; they come back when needed.") {
-        ListRow("Image cache", icon = Icons.Library, trailing = {
+    Group(tr("Storage"), footer = tr("Posters and backdrops kept to show pages instantly; they come back when needed.")) {
+        ListRow(tr("Image cache"), icon = Icons.Library, trailing = {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Value("$cacheMb MB")
-                ActionButton("Clear", {
+                Value(tr("{size} MB", "size" to cacheMb))
+                ActionButton(tr("Clear"), {
                     core.clearImageCache()
                     Images.clearMemory()
                     cacheMb = 0
@@ -751,7 +809,7 @@ private fun AboutSection() {
             }
         })
     }
-    Group("About", footer = "Free software under the GNU AGPL v3 or later.") {
-        ListRow("AlwyWatch ${BuildConfig.VERSION_NAME}", subtitle = "Core ${coreVersion()}", icon = Icons.Info)
+    Group(tr("About"), footer = tr("Free software under the GNU AGPL v3 or later.")) {
+        ListRow("AlwyWatch ${BuildConfig.VERSION_NAME}", subtitle = tr("Core {version}", "version" to coreVersion()), icon = Icons.Info)
     }
 }

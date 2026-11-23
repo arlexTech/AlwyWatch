@@ -51,6 +51,7 @@ import be.alwyapps.watch.ui.PosterCard
 import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.dpadEscape
 import be.alwyapps.watch.ui.rememberFocus
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.delay
 
 /**
@@ -123,12 +124,12 @@ fun SearchScreen() {
                                 when (error) {
                                     android.speech.SpeechRecognizer.ERROR_NO_MATCH,
                                     android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
-                                    -> "Didn't catch that. Try again."
-                                    android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Voice search needs the microphone permission."
+                                    -> tr("Didn't catch that. Try again.")
+                                    android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> tr("Voice search needs the microphone permission.")
                                     android.speech.SpeechRecognizer.ERROR_NETWORK,
                                     android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                                    -> "Voice search needs the internet."
-                                    else -> "Voice search isn't working right now."
+                                    -> tr("Voice search needs the internet.")
+                                    else -> tr("Voice search isn't working right now.")
                                 }
                             android.util.Log.i("AlwySearch", "voice error $error")
                         }
@@ -169,7 +170,7 @@ fun SearchScreen() {
             androidx.activity.result.contract.ActivityResultContracts
                 .RequestPermission(),
         ) { granted ->
-            if (granted) startListening() else voiceNote = "Voice search needs the microphone permission."
+            if (granted) startListening() else voiceNote = tr("Voice search needs the microphone permission.")
         }
     val seerrOn = remember { core.seerrActive() }
     val focus = remember { FocusRequester() }
@@ -225,7 +226,7 @@ fun SearchScreen() {
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                PageTitle("Search")
+                PageTitle(tr("Search"))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     // ✕ sits over the field's end but is not part of it: inside the text field
                     // (its trailing icon) the D-pad could never reach it, → went to the mic.
@@ -242,7 +243,7 @@ fun SearchScreen() {
                                     if (query.length >= 2) down = chips
                                     if (hasClear) right = clear
                                 }.dpadEscape(),
-                            placeholder = { Text(if (listening) "Listening… say a title" else "Movies, shows, episodes…") },
+                            placeholder = { Text(if (listening) tr("Listening… say a title") else tr("Movies, shows, episodes…")) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             leadingIcon = Icons.Search,
@@ -254,7 +255,7 @@ fun SearchScreen() {
                         if (hasClear) {
                             IconAction(
                                 Icons.Close,
-                                "Clear",
+                                tr("Clear"),
                                 {
                                     query = ""
                                     runCatching { focus.requestFocus() }
@@ -271,7 +272,7 @@ fun SearchScreen() {
                         }
                     }
                     if (voice) {
-                        IconAction(Icons.Mic, if (listening) "Listening…" else "Voice search", {
+                        IconAction(Icons.Mic, if (listening) tr("Listening…") else tr("Voice search"), {
                             when {
                                 listening -> {
                                     recognizer.value?.stopListening()
@@ -294,7 +295,7 @@ fun SearchScreen() {
                     Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    for ((key, label) in listOf("all" to "All", "mine" to "On my servers", "other" to "Not on my servers")) {
+                    for ((key, label) in listOf("all" to tr("All"), "mine" to tr("On my servers"), "other" to tr("Not on my servers"))) {
                         be.alwyapps.watch.ui
                             .ActionButton(
                                 label,
@@ -310,7 +311,7 @@ fun SearchScreen() {
         val showMine = filter != "other"
         val showOther = filter != "mine"
         if (showMine && results.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Text("On your servers", style = MaterialTheme.typography.titleMedium) }
+            item(span = { GridItemSpan(maxLineSpan) }) { Text(tr("On your servers"), style = MaterialTheme.typography.titleMedium) }
         }
         if (showMine) {
             items(results, key = { (_, i) -> i.id }) { (a, i) ->
@@ -331,7 +332,7 @@ fun SearchScreen() {
         if (showOther && query.length >= 2 && !seerrOn) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
-                    "To also find what is not on your servers (and request it), connect requests in Settings.",
+                    tr("To also find what is not on your servers (and request it), connect requests in Settings."),
                     Modifier.padding(top = 8.dp),
                     color = Muted,
                     style = MaterialTheme.typography.bodySmall,
@@ -339,13 +340,15 @@ fun SearchScreen() {
             }
         }
         seerrError?.takeIf { showOther }?.let { msg ->
-            item(span = { GridItemSpan(maxLineSpan) }) { Text("Requests unavailable: $msg", color = Muted, style = MaterialTheme.typography.bodySmall) }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(tr("Requests unavailable: {reason}", "reason" to msg), color = Muted, style = MaterialTheme.typography.bodySmall)
+            }
         }
         if (showOther && requestable.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(Modifier.padding(top = 12.dp)) {
-                    Text("Not on your servers", style = MaterialTheme.typography.titleMedium)
-                    Text("Open one to see it and request it", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text(tr("Not on your servers"), style = MaterialTheme.typography.titleMedium)
+                    Text(tr("Open one to see it and request it"), style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
             }
             items(requestable, key = { "seerr-${it.mediaType}-${it.tmdbId}" }) { r ->
@@ -366,7 +369,7 @@ fun SearchScreen() {
             }
         }
         if (query.length >= 2 && (!showMine || results.isEmpty()) && (!showOther || requestable.isEmpty()) && error == null) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Text("No results for \u201c$query\u201d.", color = Muted) }
+            item(span = { GridItemSpan(maxLineSpan) }) { Text(tr("No results for “{query}”.", "query" to query), color = Muted) }
         }
     }
 }

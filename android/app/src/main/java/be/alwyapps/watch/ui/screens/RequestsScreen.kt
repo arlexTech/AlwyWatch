@@ -47,30 +47,32 @@ import be.alwyapps.watch.ui.UrlImage
 import be.alwyapps.watch.ui.focusOnAppear
 import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.rememberSwr
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.launch
 
 fun Availability.label(): String? =
     when (this) {
-        Availability.AVAILABLE -> "Available"
-        Availability.PARTIALLY_AVAILABLE -> "Partly available"
+        Availability.AVAILABLE -> tr("Available")
+        Availability.PARTIALLY_AVAILABLE -> tr("Partly available")
         // Seerr's "processing" = approved, not on the server yet (not necessarily downloading:
         // see SeerrResult.stateLabel for that).
-        Availability.PROCESSING -> "Requested"
-        Availability.PENDING -> "Waiting for approval"
-        Availability.BLOCKLISTED -> "Blocked"
+        Availability.PROCESSING -> tr("Requested")
+        Availability.PENDING -> tr("Waiting for approval")
+        Availability.BLOCKLISTED -> tr("Blocked")
         Availability.DELETED, Availability.UNKNOWN -> null
     }
 
 /** The precise state of a search result: "Downloading 42%" only when Radarr/Sonarr are on it. */
-fun SeerrResult.stateLabel(): String? = downloadProgress?.let { "Downloading ${(it * 100).toInt()}%" } ?: availability.label()
+fun SeerrResult.stateLabel(): String? = downloadProgress?.let { tr("Downloading {percent}%", "percent" to (it * 100).toInt()) } ?: availability.label()
 
 fun RequestStatus.label(): String =
     when (this) {
-        RequestStatus.PENDING -> "Waiting for approval"
-        RequestStatus.APPROVED -> "Approved"
-        RequestStatus.DECLINED -> "Declined"
-        RequestStatus.FAILED -> "Failed"
-        RequestStatus.COMPLETED -> "Available"
+        RequestStatus.PENDING -> tr("Waiting for approval")
+        RequestStatus.APPROVED -> tr("Approved")
+        RequestStatus.DECLINED -> tr("Declined")
+        RequestStatus.FAILED -> tr("Failed")
+        RequestStatus.COMPLETED -> tr("Available")
     }
 
 /**
@@ -94,17 +96,17 @@ fun RequestsScreen() {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 be.alwyapps.watch.ui
-                    .PageTitle("Requests", "To ask for something new, search for it.")
+                    .PageTitle(tr("Requests"), tr("To ask for something new, search for it."))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ActionButton("Mine", { all = false }, Modifier.initialFocus(), primary = !all)
-                    ActionButton("Everyone", { all = true }, primary = all)
+                    ActionButton(tr("Mine"), { all = false }, Modifier.initialFocus(), primary = !all)
+                    ActionButton(tr("Everyone"), { all = true }, primary = all)
                 }
             }
         }
         list.error?.let { msg ->
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
-                    if (all && msg.startsWith("The server refused")) "Only request managers can see everyone's requests." else msg,
+                    if (all && list.failure is CoreException.Unauthorized) tr("Only request managers can see everyone's requests.") else msg,
                     color = Muted,
                 )
             }
@@ -115,9 +117,9 @@ fun RequestsScreen() {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
                     when {
-                        list.value == null -> "Loading requests…"
-                        all -> "No requests."
-                        else -> "You haven't requested anything yet. Search for a title that isn't on your servers to request it."
+                        list.value == null -> tr("Loading requests…")
+                        all -> tr("No requests.")
+                        else -> tr("You haven't requested anything yet. Search for a title that isn't on your servers to request it.")
                     },
                     color = Muted,
                 )
@@ -194,13 +196,13 @@ fun RequestPanel(
                 try {
                     core.seerrRequest(r.mediaType, r.tmdbId, numbers)
                     if (numbers.isEmpty()) {
-                        "Requested: ${r.title}"
+                        tr("Requested: {title}", "title" to r.title)
                     } else {
                         be.alwyapps.watch.core
                             .seasonsRequestedMessage(numbers)
                     }
                 } catch (e: CoreException) {
-                    "Could not request ${r.title}: ${requestErrorText(e)}"
+                    tr("Could not request {title}: {reason}", "title" to r.title, "reason" to requestErrorText(e))
                 }
             busy = false
             onDone(msg)
@@ -221,19 +223,19 @@ fun RequestPanel(
                 Column(Modifier.weight(1f)) {
                     Text(r.title, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        listOfNotNull(r.year, if (r.mediaType == SeerrMediaType.TV) "Show" else "Movie", r.stateLabel()).joinToString(" · "),
+                        listOfNotNull(r.year, if (r.mediaType == SeerrMediaType.TV) tr("Show") else tr("Movie"), r.stateLabel()).joinToString(" · "),
                         color = Muted,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
                 be.alwyapps.watch.ui
-                    .IconAction(be.alwyapps.watch.ui.Icons.Close, "Close", { onDone("") })
+                    .IconAction(be.alwyapps.watch.ui.Icons.Close, tr("Close"), { onDone("") })
             }
             r.overview?.let { Text(it, color = Muted, maxLines = 4, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium) }
             if (r.mediaType == SeerrMediaType.MOVIE) {
                 if (r.availability != Availability.AVAILABLE) {
                     ActionButton(
-                        if (busy) "Requesting…" else "Request",
+                        if (busy) tr("Requesting…") else tr("Request"),
                         { send(emptyList()) },
                         Modifier.focusOnAppear(),
                         primary = true,
@@ -243,7 +245,7 @@ fun RequestPanel(
             } else {
                 val info = seasons
                 if (info == null) {
-                    Text("Loading seasons…", color = Muted)
+                    Text(tr("Loading seasons…"), color = Muted)
                 } else {
                     val plan =
                         remember(info) {
@@ -251,15 +253,15 @@ fun RequestPanel(
                                 .seasonPlan(info, emptyList())
                         }
                     if (plan.missing.isEmpty()) {
-                        Text("Every season is on your servers or already requested.", color = Muted)
+                        Text(tr("Every season is on your servers or already requested."), color = Muted)
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             ActionButton(
                                 when {
-                                    busy -> "Requesting…"
-                                    chosen.isNotEmpty() -> "Request ${chosen.size} season${if (chosen.size > 1) "s" else ""}"
-                                    plan.hasSome -> "Request the missing seasons"
-                                    else -> "Request all seasons"
+                                    busy -> tr("Requesting…")
+                                    chosen.isNotEmpty() -> trn("Request {n} season", "Request {n} seasons", chosen.size)
+                                    plan.hasSome -> tr("Request the missing seasons")
+                                    else -> tr("Request all seasons")
                                 },
                                 // Nothing picked: the missing ones (every season of a new show).
                                 {

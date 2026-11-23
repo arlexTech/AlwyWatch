@@ -279,7 +279,7 @@ impl AlwyWatch {
 pub fn qr_code(text: String) -> Result<QrCode> {
     let q = qrcodegen::QrCode::encode_text(&text, qrcodegen::QrCodeEcc::Medium).map_err(|_| {
         CoreError::Invalid {
-            detail: "too long for a QR code".into(),
+            detail: i18n::tr!("too long for a QR code"),
         }
     })?;
     let n = q.size();

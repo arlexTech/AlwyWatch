@@ -4,6 +4,7 @@
 //! invitation, the account page, and approving a Quick Connect code (`/q/123456`, the address
 //! the apps' QR code opens).
 
+use i18n::tr;
 use keep_service::KeepClient;
 use keep_service::account::{self, AccountOptions, AccountView, LoginRequest, RegisterRequest};
 use leptos::prelude::*;
@@ -186,7 +187,7 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
                     navigate(&next, Default::default());
                 }
                 Err(net::Error::Unauthorized) => {
-                    error.set(Some("This passkey isn't known here.".into()))
+                    error.set(Some(tr!("This passkey isn't known here.")))
                 }
                 Err(e) => error.set(Some(account::explain(&e, true))),
             }
@@ -195,26 +196,26 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
     let next3 = next.clone();
     view! {
         <form class="form" on:submit=submit>
-            <h2>"AlwyWatch account"</h2>
-            <label>"Username"<input autocomplete="username webauthn" autocapitalize="off" spellcheck="false"
+            <h2>{tr!("AlwyWatch account")}</h2>
+            <label>{tr!("Username")}<input autocomplete="username webauthn" autocapitalize="off" spellcheck="false"
                 prop:value=move || user.get() on:input=move |ev| user.set(event_target_value(&ev)) /></label>
-            <label>"Password"<input type="password" autocomplete="current-password" prop:value=move || pass.get()
+            <label>{tr!("Password")}<input type="password" autocomplete="current-password" prop:value=move || pass.get()
                 on:input=move |ev| pass.set(event_target_value(&ev)) /></label>
             <div class="actions">
-                <button class="primary" type="submit" disabled=move || busy.get()>"Sign in"</button>
+                <button class="primary" type="submit" disabled=move || busy.get()>{tr!("Sign in")}</button>
                 {move || {
                     let o = options.get().flatten();
                     let passkeys = o.as_ref().is_some_and(|o| o.passkeys) && crate::passkey::supported();
                     let pocket = o.as_ref().is_some_and(|o| o.pocketid);
                     let to = format!("/v1/account/oidc/start?next={}", pct(&next3));
                     view! {
-                        {passkeys.then(|| view! { <button type="button" on:click=with_passkey.clone()>"Use a passkey"</button> })}
-                        {pocket.then(|| view! { <button type="button" on:click=move |_| go(&to)>"Sign in with Pocket ID"</button> })}
+                        {passkeys.then(|| view! { <button type="button" on:click=with_passkey.clone()>{tr!("Use a passkey")}</button> })}
+                        {pocket.then(|| view! { <button type="button" on:click=move |_| go(&to)>{tr!("Sign in with Pocket ID")}</button> })}
                     }
                 }}
             </div>
             {move || options.get().flatten().filter(|o| o.registration != "closed").map(|_| view! {
-                <p class="muted small">"No account yet? "<A href="/join">"Create one with an invitation"</A></p>
+                <p class="muted small">{tr!("No account yet?")}" "<A href="/join">{tr!("Create one with an invitation")}</A></p>
             })}
             {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         </form>
@@ -238,7 +239,7 @@ pub fn Join() -> impl IntoView {
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         if pass.get_untracked() != pass2.get_untracked() {
-            return error.set(Some("The two passwords differ.".into()));
+            return error.set(Some(tr!("The two passwords differ.")));
         }
         let (c, navigate) = (c1.clone(), navigate.clone());
         busy.set(true);
@@ -262,43 +263,42 @@ pub fn Join() -> impl IntoView {
                     c.set_account(&s.token, &s.account);
                     navigate("/account", Default::default());
                 }
-                Err(net::Error::Unauthorized) => error.set(Some(
-                    "This invitation is unknown, used up or expired. Ask for a new one.".into(),
-                )),
+                Err(net::Error::Unauthorized) => error.set(Some(tr!(
+                    "This invitation is unknown, used up or expired. Ask for a new one."
+                ))),
                 Err(e) => error.set(Some(account::explain(&e, false))),
             }
         });
     };
     view! {
-        <h1>"Create an AlwyWatch account"</h1>
-        <p class="muted">"An account keeps your profile, settings and server list, and signs your devices in. "
-            "To watch, add your Jellyfin or Plex server afterwards."</p>
+        <h1>{tr!("Create an AlwyWatch account")}</h1>
+        <p class="muted">{tr!("An account keeps your profile, settings and server list, and signs your devices in. To watch, add your Jellyfin or Plex server afterwards.")}</p>
         {move || options.get().flatten().map(|o| {
             let pocket = o.pocketid;
             let closed = o.registration == "closed";
             let invite_needed = o.registration == "invite";
             view! {
                 {pocket.then(|| view! {
-                    <p><button class="primary" on:click=move |_| go("/v1/account/oidc/start?next=/account")>"Continue with Pocket ID"</button>
-                        <span class="muted small">" No invitation needed."</span></p>
+                    <p><button class="primary" on:click=move |_| go("/v1/account/oidc/start?next=/account")>{tr!("Continue with Pocket ID")}</button>
+                        " "<span class="muted small">{tr!("No invitation needed.")}</span></p>
                 })}
-                {closed.then(|| view! { <p class="muted">"This server doesn't accept new accounts without an invitation. Ask its owner for one, or sign in with your Jellyfin or Plex login."</p> })}
+                {closed.then(|| view! { <p class="muted">{tr!("This server doesn't accept new accounts without an invitation. Ask its owner for one, or sign in with your Jellyfin or Plex login.")}</p> })}
                 {(!closed).then(|| view! {
                     <form class="form" on:submit=submit.clone()>
                         {invite_needed.then(|| view! {
-                            <label>"Invitation code"<input autocapitalize="off" spellcheck="false" prop:value=move || invite.get()
+                            <label>{tr!("Invitation code")}<input autocapitalize="off" spellcheck="false" prop:value=move || invite.get()
                                 on:input=move |ev| invite.set(event_target_value(&ev)) /></label>
                         })}
-                        <label>"Username"<input autocomplete="username" autocapitalize="off" spellcheck="false" minlength="3" maxlength="32"
+                        <label>{tr!("Username")}<input autocomplete="username" autocapitalize="off" spellcheck="false" minlength="3" maxlength="32"
                             prop:value=move || user.get() on:input=move |ev| user.set(event_target_value(&ev)) /></label>
-                        <label>"Password"<input type="password" autocomplete="new-password" minlength="8"
+                        <label>{tr!("Password")}<input type="password" autocomplete="new-password" minlength="8"
                             prop:value=move || pass.get() on:input=move |ev| pass.set(event_target_value(&ev)) /></label>
-                        <label>"Password again"<input type="password" autocomplete="new-password" minlength="8"
+                        <label>{tr!("Password again")}<input type="password" autocomplete="new-password" minlength="8"
                             prop:value=move || pass2.get() on:input=move |ev| pass2.set(event_target_value(&ev)) /></label>
                         <div class="actions">
-                            <button class="primary" type="submit" disabled=move || busy.get()>"Create the account"</button>
+                            <button class="primary" type="submit" disabled=move || busy.get()>{tr!("Create the account")}</button>
                         </div>
-                        <p class="muted small">"You can add a passkey once signed in."</p>
+                        <p class="muted small">{tr!("You can add a passkey once signed in.")}</p>
                         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
                     </form>
                 })}
@@ -347,7 +347,7 @@ pub fn SignedInPage() -> impl IntoView {
         }
     });
     view! {
-        <h1>"Signing in…"</h1>
+        <h1>{tr!("Signing in…")}</h1>
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
     }
 }
@@ -381,7 +381,7 @@ pub fn Approve() -> impl IntoView {
                 match k.transfer_peer(&code).await {
                     Ok(p) => device.set(Some(p.device)),
                     Err(net::Error::Status { status: 409 }) => {
-                        error.set(Some("This code was already used.".into()))
+                        error.set(Some(tr!("This code was already used.")))
                     }
                     Err(e) => error.set(Some(account::explain(&e, false))),
                 }
@@ -407,26 +407,32 @@ pub fn Approve() -> impl IntoView {
     let shown = code.clone();
     let next = format!("/q/{code}");
     view! {
-        <h1>"Sign a device in"</h1>
-        <p class="muted">"Code "<strong class="code">{shown}</strong></p>
+        <h1>{tr!("Sign a device in")}</h1>
+        <p class="muted">{
+            let (before, after) = crate::ui::around(&tr!("Code {code}"), "{code}");
+            view! { {before}<strong class="code">{shown}</strong>{after} }
+        }</p>
         {move || if done.get() {
-            view! { <p>"Done. The device signs itself in within a few seconds."</p> }.into_any()
+            view! { <p>{tr!("Done. The device signs itself in within a few seconds.")}</p> }.into_any()
         } else if !signed_in() {
             view! {
-                <p class="muted">"Sign in first: the device is then signed in as you."</p>
-                <p><A href="/signin" attr:class="button primary" on:click={let n = next.clone(); move |_| crate::signin::return_after_sign_in(&n)}>"Sign in with Jellyfin or Plex"</A></p>
-                <p class="muted small">"You'll come straight back here. Or use your AlwyWatch account, if you have one:"</p>
+                <p class="muted">{tr!("Sign in first: the device is then signed in as you.")}</p>
+                <p><A href="/signin" attr:class="button primary" on:click={let n = next.clone(); move |_| crate::signin::return_after_sign_in(&n)}>{tr!("Sign in with Jellyfin or Plex")}</A></p>
+                <p class="muted small">{tr!("You'll come straight back here. Or use your AlwyWatch account, if you have one:")}</p>
                 <AccountSignIn next=next.clone() />
             }.into_any()
         } else {
             let approve = approve.clone();
             view! {
                 {move || device.get().map(|d| view! {
-                    <p>"Sign "<strong>{d}</strong>" in to your account?"</p>
-                    <p class="muted small">"Only approve a device you are setting up yourself, right now."</p>
+                    <p>{
+                        let (before, after) = crate::ui::around(&tr!("Sign {device} in to your account?"), "{device}");
+                        view! { {before}<strong>{d}</strong>{after} }
+                    }</p>
+                    <p class="muted small">{tr!("Only approve a device you are setting up yourself, right now.")}</p>
                     <div class="actions">
-                        <button class="primary" on:click=approve.clone() disabled=move || busy.get()>"Approve"</button>
-                        <A href="/" attr:class="button">"Cancel"</A>
+                        <button class="primary" on:click=approve.clone() disabled=move || busy.get()>{tr!("Approve")}</button>
+                        <A href="/" attr:class="button">{tr!("Cancel")}</A>
                     </div>
                 })}
             }.into_any()
@@ -437,7 +443,7 @@ pub fn Approve() -> impl IntoView {
 
 fn day(t: i64) -> String {
     let d = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(t as f64 * 1000.0));
-    d.to_locale_date_string("default", &wasm_bindgen::JsValue::UNDEFINED)
+    d.to_locale_date_string(i18n::language(), &wasm_bindgen::JsValue::UNDEFINED)
         .as_string()
         .unwrap_or_default()
 }
@@ -456,7 +462,7 @@ pub fn AccountPage() -> impl IntoView {
     let note = RwSignal::new(
         use_query_map()
             .with_untracked(|q| q.get("linked"))
-            .map(|_| "Pocket ID is linked.".to_owned()),
+            .map(|_| tr!("Pocket ID is linked.")),
     );
     let page = Page {
         error,
@@ -468,22 +474,22 @@ pub fn AccountPage() -> impl IntoView {
         let c = c.clone();
         spawn_local(async move {
             let Some(k) = c.account_client() else {
-                error.set(Some(
-                    "Sign in to your AlwyWatch account, then link Pocket ID again.".to_owned(),
-                ));
+                error.set(Some(tr!(
+                    "Sign in to your AlwyWatch account, then link Pocket ID again."
+                )));
                 return;
             };
             match k.oidc_link(&id).await {
                 Ok(()) => {
-                    note.set(Some("Pocket ID is linked.".to_owned()));
+                    note.set(Some(tr!("Pocket ID is linked.")));
                     page.version.update(|v| *v += 1);
                 }
-                Err(net::Error::Status { status: 409 }) => error.set(Some(
-                    "This Pocket ID is already used by another account.".to_owned(),
-                )),
-                Err(_) => error.set(Some(
-                    "Pocket ID could not be linked. Try again from this page.".to_owned(),
-                )),
+                Err(net::Error::Status { status: 409 }) => error.set(Some(tr!(
+                    "This Pocket ID is already used by another account."
+                ))),
+                Err(_) => error.set(Some(tr!(
+                    "Pocket ID could not be linked. Try again from this page."
+                ))),
             }
         });
     }
@@ -524,23 +530,23 @@ pub fn AccountPage() -> impl IntoView {
     };
     let explain = |e: net::Error| account::explain(&e, false);
     view! {
-        <h1>"AlwyWatch account"</h1>
+        <h1>{tr!("AlwyWatch account")}</h1>
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         {move || note.get().map(|n| view! { <p class="note">{n}</p> })}
         {move || match account.get() {
             None => view! {
-                <p class="muted">"Not signed in to an AlwyWatch account in this browser."</p>
+                <p class="muted">{tr!("Not signed in to an AlwyWatch account in this browser.")}</p>
                 <AccountSignIn next="/account" />
             }.into_any(),
             Some(a) => view! {
                 <section class="group">
-                    <h2>"Signed in"</h2>
+                    <h2>{tr!("Signed in")}</h2>
                     <div class="row">
                         <div><strong>{a.name.clone()}</strong>{a.username.clone().map(|u| view! { <span class="muted">" · "{u}</span> })}</div>
-                        <button on:click=sign_out.clone()>"Sign out"</button>
+                        <button on:click=sign_out.clone()>{tr!("Sign out")}</button>
                     </div>
                     {move || info.get().map(|i| i.linked).filter(|l| !l.is_empty()).map(|l| view! {
-                        <p class="muted small">"Also you: "{l.iter().map(|x| format!("{} ({})", x.name, x.kind)).collect::<Vec<_>>().join(", ")}</p>
+                        <p class="muted small">{tr!("Also you: {list}", list = l.iter().map(|x| format!("{} ({})", x.name, x.kind)).collect::<Vec<_>>().join(", "))}</p>
                     })}
                 </section>
             }.into_any(),
@@ -552,25 +558,27 @@ pub fn AccountPage() -> impl IntoView {
                 <Password info=i.clone() page=page />
                 <MediaSignIn info=i.clone() page=page />
                 <section class="group">
-                    <h2>"Passkeys"</h2>
-                    <p class="muted small">"Sign in with your fingerprint, face or device PIN instead of a password."</p>
+                    <h2>{tr!("Passkeys")}</h2>
+                    <p class="muted small">{tr!("Sign in with your fingerprint, face or device PIN instead of a password.")}</p>
                     {i.passkeys.iter().map(|p| {
                         let (id, c) = (p.id.clone(), c.clone());
                         view! {
                             <div class="row">
                                 <div><strong>{p.name.clone()}</strong>
-                                    <span class="muted small">" · added "{day(p.created)}
-                                    {p.last_used.map(|t| format!(", last used {}", day(t)))}</span></div>
+                                    <span class="muted small">" · "{match p.last_used {
+                                        Some(t) => tr!("added {date}, last used {used}", date = day(p.created), used = day(t)),
+                                        None => tr!("added {date}", date = day(p.created)),
+                                    }}</span></div>
                                 <button on:click=move |_| {
                                     let (id, c) = (id.clone(), c.clone());
                                     page.run(Box::pin(async move {
-                                        let k = c.account_client().ok_or("Signed out.")?;
+                                        let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
                                         k.passkey_delete(&id).await.map_err(|e| match e {
-                                            net::Error::Status { status: 409 } => "This is your only way to sign in: add a password or Pocket ID first.".into(),
+                                            net::Error::Status { status: 409 } => tr!("This is your only way to sign in: add a password or Pocket ID first."),
                                             e => explain(e),
                                         })
-                                    }), "Passkey removed.")
-                                }>"Remove"</button>
+                                    }), tr!("Passkey removed."))
+                                }>{tr!("Remove")}</button>
                             </div>
                         }
                     }).collect_view()}
@@ -580,14 +588,14 @@ pub fn AccountPage() -> impl IntoView {
                             <button on:click=move |_| {
                                 let c = c.clone();
                                 page.run(Box::pin(async move {
-                                    let k = c.account_client().ok_or("Signed out.")?;
+                                    let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
                                     let start = k.passkey_register_start().await.map_err(explain)?;
                                     let cred = crate::passkey::create(&start["options"]).await?;
                                     let flow = start["flow_id"].as_str().unwrap_or_default();
                                     k.passkey_register_finish(flow, &passkey_name(), &cred).await.map_err(explain)?;
                                     Ok(())
-                                }), "Passkey added.")
-                            }>"Add a passkey"</button>
+                                }), tr!("Passkey added."))
+                            }>{tr!("Add a passkey")}</button>
                         }
                     })}
                 </section>
@@ -598,18 +606,18 @@ pub fn AccountPage() -> impl IntoView {
                         <section class="group">
                             <h2>"Pocket ID"</h2>
                             <div class="row">
-                                <div class="muted">{if linked { "Linked: you can sign in with Pocket ID." } else { "Pocket ID is this server's single sign-on. Link it to sign in without a password." }}</div>
+                                <div class="muted">{if linked { tr!("Linked: you can sign in with Pocket ID.") } else { tr!("Pocket ID is this server's single sign-on. Link it to sign in without a password.") }}</div>
                                 {if linked {
                                     view! { <button on:click=move |_| {
                                         let c = c.clone();
                                         page.run(Box::pin(async move {
-                                            let k = c.account_client().ok_or("Signed out.")?;
+                                            let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
                                             k.oidc_unlink().await.map_err(|e| match e {
-                                                net::Error::Status { status: 409 } => "This is your only way to sign in: add a password or passkey first.".into(),
+                                                net::Error::Status { status: 409 } => tr!("This is your only way to sign in: add a password or passkey first."),
                                                 e => explain(e),
                                             })
-                                        }), "Pocket ID unlinked.")
-                                    }>"Unlink"</button> }.into_any()
+                                        }), tr!("Pocket ID unlinked."))
+                                    }>{tr!("Unlink")}</button> }.into_any()
                                 } else {
                                     view! { <button on:click=move |_| {
                                         let c = c2.clone();
@@ -620,31 +628,31 @@ pub fn AccountPage() -> impl IntoView {
                                                 Err(e) => error.set(Some(explain(e))),
                                             }
                                         });
-                                    }>"Link Pocket ID"</button> }.into_any()
+                                    }>{tr!("Link Pocket ID")}</button> }.into_any()
                                 }}
                             </div>
                         </section>
                     }
                 })}
                 <section class="group">
-                    <h2>"Devices"</h2>
+                    <h2>{tr!("Devices")}</h2>
                     {i.sessions.iter().map(|s| {
                         let (id, c, current) = (s.id.clone(), c.clone(), s.current);
                         view! {
                             <div class="row">
-                                <div><strong>{if s.device.is_empty() { "Device".to_owned() } else { s.device.clone() }}</strong>
-                                    <span class="muted small">{if current { " · this browser".to_owned() } else { format!(" · last seen {}", day(s.last_seen)) }}</span></div>
+                                <div><strong>{if s.device.is_empty() { tr!("Device") } else { s.device.clone() }}</strong>
+                                    <span class="muted small">" · "{if current { tr!("this browser") } else { tr!("last seen {date}", date = day(s.last_seen)) }}</span></div>
                                 {(!current).then(|| view! { <button on:click=move |_| {
                                     let (id, c) = (id.clone(), c.clone());
                                     page.run(Box::pin(async move {
-                                        let k = c.account_client().ok_or("Signed out.")?;
+                                        let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
                                         k.account_end_session(&id).await.map_err(explain)
-                                    }), "Signed out.")
-                                }>"Sign out"</button> })}
+                                    }), tr!("Signed out."))
+                                }>{tr!("Sign out")}</button> })}
                             </div>
                         }
                     }).collect_view()}
-                    <p class="muted small">"To sign a TV or another device in, choose “Sign in with a code” on it and open the address it shows (or scan its QR code)."</p>
+                    <p class="muted small">{tr!("To sign a TV or another device in, choose “Sign in with a code” on it and open the address it shows (or scan its QR code).")}</p>
                 </section>
                 <DeleteAccount info=i.clone() />
             }
@@ -668,8 +676,9 @@ fn passkey_name() -> String {
     .iter()
     .find(|(k, _)| ua.contains(k))
     .map(|(_, v)| *v)
-    .unwrap_or("This device");
-    format!("Passkey ({os})")
+    .map(|v| v.to_owned())
+    .unwrap_or_else(|| tr!("This device"));
+    tr!("Passkey ({device})", device = os)
 }
 
 type Job = std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>>>>;
@@ -683,14 +692,14 @@ struct Page {
 }
 
 impl Page {
-    fn run(self, job: Job, ok: &'static str) {
+    fn run(self, job: Job, ok: String) {
         self.error.set(None);
         self.note.set(None);
         spawn_local(async move {
             match job.await {
                 Ok(()) => {
                     if !ok.is_empty() {
-                        self.note.set(Some(ok.into()));
+                        self.note.set(Some(ok));
                     }
                     self.version.update(|v| *v += 1);
                 }
@@ -714,37 +723,37 @@ fn Password(info: AccountView, page: Page) -> impl IntoView {
         let (cur, nw) = (current.get_untracked(), new.get_untracked());
         page.run(
             Box::pin(async move {
-                let k = c.account_client().ok_or("Signed out.")?;
+                let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
                 k.account_set_password(has.then_some(cur.as_str()), &nw)
                     .await
                     .map_err(|e| match e {
-                        net::Error::Unauthorized => "The current password is wrong.".into(),
+                        net::Error::Unauthorized => tr!("The current password is wrong."),
                         e => account::explain(&e, false),
                     })
             }),
-            "Password saved. Your other devices stay signed in only if they use a passkey or Pocket ID.",
+            tr!("Password saved. Your other devices stay signed in only if they use a passkey or Pocket ID."),
         );
         open.set(false);
     };
     view! {
         <section class="group">
-            <h2>"Password"</h2>
+            <h2>{tr!("Password")}</h2>
             {move || if !has_username {
-                view! { <p class="muted small">"This account has no username yet, so it can't have a password. Add a passkey below to sign in without Jellyfin or Plex."</p> }.into_any()
+                view! { <p class="muted small">{tr!("This account has no username yet, so it can't have a password. Add a passkey below to sign in without Jellyfin or Plex.")}</p> }.into_any()
             } else if open.get() {
                 view! {
                     <form class="form" on:submit=submit.clone()>
-                        {has.then(|| view! { <label>"Current password"<input type="password" autocomplete="current-password"
+                        {has.then(|| view! { <label>{tr!("Current password")}<input type="password" autocomplete="current-password"
                             prop:value=move || current.get() on:input=move |ev| current.set(event_target_value(&ev)) /></label> })}
-                        <label>"New password"<input type="password" autocomplete="new-password" minlength="8"
+                        <label>{tr!("New password")}<input type="password" autocomplete="new-password" minlength="8"
                             prop:value=move || new.get() on:input=move |ev| new.set(event_target_value(&ev)) /></label>
-                        <div class="actions"><button class="primary" type="submit">"Save"</button>
-                            <button type="button" on:click=move |_| open.set(false)>"Cancel"</button></div>
+                        <div class="actions"><button class="primary" type="submit">{tr!("Save")}</button>
+                            <button type="button" on:click=move |_| open.set(false)>{tr!("Cancel")}</button></div>
                     </form>
                 }.into_any()
             } else {
-                view! { <div class="row"><div class="muted">{if has { "Set." } else { "None yet." }}</div>
-                    <button on:click=move |_| open.set(true)>{if has { "Change" } else { "Set a password" }}</button></div> }.into_any()
+                view! { <div class="row"><div class="muted">{if has { tr!("Set.") } else { tr!("None yet.") }}</div>
+                    <button on:click=move |_| open.set(true)>{if has { tr!("Change") } else { tr!("Set a password") }}</button></div> }.into_any()
             }}
         </section>
     }
@@ -768,7 +777,7 @@ fn DeleteAccount(info: AccountView) -> impl IntoView {
             match k.account_delete(has.then_some(pw.as_str())).await {
                 Ok(()) => c.forget_account(),
                 Err(net::Error::Status { status: 403 }) => {
-                    error.set(Some("The password is wrong.".to_owned()))
+                    error.set(Some(tr!("The password is wrong.")))
                 }
                 Err(e) => error.set(Some(account::explain(&e, false))),
             }
@@ -776,26 +785,26 @@ fn DeleteAccount(info: AccountView) -> impl IntoView {
     };
     view! {
         <section class="group">
-            <h2>"Delete account"</h2>
+            <h2>{tr!("Delete account")}</h2>
             {move || if open.get() {
                 view! {
                     <form class="form" on:submit=submit.clone()>
                         <p>{if media {
-                            "This deletes your AlwyWatch account: its username, password, passkeys and the devices signed in with it. You keep using AlwyWatch with your Plex or Jellyfin sign-in, and your profile and keep requests stay with it."
+                            tr!("This deletes your AlwyWatch account: its username, password, passkeys and the devices signed in with it. You keep using AlwyWatch with your Plex or Jellyfin sign-in, and your profile and keep requests stay with it.")
                         } else {
-                            "This deletes your AlwyWatch account and everything stored for it: username, password, passkeys, profile, picture and synced settings. Devices signed in with it are signed out."
+                            tr!("This deletes your AlwyWatch account and everything stored for it: username, password, passkeys, profile, picture and synced settings. Devices signed in with it are signed out.")
                         }}</p>
-                        <p class="muted small">"It can't be undone."</p>
-                        {has.then(|| view! { <label>"Your password"<input type="password" autocomplete="current-password"
+                        <p class="muted small">{tr!("It can't be undone.")}</p>
+                        {has.then(|| view! { <label>{tr!("Your password")}<input type="password" autocomplete="current-password"
                             prop:value=move || password.get() on:input=move |ev| password.set(event_target_value(&ev)) /></label> })}
                         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
-                        <div class="actions"><button class="danger" type="submit">"Delete my account"</button>
-                            <button type="button" on:click=move |_| open.set(false)>"Cancel"</button></div>
+                        <div class="actions"><button class="danger" type="submit">{tr!("Delete my account")}</button>
+                            <button type="button" on:click=move |_| open.set(false)>{tr!("Cancel")}</button></div>
                     </form>
                 }.into_any()
             } else {
-                view! { <div class="row"><div class="muted">"Removes the account for good."</div>
-                    <button on:click=move |_| open.set(true)>"Delete account…"</button></div> }.into_any()
+                view! { <div class="row"><div class="muted">{tr!("Removes the account for good.")}</div>
+                    <button on:click=move |_| open.set(true)>{tr!("Delete account…")}</button></div> }.into_any()
             }}
         </section>
     }
@@ -819,19 +828,18 @@ fn MediaSignIn(info: AccountView, page: Page) -> impl IntoView {
         let c = state::ctx();
         page.run(
             Box::pin(async move {
-                let k = c.account_client().ok_or("Signed out.")?;
+                let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
                 k.account_media_sign_in(to).await.map_err(|e| match e {
                     net::Error::Status { status: 409 } => {
-                        "Add a password, passkey or Pocket ID first: it would be your only way in."
-                            .into()
+                        tr!("Add a password, passkey or Pocket ID first: it would be your only way in.")
                     }
                     e => account::explain(&e, false),
                 })
             }),
             if to {
-                "Plex and Jellyfin sign-ins can change this account again."
+                tr!("Plex and Jellyfin sign-ins can change this account again.")
             } else {
-                "Done. Only this account's own sign-in changes it now."
+                tr!("Done. Only this account's own sign-in changes it now.")
             },
         );
     };
@@ -841,28 +849,28 @@ fn MediaSignIn(info: AccountView, page: Page) -> impl IntoView {
     };
     view! {
         <section class="group">
-            <h2>"Plex and Jellyfin sign-ins"</h2>
+            <h2>{tr!("Plex and Jellyfin sign-ins")}</h2>
             {move || if !allowed {
                 view! {
                     <div class="row">
-                        <div class="muted">"Turned off: a Plex or Jellyfin sign-in can't set this account's password or sign a new device in to it. You still watch, vote and join rooms with them."</div>
-                        <button on:click=move |_| set(true)>"Turn back on"</button>
+                        <div class="muted">{tr!("Turned off: a Plex or Jellyfin sign-in can't set this account's password or sign a new device in to it. You still watch, vote and join rooms with them.")}</div>
+                        <button on:click=move |_| set(true)>{tr!("Turn back on")}</button>
                     </div>
                 }.into_any()
             } else if asked.get() {
                 view! {
                     <div class="row">
-                        <div class="muted">"On: whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it."</div>
-                        <button on:click=move |_| set(false)>"Turn off"</button>
+                        <div class="muted">{tr!("On: whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it.")}</div>
+                        <button on:click=move |_| set(false)>{tr!("Turn off")}</button>
                     </div>
                 }.into_any()
             } else {
                 view! {
-                    <p>"This account has its own way to sign in now. Do you want to stop Plex and Jellyfin sign-ins from changing it?"</p>
-                    <p class="muted small">"Today, whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it. Turned off, only this account's own sign-in can. Watching, votes and rooms keep working with Plex and Jellyfin either way, and you can turn it back on here."</p>
+                    <p>{tr!("This account has its own way to sign in now. Do you want to stop Plex and Jellyfin sign-ins from changing it?")}</p>
+                    <p class="muted small">{tr!("Today, whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it. Turned off, only this account's own sign-in can. Watching, votes and rooms keep working with Plex and Jellyfin either way, and you can turn it back on here.")}</p>
                     <div class="actions">
-                        <button class="primary" on:click=move |_| set(false)>"Turn off"</button>
-                        <button on:click=keep_on>"Keep it on"</button>
+                        <button class="primary" on:click=move |_| set(false)>{tr!("Turn off")}</button>
+                        <button on:click=keep_on>{tr!("Keep it on")}</button>
                     </div>
                 }.into_any()
             }}
@@ -891,11 +899,15 @@ fn Invitations() -> impl IntoView {
     view! {
         <Show when=move || keep.get().is_some_and(|k| k.is_admin)>
             <section class="group">
-                <h2>"Invitations"</h2>
-                <p class="muted small">"Someone without Jellyfin or Plex can create an AlwyWatch account with an invitation (works once, for 7 days)."</p>
-                <button on:click=make.clone()>"New invitation"</button>
+                <h2>{tr!("Invitations")}</h2>
+                <p class="muted small">{tr!("Someone without Jellyfin or Plex can create an AlwyWatch account with an invitation (works once, for 7 days).")}</p>
+                <button on:click=make.clone()>{tr!("New invitation")}</button>
                 {move || made.get().map(|i| view! {
-                    <p>"Send this link: "<strong class="code">{i.url.clone().unwrap_or_else(|| i.code.clone())}</strong></p>
+                    <p>{
+                        let (before, after) = crate::ui::around(&tr!("Send this link: {link}"), "{link}");
+                        view! { {before}<strong class="code">{i.url.clone().unwrap_or_else(|| i.code.clone())}</strong>{after} }
+                    }</p>
+
                 })}
                 {move || error.get().map(|e| view! { <ErrorText text=e /> })}
             </section>

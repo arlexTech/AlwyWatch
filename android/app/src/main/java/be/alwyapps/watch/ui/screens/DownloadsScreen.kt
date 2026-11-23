@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.downloads.DownloadState
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
+import be.alwyapps.watch.ui.tr
 
 /** Every download, newest first, to pause, resume or delete (all accounts). */
 @Composable
@@ -27,9 +28,9 @@ fun DownloadsScreen() {
     ) {
         item {
             be.alwyapps.watch.ui
-                .PageTitle("Manage downloads", "%.1f GB on this device".format(bytes / 1e9))
+                .PageTitle(tr("Manage downloads"), tr("{size} GB on this device", "size" to "%.1f".format(bytes / 1e9)))
         }
-        if (list.isEmpty()) item { Text("Nothing downloaded.", color = Muted) }
+        if (list.isEmpty()) item { Text(tr("Nothing downloaded."), color = Muted) }
         items(list, key = { it.id }) { DownloadRow(it, refresh) }
     }
 }

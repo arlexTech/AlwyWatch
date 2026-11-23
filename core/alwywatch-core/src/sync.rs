@@ -162,9 +162,17 @@ impl Core {
     async fn sync_pair(&self, p: &SyncPair) -> Result<SyncStatus> {
         let (a, b) = (p.a.as_str(), p.b.as_str());
         let (name_a, name_b) = (self.server_name(a), self.server_name(b));
-        self.progress(format!("Reading what you watched on {name_a}"), 0, 0);
+        self.progress(
+            i18n::tr!("Reading what you watched on {server}", server = name_a),
+            0,
+            0,
+        );
         let hist_a = self.server(a)?.watch_history().await?;
-        self.progress(format!("Reading what you watched on {name_b}"), 0, 0);
+        self.progress(
+            i18n::tr!("Reading what you watched on {server}", server = name_b),
+            0,
+            0,
+        );
         let hist_b = self.server(b)?.watch_history().await?;
         let state_a: HashMap<&str, St> = hist_a
             .iter()
@@ -197,7 +205,11 @@ impl Core {
             ..Default::default()
         };
         let total = links.len() as u32;
-        let step = format!("Syncing {name_a} and {name_b}");
+        let step = i18n::tr!(
+            "Syncing {server} and {other}",
+            server = name_a,
+            other = name_b
+        );
         for (n, ((ia, ib), title)) in links.into_iter().enumerate() {
             if n % 50 == 0 {
                 self.progress(step.clone(), n as u32, total);
@@ -306,7 +318,7 @@ impl AlwyWatch {
     pub fn set_sync_pair(&self, a: String, b: String, on: bool) -> Result<()> {
         if a == b {
             return Err(CoreError::Invalid {
-                detail: "pick two different servers".into(),
+                detail: i18n::tr!("pick two different servers"),
             });
         }
         let c = self.core();

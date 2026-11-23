@@ -13,6 +13,8 @@ publish.workspace = true
 uniffi = ["dep:uniffi"]
 
 [dependencies]
+# User-facing texts built here (labels, error sentences) in the app's language.
+i18n = { workspace = true }
 net = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

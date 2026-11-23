@@ -43,6 +43,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/admin/users/{user}/seerr", put(admin_link_seerr))
         .route("/v1/admin/seerr-users", get(admin_seerr_users))
         .route("/v1/admin/forever", get(admin_forever))
+        .route("/v1/admin/status", get(admin_status))
         .route(
             "/v1/admin/collections/{id}/countdown",
             post(admin_countdown),
@@ -1107,6 +1108,50 @@ async fn unvote(
 
 async fn admin_users(State(s): State<Shared>, Admin(_): Admin) -> Result<impl IntoResponse, Error> {
     Ok(Json(s.db.users().map_err(internal)?))
+}
+
+/// `GET /v1/admin/status`: what this server is connected to, for the apps' admin page.
+async fn admin_status(
+    State(s): State<Shared>,
+    Admin(_): Admin,
+) -> Json<keep_service::ServerStatus> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let c = &s.config;
+    let (maintainerr, version) = if !c.keep_on() {
+        ("off", None)
+    } else {
+        match s.maintainerr_state.load(Relaxed) {
+            0 => ("starting", None),
+            _ => match s.maintainerr.version().await {
+                Ok(v) => ("ok", Some(v)),
+                Err(_) => ("unreachable", None),
+            },
+        }
+    };
+    let last = s.last_sync.load(Relaxed);
+    Json(keep_service::ServerStatus {
+        version: env!("CARGO_PKG_VERSION").into(),
+        maintainerr: maintainerr.into(),
+        maintainerr_version: version,
+        last_sync: (last > 0).then_some(last),
+        leaving_items: s.last_sync_items.load(Relaxed) as u32,
+        seerr_bridge: s.seerr.is_some(),
+        tautulli: c.tautulli.is_some() && c.secrets.tautulli_api_key.is_some(),
+        jellyfin_key: c
+            .servers
+            .iter()
+            .any(|x| c.secrets.jellyfin_key(&x.id).is_some()),
+        webhooks: c.secrets.webhook_secret.is_some(),
+        passkeys: c.accounts.rp.is_some(),
+        pocketid: c.accounts.pocketid.is_some(),
+        registration: match c.accounts.registration {
+            crate::config::Registration::Invite => "invite",
+            crate::config::Registration::Open => "open",
+            crate::config::Registration::Closed => "closed",
+        }
+        .into(),
+        dry_run: c.dry_run,
+    })
 }
 
 async fn admin_forever(

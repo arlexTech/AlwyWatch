@@ -2,6 +2,7 @@
 //! Signing in with a Jellyfin or Plex account (the servers this AlwyWatch server serves are
 //! listed, nothing to type), and the settings page (accounts, AlwyWatch server link).
 
+use i18n::tr;
 use keep_service::{KeepClient, ServerEntry, ServerType};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -121,12 +122,12 @@ pub fn SignIn() -> impl IntoView {
     let picked = RwSignal::new(None::<ServerEntry>);
     let account = c.account;
     view! {
-        <h1>"Sign in"</h1>
-        <p class="muted">"Use your Jellyfin or Plex account."</p>
+        <h1>{tr!("Sign in")}</h1>
+        <p class="muted">{tr!("Use your Jellyfin or Plex account.")}</p>
         {move || match served.get() {
             None => view! { <crate::ui::Loading /> }.into_any(),
             Some(None) => view! {
-                <ErrorText text="Can't load the list of servers. Check your connection and reload the page.".to_owned() />
+                <ErrorText text=tr!("Can't load the list of servers. Check your connection and reload the page.") />
             }.into_any(),
             Some(Some(list)) => {
                 let all = list.clone();
@@ -143,10 +144,10 @@ pub fn SignIn() -> impl IntoView {
                             }
                         }).collect_view()}
                         <button class="choice" on:click=move |_| picked.set(Some(ServerEntry {
-                            id: String::new(), kind: ServerType::Jellyfin, name: "Another Jellyfin server".into(), url: String::new(),
+                            id: String::new(), kind: ServerType::Jellyfin, name: tr!("Another Jellyfin server"), url: String::new(),
                         }))>
-                            <strong>"Another Jellyfin server"</strong>
-                            <span class="muted">"By its address"</span>
+                            <strong>{tr!("Another Jellyfin server")}</strong>
+                            <span class="muted">{tr!("By its address")}</span>
                         </button>
                     </div>
                     {move || picked.get().map(|e| match e.kind {
@@ -155,13 +156,16 @@ pub fn SignIn() -> impl IntoView {
                     })}
                     {move || match account.get() {
                         Some(a) => view! {
-                            <p class="muted small">"AlwyWatch account: "<strong>{a.name}</strong>". "
-                                <leptos_router::components::A href="/account">"Manage"</leptos_router::components::A></p>
+                            <p class="muted small">{
+                                let (before, after) = crate::ui::around(&tr!("AlwyWatch account: {name}."), "{name}");
+                                view! { {before}<strong>{a.name}</strong>{after} }
+                            }" "
+                                <leptos_router::components::A href="/account">{tr!("Manage")}</leptos_router::components::A></p>
                         }.into_any(),
                         None => view! {
                             <details>
-                                <summary>"Have an AlwyWatch account instead? Sign in with it"</summary>
-                                <p class="muted small">"An AlwyWatch account is optional: your server's owner may have invited you to create one. It is not your Jellyfin or Plex login."</p>
+                                <summary>{tr!("Have an AlwyWatch account instead? Sign in with it")}</summary>
+                                <p class="muted small">{tr!("An AlwyWatch account is optional: your server's owner may have invited you to create one. It is not your Jellyfin or Plex login.")}</p>
                                 <crate::account::AccountSignIn next="/settings" />
                             </details>
                         }.into_any(),
@@ -227,9 +231,9 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
                 Ok(s) => s,
                 // Jellyfin answers 401 when Quick Connect is turned off.
                 Err(Error::Unauthorized) => {
-                    return error.set(Some(
-                        "Quick Connect is turned off on this server. Use your password.".into(),
-                    ));
+                    return error.set(Some(tr!(
+                        "Quick Connect is turned off on this server. Use your password."
+                    )));
                 }
                 Err(e) => return error.set(Some(sign_in_error(&e, &base))),
             };
@@ -259,29 +263,32 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
                 }
             }
             code.try_set(None);
-            error.set(Some(
-                "The Quick Connect code expired. Ask for a new one.".into(),
-            ));
+            error.set(Some(tr!(
+                "The Quick Connect code expired. Ask for a new one."
+            )));
         });
     };
     view! {
         <form class="form" on:submit=submit>
             <h2>{entry.name.clone()}</h2>
             {ask_url.then(|| view! {
-                <label>"Server address (ask the person who gave you your login)"<input type="text" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="jellyfin.example.org"
+                <label>{tr!("Server address (ask the person who gave you your login)")}<input type="text" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="jellyfin.example.org"
                     prop:value=move || url.get() on:input=move |ev| url.set(event_target_value(&ev)) /></label>
             })}
-            <label>"Username"<input autocomplete="username" prop:value=move || user.get()
+            <label>{tr!("Username")}<input autocomplete="username" prop:value=move || user.get()
                 on:input=move |ev| user.set(event_target_value(&ev)) /></label>
-            <label>"Password"<input type="password" autocomplete="current-password" prop:value=move || pass.get()
+            <label>{tr!("Password")}<input type="password" autocomplete="current-password" prop:value=move || pass.get()
                 on:input=move |ev| pass.set(event_target_value(&ev)) /></label>
             <div class="actions">
-                <button class="primary" type="submit" disabled=move || busy.get()>"Sign in"</button>
-                <button type="button" on:click=quick>"Use a code from another Jellyfin app (Quick Connect)"</button>
+                <button class="primary" type="submit" disabled=move || busy.get()>{tr!("Sign in")}</button>
+                <button type="button" on:click=quick>{tr!("Use a code from another Jellyfin app (Quick Connect)")}</button>
             </div>
             {move || code.get().map(|k| view! {
-                <p class="code-hint">"In a Jellyfin app where you're signed in, open Quick Connect and enter "
-                    <strong class="code">{k}</strong></p>
+                <p class="code-hint">{
+                    let (before, after) = crate::ui::around(&tr!("In a Jellyfin app where you're signed in, open Quick Connect and enter {code}"), "{code}");
+                    view! { {before}<strong class="code">{k}</strong>{after} }
+                }</p>
+
             })}
             {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         </form>
@@ -312,7 +319,7 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
             let plain = |e: Error| sign_in_error(&e, "");
             let result: Result<Option<(Session, String)>, String> = async {
                 let Some(w) = &win else {
-                    return Err("Allow pop-ups for this site, then try again.".into());
+                    return Err(tr!("Allow pop-ups for this site, then try again."));
                 };
                 let pin = auth.create_pin(true).await.map_err(plain)?;
                 let _ = w.location().set_href(&pin.auth_url);
@@ -331,20 +338,20 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
                             break;
                         }
                         Err(Error::Pending) if closed => {
-                            return Err("The Plex tab was closed before signing in.".into());
+                            return Err(tr!("The Plex tab was closed before signing in."));
                         }
                         Err(Error::Pending) => closed = w.closed().unwrap_or(false),
                         Err(e) => return Err(plain(e)),
                     }
                 }
-                let token = token.ok_or("The Plex sign-in timed out.")?;
+                let token = token.ok_or_else(|| tr!("The Plex sign-in timed out."))?;
                 let user = auth.user(&token).await.map_err(plain)?;
                 let servers = auth.servers(&token).await.map_err(plain)?;
                 let server = servers
                     .iter()
                     .find(|s| s.machine_id == entry.id)
                     .or_else(|| servers.first())
-                    .ok_or("Your Plex account has no server.")?;
+                    .ok_or_else(|| tr!("Your Plex account has no server."))?;
                 let preferred = (!entry.url.is_empty()).then_some(entry.url.as_str());
                 let s = auth
                     .connect(server, &user, preferred)
@@ -373,10 +380,10 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
     view! {
         <div class="form">
             <h2>{title}</h2>
-            <p class="muted">"Plex opens in a new tab: sign in there, then come back."</p>
+            <p class="muted">{tr!("Plex opens in a new tab: sign in there, then come back.")}</p>
             <div class="actions">
                 <button class="primary" on:click=start disabled=move || waiting.get()>
-                    {move || if waiting.get() { "Waiting for Plex…" } else { "Sign in with Plex" }}
+                    {move || if waiting.get() { tr!("Waiting for Plex…") } else { tr!("Sign in with Plex") }}
                 </button>
             </div>
             {move || error.get().map(|e| view! { <ErrorText text=e /> })}
@@ -387,11 +394,16 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
 /// `base`: the server's address, when known (to explain a blocked http one).
 fn sign_in_error(e: &Error, base: &str) -> String {
     match e {
-        Error::Unauthorized => "Wrong username or password.".into(),
+        Error::Unauthorized => tr!("Wrong username or password."),
         Error::Network { .. } if base.starts_with("http://") && page_is_https() => {
-            "This site is secure (https), so the browser won't talk to a server on plain http. Use its https address.".into()
+            tr!(
+                "This site is secure (https), so the browser won't talk to a server on plain http. Use its https address."
+            )
         }
-        Error::Network { .. } => "Can't reach the server. Check the address and your connection.".into(),
+        Error::Network { .. } => {
+            tr!("Can't reach the server. Check the address and your connection.")
+        }
+
         other => state::plain(other),
     }
 }
@@ -402,14 +414,26 @@ fn page_is_https() -> bool {
 
 /// The sections of Settings: the same, in the same order, on every platform
 /// (docs/settings.md). `(id, title)`.
-const SECTIONS: [(&str, &str); 6] = [
-    ("servers", "Servers"),
-    ("alwywatch", "AlwyWatch & requests"),
-    ("profiles", "Profiles"),
-    ("playback", "Playback"),
-    ("audio", "Audio & subtitles"),
-    ("about", "Language & about"),
+const SECTIONS: [&str; 6] = [
+    "servers",
+    "alwywatch",
+    "profiles",
+    "playback",
+    "audio",
+    "about",
 ];
+
+/// A section's title, in the selected language.
+fn section_title(id: &str) -> String {
+    match id {
+        "servers" => tr!("Servers"),
+        "alwywatch" => tr!("AlwyWatch & requests"),
+        "profiles" => tr!("Profiles"),
+        "playback" => tr!("Playback"),
+        "audio" => tr!("Audio & subtitles"),
+        _ => tr!("Language & about"),
+    }
+}
 
 /// `/settings` and `/settings/:section`: the sections on the left, one shown at a time.
 #[component]
@@ -419,17 +443,17 @@ pub fn Settings() -> impl IntoView {
         params
             .read()
             .get("section")
-            .filter(|s| SECTIONS.iter().any(|(id, _)| id == s))
+            .filter(|s| SECTIONS.iter().any(|id| id == s))
             .unwrap_or_else(|| "servers".into())
     });
     view! {
-        <h1>"Settings"</h1>
+        <h1>{tr!("Settings")}</h1>
         <div class="settings">
-            <nav class="settings-nav" aria-label="Settings sections">
-                {SECTIONS.iter().map(|(id, title)| {
+            <nav class="settings-nav" aria-label=tr!("Settings sections")>
+                {SECTIONS.iter().map(|id| {
                     let id = *id;
                     view! {
-                        <a href=format!("/settings/{id}") aria-current=move || (section.get() == id).then_some("page")>{*title}</a>
+                        <a href=format!("/settings/{id}") aria-current=move || (section.get() == id).then_some("page")>{section_title(id)}</a>
                     }
                 }).collect_view()}
             </nav>
@@ -442,13 +466,13 @@ pub fn Settings() -> impl IntoView {
                     "about" => view! {
                         <crate::lang::LanguageSetting />
                         <section class="group">
-                            <h2>"About"</h2>
+                            <h2>{tr!("About")}</h2>
                             <p>{format!("AlwyWatch {}", env!("CARGO_PKG_VERSION"))}</p>
-                            <p class="muted small">"Free software under the GNU AGPL v3 or later."</p>
+                            <p class="muted small">{tr!("Free software under the GNU AGPL v3 or later.")}</p>
                         </section>
                         <section class="group">
-                            <h2>"Storage"</h2>
-                            <p class="muted small">"Accounts and settings are kept in this browser only. Sign out on shared computers."</p>
+                            <h2>{tr!("Storage")}</h2>
+                            <p class="muted small">{tr!("Accounts and settings are kept in this browser only. Sign out on shared computers.")}</p>
                         </section>
                     }.into_any(),
                     _ => view! { <ServersSection /> }.into_any(),
@@ -463,23 +487,24 @@ fn ServersSection() -> impl IntoView {
     let c = state::ctx();
     view! {
         <section class="group">
-            <h2>"Your Jellyfin and Plex servers"</h2>
+            <h2>{tr!("Your Jellyfin and Plex servers")}</h2>
             {move || {
                 let c = c.clone();
                 c.accounts.get().into_iter().map(|s| {
                     let key = state::account_key(&s);
                     let c = c.clone();
                     let kind = format!("{:?}", s.kind);
+                    let (before, after) = crate::ui::around(&tr!("{name} on {server}", server = s.server_name.clone()), "{name}");
                     view! {
                         <div class="row">
-                            <div><strong>{s.user_name.clone()}</strong>" on "{s.server_name.clone()}
+                            <div>{before}<strong>{s.user_name.clone()}</strong>{after}
                                 <span class="muted">" · "{kind}</span></div>
-                            <button on:click=move |_| c.remove_account(&key)>"Sign out"</button>
+                            <button on:click=move |_| c.remove_account(&key)>{tr!("Sign out")}</button>
                         </div>
                     }
                 }).collect_view()
             }}
-            <leptos_router::components::A href="/signin" attr:class="button">"Add a server"</leptos_router::components::A>
+            <leptos_router::components::A href="/signin" attr:class="button">{tr!("Add a server")}</leptos_router::components::A>
         </section>
     }
 }
@@ -490,11 +515,13 @@ fn AlwyWatchSection() -> impl IntoView {
     let c3 = c2.clone();
     view! {
         <section class="group">
-            <h2>"You on AlwyWatch"</h2>
+            <h2>{tr!("You on AlwyWatch")}</h2>
             {move || match c2.keep.get() {
                 Some(k) => view! {
-                    <p class="muted small">"Signed in as "<strong>{k.user_name}</strong>" on "{Ctx::origin()}
-                        ". Others see this name and avatar."</p>
+                    <p class="muted small">{
+                        let (before, after) = crate::ui::around(&tr!("Signed in as {name} on {site}. Others see this name and avatar.", site = Ctx::origin()), "{name}");
+                        view! { {before}<strong>{k.user_name}</strong>{after} }
+                    }</p>
                     <crate::links::AlsoSignedIn />
                     <crate::profile::AccountProfile />
                     <crate::links::LinkedSignins />
@@ -503,20 +530,21 @@ fn AlwyWatchSection() -> impl IntoView {
                     // Plex accounts from before the plex.tv token was kept can't sign in here.
                     let old_plex = c2.accounts.get().iter().any(|s| s.kind == media_api::ServerKind::Plex && c2.keep_token(s).is_none());
                     view! {
-                        <p class="muted">"None of your logins is on a server this site works with. Add one: Servers → Add a server."</p>
-                        {old_plex.then(|| view! { <p class="muted small">"Plex account: sign out and sign in again to use requests, Leaving soon and watch together."</p> })}
+                        <p class="muted">{tr!("None of your logins is on a server this site works with. Add one: Servers → Add a server.")}</p>
+                        {old_plex.then(|| view! { <p class="muted small">{tr!("Plex account: sign out and sign in again to use requests, Leaving soon and watch together.")}</p> })}
                     }.into_any()
                 }
             }}
         </section>
         <section class="group">
-            <h2>"Connection and devices"</h2>
+            <h2>{tr!("Connection and devices")}</h2>
             <div class="row">
                 <div class="muted small">{move || match c3.account.get() {
-                    Some(a) => format!("Signed in to the account of {}. Password, passkeys, Pocket ID and your devices.", a.name),
-                    None => "Sign in without a media server, with a password, passkey or Pocket ID; sign a TV in with a code.".to_owned(),
+                    Some(a) => tr!("Signed in to the account of {name}. Password, passkeys, Pocket ID and your devices.", name = a.name),
+                    None => tr!("Sign in without a media server, with a password, passkey or Pocket ID; sign a TV in with a code."),
+
                 }}</div>
-                <leptos_router::components::A href="/account" attr:class="button">"Account"</leptos_router::components::A>
+                <leptos_router::components::A href="/account" attr:class="button">{tr!("Account")}</leptos_router::components::A>
             </div>
         </section>
     }

@@ -2,6 +2,7 @@
 //! Leaving soon (what the server will delete, and keeping it) and, for admins, who keeps what
 //! forever with the overlaps.
 
+use i18n::{tr, trn};
 use keep_service::{
     AdminUser, CountdownRequest, ForeverStats, LeavingItem, Protection, Rights, SeerrUser,
     VoteKind, VoteRequest,
@@ -16,33 +17,37 @@ use crate::ui::{ErrorText, Loading};
 
 fn date(ts: i64) -> String {
     let d = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ts as f64 * 1000.0));
-    String::from(d.to_locale_date_string("default", &wasm_bindgen::JsValue::UNDEFINED))
+    String::from(d.to_locale_date_string(i18n::language(), &wasm_bindgen::JsValue::UNDEFINED))
 }
 
 fn status(i: &LeavingItem) -> String {
     match i.protection {
-        Protection::Forever => "Kept forever".into(),
-        Protection::UntilWatched => "Kept until watched".into(),
+        Protection::Forever => tr!("Kept forever"),
+        Protection::UntilWatched => tr!("Kept until watched"),
         Protection::Extended => i
             .effective_deletion_date
-            .map(|d| format!("Kept until {}", date(d)))
+            .map(|d| tr!("Kept until {date}", date = date(d)))
             .unwrap_or_default(),
-        Protection::None if !i.collection_active => "Not scheduled yet".into(),
+        Protection::None if !i.collection_active => tr!("Not scheduled yet"),
         Protection::None => i
             .deletion_date
-            .map(|d| format!("Leaves {}", date(d)))
+            .map(|d| tr!("Leaves {date}", date = date(d)))
             .unwrap_or_default(),
     }
 }
 
-const NO_KEEP: &str = "This only works with a login on one of this site's servers. Add one in Settings → Servers → Add a server.";
+fn no_keep() -> String {
+    tr!(
+        "This only works with a login on one of this site's servers. Add one in Settings → Servers → Add a server."
+    )
+}
 
-fn mine(i: &LeavingItem) -> Option<&'static str> {
+fn mine(i: &LeavingItem) -> Option<String> {
     i.my_vote.as_ref().map(|v| match v.kind {
-        VoteKind::KeepForever => "You keep it forever",
-        VoteKind::KeepUntilWatched => "You keep it until you watch it",
-        VoteKind::KeepDays => "You extended it",
-        VoteKind::DontCare => "You're fine with it going",
+        VoteKind::KeepForever => tr!("You keep it forever"),
+        VoteKind::KeepUntilWatched => tr!("You keep it until you watch it"),
+        VoteKind::KeepDays => tr!("You extended it"),
+        VoteKind::DontCare => tr!("You're fine with it going"),
     })
 }
 
@@ -61,7 +66,7 @@ pub fn Leaving() -> impl IntoView {
         revision.track();
         spawn_local(async move {
             let Some(k) = state::ctx().keep_client() else {
-                return error.set(Some(NO_KEEP.into()));
+                return error.set(Some(no_keep()));
             };
             match k.leaving_soon().await {
                 Ok(l) => {
@@ -90,23 +95,23 @@ pub fn Leaving() -> impl IntoView {
             .collect::<Vec<_>>()
     };
     view! {
-        <h1>"Leaving soon"</h1>
-        <p class="muted">"What the server will delete, soonest first. Keep what you want to watch or love."</p>
+        <h1>{tr!("Leaving soon")}</h1>
+        <p class="muted">{tr!("What the server will delete, soonest first. Keep what you want to watch or love.")}</p>
         <div class="actions">
-            <A href="/leaving/sort" attr:class="button primary">"Go through them one by one"</A>
+            <A href="/leaving/sort" attr:class="button primary">{tr!("Go through them one by one")}</A>
             <Show when=move || state::ctx().keep.get().is_some_and(|k| k.is_admin)>
-                <A href="/admin" attr:class="button">"Admin"</A>
+                <A href="/admin" attr:class="button">{tr!("Admin")}</A>
             </Show>
         </div>
         <div class="chips">
-            {[("all", "All"), ("undecided", "Not decided"), ("mine", "Kept by me")].map(|(k, l)| view! {
+            {[("all", tr!("All")), ("undecided", tr!("Not decided")), ("mine", tr!("Kept by me"))].map(|(k, l)| view! {
                 <button class="chip" class:selected=move || filter.get() == k on:click=move |_| filter.set(k)>{l}</button>
             }).collect_view()}
         </div>
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         {move || (items.with(Option::is_none) && error.with(Option::is_none)).then(|| view! { <Loading /> })}
         {move || (items.with(|i| i.as_ref().is_some_and(Vec::is_empty))).then(|| view! {
-            <p class="muted">"Nothing is leaving. Nothing to do."</p>
+            <p class="muted">{tr!("Nothing is leaving. Nothing to do.")}</p>
         })}
         <div class="leaving">
             {move || shown().into_iter().take(limit.get()).map(|i| view! { <LeavingRow item=i items=items /> }).collect_view()}
@@ -115,7 +120,7 @@ pub fn Leaving() -> impl IntoView {
             let total = shown().len();
             (total > limit.get()).then(|| view! {
                 <button class="more" on:click=move |_| limit.update(|l| *l += 120)>
-                    {format!("More ({} of {total} shown)", limit.get())}
+                    {tr!("More ({shown} of {total} shown)", shown = limit.get(), total = total)}
                 </button>
             })
         }}
@@ -136,17 +141,18 @@ fn LeavingRow(item: LeavingItem, items: RwSignal<Option<Vec<LeavingItem>>>) -> i
         })
     });
     view! {
-        <div class="leaving-row">
-            {item.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
-            <div class="leaving-info">
-                <strong>{item.title.clone()}</strong>
-                <span class="muted">{item.year.map(|y| y.to_string())}" · "{status(&item)}</span>
-                {(keepers > 0).then(|| view! { <span class="muted small">{format!("{keepers} keep it")}</span> })}
-                {mine(&item).map(|m| view! { <span class="accent small">{m}</span> })}
-                <KeepChoices item=item.clone() on_voted=on_voted />
+            <div class="leaving-row">
+                {item.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
+                <div class="leaving-info">
+                    <strong>{item.title.clone()}</strong>
+                    <span class="muted">{item.year.map(|y| y.to_string())}" · "{status(&item)}</span>
+                    {(keepers > 0).then(|| view! { <span class="muted small">{trn!("{n} keeps it", "{n} keep it", keepers)}
+    </span> })}
+                    {mine(&item).map(|m| view! { <span class="accent small">{m}</span> })}
+                    <KeepChoices item=item.clone() on_voted=on_voted />
+                </div>
             </div>
-        </div>
-    }
+        }
 }
 
 /// The keep choices of a Leaving soon title (its row, and the title page's keep panel).
@@ -158,7 +164,7 @@ fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoV
     let vote = move |req: Option<VoteRequest>| {
         let key = key.clone();
         let Some(k) = state::ctx().keep_client() else {
-            return error.set(Some(NO_KEEP.into()));
+            return error.set(Some(no_keep()));
         };
         busy.set(true);
         error.set(None);
@@ -192,16 +198,16 @@ fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoV
     );
     view! {
         <div class="actions">
-            <button class="small" disabled=move || busy.get() on:click=move |_| v1(Some(req(VoteKind::KeepUntilWatched, None)))>"Until I watch it"</button>
-            <button class="small" disabled=move || busy.get() on:click=move |_| v3(Some(req(VoteKind::KeepDays, Some(30))))>"Keep 30 days"</button>
-            <button class="small" disabled=move || busy.get() on:click=move |_| v6(Some(req(VoteKind::KeepDays, Some(7))))>"Keep 7 days"</button>
-            <button class="small" disabled=move || busy.get() on:click=move |_| v2(Some(req(VoteKind::KeepForever, None)))>"Keep forever"</button>
-            <button class="small" disabled=move || busy.get() on:click=move |_| v4(Some(req(VoteKind::DontCare, None)))>"Fine to delete"</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v1(Some(req(VoteKind::KeepUntilWatched, None)))>{tr!("Until I watch it")}</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v3(Some(req(VoteKind::KeepDays, Some(30))))>{tr!("Keep 30 days")}</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v6(Some(req(VoteKind::KeepDays, Some(7))))>{tr!("Keep 7 days")}</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v2(Some(req(VoteKind::KeepForever, None)))>{tr!("Keep forever")}</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v4(Some(req(VoteKind::DontCare, None)))>{tr!("Fine to delete")}</button>
             {item.my_vote.is_some().then(|| view! {
-                <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>"Remove my choice"</button>
+                <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>{tr!("Remove my choice")}</button>
             })}
         </div>
-        <p class="muted small">"Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it."</p>
+        <p class="muted small">{tr!("Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it.")}</p>
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
     }
 }
@@ -209,12 +215,16 @@ fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoV
 /// "Kept forever", "Kept until 2 people have watched it", "Leaves 3 Dec 2026"… (as Android).
 fn keep_policy(e: &LeavingItem, now: i64) -> String {
     match e.protection {
-        Protection::Forever => "Kept forever".into(),
+        Protection::Forever => tr!("Kept forever"),
         Protection::UntilWatched => match e.counts.until_watched {
-            ..=1 => "Kept until the person who asked has watched it".into(),
-            n => format!("Kept until {n} people have watched it"),
+            ..=1 => tr!("Kept until the person who asked has watched it"),
+            n => trn!(
+                "Kept until {n} person has watched it",
+                "Kept until {n} people have watched it",
+                n
+            ),
         },
-        _ if paused(e, now) => "On the deletion list".into(),
+        _ if paused(e, now) => tr!("On the deletion list"),
         _ => status(e),
     }
 }
@@ -224,29 +234,28 @@ fn keep_detail(e: &LeavingItem, now: i64, date: impl Fn(i64) -> String) -> Strin
     let mut parts = vec![];
     // (A title taken out of its list by a keep still remembers which one it was in.)
     if let Some(t) = e.collection_title.as_ref().filter(|_| e.listed) {
-        parts.push(format!("In “{t}”"));
+        parts.push(tr!("In “{list}”", list = t));
     }
     if e.listed && e.protection == Protection::None && !e.collection_active {
-        parts.push("deletion isn't turned on yet".to_owned());
+        parts.push(tr!("deletion isn't turned on yet"));
     }
     if let Some(d) = e.effective_deletion_date
         && e.listed
         && !paused(e, now)
     {
-        parts.push(format!("date {}", date(d)));
+        parts.push(tr!("date {date}", date = date(d)));
     }
     let c = &e.counts;
     let keepers: Vec<String> = [
-        (c.forever, "forever"),
-        (c.until_watched, "until watched"),
-        (c.days, "for a while"),
+        (c.forever > 0).then(|| tr!("{n} forever", n = c.forever)),
+        (c.until_watched > 0).then(|| tr!("{n} until watched", n = c.until_watched)),
+        (c.days > 0).then(|| tr!("{n} for a while", n = c.days)),
     ]
     .into_iter()
-    .filter(|(n, _)| *n > 0)
-    .map(|(n, what)| format!("{n} {what}"))
+    .flatten()
     .collect();
     if !keepers.is_empty() {
-        parts.push(format!("kept by {}", keepers.join(", ")));
+        parts.push(tr!("kept by {list}", list = keepers.join(", ")));
     }
     let s = parts.join(" · ");
     let mut chars = s.chars();
@@ -261,11 +270,15 @@ fn medium_date(ts: i64) -> String {
     let d = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ts as f64 * 1000.0));
     let o = js_sys::Object::new();
     let _ = js_sys::Reflect::set(&o, &"dateStyle".into(), &"medium".into());
-    String::from(d.to_locale_date_string("default", &o))
+    String::from(d.to_locale_date_string(i18n::language(), &o))
 }
 
 /// Under "Not scheduled for deletion": a title can be kept ahead of any list.
-const UNPLANNED: &str = "The server doesn't plan to delete this. You can still say you want it kept, in case it does later.";
+fn unplanned() -> String {
+    tr!(
+        "The server doesn't plan to delete this. You can still say you want it kept, in case it does later."
+    )
+}
 
 /// A movie or show page: where it stands in Leaving soon, my choice, the keep choices on
 /// demand. Shown once the list has been loaded (kept in the browser), then refreshed.
@@ -321,7 +334,7 @@ pub fn KeepPanel(item: media_api::Item) -> impl IntoView {
             return;
         }
         let Some(k) = state::ctx().keep_client() else {
-            return lookup_error.set(Some(NO_KEEP.into()));
+            return lookup_error.set(Some(no_keep()));
         };
         looking.set(true);
         let title = title.clone();
@@ -339,7 +352,7 @@ pub fn KeepPanel(item: media_api::Item) -> impl IntoView {
                     choosing.try_set(true);
                 }
                 Err(net::Error::NotFound) => {
-                    lookup_error.try_set(Some("This title is never deleted automatically.".into()));
+                    lookup_error.try_set(Some(tr!("This title is never deleted automatically.")));
                 }
                 Err(e) => {
                     lookup_error.try_set(Some(state::plain_keep(&e)));
@@ -367,12 +380,12 @@ pub fn KeepPanel(item: media_api::Item) -> impl IntoView {
                 let look_up = look_up.clone();
                 return view! {
                     <section class="keep-panel">
-                        <h3>"Not scheduled for deletion"</h3>
-                        <p class="muted small">{UNPLANNED}</p>
-                        <p>"You haven't chosen anything"</p>
+                        <h3>{tr!("Not scheduled for deletion")}</h3>
+                        <p class="muted small">{unplanned()}</p>
+                        <p>{tr!("You haven't chosen anything")}</p>
                         <div class="actions">
                             <button class="small" disabled=move || looking.get() on:click=move |_| look_up()>
-                                {move || if looking.get() { "Looking it up…" } else { "Keep it" }}
+                                {move || if looking.get() { tr!("Looking it up…") } else { tr!("Keep it") }}
                             </button>
                         </div>
                         {move || lookup_error.get().map(|m| view! { <p class="error small">{m}</p> })}
@@ -385,17 +398,18 @@ pub fn KeepPanel(item: media_api::Item) -> impl IntoView {
             let planned = e.listed || e.protection != Protection::None;
             view! {
                 <section class="keep-panel" class:listed=planned>
-                    <h3>{if planned { keep_policy(&e, now) } else { "Not scheduled for deletion".into() }}</h3>
-                    {(!planned).then(|| view! { <p class="muted small">{UNPLANNED}</p> })}
+                    <h3>{if planned { keep_policy(&e, now) } else { tr!("Not scheduled for deletion") }}</h3>
+                    {(!planned).then(|| view! { <p class="muted small">{unplanned()}</p> })}
                     {(!detail.is_empty()).then(|| view! { <p class="muted small">{detail}</p> })}
-                    <p>{mine(&e).unwrap_or("You haven't chosen anything")}</p>
+                    <p>{mine(&e).unwrap_or_else(|| tr!("You haven't chosen anything"))}</p>
                     {move || if choosing.get() {
                         view! { <KeepChoices item=e.clone() on_voted=on_voted /> }.into_any()
                     } else {
                         view! {
                             <div class="actions">
                                 <button class="small" on:click=move |_| choosing.set(true)>
-                                    {if voted { "Change my choice" } else { "Keep it" }}
+                                    {if voted { tr!("Change my choice") } else { tr!("Keep it") }}
+
                                 </button>
                             </div>
                         }.into_any()
@@ -414,25 +428,25 @@ pub fn Forever() -> impl IntoView {
     let spread = RwSignal::new("all");
     spawn_local(async move {
         let Some(k) = state::ctx().keep_client() else {
-            return stats.set(Some(Err(NO_KEEP.into())));
+            return stats.set(Some(Err(no_keep())));
         };
         stats.set(Some(k.admin_forever().await.map_err(|e| admin_error(&e))));
     });
     view! {
-        <h1>"Kept forever"</h1>
+        <h1>{tr!("Kept forever")}</h1>
         {move || match stats.get() {
             None => view! { <Loading /> }.into_any(),
             Some(Err(e)) => view! { <ErrorText text=e /> }.into_any(),
-            Some(Ok(s)) if s.people.is_empty() => view! { <p class="muted">"Nobody keeps anything forever yet."</p> }.into_any(),
+            Some(Ok(s)) if s.people.is_empty() => view! { <p class="muted">{tr!("Nobody keeps anything forever yet.")}</p> }.into_any(),
             Some(Ok(s)) => {
                 let names: std::collections::HashMap<String, String> = s.people.iter().map(|p| (p.user_key.clone(), p.name.clone())).collect();
                 let name = move |k: &str| names.get(k).cloned().unwrap_or_else(|| k.to_owned());
                 let n2 = name.clone();
                 let items = s.items.clone();
                 view! {
-                    <p class="muted">{format!("{} titles · {} kept by several people · {} by one person", s.titles, s.shared, s.titles.saturating_sub(s.shared))}</p>
+                    <p class="muted">{tr!("{titles} titles · {shared} kept by several people · {alone} by one person", titles = s.titles, shared = s.shared, alone = s.titles.saturating_sub(s.shared))}</p>
                     <section class="group">
-                        <h2>"People"</h2>
+                        <h2>{tr!("People")}</h2>
                         {s.people.into_iter().map(|p| {
                             let k = p.user_key.clone();
                             let k2 = p.user_key.clone();
@@ -448,15 +462,18 @@ pub fn Forever() -> impl IntoView {
                                         </span>
                                         <span>{p.count}</span>
                                     </div>
-                                    <div class="muted small">{format!("{} shared · {} only them", p.shared, p.alone)}
-                                        {(!overlaps.is_empty()).then(|| format!(" · most with {overlaps}"))}</div>
+                                    <div class="muted small">{if overlaps.is_empty() {
+                                        tr!("{shared} shared · {alone} only them", shared = p.shared, alone = p.alone)
+                                    } else {
+                                        tr!("{shared} shared · {alone} only them · most with {people}", shared = p.shared, alone = p.alone, people = overlaps)
+                                    }}</div>
                                     <div class="split"><div class="shared" style=format!("width:{}%", p.shared as f32 / total * 100.0) /></div>
                                 </button>
                             }
                         }).collect_view()}
                     </section>
                     <div class="chips">
-                        {[("all", "All"), ("shared", "Kept by several"), ("alone", "Kept by one person")].map(|(k, l)| view! {
+                        {[("all", tr!("All")), ("shared", tr!("Kept by several")), ("alone", tr!("Kept by one person"))].map(|(k, l)| view! {
                             <button class="chip" class:selected=move || spread.get() == k on:click=move |_| spread.set(k)>{l}</button>
                         }).collect_view()}
                     </div>
@@ -499,20 +516,19 @@ fn paused(i: &LeavingItem, now: i64) -> bool {
 /// it is urgent.
 pub fn short_label(i: &LeavingItem, now: i64) -> (String, bool) {
     if matches!(i.protection, Protection::Forever | Protection::UntilWatched) {
-        return ("Kept".into(), false);
+        return (tr!("Kept"), false);
     }
     if paused(i, now) {
-        return ("Not scheduled".into(), false);
+        return (tr!("Not scheduled"), false);
     }
     let Some(d) = i.effective_deletion_date else {
-        return ("Soon".into(), false);
+        return (tr!("Soon"), false);
     };
     let days = (d - now).div_euclid(DAY);
     match days {
-        ..0 => ("Any day now".into(), true),
-        0 => ("Today".into(), true),
-        1 => ("1 day".into(), true),
-        n => (format!("{n} days"), n <= 7),
+        ..0 => (tr!("Any day now"), true),
+        0 => (tr!("Today"), true),
+        n => (trn!("{n} day", "{n} days", n), n <= 7),
     }
 }
 
@@ -538,7 +554,7 @@ pub fn Triage() -> impl IntoView {
     let done = RwSignal::new(0u32);
     spawn_local(async move {
         let Some(k) = state::ctx().keep_client() else {
-            return error.set(Some(NO_KEEP.into()));
+            return error.set(Some(no_keep()));
         };
         match k.triage(50).await {
             Ok(l) => queue.set(Some(l)),
@@ -551,7 +567,7 @@ pub fn Triage() -> impl IntoView {
             return;
         };
         let Some(k) = state::ctx().keep_client() else {
-            return error.set(Some(NO_KEEP.into()));
+            return error.set(Some(no_keep()));
         };
         // At once to the next one; put back if the server says no.
         queue.update(|q| {
@@ -573,10 +589,10 @@ pub fn Triage() -> impl IntoView {
                     }
                 }
                 Err(e) => {
-                    error.set(Some(format!(
-                        "{} wasn't saved: {}",
-                        item.title,
-                        state::plain_keep(&e)
+                    error.set(Some(tr!(
+                        "{title} wasn't saved: {error}",
+                        title = item.title,
+                        error = state::plain_keep(&e)
                     )));
                     queue.update(|q| {
                         if let Some(q) = q
@@ -613,7 +629,7 @@ pub fn Triage() -> impl IntoView {
     });
     view! {
         <div class="triage">
-            <h1>"One by one"</h1>
+            <h1>{tr!("One by one")}</h1>
             {move || {
                 let left = queue.with(|q| q.as_ref().map_or(0, Vec::len)) as u32;
                 let total = left + done.get();
@@ -628,8 +644,8 @@ pub fn Triage() -> impl IntoView {
                 Some(q) if q.is_empty() => {
                     let n = done.get();
                     view! {
-                        <p class="muted">{if n > 0 { format!("All done, thanks! {n} sorted.") } else { "Nothing to sort right now.".to_string() }}</p>
-                        <A href="/leaving" attr:class="button">"Back to Leaving soon"</A>
+                        <p class="muted">{if n > 0 { trn!("All done, thanks! {n} sorted.", "All done, thanks! {n} sorted.", n) } else { tr!("Nothing to sort right now.") }}</p>
+                        <A href="/leaving" attr:class="button">{tr!("Back to Leaving soon")}</A>
                     }.into_any()
                 }
                 Some(q) => {
@@ -638,7 +654,7 @@ pub fn Triage() -> impl IntoView {
                     let c = &item.counts;
                     let keepers = c.forever + c.until_watched + c.days;
                     view! {
-                        <p class="muted small">{format!("{} left · ← fine to delete   → keep until I watch it   ↑ keep forever", q.len())}</p>
+                        <p class="muted small">{trn!("{n} left · ← fine to delete   → keep until I watch it   ↑ keep forever", "{n} left · ← fine to delete   → keep until I watch it   ↑ keep forever", q.len())}</p>
                         <div class="triage-body">
                             <div class="triage-card" tabindex="0" node_ref=card on:keydown=on_key>
                                 {item.poster_url.clone().map(|p| view! { <img src=p alt="" /> })}
@@ -650,13 +666,13 @@ pub fn Triage() -> impl IntoView {
                                     <span class="state" class:urgent=urgent>{label}</span>
                                 </p>
                                 {(keepers > 0).then(|| view! {
-                                    <p class="muted small">{format!("{keepers} {} it", if keepers > 1 { "people keep" } else { "person keeps" })}</p>
+                                    <p class="muted small">{trn!("{n} person keeps it", "{n} people keep it", keepers)}</p>
                                 })}
                                 <div class="actions">
-                                    <button class="primary" on:click=move |_| until()>"Until I watch it"</button>
-                                    <button on:click=move |_| forever()>"♥ Forever"</button>
-                                    <button on:click=move |_| days()>"Keep 30 days"</button>
-                                    <button on:click=move |_| dont()>"✕ Fine to delete"</button>
+                                    <button class="primary" on:click=move |_| until()>{tr!("Until I watch it")}</button>
+                                    <button on:click=move |_| forever()>{tr!("♥ Forever")}</button>
+                                    <button on:click=move |_| days()>{tr!("Keep 30 days")}</button>
+                                    <button on:click=move |_| dont()>{tr!("✕ Fine to delete")}</button>
                                 </div>
                             </div>
                         </div>
@@ -670,7 +686,7 @@ pub fn Triage() -> impl IntoView {
 /// Admin calls: a refusal means this account isn't an admin (any more).
 fn admin_error(e: &net::Error) -> String {
     match e {
-        net::Error::Unauthorized => "Only admins of this AlwyWatch server can see this.".into(),
+        net::Error::Unauthorized => tr!("Only admins of this AlwyWatch server can see this."),
         other => state::plain_keep(other),
     }
 }
@@ -686,7 +702,11 @@ fn limit(v: Option<u32>) -> String {
 }
 
 /// Same warning as the apps: this rewrites Maintainerr's deletion dates.
-const COUNTDOWN_WARNING: &str = "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr.";
+fn countdown_warning() -> String {
+    tr!(
+        "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr."
+    )
+}
 
 /// A countdown waiting for its confirmation: collection, its title, stagger days.
 type Armed = (i64, String, u32);
@@ -709,7 +729,7 @@ pub fn Admin() -> impl IntoView {
     });
     spawn_local(async move {
         let Some(k) = state::ctx().keep_client() else {
-            return users.set(Some(Err(NO_KEEP.into())));
+            return users.set(Some(Err(no_keep())));
         };
         let ((u, su), l) = state::join2(
             state::join2(k.admin_users(), k.admin_seerr_users()),
@@ -733,7 +753,7 @@ pub fn Admin() -> impl IntoView {
                     id,
                     i.collection_title
                         .clone()
-                        .unwrap_or_else(|| format!("Collection {id}")),
+                        .unwrap_or_else(|| tr!("Collection {id}", id = id)),
                 ));
             }
         }
@@ -779,7 +799,7 @@ pub fn Admin() -> impl IntoView {
         }
         let Some(k) = state::ctx().keep_client() else {
             armed.set(None);
-            return message.set(Some(NO_KEEP.into()));
+            return message.set(Some(no_keep()));
         };
         busy.set(true);
         spawn_local(async move {
@@ -792,31 +812,36 @@ pub fn Admin() -> impl IntoView {
                 )
                 .await;
             message.set(Some(match r {
-                Ok(r) => format!("{title}: {} restarted, {} skipped", r.reset, r.skipped),
-                Err(e) => format!("{title}: {}", admin_error(&e)),
+                Ok(r) => tr!(
+                    "{title}: {restarted} restarted, {skipped} skipped",
+                    title = title,
+                    restarted = r.reset,
+                    skipped = r.skipped
+                ),
+                Err(e) => tr!("{title}: {error}", title = title, error = admin_error(&e)),
             }));
             busy.set(false);
             armed.set(None);
         });
     };
     view! {
-        <h1>"Admin"</h1>
-        <p class="muted">"Leaving soon: countdown and people's rights"</p>
+        <h1>{tr!("Admin")}</h1>
+        <p class="muted">{tr!("Leaving soon: countdown and people's rights")}</p>
         <section class="group">
-            <h2>"Kept forever"</h2>
+            <h2>{tr!("Kept forever")}</h2>
             <A href="/admin/forever" attr:class="row link-row">
-                <div><strong>"Who keeps what forever"</strong>
-                    <div class="muted small">"Per person, and how much of it someone else keeps too"</div></div>
+                <div><strong>{tr!("Who keeps what forever")}</strong>
+                    <div class="muted small">{tr!("Per person, and how much of it someone else keeps too")}</div></div>
                 <span>"›"</span>
             </A>
         </section>
         {move || message.get().map(|m| view! { <p class="accent">{m}</p> })}
         <section class="group">
-            <h2>"Start countdown"</h2>
+            <h2>{tr!("Start countdown")}</h2>
             {move || {
                 let list = collections();
                 if list.is_empty() {
-                    return view! { <p class="muted">"No collection has items leaving."</p> }.into_any();
+                    return view! { <p class="muted">{tr!("No collection has items leaving.")}</p> }.into_any();
                 }
                 list.into_iter().map(|(id, title)| view! {
                     <div class="row wrap">
@@ -824,17 +849,17 @@ pub fn Admin() -> impl IntoView {
                         <div class="actions tight">
                             {[0u32, 14, 30].map(|stagger| {
                                 let title = title.clone();
-                                let label = if stagger == 0 { "Restart now".to_string() } else { format!("Spread over {stagger} days") };
+                                let label = if stagger == 0 { tr!("Restart now") } else { trn!("Spread over {n} day", "Spread over {n} days", stagger) };
                                 view! { <button class="small" on:click=move |_| armed.set(Some((id, title.clone(), stagger)))>{label}</button> }
                             }).collect_view()}
                         </div>
                     </div>
                 }).collect_view().into_any()
             }}
-            <p class="muted small">{COUNTDOWN_WARNING}" You'll be asked to confirm."</p>
+            <p class="muted small">{countdown_warning()}" "{tr!("You'll be asked to confirm.")}</p>
         </section>
         <section class="group">
-            <h2>"People"</h2>
+            <h2>{tr!("People")}</h2>
             {move || match users.get() {
                 None => view! { <Loading /> }.into_any(),
                 Some(Err(e)) => view! { <ErrorText text=e /> }.into_any(),
@@ -849,28 +874,28 @@ pub fn Admin() -> impl IntoView {
                         <div class="person-rights">
                             <div class="person-head">
                                 <Avatar user_key=u.user_key.clone() name=u.name.clone() avatar=u.avatar.clone() size=32 />
-                                <strong>{name_with_media(&u.name, &u.media_name)}{u.is_admin.then_some(" · admin")}</strong>
+                                <strong>{name_with_media(&u.name, &u.media_name)}{u.is_admin.then(|| format!(" · {}", tr!("admin")))}</strong>
                             </div>
-                            <div class="muted small">{format!("{server} · {} kept forever", u.forever_count)}</div>
+                            <div class="muted small">{tr!("{server} · {count} kept forever", server = server, count = u.forever_count)}</div>
                             <div class="actions tight">
                                 <button class="small" class:selected=!r.can_keep_forever on:click=move |_| {
                                     set_rights(k1.clone(), Rights { can_keep_forever: !r1.can_keep_forever, ..r1.clone() })
-                                }>{if r.can_keep_forever { "Forever allowed" } else { "Forever blocked" }}</button>
+                                }>{if r.can_keep_forever { tr!("Forever allowed") } else { tr!("Forever blocked") }}</button>
                                 <button class="small" on:click=move |_| {
                                     set_rights(k2.clone(), Rights { max_forever: cycle(&[None, Some(5), Some(10), Some(25)], r2.max_forever), ..r2.clone() })
-                                }>{format!("Max forever: {}", limit(r.max_forever))}</button>
+                                }>{tr!("Max forever: {limit}", limit = limit(r.max_forever))}</button>
                                 <button class="small" on:click=move |_| {
                                     set_rights(k3.clone(), Rights { max_keep_days: cycle(&[None, Some(7), Some(30), Some(90)], r3.max_keep_days), ..r3.clone() })
-                                }>{format!("Max days: {}", limit(r.max_keep_days))}</button>
+                                }>{tr!("Max days: {limit}", limit = limit(r.max_keep_days))}</button>
                                 {move || (!seerr_users.with(Vec::is_empty)).then(|| {
                                     let k4 = k4.clone();
                                     view! {
-                                        <select class="chip small" aria-label="Requests as"
+                                        <select class="chip small" aria-label=tr!("Requests as")
                                             prop:value=linked.map(|i| i.to_string()).unwrap_or_default()
                                             on:change=move |ev| link(k4.clone(), event_target_value(&ev).parse().ok())>
-                                            <option value="">"Requests as: automatic"</option>
+                                            <option value="">{tr!("Requests as: automatic")}</option>
                                             {seerr_users.get().into_iter().map(|s| view! {
-                                                <option value=s.id.to_string() selected=linked == Some(s.id)>{format!("Requests as: {}", s.name)}</option>
+                                                <option value=s.id.to_string() selected=linked == Some(s.id)>{tr!("Requests as: {name}", name = s.name)}</option>
                                             }).collect_view()}
                                         </select>
                                     }
@@ -880,23 +905,24 @@ pub fn Admin() -> impl IntoView {
                     }
                 }).collect_view().into_any(),
             }}
-            <p class="muted small">"Everyone can keep forever by default. Click a value to change it."</p>
+            <p class="muted small">{tr!("Everyone can keep forever by default. Click a value to change it.")}</p>
         </section>
         {move || armed.get().map(|(_, title, stagger)| view! {
             <div class="dialog-back" on:click=move |_| if !busy.get_untracked() { armed.set(None) }
                 on:keydown=move |ev| if ev.key() == "Escape" && !busy.get_untracked() { armed.set(None) }>
                 <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="countdown-title" on:click=|ev| ev.stop_propagation()>
-                    <h2 id="countdown-title">{format!("Restart the countdown of {title}?")}</h2>
-                    <p>{COUNTDOWN_WARNING}</p>
+                    <h2 id="countdown-title">{tr!("Restart the countdown of {title}?", title = title)}</h2>
+                    <p>{countdown_warning()}</p>
                     <p class="muted">{if stagger == 0 {
-                        "Every item of this collection gets its full delay starting today.".to_string()
+                        tr!("Every item of this collection gets its full delay starting today.")
                     } else {
-                        format!("New deletion dates are spread over {stagger} days.")
+                        trn!("New deletion dates are spread over {n} day.", "New deletion dates are spread over {n} days.", stagger)
                     }}</p>
                     <div class="actions">
-                        <button node_ref=cancel disabled=move || busy.get() on:click=move |_| armed.set(None)>"Cancel"</button>
+                        <button node_ref=cancel disabled=move || busy.get() on:click=move |_| armed.set(None)>{tr!("Cancel")}</button>
                         <button class="danger" disabled=move || busy.get() on:click=confirm>
-                            {move || if busy.get() { "Changing dates…" } else { "Change deletion dates" }}
+                            {move || if busy.get() { tr!("Changing dates…") } else { tr!("Change deletion dates") }}
+
                         </button>
                     </div>
                 </div>

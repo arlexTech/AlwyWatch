@@ -3,6 +3,7 @@
 //! geometry of docs/keep-protocol.md § Built-in avatars, so every renderer shows the same), the
 //! cropper's maths, and turning the chosen square of a picture into the JPEG that is uploaded.
 
+use i18n::tr;
 use image::{DynamicImage, ImageDecoder, ImageReader};
 
 /// Pixels of a drawn built-in avatar (shown at 96 px at most, so crisp on 2× screens too… at
@@ -235,13 +236,13 @@ pub fn open_oriented(path: &std::path::Path) -> Result<DynamicImage, String> {
         .map(|m| m.len() > PICK_MAX_BYTES)
         .unwrap_or(false);
     if too_big {
-        return Err("This picture is too large (40 MB at most).".into());
+        return Err(tr!("This picture is too large (40 MB at most)."));
     }
-    let unreadable = |_| "This file isn't a picture AlwyWatch can read (JPEG, PNG or WebP).";
+    let unreadable = |_| tr!("This file isn't a picture AlwyWatch can read (JPEG, PNG or WebP).");
     let mut decoder = ImageReader::open(path)
-        .map_err(|e| format!("Can't open this file: {e}"))?
+        .map_err(|e| tr!("Can't open this file: {error}", error = e))?
         .with_guessed_format()
-        .map_err(|e| format!("Can't open this file: {e}"))?
+        .map_err(|e| tr!("Can't open this file: {error}", error = e))?
         .into_decoder()
         .map_err(unreadable)?;
     let orientation = decoder
@@ -278,12 +279,12 @@ pub fn render_upload(img: &DynamicImage, crop: &Crop) -> Result<Vec<u8>, String>
         let mut bytes = Vec::new();
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, quality)
             .encode_image(&rgb)
-            .map_err(|e| format!("Can't prepare the picture: {e}"))?;
+            .map_err(|e| tr!("Can't prepare the picture: {error}", error = e))?;
         if bytes.len() <= UPLOAD_MAX_BYTES {
             return Ok(bytes);
         }
     }
-    Err("This picture stays too large once cropped.".into())
+    Err(tr!("This picture stays too large once cropped."))
 }
 
 /// Decodes a custom avatar fetched from the server.

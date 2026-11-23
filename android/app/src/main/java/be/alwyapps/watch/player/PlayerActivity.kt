@@ -46,6 +46,8 @@ import be.alwyapps.watch.services
 import be.alwyapps.watch.together.TogetherInbox
 import be.alwyapps.watch.together.TogetherSession
 import be.alwyapps.watch.together.friendly
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import io.github.peerless2012.ass.media.kt.buildWithAssSupport
 import io.github.peerless2012.ass.media.type.AssRenderType
 import kotlinx.coroutines.Job
@@ -177,7 +179,7 @@ class PlayerActivity : ComponentActivity() {
                             onPrevious = { playPrevious() },
                             onSkip = { skipSegment() },
                             onPip = if (pipSupported) ({ enterPip() }) else null,
-                            onLeaveTogether = { leaveTogether("You left watch together") },
+                            onLeaveTogether = { leaveTogether(tr("You left watch together")) },
                             onStartTogether = { watchTogether() },
                             onTrackPicked = { type, format -> rememberTrack(type, format) },
                             onServerTrackPicked = { kind, index -> pickServerTrack(kind, index) },
@@ -276,7 +278,7 @@ class PlayerActivity : ComponentActivity() {
         val chosen = TrackPrefs.version(core, account, id)
         val src = pi.sources.firstOrNull { it.id == chosen } ?: pi.sources.firstOrNull()
         if (src == null) {
-            Toast.makeText(this, "Nothing to play", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, tr("Nothing to play"), Toast.LENGTH_LONG).show()
             finish()
             return
         }
@@ -558,10 +560,11 @@ class PlayerActivity : ComponentActivity() {
                 if (!transcoding && fallback != null && decoderProblem) {
                     // Direct play first; the server's conversion only when this device fails.
                     val position = player?.currentPosition ?: 0L
-                    Toast.makeText(this@PlayerActivity, "This device can't decode this file: using the server's converted version", Toast.LENGTH_LONG).show()
+                    val text = tr("This device can't decode this file: using the server's converted version")
+                    Toast.makeText(this@PlayerActivity, text, Toast.LENGTH_LONG).show()
                     lifecycleScope.launch { startConversion(src, position, null) }
                 } else {
-                    Toast.makeText(this@PlayerActivity, "Playback failed: ${error.errorCodeName}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@PlayerActivity, tr("Playback failed: {error}", "error" to error.errorCodeName), Toast.LENGTH_LONG).show()
                 }
             }
 
@@ -680,11 +683,11 @@ class PlayerActivity : ComponentActivity() {
         ui.skipLabel =
             when (seg?.kind) {
                 null -> null
-                SegmentKind.CREDITS -> "Skip credits"
-                SegmentKind.INTRO -> "Skip intro"
-                SegmentKind.RECAP -> "Skip recap"
-                SegmentKind.PREVIEW -> "Skip preview"
-                SegmentKind.COMMERCIAL -> "Skip"
+                SegmentKind.CREDITS -> tr("Skip credits")
+                SegmentKind.INTRO -> tr("Skip intro")
+                SegmentKind.RECAP -> tr("Skip recap")
+                SegmentKind.PREVIEW -> tr("Skip preview")
+                SegmentKind.COMMERCIAL -> tr("Skip")
             }
         // Credits with a next episode: count down, then play it (unless Back cancelled it).
         if (prompt.credits && autoPlayNext && !countdownCancelled && p.isPlaying) {
@@ -1033,7 +1036,7 @@ class PlayerActivity : ComponentActivity() {
                             if (now != code) {
                                 val why = TogetherSession.ended
                                 TogetherSession.ended = null
-                                leaveTogether(why ?: "You're no longer in this room", tellServer = false)
+                                leaveTogether(why ?: tr("You're no longer in this room"), tellServer = false)
                             }
                         }
                 }
@@ -1047,11 +1050,12 @@ class PlayerActivity : ComponentActivity() {
         // The host went back to the waiting room (to pick something else): so do we.
         if (!s.started) {
             if (!TogetherSession.isHost()) {
-                val host = s.members.firstOrNull { it.id == s.host }?.name ?: "The host"
+                val host = s.members.firstOrNull { it.id == s.host }?.name
+                val text = host?.let { tr("{name} went back to the waiting room", "name" to it) } ?: tr("The host went back to the waiting room")
                 TogetherSession.problem = null
                 exitRoomPlayer()
                 android.widget.Toast
-                    .makeText(this, "$host went back to the waiting room", android.widget.Toast.LENGTH_SHORT)
+                    .makeText(this, text, android.widget.Toast.LENGTH_SHORT)
                     .show()
                 finish()
             }
@@ -1077,16 +1081,16 @@ class PlayerActivity : ComponentActivity() {
             if (who != null) {
                 ui.togetherNote =
                     when {
-                        before.playing && !s.playing -> "$who paused"
-                        !before.playing && s.playing -> "$who resumed"
-                        else -> "$who moved to ${formatTime(s.positionMs.toLong())}"
+                        before.playing && !s.playing -> tr("{name} paused", "name" to who)
+                        !before.playing && s.playing -> tr("{name} resumed", "name" to who)
+                        else -> tr("{name} moved to {time}", "name" to who, "time" to formatTime(s.positionMs.toLong()))
                     }
             } else if (s.members.size > before.members.size) {
                 val joined = s.members.filter { m -> before.members.none { it.id == m.id } }.joinToString(", ") { it.name }
-                ui.togetherNote = "$joined joined"
+                ui.togetherNote = tr("{names} joined", "names" to joined)
             } else if (s.members.size < before.members.size) {
                 val left = before.members.filter { m -> s.members.none { it.id == m.id } }.joinToString(", ") { it.name }
-                ui.togetherNote = "$left left"
+                ui.togetherNote = tr("{names} left", "names" to left)
             }
         }
         // Someone else's change wins over our own pending hold.
@@ -1200,7 +1204,7 @@ class PlayerActivity : ComponentActivity() {
             be.alwyapps.watch.core
                 .togetherStartsIn(s, serverNow)
         if (startsIn != null) {
-            ui.togetherWaiting = "Starting…"
+            ui.togetherWaiting = tr("Starting…")
             if (scheduledStart != s.atMs) {
                 scheduledStart = s.atMs
                 startJob?.cancel()
@@ -1260,9 +1264,9 @@ class PlayerActivity : ComponentActivity() {
                 .distinct()
         ui.togetherWaiting =
             when {
-                mine && readySent != s.round -> "Loading for everyone…"
-                others.isEmpty() -> "Starting…"
-                else -> "Waiting for ${others.joinToString(", ")}…"
+                mine && readySent != s.round -> tr("Loading for everyone…")
+                others.isEmpty() -> tr("Starting…")
+                else -> tr("Waiting for {names}…", "names" to others.joinToString(", "))
             }
     }
 
@@ -1280,8 +1284,8 @@ class PlayerActivity : ComponentActivity() {
                     )
                 }.getOrNull()
             if (found == null) {
-                val what = m.seriesTitle?.let { "$it S${m.season} · E${m.episode}" } ?: m.title
-                ui.togetherNote = "$what isn't on your servers"
+                val what = m.seriesTitle?.let { tr("{show} S{season} · E{episode}", "show" to it, "season" to m.season, "episode" to m.episode) } ?: m.title
+                ui.togetherNote = tr("{title} isn't on your servers", "title" to what)
                 applyingRoom = true
                 player?.pause()
                 applyingRoom = false
@@ -1320,13 +1324,13 @@ class PlayerActivity : ComponentActivity() {
                 // The host doesn't allow it (HTTP 423): say so and go back to what the room plays.
                 val s = TogetherSession.state
                 if (e is CoreException.Server && e.message?.contains("HTTP 423") == true && s != null) {
-                    val what =
+                    ui.togetherNote =
                         when {
-                            newTitle -> "change what's playing"
-                            s.playing != playing -> if (playing) "play" else "pause"
-                            else -> "move forward or back"
+                            newTitle -> tr("Only the host can change what's playing in this room")
+                            s.playing != playing && playing -> tr("Only the host can play in this room")
+                            s.playing != playing -> tr("Only the host can pause in this room")
+                            else -> tr("Only the host can move forward or back in this room")
                         }
-                    ui.togetherNote = "Only the host can $what in this room"
                     ownHoldUntil = 0L
                     if (newTitle) followTitle(s) else syncToRoom(s)
                 }
@@ -1429,7 +1433,11 @@ class PlayerActivity : ComponentActivity() {
             ui.title = item.seriesTitle ?: item.title
             ui.subtitle =
                 listOfNotNull(
-                    if (item.seasonNumber != null && item.episodeNumber != null) "S${item.seasonNumber} · E${item.episodeNumber}" else null,
+                    if (item.seasonNumber != null && item.episodeNumber != null) {
+                        tr("S{season} · E{episode}", "season" to item.seasonNumber, "episode" to item.episodeNumber)
+                    } else {
+                        null
+                    },
                     item.title.takeIf { item.seriesTitle != null },
                 ).joinToString(" · ")
         } else {
@@ -1488,13 +1496,17 @@ class PlayerActivity : ComponentActivity() {
         )
         val playing = player?.isPlaying == true
         return listOf(
-            action(PIP_BACK, android.R.drawable.ic_media_rew, "Back ${(player?.seekBackIncrement ?: 10_000L) / 1000} seconds"),
+            action(PIP_BACK, android.R.drawable.ic_media_rew, trn("Back {n} second", "Back {n} seconds", (player?.seekBackIncrement ?: 10_000L) / 1000)),
             if (playing) {
-                action(PIP_PAUSE, android.R.drawable.ic_media_pause, "Pause")
+                action(PIP_PAUSE, android.R.drawable.ic_media_pause, tr("Pause"))
             } else {
-                action(PIP_PLAY, android.R.drawable.ic_media_play, "Play")
+                action(PIP_PLAY, android.R.drawable.ic_media_play, tr("Play"))
             },
-            action(PIP_FORWARD, android.R.drawable.ic_media_ff, "Forward ${(player?.seekForwardIncrement ?: 30_000L) / 1000} seconds"),
+            action(
+                PIP_FORWARD,
+                android.R.drawable.ic_media_ff,
+                trn("Forward {n} second", "Forward {n} seconds", (player?.seekForwardIncrement ?: 30_000L) / 1000),
+            ),
         )
     }
 

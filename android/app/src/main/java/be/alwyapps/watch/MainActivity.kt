@@ -44,6 +44,7 @@ import be.alwyapps.watch.ui.screens.SearchScreen
 import be.alwyapps.watch.ui.screens.SeerrConnectScreen
 import be.alwyapps.watch.ui.screens.SettingsScreen
 import be.alwyapps.watch.ui.screens.TriageScreen
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -196,9 +197,9 @@ private fun Root(core: AlwyWatch) {
     }
     if (askQuit) {
         be.alwyapps.watch.ui.ConfirmDialog(
-            "Quit AlwyWatch?",
-            "You can turn this question off in Settings.",
-            confirm = "Quit",
+            tr("Quit AlwyWatch?"),
+            tr("You can turn this question off in Settings."),
+            confirm = tr("Quit"),
             onConfirm = { activity?.finish() },
             onDismiss = { askQuit = false },
         )
@@ -296,7 +297,7 @@ private fun Root(core: AlwyWatch) {
                                 Route.Downloads ->
                                     androidx.compose.foundation.layout.Column {
                                         be.alwyapps.watch.ui
-                                            .PageTitle("Downloads")
+                                            .PageTitle(tr("Downloads"))
                                         be.alwyapps.watch.ui.screens
                                             .DownloadsHome()
                                     }

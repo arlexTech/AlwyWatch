@@ -56,6 +56,8 @@ import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.ServerBadge
 import be.alwyapps.watch.ui.Value
 import be.alwyapps.watch.ui.focusOnAppear
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -223,12 +225,13 @@ fun linkProblem(
             ?.toIntOrNull()
     return when {
         e is CoreException.Unauthorized ->
-            "Your ${serverName ?: "other"} sign-in has expired: sign in again on that account, then link."
-        e is CoreException.Network -> "Can't reach your AlwyWatch server right now."
-        status == 409 -> "These are two different people on the same server: they can't be one AlwyWatch account."
-        status == 429 -> "Too many tries. Try again in a few minutes."
-        status == 502 -> "The media server is unreachable right now. Try again later."
-        else -> e.message ?: "Something went wrong."
+            serverName?.let { tr("Your {server} sign-in has expired: sign in again on that account, then link.", "server" to it) }
+                ?: tr("Your other sign-in has expired: sign in again on that account, then link.")
+        e is CoreException.Network -> tr("Can't reach your AlwyWatch server right now.")
+        status == 409 -> tr("These are two different people on the same server: they can't be one AlwyWatch account.")
+        status == 429 -> tr("Too many tries. Try again in a few minutes.")
+        status == 502 -> tr("The media server is unreachable right now. Try again later.")
+        else -> e.message ?: tr("Something went wrong.")
     }
 }
 
@@ -257,7 +260,7 @@ fun LinkDialog(
     val mine = remember { core.keepConnection()?.accountId?.let { id -> runCatching { core.accounts() }.getOrNull()?.firstOrNull { it.id == id } } }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val nameA = mine?.userName ?: me?.mediaName?.ifEmpty { null } ?: me?.name ?: "this account"
+    val nameA = mine?.userName ?: me?.mediaName?.ifEmpty { null } ?: me?.name ?: tr("this account")
     val serverA = mine?.let { "${it.serverName}, ${kindLabel(it.kind)}" } ?: ""
     val serverB = "${other.serverName}, ${kindLabel(other.kind)}"
 
@@ -295,7 +298,7 @@ fun LinkDialog(
     val body: @Composable () -> Unit = {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(
-                "Use one AlwyWatch account for both of these sign-ins:",
+                tr("Use one AlwyWatch account for both of these sign-ins:"),
                 style = MaterialTheme.typography.bodyLarge,
             )
             Person(nameA, serverA) {
@@ -303,12 +306,13 @@ fun LinkDialog(
             }
             Person(other.userName, serverB) { DefaultAvatar(other.userName, size) }
             Text(
-                "They will share one name and picture, the same keep choices and the same watch-together rooms, on every device.",
+                tr("They will share one name and picture, the same keep choices and the same watch-together rooms, on every device."),
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                "Only link them if both are you, not someone else who uses this device. " +
-                    "It can't simply be undone: unlinking later turns that sign-in into a new, empty account.",
+                tr(
+                    "Only link them if both are you, not someone else who uses this device. It can't simply be undone: unlinking later turns that sign-in into a new, empty account.",
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Muted,
             )
@@ -317,8 +321,8 @@ fun LinkDialog(
     }
     val buttons: @Composable () -> Unit = {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton(if (busy) "Linking…" else "Link", { link() }, Modifier.focusOnAppear(), primary = true, icon = Icons.Check)
-            ActionButton("Not now", onNotNow)
+            ActionButton(if (busy) tr("Linking…") else tr("Link"), { link() }, Modifier.focusOnAppear(), primary = true, icon = Icons.Check)
+            ActionButton(tr("Not now"), onNotNow)
         }
     }
     if (d.isTv) {
@@ -336,7 +340,7 @@ fun LinkDialog(
                             .padding(horizontal = d.gutter, vertical = 32.dp),
                         verticalArrangement = Arrangement.spacedBy(22.dp),
                     ) {
-                        Text("Are these both you?", style = MaterialTheme.typography.displaySmall)
+                        Text(tr("Are these both you?"), style = MaterialTheme.typography.displaySmall)
                         body()
                         buttons()
                     }
@@ -347,10 +351,10 @@ fun LinkDialog(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = onClose,
             containerColor = Background,
-            title = { Text("Are these both you?") },
+            title = { Text(tr("Are these both you?")) },
             text = { Column(Modifier.verticalScroll(rememberScrollState())) { body() } },
-            confirmButton = { ActionButton(if (busy) "Linking…" else "Link", { link() }, primary = true) },
-            dismissButton = { ActionButton("Not now", onNotNow) },
+            confirmButton = { ActionButton(if (busy) tr("Linking…") else tr("Link"), { link() }, primary = true) },
+            dismissButton = { ActionButton(tr("Not now"), onNotNow) },
         )
     }
 }
@@ -392,7 +396,7 @@ fun alsoSignedInAs(links: List<LinkedIdentity>?): String? =
         ?.filter { !it.current }
         ?.takeIf { it.isNotEmpty() }
         ?.joinToString(", ") { "${it.mediaName} (${it.serverName})" }
-        ?.let { "Also signed in as $it" }
+        ?.let { tr("Also signed in as {names}", "names" to it) }
 
 /**
  * Settings → AlwyWatch & requests → Your AlwyWatch account → Linked sign-ins: the
@@ -418,9 +422,13 @@ fun LinkedSignInsGroup(me: Me) {
     var error by remember { mutableStateOf<String?>(null) }
     unlinking?.let { id ->
         ConfirmDialog(
-            "Unlink ${id.mediaName}?",
-            "${id.mediaName} on ${id.serverName} becomes a separate, new AlwyWatch account with no votes, name or history. Continue?",
-            confirm = "Unlink",
+            tr("Unlink {name}?", "name" to id.mediaName),
+            tr(
+                "{name} on {server} becomes a separate, new AlwyWatch account with no votes, name or history. Continue?",
+                "name" to id.mediaName,
+                "server" to id.serverName,
+            ),
+            confirm = tr("Unlink"),
             onConfirm = {
                 error = null
                 scope.launch {
@@ -429,7 +437,7 @@ fun LinkedSignInsGroup(me: Me) {
                         version++
                     } catch (e: CoreException) {
                         val status = e.message?.substringAfter("HTTP ", "")?.takeWhile { it.isDigit() }
-                        error = if (status == "409") "The main sign-in can't be unlinked." else linkProblem(e, id.serverName)
+                        error = if (status == "409") tr("The main sign-in can't be unlinked.") else linkProblem(e, id.serverName)
                     }
                 }
             },
@@ -444,7 +452,7 @@ fun LinkedSignInsGroup(me: Me) {
     }
     if (choosing) {
         be.alwyapps.watch.ui.ChoiceDialog(
-            "Link another sign-in",
+            tr("Link another sign-in"),
             linkable.map { it.id to "${it.userName} · ${it.serverName} (${kindLabel(it.kind)})" },
             null,
             onPick = { id ->
@@ -456,8 +464,8 @@ fun LinkedSignInsGroup(me: Me) {
         )
     }
     Group(
-        "Linked sign-ins",
-        footer = "Your sign-ins on different servers, as one AlwyWatch account: the same name, picture, keep choices and rooms.",
+        tr("Linked sign-ins"),
+        footer = tr("Your sign-ins on different servers, as one AlwyWatch account: the same name, picture, keep choices and rooms."),
     ) {
         links.forEachIndexed { i, id ->
             if (i > 0) Divider()
@@ -466,23 +474,23 @@ fun LinkedSignInsGroup(me: Me) {
                 subtitle =
                     listOfNotNull(
                         "${id.serverName} · ${kindLabel(id.kind)}",
-                        "This device".takeIf { id.current },
+                        tr("This device").takeIf { id.current },
                     ).joinToString(" · "),
                 leading = { ServerBadge(id.userKey, diameter = if (LocalDimens.current.isTv) 40.dp else 34.dp) },
                 // The main sign-in holds the account: it can't be unlinked.
                 onClick = if (id.canonical) null else ({ unlinking = id }),
-                trailing = { Value(if (id.canonical) "Main" else "Unlink") },
+                trailing = { Value(if (id.canonical) tr("Main") else tr("Unlink")) },
             )
         }
         if (linkable.isNotEmpty()) {
             if (links.isNotEmpty()) Divider()
             ListRow(
-                "Link another sign-in",
+                tr("Link another sign-in"),
                 subtitle =
                     if (linkable.size == 1) {
-                        "${linkable.single().userName} on ${linkable.single().serverName}"
+                        tr("{name} on {server}", "name" to linkable.single().userName, "server" to linkable.single().serverName)
                     } else {
-                        "${linkable.size} accounts on this device"
+                        trn("{n} account on this device", "{n} accounts on this device", linkable.size)
                     },
                 icon = Icons.Add,
                 onClick = { if (linkable.size == 1) linking = linkable.single() else choosing = true },

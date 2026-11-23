@@ -255,7 +255,9 @@ impl PlexAuth {
         }
         let r: SwitchDto = net::send_json(req).await?;
         if r.auth_token.is_empty() {
-            return Err(Error::invalid("Plex did not return a token for this user"));
+            return Err(Error::invalid(i18n::tr!(
+                "Plex did not return a token for this user"
+            )));
         }
         Ok(r.auth_token)
     }

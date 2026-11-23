@@ -1034,12 +1034,13 @@ impl AlwyWatch {
                 .await
                 .map_err(|e| match e {
                     net::Error::Network { .. } => CoreError::Invalid {
-                        detail: format!(
-                            "Can't reach {base}. Check the address and your connection."
+                        detail: i18n::tr!(
+                            "Can't reach {address}. Check the address and your connection.",
+                            address = base
                         ),
                     },
                     net::Error::NotFound | net::Error::Decode { .. } => CoreError::Invalid {
-                        detail: "There is no Jellyfin server at this address.".into(),
+                        detail: i18n::tr!("There is no Jellyfin server at this address."),
                     },
                     e => e.into(),
                 })
@@ -1061,7 +1062,7 @@ impl AlwyWatch {
                 .await
                 .map_err(|e| match e {
                     net::Error::Unauthorized => CoreError::Invalid {
-                        detail: "Wrong username or password.".into(),
+                        detail: i18n::tr!("Wrong username or password."),
                     },
                     e => e.into(),
                 })?;
@@ -2547,14 +2548,15 @@ impl AlwyWatch {
             } else {
                 let bytes = keep_service::transfer::from_hex(&sealed.sealed).ok_or_else(|| {
                     CoreError::Invalid {
-                        detail: "corrupted transfer".into(),
+                        detail: i18n::tr!("corrupted transfer"),
                     }
                 })?;
                 let plain = key.open(&bytes).map_err(|e| CoreError::Invalid {
+                    // The transfer's own words (keep-service, shared with the server).
                     detail: e.to_string(),
                 })?;
                 Some(String::from_utf8(plain).map_err(|_| CoreError::Invalid {
-                    detail: "corrupted transfer".into(),
+                    detail: i18n::tr!("corrupted transfer"),
                 })?)
             };
             Ok(Some(TransferReceived {
@@ -2571,7 +2573,7 @@ impl AlwyWatch {
             let peer = c.person_client()?.transfer_peer(code.trim()).await?;
             let key = keep_service::transfer::from_hex(&peer.public_key).ok_or_else(|| {
                 CoreError::Invalid {
-                    detail: "invalid key".into(),
+                    detail: i18n::tr!("invalid key"),
                 }
             })?;
             let check = keep_service::transfer::check_number(&key);
@@ -2630,7 +2632,7 @@ impl AlwyWatch {
     /// stores their tokens and activates them as at startup).
     pub fn import_config(&self, json: String) -> Result<Vec<String>> {
         let b: ConfigBundle = serde_json::from_str(&json).map_err(|e| CoreError::Invalid {
-            detail: format!("unreadable transfer: {e}"),
+            detail: i18n::tr!("unreadable transfer: {error}", error = e),
         })?;
         for a in &b.accounts {
             self.core.store.put_account(&a.id, a)?;

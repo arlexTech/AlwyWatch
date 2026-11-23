@@ -12,6 +12,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import be.alwyapps.watch.services
+import be.alwyapps.watch.ui.tr
 import java.util.concurrent.TimeUnit
 
 /** Daily: "you wanted to watch X before it leaves" for keep-until-watched with a reminder. */
@@ -27,15 +28,15 @@ class KeepReminderWorker(
         if (due.isEmpty()) return Result.success()
         val nm = applicationContext.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Watch reminders", NotificationManager.IMPORTANCE_DEFAULT))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Watch reminders"), NotificationManager.IMPORTANCE_DEFAULT))
         }
         for ((i, item) in due.withIndex()) {
             val n =
                 NotificationCompat
                     .Builder(applicationContext, CHANNEL)
                     .setSmallIcon(android.R.drawable.ic_media_play)
-                    .setContentTitle("Still want to watch ${item.title}?")
-                    .setContentText("You asked to keep it until you have watched it.")
+                    .setContentTitle(tr("Still want to watch {title}?", "title" to item.title))
+                    .setContentText(tr("You asked to keep it until you have watched it."))
                     .setAutoCancel(true)
                     .build()
             runCatching { nm.notify(1000 + i, n) }

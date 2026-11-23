@@ -4,6 +4,7 @@
 //! storage (`aw.p.<id>.…`; the first profile keeps the plain `aw.…` keys), and switching
 //! reloads the app into it. No PIN here: a browser's storage is readable by whoever uses it.
 
+use i18n::tr;
 use std::cell::RefCell;
 
 use leptos::prelude::*;
@@ -49,7 +50,7 @@ pub fn list() -> Vec<Profile> {
             0,
             Profile {
                 id: DEFAULT.into(),
-                name: "Main".into(),
+                name: tr!("Main"),
             },
         );
     }
@@ -168,7 +169,7 @@ pub fn ProfileMenu() -> impl IntoView {
         .unwrap_or_default();
     view! {
         <details class="profile-menu">
-            <summary title="Switch profile"><span class="pdot">{initial(&name)}</span>{name}</summary>
+            <summary title=tr!("Switch profile")><span class="pdot">{initial(&name)}</span>{name}</summary>
             <div class="profile-list">
                 {all.into_iter().filter(|p| p.id != me).map(|p| {
                     let id = p.id.clone();
@@ -176,7 +177,7 @@ pub fn ProfileMenu() -> impl IntoView {
                         <button on:click=move |_| switch(&id)><span class="pdot">{initial(&p.name)}</span>{p.name.clone()}</button>
                     }
                 }).collect_view()}
-                <a href="/settings/profiles">"Manage profiles"</a>
+                <a href="/settings/profiles">{tr!("Manage profiles")}</a>
             </div>
         </details>
     }
@@ -207,8 +208,8 @@ pub fn ProfilesSettings() -> impl IntoView {
     };
     view! {
         <section class="group">
-            <h2>"Profiles"</h2>
-            <p class="muted small">"Several people on this browser: each profile has its own accounts, history and settings."</p>
+            <h2>{tr!("Profiles")}</h2>
+            <p class="muted small">{tr!("Several people on this browser: each profile has its own accounts, history and settings.")}</p>
             {move || {
                 version.get();
                 let me = me.clone();
@@ -232,36 +233,37 @@ pub fn ProfilesSettings() -> impl IntoView {
                                     }>
                                         <input maxlength="24" prop:value=move || renaming.get().map(|(_, n)| n).unwrap_or_default()
                                             on:input=move |ev| renaming.update(|r| if let Some(r) = r { r.1 = event_target_value(&ev) }) />
-                                        <button class="small primary" type="submit">"Save"</button>
+                                        <button class="small primary" type="submit">{tr!("Save")}</button>
                                     </form>
                                 }.into_any()
                             } else {
-                                view! { <div><strong>{name.clone()}</strong>{here.then(|| view! { <span class="muted">" · in use"</span> })}</div> }.into_any()
+                                view! { <div><strong>{name.clone()}</strong>{here.then(|| view! { <span class="muted">" · "{tr!("in use")}</span> })}</div> }.into_any()
                             }}
                             <div class="actions tight">
-                                {(!here).then(|| { let id = p.id.clone(); view! { <button class="small primary" on:click=move |_| switch(&id)>"Switch"</button> } })}
+                                {(!here).then(|| { let id = p.id.clone(); view! { <button class="small primary" on:click=move |_| switch(&id)>{tr!("Switch")}</button> } })}
                                 {
                                     let (id, name) = (p.id.clone(), p.name.clone());
-                                    view! { <button class="small" on:click=move |_| renaming.set(Some((id.clone(), name.clone())))>"Rename"</button> }
+                                    view! { <button class="small" on:click=move |_| renaming.set(Some((id.clone(), name.clone())))>{tr!("Rename")}</button> }
                                 }
                                 {removable.then(|| { let id = id2.clone(); view! { <button class="small subtle" on:click=move |_| {
                                     let sure = web_sys::window()
-                                        .and_then(|w| w.confirm_with_message("Remove this profile? Its accounts and settings in this browser are deleted.").ok())
+                                        .and_then(|w| w.confirm_with_message(&tr!("Remove this profile? Its accounts and settings in this browser are deleted.")).ok())
+
                                         .unwrap_or(false);
                                     if sure {
                                         remove(&id);
                                         version.update(|v| *v += 1);
                                     }
-                                }>"Remove"</button> } })}
+                                }>{tr!("Remove")}</button> } })}
                             </div>
                         </div>
                     }
                 }).collect_view()
             }}
             <form class="name-form" on:submit=add_one>
-                <input placeholder="New profile's name" maxlength="24" prop:value=move || new_name.get()
+                <input placeholder=tr!("New profile's name") maxlength="24" prop:value=move || new_name.get()
                     on:input=move |ev| new_name.set(event_target_value(&ev)) />
-                <button class="small" type="submit">"Add and switch"</button>
+                <button class="small" type="submit">{tr!("Add and switch")}</button>
             </form>
         </section>
     }

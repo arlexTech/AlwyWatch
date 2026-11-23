@@ -152,16 +152,16 @@ pub(super) fn also_signed_in(ids: &[LinkedIdentity], server_id: &str) -> String 
     if others.is_empty() {
         String::new()
     } else {
-        format!("Also signed in as {}", others.join(", "))
+        tr!("Also signed in as {names}", names = others.join(", "))
     }
 }
 
 /// The unlink confirmation.
 pub(super) fn unlink_question(i: &LinkedIdentity) -> String {
-    format!(
-        "{} on {} becomes a separate, new AlwyWatch account with no keep choices, name, avatar \
-         or history. Continue?",
-        i.media_name, i.server_name
+    tr!(
+        "{name} on {server} becomes a separate, new AlwyWatch account with no keep choices, name, avatar or history. Continue?",
+        name = i.media_name,
+        server = i.server_name
     )
 }
 
@@ -170,21 +170,26 @@ pub(super) fn unlink_question(i: &LinkedIdentity) -> String {
 pub(super) fn link_error(e: &CoreError, server: &str, served: Option<bool>) -> String {
     match e {
         CoreError::Unauthorized if served == Some(false) => {
-            format!(
-                "Your AlwyWatch server doesn't serve {server}, so this sign-in can't be linked."
+            tr!(
+                "Your AlwyWatch server doesn't serve {server}, so this sign-in can't be linked.",
+                server = server
             )
         }
         CoreError::Unauthorized => {
-            format!(
-                "Your {server} sign-in has expired: sign in again with that account, then link."
+            tr!(
+                "Your {server} sign-in has expired: sign in again with that account, then link.",
+                server = server
             )
         }
         CoreError::NotSignedIn { .. } => {
-            format!("Sign in again with your {server} account, then link.")
+            tr!(
+                "Sign in again with your {server} account, then link.",
+                server = server
+            )
         }
-        CoreError::Server { status: 409 } => format!(
-            "These are two different people on the same server: your AlwyWatch account already \
-             has another sign-in on {server}."
+        CoreError::Server { status: 409 } => tr!(
+            "These are two different people on the same server: your AlwyWatch account already has another sign-in on {server}.",
+            server = server
         ),
         other => common_error(other),
     }
@@ -192,9 +197,9 @@ pub(super) fn link_error(e: &CoreError, server: &str, served: Option<bool>) -> S
 
 pub(super) fn unlink_error(e: &CoreError) -> String {
     match e {
-        CoreError::Server { status: 409 } => "The main sign-in can't be unlinked.".into(),
+        CoreError::Server { status: 409 } => tr!("The main sign-in can't be unlinked."),
         CoreError::Unauthorized => {
-            "Your AlwyWatch server refused: sign in again with this account.".into()
+            tr!("Your AlwyWatch server refused: sign in again with this account.")
         }
         other => common_error(other),
     }
@@ -203,16 +208,16 @@ pub(super) fn unlink_error(e: &CoreError) -> String {
 fn common_error(e: &CoreError) -> String {
     match e {
         CoreError::Server { status: 429 } => {
-            "Too many tries: wait a few minutes, then try again.".into()
+            tr!("Too many tries: wait a few minutes, then try again.")
         }
-        CoreError::Server { status: 502 } => "The media server is unreachable right now.".into(),
+        CoreError::Server { status: 502 } => tr!("The media server is unreachable right now."),
         CoreError::Server { status } if *status >= 500 => {
-            "Your AlwyWatch server had a problem: try again in a moment.".into()
+            tr!("Your AlwyWatch server had a problem: try again in a moment.")
         }
         CoreError::NotFound | CoreError::Server { status: 405 } => {
-            "Your AlwyWatch server doesn't support this yet: it needs an update.".into()
+            tr!("Your AlwyWatch server doesn't support this yet: it needs an update.")
         }
-        CoreError::Network { .. } => "Can't reach your AlwyWatch server right now.".into(),
+        CoreError::Network { .. } => tr!("Can't reach your AlwyWatch server right now."),
         e => e.to_string(),
     }
 }
@@ -452,12 +457,13 @@ impl App {
         PersonRow {
             key: sstr(&s.me.user_key),
             name: sstr(&s.me.name),
-            detail: sstr(format!(
-                "{} on {} ({})",
-                s.me.media_name,
-                s.server_name,
-                kind_name(s.kind)
+            detail: sstr(tr!(
+                "{name} on {server} ({kind})",
+                name = s.me.media_name,
+                server = s.server_name,
+                kind = kind_name(s.kind)
             )),
+
             avatar: self.person_avatar(&s.me.user_key, &s.me.name, &s.me.avatar),
             header: SharedString::new(),
             selected: false,

@@ -17,6 +17,7 @@
 //! The host leaving the player takes the room back to the waiting room: everyone stays in it,
 //! and each start opens the player wherever the app is.
 
+use i18n::{tr, trn};
 use keep_service::together::{
     ClockSync, TogetherCreate, TogetherInvite, TogetherJoined, TogetherMedia, TogetherMember,
     TogetherPerson, TogetherRoom, TogetherRooms, TogetherState, TogetherUpdate,
@@ -37,8 +38,9 @@ use crate::ui::{ErrorText, Loading};
 /// Further apart than this from the room, a member seeks.
 pub const DRIFT_MS: u64 = 1500;
 
-const NO_KEEP: &str =
-    "Watch together needs an account on this AlwyWatch server: sign in with one in Settings.";
+fn no_keep() -> String {
+    tr!("Watch together needs an account on this AlwyWatch server: sign in with one in Settings.")
+}
 
 pub fn now_ms() -> f64 {
     js_sys::Date::now()
@@ -81,11 +83,11 @@ pub fn phase_of(s: &TogetherState, me: &str, server_now: i64) -> Phase {
 /// What a player shows while the room waits (None: it doesn't).
 pub fn waiting_text(p: &Phase, ready_sent: bool) -> Option<String> {
     match p {
-        Phase::Loading { me: true, .. } if !ready_sent => Some("Loading for everyone…".into()),
+        Phase::Loading { me: true, .. } if !ready_sent => Some(tr!("Loading for everyone…")),
         Phase::Loading { others, .. } if !others.is_empty() => {
-            Some(format!("Waiting for {}…", others.join(", ")))
+            Some(tr!("Waiting for {names}…", names = others.join(", ")))
         }
-        Phase::Loading { .. } | Phase::StartsIn(_) => Some("Starting…".into()),
+        Phase::Loading { .. } | Phase::StartsIn(_) => Some(tr!("Starting…")),
         Phase::Live => None,
     }
 }
@@ -138,20 +140,24 @@ pub fn on_remote(
     let note = if let Some(who) = s.members.iter().find(|m| m.id == s.by) {
         let who = &who.name;
         Some(if b.started && !s.started {
-            format!("{who} went back to the waiting room")
+            tr!("{name} went back to the waiting room", name = who)
         } else if !b.started && s.started {
-            format!("{who} started")
+            tr!("{name} started", name = who)
         } else if b.playing && !s.playing {
-            format!("{who} paused")
+            tr!("{name} paused", name = who)
         } else if !b.playing && s.playing {
-            format!("{who} resumed")
+            tr!("{name} resumed", name = who)
         } else {
-            format!("{who} moved to {}", fmt_time(s.position_ms))
+            tr!(
+                "{name} moved to {time}",
+                name = who,
+                time = fmt_time(s.position_ms)
+            )
         })
     } else if s.members.len() > b.members.len() {
-        Some(format!("{} joined", names(&s.members, &b.members)))
+        Some(tr!("{names} joined", names = names(&s.members, &b.members)))
     } else if s.members.len() < b.members.len() {
-        Some(format!("{} left", names(&b.members, &s.members)))
+        Some(tr!("{names} left", names = names(&b.members, &s.members)))
     } else {
         None
     };
@@ -160,13 +166,14 @@ pub fn on_remote(
 
 pub fn media_label(m: &TogetherMedia) -> String {
     if m.is_none() {
-        return "Nothing chosen yet".into();
+        return tr!("Nothing chosen yet");
     }
     match &m.series_title {
-        Some(show) => format!(
-            "{show} · S{} · E{}",
-            m.season.unwrap_or(1),
-            m.episode.unwrap_or(1)
+        Some(show) => tr!(
+            "{show} · S{season} · E{episode}",
+            show = show,
+            season = m.season.unwrap_or(1),
+            episode = m.episode.unwrap_or(1)
         ),
         None => m.title.clone(),
     }
@@ -284,13 +291,13 @@ pub fn room_href(code: &str) -> String {
 /// Errors of room calls in plain words.
 pub fn plain_together(e: &Error) -> String {
     match e {
-        Error::NotFound => "This room has closed, or the invitation was withdrawn.".into(),
-        Error::Status { status: 409 } => "This room is full.".into(),
+        Error::NotFound => tr!("This room has closed, or the invitation was withdrawn."),
+        Error::Status { status: 409 } => tr!("This room is full."),
         Error::Status { status: 429 } => {
-            "Too many rooms or invitations in a short time. Try again in a few minutes.".into()
+            tr!("Too many rooms or invitations in a short time. Try again in a few minutes.")
         }
         Error::Status { status: 503 } => {
-            "The AlwyWatch server has too many rooms open right now. Try again later.".into()
+            tr!("The AlwyWatch server has too many rooms open right now. Try again later.")
         }
         other => state::plain_keep(other),
     }
@@ -298,18 +305,17 @@ pub fn plain_together(e: &Error) -> String {
 
 /// What a guest is told when the host's rights refuse their change.
 pub fn refused_note(u: &TogetherUpdate, room: Option<&TogetherState>) -> String {
-    let what = match room {
-        _ if u.media.is_some() => "change what's playing",
+    match room {
+        _ if u.media.is_some() => tr!("Only the host can change what's playing in this room"),
         Some(r) if r.playing != u.playing => {
             if u.playing {
-                "play"
+                tr!("Only the host can play in this room")
             } else {
-                "pause"
+                tr!("Only the host can pause in this room")
             }
         }
-        _ => "move forward or back",
-    };
-    format!("Only the host can {what} in this room")
+        _ => tr!("Only the host can move forward or back in this room"),
+    }
 }
 
 /// One person in a room: their first seat, how many devices they're on, whether they host.
@@ -831,14 +837,14 @@ impl Room {
         self.clear();
         self.closed.try_set(Some(code.to_owned()));
         self.note
-            .try_set(Some("The watch together room closed".into()));
+            .try_set(Some(tr!("The watch together room closed")));
     }
 }
 
 /// Opens a lobby with this title (the caller is its host): its code, for the Room page.
 pub async fn create_room(srv: AnyServer, item: Item) -> Result<String, String> {
     let c = state::ctx();
-    let k = c.keep_client().ok_or(NO_KEEP)?;
+    let k = c.keep_client().ok_or_else(no_keep)?;
     let media = media_of(&srv, &item).await;
     let j = k
         .together_create(&TogetherCreate {
@@ -859,7 +865,7 @@ pub async fn create_room(srv: AnyServer, item: Item) -> Result<String, String> {
 /// browses; a title's "Watch in your room" then chooses what to watch.
 pub async fn open_room() -> Result<String, String> {
     let c = state::ctx();
-    let k = c.keep_client().ok_or(NO_KEEP)?;
+    let k = c.keep_client().ok_or_else(no_keep)?;
     let j = k
         .together_create(&TogetherCreate {
             media: TogetherMedia::none(),
@@ -877,7 +883,7 @@ pub async fn open_room() -> Result<String, String> {
 
 /// Takes a seat in a room I'm invited to (or in on another device).
 pub async fn join(code: &str) -> Result<TogetherJoined, String> {
-    let k = state::ctx().keep_client().ok_or(NO_KEEP)?;
+    let k = state::ctx().keep_client().ok_or_else(no_keep)?;
     k.together_join(code).await.map_err(|e| plain_together(&e))
 }
 
@@ -912,9 +918,9 @@ pub async fn go_play(
     };
     match find(&s.media).await {
         None => {
-            room.note.try_set(Some(format!(
-                "{} isn't on your servers, so you can't play it here",
-                media_label(&s.media)
+            room.note.try_set(Some(tr!(
+                "{title} isn't on your servers, so you can't play it here",
+                title = media_label(&s.media)
             )));
         }
         Some((acc, item)) => {
@@ -1054,15 +1060,19 @@ impl Invites {
     }
 }
 
-fn room_status(started: bool) -> &'static str {
-    if started { "Watching" } else { "Waiting room" }
+fn room_status(started: bool) -> String {
+    if started {
+        tr!("Watching")
+    } else {
+        tr!("Waiting room")
+    }
 }
 
 /// Hosting a room: this title becomes the room's (everyone stays; a playing room loads it).
 pub async fn retitle_room(srv: AnyServer, item: Item) -> Result<String, String> {
     let c = state::ctx();
-    let k = c.keep_client().ok_or(NO_KEEP)?;
-    let (code, me) = c.room.ids().ok_or("You're not in a room.")?;
+    let k = c.keep_client().ok_or_else(no_keep)?;
+    let (code, me) = c.room.ids().ok_or_else(|| tr!("You're not in a room."))?;
     let media = media_of(&srv, &item).await;
     let s = k
         .together_update(
@@ -1117,11 +1127,11 @@ pub fn TogetherButton(srv: AnyServer, item: Item) -> impl IntoView {
     view! {
         <button on:click=click disabled=move || busy.get()>
             {move || if busy.get() {
-                "Opening a room…"
+                tr!("Opening a room…")
             } else if state::ctx().room.code.get().is_some() && state::ctx().room.hosting() {
-                "Watch in your room"
+                tr!("Watch in your room")
             } else {
-                "Watch together"
+                tr!("Watch together")
             }}
         </button>
         {move || error.get().map(|e| view! { <span class="error small">{e}</span> })}
@@ -1187,32 +1197,32 @@ pub fn Together() -> impl IntoView {
         });
     };
     view! {
-        <h1>"Watch together"</h1>
-        <p class="muted">"Private rooms: only the people the host invites can see them."</p>
+        <h1>{tr!("Watch together")}</h1>
+        <p class="muted">{tr!("Private rooms: only the people the host invites can see them.")}</p>
         <Show when=linked>
             <div class="actions">
                 <button class="primary" disabled=move || opening.get() on:click=new_room.clone()>
-                    {move || if opening.get() { "Opening a room…" } else { "New room" }}
+                    {move || if opening.get() { tr!("Opening a room…") } else { tr!("New room") }}
                 </button>
-                <span class="muted small">"Invite people first, choose what to watch afterwards."</span>
+                <span class="muted small">{tr!("Invite people first, choose what to watch afterwards.")}</span>
             </div>
         </Show>
-        {move || (!linked()).then(|| view! { <ErrorText text=NO_KEEP.to_string() /> })}
+        {move || (!linked()).then(|| view! { <ErrorText text=no_keep() /> })}
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         {move || (inv.unreachable.get() && linked()).then(|| view! {
-            <p class="muted small">"Can't reach your AlwyWatch server right now. Trying again…"</p>
+            <p class="muted small">{tr!("Can't reach your AlwyWatch server right now. Trying again…")}</p>
         })}
         {move || match inv.rooms.get() {
             None if linked() => view! { <Loading /> }.into_any(),
             None => ().into_any(),
             Some(r) if r.rooms.is_empty() => view! {
-                <p class="muted empty">"No rooms yet. Start one here, or open a movie or an episode and choose Watch together."</p>
+                <p class="muted empty">{tr!("No rooms yet. Start one here, or open a movie or an episode and choose Watch together.")}</p>
             }.into_any(),
             Some(r) => {
                 let (invites, mine): (Vec<_>, Vec<_>) = r.rooms.into_iter().partition(|r| r.invited);
                 let navigate = navigate.clone();
                 view! {
-                    {(!invites.is_empty()).then(|| view! { <h2>"Invitations"</h2> })}
+                    {(!invites.is_empty()).then(|| view! { <h2>{tr!("Invitations")}</h2> })}
                     <div class="leaving">
                         {invites.into_iter().map(|r| {
                             let (code, code2, code3) = (r.code.clone(), r.code.clone(), r.code.clone());
@@ -1221,27 +1231,28 @@ pub fn Together() -> impl IntoView {
                                 <div class="leaving-row room-row">
                                     <Avatar user_key=r.host_user_key.clone() name=r.host.clone() avatar=r.host_avatar.clone() size=40 />
                                     <div class="leaving-info">
-                                        <span>{format!("{} invites you", r.host)}</span>
+                                        <span>{tr!("{name} invites you", name = r.host)}</span>
                                         <strong>{media_label(&r.media)}</strong>
                                         <span class="muted small">{room_status(r.started)}</span>
                                     </div>
                                     <div class="actions tight">
                                         <button class="primary small" disabled=move || busy.get().is_some()
                                             on:click=move |_| join_and_enter(code.clone(), busy, error, navigate.clone())>
-                                            {move || if busy.get().as_deref() == Some(code3.as_str()) { "Joining…" } else { "Join" }}
+                                            {move || if busy.get().as_deref() == Some(code3.as_str()) { tr!("Joining…") } else { tr!("Join") }}
                                         </button>
-                                        <button class="small" on:click=move |_| inv.decline(code2.clone())>"Not now"</button>
+                                        <button class="small" on:click=move |_| inv.decline(code2.clone())>{tr!("Not now")}</button>
                                     </div>
                                 </div>
                             }
                         }).collect_view()}
                     </div>
-                    {(!mine.is_empty()).then(|| view! { <h2>"My rooms"</h2> })}
+                    {(!mine.is_empty()).then(|| view! { <h2>{tr!("My rooms")}</h2> })}
                     <div class="leaving">
                         {mine.into_iter().map(|r| {
                             let code = r.code.clone();
                             let navigate = navigate.clone();
-                            let who = if r.hosting { "You host".to_string() } else { format!("Hosted by {}", r.host) };
+                            let who = if r.hosting { tr!("You host") } else { tr!("Hosted by {name}", name = r.host) };
+
                             let members = r.members.join(", ");
                             let open = move |_| {
                                 if room.is(&code) {
@@ -1257,9 +1268,9 @@ pub fn Together() -> impl IntoView {
                                     <div class="leaving-info">
                                         <strong>{media_label(&r.media)}</strong>
                                         <span>{who}</span>
-                                        <span class="muted small">{format!("{} · {members}", room_status(r.started))}</span>
+                                        <span class="muted small">{tr!("{status} · {people}", status = room_status(r.started), people = members)}</span>
                                     </div>
-                                    <button class="small" disabled=move || busy.get().is_some() on:click=open>"Open"</button>
+                                    <button class="small" disabled=move || busy.get().is_some() on:click=open>{tr!("Open")}</button>
                                 </div>
                             }
                         }).collect_view()}
@@ -1287,24 +1298,24 @@ pub fn RoomPage() -> impl IntoView {
                 return view! { <Lobby room=room /> }.into_any();
             }
             if state::ctx().keep.get().is_none() {
-                return view! { <h1>"Watch together"</h1><ErrorText text=NO_KEEP.to_string() /> }.into_any();
+                return view! { <h1>{tr!("Watch together")}</h1><ErrorText text=no_keep() /> }.into_any();
             }
             let code = code.get();
             if room.closed.get().as_deref() == Some(code.as_str()) {
                 return view! {
-                    <h1>"Watch together"</h1>
-                    <p class="muted">"This room has closed."</p>
-                    <A href="/together" attr:class="button">"Back to Together"</A>
+                    <h1>{tr!("Watch together")}</h1>
+                    <p class="muted">{tr!("This room has closed.")}</p>
+                    <A href="/together" attr:class="button">{tr!("Back to Together")}</A>
                 }.into_any();
             }
             let navigate = navigate.clone();
             view! {
-                <h1>"Watch together"</h1>
-                <p class="muted">"You're not in this room. If you were invited, join it."</p>
+                <h1>{tr!("Watch together")}</h1>
+                <p class="muted">{tr!("You're not in this room. If you were invited, join it.")}</p>
                 <div class="actions">
                     <button class="primary" disabled=move || busy.get().is_some()
-                        on:click=move |_| join_and_enter(code.clone(), busy, error, navigate.clone())>"Join"</button>
-                    <A href="/together" attr:class="button">"Back to Together"</A>
+                        on:click=move |_| join_and_enter(code.clone(), busy, error, navigate.clone())>{tr!("Join")}</button>
+                    <A href="/together" attr:class="button">{tr!("Back to Together")}</A>
                 </div>
                 {move || error.get().map(|e| view! { <ErrorText text=e /> })}
             }.into_any()
@@ -1346,7 +1357,7 @@ fn Lobby(room: Room) -> impl IntoView {
             return;
         };
         let Some(k) = state::ctx().keep_client() else {
-            return error.set(Some(NO_KEEP.into()));
+            return error.set(Some(no_keep()));
         };
         busy.set(true);
         error.set(None);
@@ -1383,7 +1394,7 @@ fn Lobby(room: Room) -> impl IntoView {
     };
     view! {
         {move || room.state.get().map(|s| {
-            let host = s.members.iter().find(|m| m.id == s.host).map(|m| m.name.clone()).unwrap_or_else(|| "the host".into());
+            let host = s.members.iter().find(|m| m.id == s.host).map(|m| m.name.clone()).unwrap_or_else(|| tr!("the host"));
             let hosting = room.hosting();
             let untitled = s.media.is_none();
             let people = group_members(&s);
@@ -1393,46 +1404,46 @@ fn Lobby(room: Room) -> impl IntoView {
                 <div class="room-head">
                     {move || found.get().flatten().flatten().map(|p| view! { <img class="room-poster" src=p alt="" /> })}
                     <div>
-                        <p class="muted">{if s.started { "Watch together · watching now" } else { "Watch together · lobby" }}</p>
+                        <p class="muted">{if s.started { tr!("Watch together · watching now") } else { tr!("Watch together · lobby") }}</p>
                         <h1>{media_label(&s.media)}</h1>
                         {untitled.then(|| view! {
                             <p class="muted small">{if hosting {
-                                "Browse to a movie or an episode and choose Watch in your room. Everyone stays here meanwhile.".to_string()
+                                tr!("Browse to a movie or an episode and choose Watch in your room. Everyone stays here meanwhile.")
                             } else {
-                                format!("{host} is choosing what to watch.")
+                                tr!("{host} is choosing what to watch.", host = host)
                             }}</p>
                         })}
                         {move || (!untitled && matches!(found.get(), Some(None))).then(|| view! {
-                            <p class="muted small">"This title isn't on your servers: you can be in the room but can't play it here."</p>
+                            <p class="muted small">{tr!("This title isn't on your servers: you can be in the room but can't play it here.")}</p>
                         })}
                     </div>
                 </div>
                 <div class="actions">
                     {match (s.started, hosting) {
-                        (true, _) => view! { <button class="primary" on:click=watch>"Open the player"</button> }.into_any(),
+                        (true, _) => view! { <button class="primary" on:click=watch>{tr!("Open the player")}</button> }.into_any(),
                         (false, true) if untitled => view! {
-                            <A href="/" attr:class="button primary">"Choose what to watch"</A>
+                            <A href="/" attr:class="button primary">{tr!("Choose what to watch")}</A>
                         }.into_any(),
                         (false, true) => view! {
-                            <button class="primary" disabled=move || busy.get() on:click=start>"Start watching"</button>
+                            <button class="primary" disabled=move || busy.get() on:click=start>{tr!("Start watching")}</button>
                         }.into_any(),
-                        (false, false) if untitled => view! { <p class="accent waiting">{format!("{host} is choosing what to watch")}</p> }.into_any(),
-                        (false, false) if s.round > 0 => view! { <p class="accent waiting">{format!("{host} is picking what to watch next")}</p> }.into_any(),
-                        (false, false) => view! { <p class="accent waiting">{format!("Waiting for {host} to start")}</p> }.into_any(),
+                        (false, false) if untitled => view! { <p class="accent waiting">{tr!("{host} is choosing what to watch", host = host)}</p> }.into_any(),
+                        (false, false) if s.round > 0 => view! { <p class="accent waiting">{tr!("{host} is picking what to watch next", host = host)}</p> }.into_any(),
+                        (false, false) => view! { <p class="accent waiting">{tr!("Waiting for {host} to start", host = host)}</p> }.into_any(),
                     }}
-                    {hosting.then(|| view! { <button on:click=move |_| picking.set(true)>"Invite"</button> })}
-                    <button class="subtle" on:click=leave>"Leave"</button>
+                    {hosting.then(|| view! { <button on:click=move |_| picking.set(true)>{tr!("Invite")}</button> })}
+                    <button class="subtle" on:click=leave>{tr!("Leave")}</button>
                 </div>
                 {move || room.note.get().map(|n| view! { <p class="muted small" role="status">{n}</p> })}
                 {move || error.get().map(|e| view! { <ErrorText text=e /> })}
                 <section class="group">
-                    <h2>{format!("In the room · {}", people.len())}</h2>
+                    <h2>{tr!("In the room · {count}", count = people.len())}</h2>
                     {people.into_iter().map(|p| {
                         let mine = me().is_some_and(|k| k == p.member.user_key);
                         let extra = [
-                            p.host.then(|| "host".to_string()),
-                            (p.devices > 1).then(|| format!("{} devices", p.devices)),
-                            mine.then(|| "you".to_string()),
+                            p.host.then(|| tr!("host")),
+                            (p.devices > 1).then(|| trn!("{n} device", "{n} devices", p.devices)),
+                            mine.then(|| tr!("you")),
                         ].into_iter().flatten().collect::<Vec<_>>().join(" · ");
                         view! {
                             <div class="person-row">
@@ -1445,7 +1456,8 @@ fn Lobby(room: Room) -> impl IntoView {
                 </section>
                 {(!s.invited.is_empty()).then(|| view! {
                     <section class="group">
-                        <h2>{format!("Invited · {}", s.invited.len())}</h2>
+                        <h2>{tr!("Invited · {count}", count = s.invited.len())}</h2>
+
                         {s.invited.iter().map(|i| {
                             let key = i.user_key.clone();
                             view! {
@@ -1458,7 +1470,7 @@ fn Lobby(room: Room) -> impl IntoView {
                                             call(Box::new(move |k, code, member| {
                                                 Box::pin(async move { k.together_uninvite(&code, &member, &key).await })
                                             }))
-                                        }>"Remove"</button>
+                                        }>{tr!("Remove")}</button>
                                     })}
                                 </div>
                             }
@@ -1466,10 +1478,10 @@ fn Lobby(room: Room) -> impl IntoView {
                     </section>
                 })}
                 {(hosting && !s.started && s.round > 0).then(|| view! {
-                    <p class="muted">"Back in the waiting room: start this again, or open another title and choose Watch in your room. Everyone stays here."</p>
+                    <p class="muted">{tr!("Back in the waiting room: start this again, or open another title and choose Watch in your room. Everyone stays here.")}</p>
                 })}
                 {(hosting && !s.started && s.round == 0 && s.invited.is_empty() && s.members.len() < 2).then(|| view! {
-                    <p class="muted">"Invite people: they join right away, then start when everyone's here."</p>
+                    <p class="muted">{tr!("Invite people: they join right away, then start when everyone's here.")}</p>
                 })}
             }
         })}
@@ -1488,7 +1500,7 @@ pub fn PeoplePicker(
     /// The server takes at most this many at once.
     const MAX: usize = 20;
     let people = LocalResource::new(|| async {
-        let k = state::ctx().keep_client().ok_or(NO_KEEP.to_string())?;
+        let k = state::ctx().keep_client().ok_or_else(no_keep)?;
         k.together_people().await.map_err(|e| plain_together(&e))
     });
     let filter = RwSignal::new(String::new());
@@ -1506,7 +1518,7 @@ pub fn PeoplePicker(
             return;
         };
         let Some(k) = state::ctx().keep_client() else {
-            return error.set(Some(NO_KEEP.into()));
+            return error.set(Some(no_keep()));
         };
         busy.set(true);
         error.set(None);
@@ -1566,8 +1578,8 @@ pub fn PeoplePicker(
         <div class="dialog-back" on:click=move |_| close1()
             on:keydown=move |ev| if ev.key() == "Escape" { close2() }>
             <div class="dialog people" role="dialog" aria-modal="true" aria-labelledby="invite-title" on:click=|ev| ev.stop_propagation()>
-                <h2 id="invite-title">"Invite people"</h2>
-                <input class="search small" type="search" placeholder="Filter by name" aria-label="Filter by name" node_ref=input
+                <h2 id="invite-title">{tr!("Invite people")}</h2>
+                <input class="search small" type="search" placeholder=tr!("Filter by name") aria-label=tr!("Filter by name") node_ref=input
                     prop:value=move || filter.get() on:input=move |ev| filter.set(event_target_value(&ev)) />
                 <div class="pick-list">
                     {move || match people.get() {
@@ -1579,18 +1591,18 @@ pub fn PeoplePicker(
                             let (recent, others) = people_to_invite(&all, &s, &f);
                             if recent.is_empty() && others.is_empty() {
                                 let text = if !f.trim().is_empty() {
-                                    "Nobody matches."
+                                    tr!("Nobody matches.")
                                 } else if all.is_empty() {
-                                    "Nobody else has signed in to this AlwyWatch server yet."
+                                    tr!("Nobody else has signed in to this AlwyWatch server yet.")
                                 } else {
-                                    "Everyone is already in the room or invited."
+                                    tr!("Everyone is already in the room or invited.")
                                 };
                                 return view! { <p class="muted">{text}</p> }.into_any();
                             }
                             view! {
-                                {(!recent.is_empty()).then(|| view! { <h3 class="pick-head">"Recent"</h3> })}
+                                {(!recent.is_empty()).then(|| view! { <h3 class="pick-head">{tr!("Recent")}</h3> })}
                                 {recent.iter().map(|p| row(p, &all)).collect_view()}
-                                {(!recent.is_empty() && !others.is_empty()).then(|| view! { <h3 class="pick-head">"Everyone"</h3> })}
+                                {(!recent.is_empty() && !others.is_empty()).then(|| view! { <h3 class="pick-head">{tr!("Everyone")}</h3> })}
                                 {others.iter().map(|p| row(p, &all)).collect_view()}
                             }.into_any()
                         }
@@ -1598,12 +1610,11 @@ pub fn PeoplePicker(
                 </div>
                 {move || error.get().map(|e| view! { <ErrorText text=e /> })}
                 <div class="actions">
-                    <button on:click=move |_| close3()>"Cancel"</button>
+                    <button on:click=move |_| close3()>{tr!("Cancel")}</button>
                     <button class="primary" disabled=move || busy.get() || picked.with(Vec::is_empty) on:click=send>
                         {move || match picked.with(Vec::len) {
-                            0 => "Invite".to_string(),
-                            1 => "Invite 1 person".to_string(),
-                            n => format!("Invite {n} people"),
+                            0 => tr!("Invite"),
+                            n => trn!("Invite {n} person", "Invite {n} people", n),
                         }}
                     </button>
                 </div>
@@ -1625,17 +1636,21 @@ pub fn InviteBanner(#[prop(optional)] compact: bool) -> impl IntoView {
         let more = inv.banner.with(Vec::len) - 1;
         let (c1, c2, c3) = (r.code.clone(), r.code.clone(), r.code.clone());
         let navigate = navigate.clone();
-        let text = format!("{} invites you to watch {}", r.host, media_label(&r.media));
+        let text = tr!(
+            "{name} invites you to watch {title}",
+            name = r.host,
+            title = media_label(&r.media)
+        );
         let join = move |_| join_and_enter(c1.clone(), busy, error, navigate.clone());
         Some(view! {
             <div class=if compact { "invite-note" } else { "banner invite" } role="status">
                 {(!compact).then(|| view! { <Avatar user_key=r.host_user_key.clone() name=r.host.clone() avatar=r.host_avatar.clone() size=32 /> })}
-                <span>{text}{(more > 0).then(|| format!(" (+{more} more)"))}</span>
+                <span>{text}{(more > 0).then(|| format!(" {}", tr!("(+{more} more)", more = more)))}</span>
                 <button class="small primary" disabled=move || busy.get().is_some() on:click=join>
-                    {move || if busy.get().is_some() { "Joining…" } else { "Join" }}
+                    {move || if busy.get().is_some() { tr!("Joining…") } else { tr!("Join") }}
                 </button>
-                <button class="small" on:click=move |_| inv.decline(c2.clone())>"Not now"</button>
-                <button class="small subtle" aria-label="Close" on:click=move |_| inv.dismiss(&c3)>"✕"</button>
+                <button class="small" on:click=move |_| inv.decline(c2.clone())>{tr!("Not now")}</button>
+                <button class="small subtle" aria-label=tr!("Close") on:click=move |_| inv.dismiss(&c3)>"✕"</button>
                 {move || error.get().map(|e| view! { <span class="error small">{e}</span> })}
             </div>
         })
@@ -1680,7 +1695,7 @@ pub fn SeatBanner() -> impl IntoView {
                 s.as_ref().map(|s| {
                     let label = if s.media.is_none() {
                         // Hosting an untitled room: say how to choose.
-                        "open a title and choose Watch in your room".to_owned()
+                        tr!("open a title and choose Watch in your room")
                     } else {
                         media_label(&s.media)
                     };
@@ -1690,9 +1705,10 @@ pub fn SeatBanner() -> impl IntoView {
             .unwrap_or_default();
         Some(view! {
             <div class="banner seat" role="status">
-                <span>{format!("You're in a watch together room{}{}", if label.is_empty() { "" } else { ": " }, label)}
-                    {started.then_some(" · watching now")}</span>
-                <A href=href attr:class="button small">"Open the room"</A>
+                <span>{if label.is_empty() { tr!("You're in a watch together room") } else { tr!("You're in a watch together room: {title}", title = label) }}
+                    {started.then(|| format!(" · {}", tr!("watching now")))}</span>
+
+                <A href=href attr:class="button small">{tr!("Open the room")}</A>
             </div>
         })
     }

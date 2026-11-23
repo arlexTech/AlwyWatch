@@ -19,7 +19,9 @@ mod state;
 mod together;
 mod ui;
 
+use i18n::tr;
 use leptos::prelude::*;
+
 use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::path;
 
@@ -56,8 +58,8 @@ fn show_crashes() {
         };
         box_.set_id("crash");
         let _ = box_.set_attribute("role", "alert");
-        text.set_text_content(Some("Something went wrong."));
-        link.set_text_content(Some("Reload"));
+        text.set_text_content(Some(&tr!("Something went wrong.")));
+        link.set_text_content(Some(&tr!("Reload")));
         let here = doc
             .location()
             .and_then(|l| l.href().ok())
@@ -107,7 +109,7 @@ fn App() -> impl IntoView {
     });
     view! {
         <Router>
-            <Routes fallback=|| view! { <main class="page"><h1>"Not found"</h1></main> }>
+            <Routes fallback=|| view! { <main class="page"><h1>{tr!("Not found")}</h1></main> }>
                 <Route path=path!("/play/:acc/:id") view=player::Player />
                 <Route path=path!("/") view=|| view! { <Shell><browse::Home /></Shell> } />
                 <Route path=path!("/signin") view=|| view! { <Shell><signin::SignIn /></Shell> } />
@@ -166,16 +168,16 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                 <A href="/" attr:class="brand">"AlwyWatch"</A>
                 <profiles::ProfileMenu />
                 <Show when=signed_in>
-                    <A href="/">"Home"</A>
-                    <A href="/search">"Search"</A>
-                    <A href="/list">"My list"</A>
-                    <Show when=requests_on><A href="/requests">"Requests"</A></Show>
-                    <Show when=keep_on><A href="/together">"Together"</A></Show>
-                    <Show when=leaving_on><A href="/leaving">"Leaving soon"</A></Show>
-                    <Show when=admin><A href="/admin/forever">"Kept forever"</A></Show>
-                    <Show when=admin><A href="/admin">"Admin"</A></Show>
+                    <A href="/">{tr!("Home")}</A>
+                    <A href="/search">{tr!("Search")}</A>
+                    <A href="/list">{tr!("My list")}</A>
+                    <Show when=requests_on><A href="/requests">{tr!("Requests")}</A></Show>
+                    <Show when=keep_on><A href="/together">{tr!("Together")}</A></Show>
+                    <Show when=leaving_on><A href="/leaving">{tr!("Leaving soon")}</A></Show>
+                    <Show when=admin><A href="/admin/forever">{tr!("Kept forever")}</A></Show>
+                    <Show when=admin><A href="/admin">{tr!("Admin")}</A></Show>
                 </Show>
-                <A href="/settings">"Settings"</A>
+                <A href="/settings">{tr!("Settings")}</A>
             </nav>
             <main class="page">
                 <Expired />
@@ -210,12 +212,12 @@ fn Expired() -> impl IntoView {
         let (c1, c2, k1, nav) = (c.clone(), c.clone(), key.clone(), navigate.clone());
         Some(view! {
             <div class="banner" role="alert">
-                <span>{format!("{} on {} was signed out by the server.", s.user_name, s.server_name)}</span>
+                <span>{tr!("{name} on {server} was signed out by the server.", name = s.user_name, server = s.server_name)}</span>
                 <button class="small primary" on:click=move |_| {
                     c1.remove_account(&k1);
                     nav("/signin", Default::default());
-                }>"Sign in again"</button>
-                <button class="small subtle" on:click=move |_| c2.expired.set(None)>"Dismiss"</button>
+                }>{tr!("Sign in again")}</button>
+                <button class="small subtle" on:click=move |_| c2.expired.set(None)>{tr!("Dismiss")}</button>
             </div>
         })
     }

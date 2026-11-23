@@ -2,6 +2,7 @@
 //! App state: signed-in accounts (browser storage), the shared HTTP client, and builders for
 //! the media, keep and Seerr clients. Everything else talks to the servers through these.
 
+use i18n::tr;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -370,17 +371,19 @@ pub fn css_url(url: &str) -> String {
 pub fn plain(e: &Error) -> String {
     match e {
         Error::Unauthorized => {
-            "The server refused: your session may have ended. Sign in again in Settings.".into()
+            tr!("The server refused: your session may have ended. Sign in again in Settings.")
         }
-        Error::NotFound => "This isn't on the server any more.".into(),
-        Error::Network { .. } => "Can't reach the server. Check your connection.".into(),
+        Error::NotFound => tr!("This isn't on the server any more."),
+        Error::Network { .. } => tr!("Can't reach the server. Check your connection."),
         Error::Status { status } if *status >= 500 => {
-            "The server had a problem. Try again in a moment.".into()
+            tr!("The server had a problem. Try again in a moment.")
         }
-        Error::Status { status } => format!("The server refused this (error {status})."),
-        Error::Decode { .. } => "The server answered something unexpected.".into(),
+        Error::Status { status } => {
+            tr!("The server refused this (error {status}).", status = status)
+        }
+        Error::Decode { .. } => tr!("The server answered something unexpected."),
         Error::Invalid { message } => message.clone(),
-        Error::Pending => "Still waiting for an answer.".into(),
+        Error::Pending => tr!("Still waiting for an answer."),
     }
 }
 
@@ -388,16 +391,17 @@ pub fn plain(e: &Error) -> String {
 pub fn plain_keep(e: &Error) -> String {
     match e {
         Error::Unauthorized => {
-            "The AlwyWatch server refused: you're not allowed to do this, or your session ended."
-                .into()
+            tr!(
+                "The AlwyWatch server refused: you're not allowed to do this, or your session ended."
+            )
         }
-        Error::NotFound => "The AlwyWatch server doesn't know this.".into(),
-        Error::Network { .. } => "Can't reach your AlwyWatch server right now.".into(),
+        Error::NotFound => tr!("The AlwyWatch server doesn't know this."),
+        Error::Network { .. } => tr!("Can't reach your AlwyWatch server right now."),
         Error::Status { status } if *status >= 500 => {
-            "The AlwyWatch server had a problem. Try again in a moment.".into()
+            tr!("The AlwyWatch server had a problem. Try again in a moment.")
         }
         Error::Status { status: 429 } => {
-            "Too many changes in a short time. Try again in a few minutes.".into()
+            tr!("Too many changes in a short time. Try again in a few minutes.")
         }
         other => plain(other),
     }

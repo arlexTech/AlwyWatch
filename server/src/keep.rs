@@ -48,6 +48,9 @@ pub struct State {
     pub limits: Limits,
     /// Maintainerr's state from the last sync: 0 not tried yet, 1 answered, 2 failed.
     pub maintainerr_state: std::sync::atomic::AtomicU8,
+    /// Unix seconds and title count of the last successful reading (admin status).
+    pub last_sync: std::sync::atomic::AtomicI64,
+    pub last_sync_items: std::sync::atomic::AtomicUsize,
 }
 
 pub struct Limits {
@@ -135,6 +138,8 @@ impl State {
             oidc: Default::default(),
             limits: Default::default(),
             maintainerr_state: Default::default(),
+            last_sync: Default::default(),
+            last_sync_items: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),
         }
     }
@@ -954,7 +959,13 @@ pub fn spawn_jobs(state: Shared) {
     tokio::spawn(async move {
         loop {
             let ok = match s.sync().await {
-                Ok(_) => true,
+                Ok(n) => {
+                    s.last_sync
+                        .store(now(), std::sync::atomic::Ordering::Relaxed);
+                    s.last_sync_items
+                        .store(n, std::sync::atomic::Ordering::Relaxed);
+                    true
+                }
                 Err(e) => {
                     eprintln!("[keep] sync failed: {e}");
                     false

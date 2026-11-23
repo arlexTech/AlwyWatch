@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Shared pieces: poster cards, rails, grids, loading and error states.
 
+use i18n::tr;
 use leptos::prelude::*;
+
 use leptos_router::components::A;
 use media_api::{AnyServer, ImageKind, Item, ItemKind, RailNote};
 
@@ -14,11 +16,11 @@ pub fn item_href(acc: &str, item: &Item) -> String {
 
 fn subtitle(item: &Item) -> String {
     match item.kind {
-        ItemKind::Episode => format!(
-            "{} · S{} E{}",
-            item.series_title.clone().unwrap_or_default(),
-            item.season_number.unwrap_or(0),
-            item.episode_number.unwrap_or(0)
+        ItemKind::Episode => tr!(
+            "{series} · S{season} E{episode}",
+            series = item.series_title.clone().unwrap_or_default(),
+            season = item.season_number.unwrap_or(0),
+            episode = item.episode_number.unwrap_or(0)
         ),
         _ => item.year.map(|y| y.to_string()).unwrap_or_default(),
     }
@@ -90,7 +92,7 @@ pub fn Rail(
             <section class="rail">
                 <div class="rail-head">
                     <h2>{title}</h2>
-                    {(!see_all.is_empty()).then(|| view! { <A href=see_all attr:class="see-all">"See all ›"</A> })}
+                    {(!see_all.is_empty()).then(|| view! { <A href=see_all attr:class="see-all">{tr!("See all ›")}</A> })}
                 </div>
                 <div class="rail-row">
                     {items.into_iter().map(|(acc, i)| {
@@ -120,4 +122,13 @@ pub fn Loading() -> impl IntoView {
 #[component]
 pub fn ErrorText(text: String) -> impl IntoView {
     view! { <p class="error">{text}</p> }
+}
+
+/// A translated sentence around a value shown apart (in bold, a link…): the text before and
+/// after `key` (e.g. "{name}"), so translators keep the whole sentence and its word order.
+pub fn around(text: &str, key: &str) -> (String, String) {
+    match text.split_once(key) {
+        Some((before, after)) => (before.to_owned(), after.to_owned()),
+        None => (text.to_owned(), String::new()),
+    }
 }

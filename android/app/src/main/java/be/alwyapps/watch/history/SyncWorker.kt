@@ -23,6 +23,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import be.alwyapps.watch.core.AlwyWatch
 import be.alwyapps.watch.services
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -45,13 +46,18 @@ class SyncWorker(
                 return@coroutineScope Result.success()
             }
             SyncState.running = true
-            runCatching { setForeground(info("Syncing watch history…", 0, 0)) }
+            runCatching { setForeground(info(tr("Syncing watch history…"), 0, 0)) }
             val progress =
                 launch {
                     while (true) {
                         val p = runCatching { core.historyCopyProgress() }.getOrNull()
                         if (p != null && p.running) {
-                            val text = if (p.total > 0u) "${p.step} · ${p.done} of ${p.total}" else "${p.step}…"
+                            val text =
+                                if (p.total > 0u) {
+                                    tr("{step} · {done} of {total}", "step" to p.step, "done" to p.done, "total" to p.total)
+                                } else {
+                                    tr("{step}…", "step" to p.step)
+                                }
                             runCatching { setForeground(info(text, p.done.toInt(), p.total.toInt())) }
                         }
                         delay(1000)
@@ -76,13 +82,13 @@ class SyncWorker(
     ): ForegroundInfo {
         val nm = applicationContext.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Watch history", NotificationManager.IMPORTANCE_LOW))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Watch history"), NotificationManager.IMPORTANCE_LOW))
         }
         val n =
             NotificationCompat
                 .Builder(applicationContext, CHANNEL)
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
-                .setContentTitle("Syncing watch history")
+                .setContentTitle(tr("Syncing watch history"))
                 .setContentText(text)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)

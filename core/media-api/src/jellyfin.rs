@@ -1017,8 +1017,9 @@ impl MediaServer for JellyfinClient {
         )
         .await?;
         if let Some(code) = r.error_code {
-            return Err(Error::invalid(format!(
-                "playback refused by server: {code}"
+            return Err(Error::invalid(i18n::tr!(
+                "playback refused by server: {code}",
+                code = code
             )));
         }
         let session = r.play_session_id;
@@ -1117,7 +1118,7 @@ impl MediaServer for JellyfinClient {
         let mut out: Vec<Trailer> = local
             .into_iter()
             .map(|t| Trailer {
-                title: t.name.unwrap_or_else(|| "Trailer".into()),
+                title: t.name.unwrap_or_else(|| i18n::tr!("Trailer")),
                 item_id: Some(t.id),
                 url: None,
             })
@@ -1135,7 +1136,7 @@ impl MediaServer for JellyfinClient {
                 .into_iter()
                 .filter(|t| !t.url.is_empty())
                 .map(|t| Trailer {
-                    title: t.name.unwrap_or_else(|| "Trailer".into()),
+                    title: t.name.unwrap_or_else(|| i18n::tr!("Trailer")),
                     item_id: None,
                     url: Some(t.url),
                 }),

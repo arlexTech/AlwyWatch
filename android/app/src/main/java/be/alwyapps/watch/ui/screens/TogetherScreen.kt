@@ -92,6 +92,8 @@ import be.alwyapps.watch.ui.focusOnAppear
 import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.poster
 import be.alwyapps.watch.ui.rememberFocus
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.launch
 
 // ----- Opening rooms --------------------------------------------------------------------------
@@ -164,7 +166,7 @@ suspend fun openRoomPlayer(
     val accounts = runCatching { core.accounts() }.getOrDefault(emptyList()).map { it.id }
     val found =
         runCatching { core.togetherFind(preferredFirst(core, accounts), s.media) }.getOrNull()
-            ?: return "${s.media.label()} isn't on your servers, so you can't watch it with them."
+            ?: return tr("{title} isn't on your servers, so you can't watch it with them.", "title" to s.media.label())
     val now = TogetherSession.state ?: s
     val start =
         be.alwyapps.watch.core
@@ -236,9 +238,9 @@ fun TogetherScreen() {
     ) {
         item(key = "title") {
             Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PageTitle("Watch together")
+                PageTitle(tr("Watch together"))
                 Text(
-                    "Rooms are private: only the people you invite can see them and join.",
+                    tr("Rooms are private: only the people you invite can see them and join."),
                     color = Muted,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -248,7 +250,7 @@ fun TogetherScreen() {
         item(key = "new") {
             Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionButton(
-                    if (opening) "Opening a room…" else "New room",
+                    if (opening) tr("Opening a room…") else tr("New room"),
                     {
                         if (opening) return@ActionButton
                         opening = true
@@ -267,7 +269,7 @@ fun TogetherScreen() {
                     primary = invites.isEmpty() && mine.isEmpty(),
                     icon = Icons.Add,
                 )
-                Text("Invite people first, choose what to watch afterwards.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text(tr("Invite people first, choose what to watch afterwards."), color = Muted, style = MaterialTheme.typography.bodySmall)
                 problem?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodyMedium) }
             }
         }
@@ -275,9 +277,9 @@ fun TogetherScreen() {
             item(key = "empty") {
                 Text(
                     if (TogetherInbox.unreachable && TogetherInbox.rooms == null) {
-                        "Can't reach your AlwyWatch server right now. Trying again…"
+                        tr("Can't reach your AlwyWatch server right now. Trying again…")
                     } else {
-                        "No rooms yet. Start one here, or open a movie or an episode and choose Watch together."
+                        tr("No rooms yet. Start one here, or open a movie or an episode and choose Watch together.")
                     },
                     Modifier.widthIn(max = 640.dp).padding(top = 12.dp),
                     style = MaterialTheme.typography.bodyLarge,
@@ -285,13 +287,13 @@ fun TogetherScreen() {
             }
         }
         if (invites.isNotEmpty()) {
-            item(key = "h-invites") { ListHeader("Invitations") }
+            item(key = "h-invites") { ListHeader(tr("Invitations")) }
             items(invites, key = { "i" + it.code }) { room ->
                 InvitationRow(room, Modifier.widthIn(max = 760.dp), first = room == invites.first())
             }
         }
         if (mine.isNotEmpty()) {
-            item(key = "h-mine") { ListHeader("Your rooms") }
+            item(key = "h-mine") { ListHeader(tr("Your rooms")) }
             items(mine, key = { "m" + it.code }) { room ->
                 MyRoomRow(room, Modifier.widthIn(max = 760.dp), first = invites.isEmpty() && room == mine.first())
             }
@@ -331,13 +333,13 @@ private fun InvitationRow(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Avatar(room.hostAvatar, room.host, room.hostUserKey, 28.dp)
-                Text("${room.host} invites you", style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(tr("{name} invites you", "name" to room.host), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(room.media.label(), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(roomStatus(room), style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 2)
             Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 ActionButton(
-                    if (busy) "Joining…" else "Join",
+                    if (busy) tr("Joining…") else tr("Join"),
                     {
                         if (!busy) {
                             busy = true
@@ -357,7 +359,7 @@ private fun InvitationRow(
                     primary = true,
                     icon = Icons.Play,
                 )
-                ActionButton("Not now", {
+                ActionButton(tr("Not now"), {
                     val code = room.code
                     TogetherInbox.forget(code)
                     ctx.services.scope.launch { runCatching { core.togetherDecline(code) } }
@@ -374,11 +376,11 @@ private fun roomStatus(room: TogetherRoom): String {
         when {
             others == 0 -> null
             others == 1 -> room.members.first()
-            else -> "${room.members.first()} and ${others - 1} other${if (others > 2) "s" else ""}"
+            else -> trn("{name} and {n} other", "{name} and {n} others", others - 1, "name" to room.members.first())
         }
     val now = room.positionMs.toLong() + if (room.playing) (room.nowMs - room.atMs).coerceAtLeast(0) else 0
     return listOfNotNull(
-        if (room.started) "Watching now · ${formatTime(now)}" else "Waiting room",
+        if (room.started) tr("Watching now · {time}", "time" to formatTime(now)) else tr("Waiting room"),
         who,
     ).joinToString(" · ")
 }
@@ -408,14 +410,14 @@ private fun MyRoomRow(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(room.media.label(), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    if (room.hosting) "You're the host" else "Hosted by ${room.host}",
+                    if (room.hosting) tr("You're the host") else tr("Hosted by {name}", "name" to room.host),
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(roomStatus(room), style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 2)
             }
-            if (!d.isTv) ActionButton("Open", open, primary = true)
+            if (!d.isTv) ActionButton(tr("Open"), open, primary = true)
         }
     }
 }
@@ -431,7 +433,7 @@ fun TogetherRail() {
             .filter { it.invited }
     if (invites.isEmpty()) return
     Column(Modifier.padding(top = if (d.isTv) 18.dp else 24.dp)) {
-        SectionHeader("Invitations to watch together", subtitle = "Join or answer later")
+        SectionHeader(tr("Invitations to watch together"), subtitle = tr("Join or answer later"))
         LazyRow(
             contentPadding = PaddingValues(horizontal = d.gutter, vertical = if (d.isTv) 14.dp else 12.dp),
             horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
@@ -453,14 +455,14 @@ fun TogetherRail() {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Avatar(room.hostAvatar, room.host, room.hostUserKey, 24.dp)
                                 Text(
-                                    "${room.host} invites you",
+                                    tr("{name} invites you", "name" to room.host),
                                     style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
                             Text(room.media.label(), style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(if (room.started) "Watching now" else "Waiting room", style = MaterialTheme.typography.bodySmall, color = Muted)
+                            Text(if (room.started) tr("Watching now") else tr("Waiting room"), style = MaterialTheme.typography.bodySmall, color = Muted)
                         }
                     }
                 }
@@ -488,12 +490,12 @@ fun InvitationPrompt() {
         onDismissRequest = { TogetherInbox.prompt = null },
         containerColor = Background,
         icon = { Avatar(room.hostAvatar, room.host, room.hostUserKey, 56.dp) },
-        title = { Text("${room.host} invites you to watch together") },
+        title = { Text(tr("{name} invites you to watch together", "name" to room.host)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(room.media.label(), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (room.started) "They're already watching: you'll join where they are." else "They're in the waiting room.",
+                    if (room.started) tr("They're already watching: you'll join where they are.") else tr("They're in the waiting room."),
                     color = Muted,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -502,7 +504,7 @@ fun InvitationPrompt() {
         },
         confirmButton = {
             ActionButton(
-                if (busy) "Joining…" else "Join",
+                if (busy) tr("Joining…") else tr("Join"),
                 {
                     if (!busy) {
                         busy = true
@@ -525,7 +527,7 @@ fun InvitationPrompt() {
             )
         },
         dismissButton = {
-            ActionButton("Not now", {
+            ActionButton(tr("Not now"), {
                 val code = room.code
                 TogetherInbox.forget(code)
                 ctx.services.scope.launch { runCatching { core.togetherDecline(code) } }
@@ -621,13 +623,13 @@ fun RoomScreen(code: String) {
         val myKey = st?.members?.firstOrNull { it.id == mySeat?.memberId }?.userKey
         val othersHere = st?.members.orEmpty().any { it.userKey != myKey }
         ConfirmDialog(
-            "Leave this room?",
+            tr("Leave this room?"),
             when {
-                hosting && othersHere -> "You're the host: the room stays open for the others and one of them becomes the host."
-                hosting -> "You're alone in it: the room closes, and the invitations you sent are withdrawn."
-                else -> "To come back, you'll need a new invitation."
+                hosting && othersHere -> tr("You're the host: the room stays open for the others and one of them becomes the host.")
+                hosting -> tr("You're alone in it: the room closes, and the invitations you sent are withdrawn.")
+                else -> tr("To come back, you'll need a new invitation.")
             },
-            confirm = "Leave",
+            confirm = tr("Leave"),
             onConfirm = leave,
             onDismiss = { confirmLeave = false },
         )
@@ -645,28 +647,28 @@ fun RoomScreen(code: String) {
     ) {
         item(key = "title") {
             PageTitle(
-                "Watch together",
+                tr("Watch together"),
                 subtitle =
                     if (state == null) {
                         null
                     } else if (started) {
-                        "Watching now"
+                        tr("Watching now")
                     } else {
-                        "Waiting room"
+                        tr("Waiting room")
                     },
             )
         }
         if (state == null || seat == null) {
             item(key = "wait") {
                 Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(problem ?: "Opening the room…", style = MaterialTheme.typography.bodyLarge)
-                    if (problem != null) ActionButton("Back", { nav.pop() }, Modifier.initialFocus(), primary = true, icon = Icons.Back)
+                    Text(problem ?: tr("Opening the room…"), style = MaterialTheme.typography.bodyLarge)
+                    if (problem != null) ActionButton(tr("Back"), { nav.pop() }, Modifier.initialFocus(), primary = true, icon = Icons.Back)
                 }
             }
             return@LazyColumn
         }
         val host = state.members.firstOrNull { it.id == state.host }
-        val hostName = host?.name ?: "the host"
+        val hostName = host?.name ?: tr("the host")
         val isHost =
             be.alwyapps.watch.core
                 .togetherIsHost(state, seat.memberId)
@@ -678,7 +680,7 @@ fun RoomScreen(code: String) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(state.media.label(), style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     Text(
-                        if (isHost) "You're the host" else "Hosted by $hostName",
+                        if (isHost) tr("You're the host") else tr("Hosted by {name}", "name" to hostName),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Muted,
                     )
@@ -686,15 +688,15 @@ fun RoomScreen(code: String) {
                         Text(
                             when {
                                 untitled && isHost ->
-                                    "Open a movie or an episode and choose Watch in your room. " +
-                                        "The people you invite can join in the meantime."
-                                untitled -> "$hostName is choosing what to watch"
+                                    tr("Open a movie or an episode and choose Watch in your room. The people you invite can join in the meantime.")
+                                untitled -> tr("{name} is choosing what to watch", "name" to hostName)
                                 isHost && again ->
-                                    "Start this again, or pick another title: open a movie or an episode and " +
-                                        "choose Watch in your room. Everyone stays here."
-                                isHost -> "Invite people, then start when everyone is here. Play, pause and seeking follow everyone."
-                                again -> "$hostName is picking what to watch next"
-                                else -> "Waiting for $hostName to start"
+                                    tr(
+                                        "Start this again, or pick another title: open a movie or an episode and choose Watch in your room. Everyone stays here.",
+                                    )
+                                isHost -> tr("Invite people, then start when everyone is here. Play, pause and seeking follow everyone.")
+                                again -> tr("{name} is picking what to watch next", "name" to hostName)
+                                else -> tr("Waiting for {name} to start", "name" to hostName)
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (isHost) Muted else OnSurface,
@@ -728,12 +730,12 @@ fun RoomScreen(code: String) {
                     val alone = state.members.all { it.userKey == myKey } && state.invited.isEmpty()
                     when {
                         started ->
-                            ActionButton("Watch with them", {
+                            ActionButton(tr("Watch with them"), {
                                 scope.launch { openRoomPlayer(ctx, core)?.let { problem = it } }
                             }, Modifier.initialFocus(), primary = true, icon = Icons.Play)
                         isHost && untitled ->
                             ActionButton(
-                                "Choose what to watch",
+                                tr("Choose what to watch"),
                                 { nav.reset(Route.Home) },
                                 if (alone) Modifier else Modifier.initialFocus(),
                                 primary = !alone,
@@ -744,23 +746,23 @@ fun RoomScreen(code: String) {
                             val resume = TogetherSession.startAt
                             ActionButton(
                                 if (busy) {
-                                    "Starting…"
+                                    tr("Starting…")
                                 } else if (resume > 0) {
-                                    "Start at ${formatTime(resume)}"
+                                    tr("Start at {time}", "time" to formatTime(resume))
                                 } else {
-                                    "Start watching"
+                                    tr("Start watching")
                                 },
                                 { start(resume) },
                                 if (alone) Modifier else Modifier.initialFocus(),
                                 primary = !alone,
                                 icon = Icons.Play,
                             )
-                            if (resume > 0) ActionButton("From the beginning", { start(0) })
+                            if (resume > 0) ActionButton(tr("From the beginning"), { start(0) })
                         }
                     }
                     if (isHost) {
                         ActionButton(
-                            "Invite people",
+                            tr("Invite people"),
                             { inviting = true },
                             Modifier.focusRequester(inviteButton).then(if (alone && !started) Modifier.initialFocus() else Modifier),
                             primary = alone && !started,
@@ -768,7 +770,7 @@ fun RoomScreen(code: String) {
                         )
                     }
                     ActionButton(
-                        "Leave",
+                        tr("Leave"),
                         { confirmLeave = true },
                         if (!isHost && !started) Modifier.initialFocus() else Modifier,
                         icon = Icons.Close,
@@ -779,15 +781,15 @@ fun RoomScreen(code: String) {
         }
         item(key = "members") {
             val people = state.members.people()
-            Group(if (people.size == 1) "In the room" else "In the room · ${people.size}", Modifier.widthIn(max = 760.dp)) {
+            Group(if (people.size == 1) tr("In the room") else tr("In the room · {count}", "count" to people.size), Modifier.widthIn(max = 760.dp)) {
                 people.forEachIndexed { i, (m, devices) ->
                     if (i > 0) Divider()
                     ListRow(
-                        m.name + if (m.userKey == myKey) " (you)" else "",
+                        if (m.userKey == myKey) tr("{name} (you)", "name" to m.name) else m.name,
                         subtitle =
                             listOfNotNull(
-                                "Host".takeIf { host != null && m.userKey == host.userKey },
-                                "on $devices devices".takeIf { devices > 1 },
+                                tr("Host").takeIf { host != null && m.userKey == host.userKey },
+                                trn("on {n} device", "on {n} devices", devices).takeIf { devices > 1 },
                             ).joinToString(" · ").ifEmpty { null },
                         leading = { Avatar(m.avatar, m.name, m.userKey, if (d.isTv) 44.dp else 40.dp) },
                     )
@@ -796,17 +798,17 @@ fun RoomScreen(code: String) {
         }
         if (state.invited.isNotEmpty()) {
             item(key = "invited") {
-                Group("Invited", Modifier.widthIn(max = 760.dp), footer = "They can join until they say no.") {
+                Group(tr("Invited"), Modifier.widthIn(max = 760.dp), footer = tr("They can join until they say no.")) {
                     state.invited.forEachIndexed { i, p ->
                         if (i > 0) Divider()
                         ListRow(
                             p.name,
-                            subtitle = "Hasn't joined yet",
+                            subtitle = tr("Hasn't joined yet"),
                             leading = { Avatar(p.avatar, p.name, p.userKey, if (d.isTv) 44.dp else 40.dp) },
                             trailing =
                                 if (isHost) {
                                     {
-                                        IconAction(Icons.Close, "Remove ${p.name}", {
+                                        IconAction(Icons.Close, tr("Remove {name}", "name" to p.name), {
                                             scope.launch {
                                                 try {
                                                     TogetherSession.accept(core.togetherUninvite(code, seat.memberId, p.userKey))
@@ -898,7 +900,7 @@ internal fun InvitePeopleDialog(
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onClose,
         containerColor = Background,
-        title = { Text("Invite people") },
+        title = { Text(tr("Invite people")) },
         text = {
             // A dialog of its own: the screen's "focus once" is already used.
             CompositionLocalProvider(LocalInitialFocusDone provides null) {
@@ -908,30 +910,30 @@ internal fun InvitePeopleDialog(
                             query,
                             { query = it },
                             Modifier.fillMaxWidth().dpadEscape(),
-                            placeholder = { Text("Search by name") },
+                            placeholder = { Text(tr("Search by name")) },
                             singleLine = true,
                             leadingIcon = Icons.Search,
                         )
                     }
                     when {
-                        people == null -> Text("Loading…", color = Muted)
+                        people == null -> Text(tr("Loading…"), color = Muted)
                         all.isEmpty() ->
                             Text(
                                 error ?: if (people.orEmpty().isEmpty()) {
-                                    "Nobody else uses this AlwyWatch server yet."
+                                    tr("Nobody else uses this AlwyWatch server yet.")
                                 } else {
-                                    "Everyone is already here or invited."
+                                    tr("Everyone is already here or invited.")
                                 },
                                 color = Muted,
                             )
-                        shown.isEmpty() -> Text("Nobody by that name.", color = Muted)
+                        shown.isEmpty() -> Text(tr("Nobody by that name."), color = Muted)
                     }
                     androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = if (d.isTv) 380.dp else 440.dp)) {
                         shown.forEachIndexed { i, p ->
                             val recent = p.lastTogetherAt != null
-                            if (q.isEmpty() && recent && i == 0) item(key = "h-recent") { DialogHeader("Recent") }
+                            if (q.isEmpty() && recent && i == 0) item(key = "h-recent") { DialogHeader(tr("Recent")) }
                             if (q.isEmpty() && !recent && (i == 0 || shown[i - 1].lastTogetherAt != null) && shown.first().lastTogetherAt != null) {
-                                item(key = "h-all") { DialogHeader("Everyone") }
+                                item(key = "h-all") { DialogHeader(tr("Everyone")) }
                             }
                             item(key = p.userKey) {
                                 val on = p.userKey in selected
@@ -958,16 +960,15 @@ internal fun InvitePeopleDialog(
             val n = selected.size
             ActionButton(
                 when {
-                    busy -> "Sending…"
-                    n == 0 -> "Send invitations"
-                    n == 1 -> "Send 1 invitation"
-                    else -> "Send $n invitations"
+                    busy -> tr("Sending…")
+                    n == 0 -> tr("Send invitations")
+                    else -> trn("Send {n} invitation", "Send {n} invitations", n)
                 },
                 { send() },
                 primary = n > 0,
             )
         },
-        dismissButton = { ActionButton("Cancel", onClose) },
+        dismissButton = { ActionButton(tr("Cancel"), onClose) },
     )
 }
 
@@ -988,7 +989,7 @@ private fun Tick(on: Boolean) {
         contentAlignment = Alignment.Center,
     ) {
         if (on) {
-            Icon(Icons.Check, "Selected", Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color.Black)
+            Icon(Icons.Check, tr("Selected"), Modifier.size(18.dp), tint = androidx.compose.ui.graphics.Color.Black)
         } else {
             Box(
                 Modifier
@@ -1023,16 +1024,16 @@ fun PlayerRoomDialog(
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onCancel,
         containerColor = Background,
-        title = { Text("Watch together") },
+        title = { Text(tr("Watch together")) },
         text = {
             CompositionLocalProvider(LocalInitialFocusDone provides null) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        state?.media?.label() ?: "Opening a room…",
+                        state?.media?.label() ?: tr("Opening a room…"),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        "Paused for now. Invite people, then start: everyone starts at ${formatTime(positionMs)} at the same moment.",
+                        tr("Paused for now. Invite people, then start: everyone starts at {time} at the same moment.", "time" to formatTime(positionMs)),
                         color = Muted,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -1041,8 +1042,8 @@ fun PlayerRoomDialog(
                             state.members.people().forEach { (m, _) ->
                                 item(key = "m" + m.id) {
                                     ListRow(
-                                        m.name + if (m.userKey == myKey) " (you)" else "",
-                                        subtitle = "In the room",
+                                        if (m.userKey == myKey) tr("{name} (you)", "name" to m.name) else m.name,
+                                        subtitle = tr("In the room"),
                                         leading = { Avatar(m.avatar, m.name, m.userKey, 40.dp) },
                                     )
                                 }
@@ -1051,7 +1052,7 @@ fun PlayerRoomDialog(
                                 item(key = "i" + p.userKey) {
                                     ListRow(
                                         p.name,
-                                        subtitle = "Invited",
+                                        subtitle = tr("Invited"),
                                         leading = { Avatar(p.avatar, p.name, p.userKey, 40.dp) },
                                     )
                                 }
@@ -1063,14 +1064,14 @@ fun PlayerRoomDialog(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         ActionButton(
-                            "Invite people",
+                            tr("Invite people"),
                             { inviting = true },
                             if (alone) Modifier.initialFocus() else Modifier,
                             primary = alone,
                             icon = Icons.Add,
                         )
                         ActionButton(
-                            "Start at ${formatTime(positionMs)}",
+                            tr("Start at {time}", "time" to formatTime(positionMs)),
                             onStart,
                             if (alone) Modifier else Modifier.initialFocus(),
                             primary = !alone,
@@ -1081,6 +1082,6 @@ fun PlayerRoomDialog(
             }
         },
         confirmButton = {},
-        dismissButton = { ActionButton("Cancel", onCancel, icon = Icons.Close) },
+        dismissButton = { ActionButton(tr("Cancel"), onCancel, icon = Icons.Close) },
     )
 }

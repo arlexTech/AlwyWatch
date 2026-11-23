@@ -2,6 +2,7 @@
 //! What the title page and the menu offer beyond browsing: watched state, My list, the cast,
 //! and the My list page.
 
+use i18n::tr;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use media_api::{Item, ItemKind, MediaServer, Person, ServerKind};
@@ -66,12 +67,12 @@ pub fn ItemActions(acc: String, item: Item) -> impl IntoView {
         <div class="actions">
             {(!show).then(|| view! {
                 <button on:click=toggle_played.clone()>
-                    {move || if played.get() { "✓ Watched · mark unwatched" } else { "Mark watched" }}
+                    {move || if played.get() { tr!("✓ Watched · mark unwatched") } else { tr!("Mark watched") }}
                 </button>
             })}
             {can_list.then(|| view! {
                 <button on:click=toggle_listed>
-                    {move || if listed.get() { "★ In my list · remove" } else { "☆ Add to my list" }}
+                    {move || if listed.get() { tr!("★ In my list · remove") } else { tr!("☆ Add to my list") }}
                 </button>
             })}
         </div>
@@ -104,7 +105,7 @@ pub fn Cast(acc: String, id: String) -> impl IntoView {
     });
     view! {
         {move || people.get().flatten().filter(|l| !l.is_empty()).map(|list| view! {
-            <h2>"Cast"</h2>
+            <h2>{tr!("Cast")}</h2>
             <div class="rail-row">
                 {list.into_iter().map(|(name, role, photo)| view! {
                     <div class="person-card">
@@ -143,14 +144,14 @@ pub fn MyList() -> impl IntoView {
         (all, failed)
     });
     view! {
-        <h1>"My list"</h1>
+        <h1>{tr!("My list")}</h1>
         {move || match items.get() {
             None => view! { <Loading /> }.into_any(),
             Some((_, true)) => view! {
-                <ErrorText text="Can't reach your servers right now.".to_string() />
+                <ErrorText text=tr!("Can't reach your servers right now.") />
             }.into_any(),
             Some((l, _)) if l.is_empty() => view! {
-                <p class="muted">"Nothing yet. Open a movie or a show and add it to your list."</p>
+                <p class="muted">{tr!("Nothing yet. Open a movie or a show and add it to your list.")}</p>
             }.into_any(),
             Some((l, _)) => view! { <Grid items=l /> }.into_any(),
         }}
@@ -220,28 +221,29 @@ pub fn MarkAll(
                 let set1 = set1.clone();
                 view! {
                     <button class="small" disabled=move || busy.get() on:click=move |_| set1(true)>
-                        {format!("Mark {noun} watched")}
+                        {if noun == "season" { tr!("Mark season watched") } else { tr!("Mark all episodes watched") }}
                     </button>
                 }
             })}
             <button class="small" disabled=move || busy.get() on:click=move |_| asking.set(true)>
-                {format!("Mark {noun} unwatched")}
+                {if noun == "season" { tr!("Mark season unwatched") } else { tr!("Mark all episodes unwatched") }}
             </button>
         </div>
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         {move || asking.get().then(|| {
             let set2 = set2.clone();
-            let question = format!("Mark all episodes of {what} unwatched?");
+            let question = tr!("Mark all episodes of {title} unwatched?", title = what);
             view! {
                 <div class="dialog-back" on:click=move |_| if !busy.get_untracked() { asking.set(false) }
                     on:keydown=move |ev| if ev.key() == "Escape" && !busy.get_untracked() { asking.set(false) }>
                     <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="unwatch-title" on:click=|ev| ev.stop_propagation()>
                         <h2 id="unwatch-title">{question}</h2>
-                        <p>"This forgets where you stopped."</p>
+                        <p>{tr!("This forgets where you stopped.")}</p>
                         <div class="actions">
-                            <button node_ref=cancel disabled=move || busy.get() on:click=move |_| asking.set(false)>"Cancel"</button>
+                            <button node_ref=cancel disabled=move || busy.get() on:click=move |_| asking.set(false)>{tr!("Cancel")}</button>
                             <button class="danger" disabled=move || busy.get() on:click=move |_| set2(false)>
-                                {move || if busy.get() { "Marking…" } else { "Mark unwatched" }}
+                                {move || if busy.get() { tr!("Marking…") } else { tr!("Mark unwatched") }}
+
                             </button>
                         </div>
                     </div>

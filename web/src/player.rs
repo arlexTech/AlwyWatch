@@ -7,6 +7,7 @@
 //! over at the same position. HLS plays natively in Safari, through hls.js elsewhere (loaded
 //! only then, from this site).
 
+use i18n::{tr, trn};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
@@ -252,7 +253,7 @@ async fn load(acc: &str, id: &str) -> Result<Loaded, String> {
     let c = state::ctx();
     let srv = c
         .server(acc)
-        .ok_or("This account isn't signed in any more.")?;
+        .ok_or_else(|| tr!("This account isn't signed in any more."))?;
     let profile = browser_profile();
     let (item, info) = state::join2(srv.item(id), srv.playback_info(id, &profile)).await;
     let fail = |e: media_api::Error| {
@@ -262,7 +263,7 @@ async fn load(acc: &str, id: &str) -> Result<Loaded, String> {
     let item = item.map_err(fail)?;
     let info = info.map_err(fail)?;
     if info.sources.is_empty() {
-        return Err("The server has no file to play for this title.".into());
+        return Err(tr!("The server has no file to play for this title."));
     }
     Ok(Loaded {
         srv,
@@ -331,7 +332,7 @@ fn sub_label(s: &MediaStream) -> String {
         .clone()
         .or(s.title.clone())
         .or(s.language.clone())
-        .unwrap_or_else(|| "Subtitles".into())
+        .unwrap_or_else(|| tr!("Subtitles"))
 }
 
 /// The subtitles offered: those the page draws, or every one while the server converts (it
@@ -448,7 +449,10 @@ async fn show_subtitle(
     let _ = track.set_attribute("kind", "subtitles");
     let _ = track.set_attribute(
         "label",
-        stream.display_title.as_deref().unwrap_or("Subtitles"),
+        &stream
+            .display_title
+            .clone()
+            .unwrap_or_else(|| tr!("Subtitles")),
     );
     let _ = track.set_attribute("src", &blob_url);
     let _ = track.set_attribute("default", "");
@@ -600,9 +604,9 @@ fn PlayerView(
         });
     }
     let cant_play = move || {
-        failure.try_set(Some(
-            "This video can't be played in this browser, even converted by the server.".into(),
-        ));
+        failure.try_set(Some(tr!(
+            "This video can't be played in this browser, even converted by the server."
+        )));
     };
 
     // The subtitles the current conversion was asked with (Default: none asked).
@@ -1185,9 +1189,9 @@ fn PlayerView(
                 spawn_local(async move {
                     match together::find(&s.media).await {
                         None => {
-                            room.note.try_set(Some(format!(
-                                "{} isn't on your servers",
-                                together::media_label(&s.media)
+                            room.note.try_set(Some(tr!(
+                                "{title} isn't on your servers",
+                                title = together::media_label(&s.media)
                             )));
                             off_title.try_update_value(|o| *o = true);
                             if let Some(v) = video.try_get_untracked().flatten() {
@@ -1241,19 +1245,19 @@ fn PlayerView(
                     }
                 } />
             <div class="player-top">
-                <button class="icon" on:click=back.clone() aria-label="Back">"←"</button>
+                <button class="icon" on:click=back.clone() aria-label=tr!("Back")>"←"</button>
                 {move || match loaded.get() {
                     Some(Ok(l)) => {
                         let i = &l.item;
-                        let sub = (i.kind == ItemKind::Episode).then(|| format!("S{} E{} · {}",
-                            i.season_number.unwrap_or(0), i.episode_number.unwrap_or(0), i.title));
+                        let sub = (i.kind == ItemKind::Episode).then(|| tr!("S{season} E{episode} · {title}",
+                            season = i.season_number.unwrap_or(0), episode = i.episode_number.unwrap_or(0), title = i.title));
                         let title = i.series_title.clone().filter(|_| i.kind == ItemKind::Episode).unwrap_or(i.title.clone());
                         view! { <div><div class="ptitle">{title}</div><div class="muted">{sub}</div></div> }.into_any()
                     }
                     Some(Err(_)) => ().into_any(),
-                    None => view! { <div class="muted">"Loading…"</div> }.into_any(),
+                    None => view! { <div class="muted">{tr!("Loading…")}</div> }.into_any(),
                 }}
-                {move || transcoding.get().then(|| view! { <span class="pill">"Converted by the server"</span> })}
+                {move || transcoding.get().then(|| view! { <span class="pill">{tr!("Converted by the server")}</span> })}
                 {move || match room.state.get().filter(|_| { room.code.track(); joined() }) {
                     Some(s) => {
                         let people = together::group_members(&s);
@@ -1266,9 +1270,9 @@ fn PlayerView(
                                         <Avatar user_key=p.member.user_key.clone() name=p.member.name.clone() avatar=p.member.avatar.clone() size=20 />
                                     }).collect_view()}
                                 </span>
-                                {format!("{shown} watching · {names}")}
+                                {trn!("{n} watching · {names}", "{n} watching · {names}", shown, names = names)}
                             </span>
-                            <button class="small" on:click=move |_| room.leave("You left watch together", true)>"Leave"</button>
+                            <button class="small" on:click=move |_| room.leave(&tr!("You left watch together"), true)>{tr!("Leave")}</button>
                         }.into_any()
                     }
                     None => {
@@ -1287,13 +1291,13 @@ fn PlayerView(
                                 spawn_local(async move {
                                     if let Err(e) = together::create_room(l.srv.clone(), l.item.clone()).await {
                                         dialog.try_set(false);
-                                        room.note.try_set(Some(format!("Watch together unavailable: {e}")));
+                                        room.note.try_set(Some(tr!("Watch together unavailable: {error}", error = e)));
                                     } else if !dialog.try_get_untracked().unwrap_or(false) {
                                         // Cancelled meanwhile.
                                         room.leave("", true);
                                     }
                                 });
-                            }>"Watch together"</button>
+                            }>{tr!("Watch together")}</button>
                         }).into_any()
                     }
                 }}
@@ -1304,7 +1308,7 @@ fn PlayerView(
                         _ => Vec::new(),
                     });
                     (!subs.is_empty()).then(|| view! {
-                        <select class="chip subs" aria-label="Subtitles" prop:value=move || sub_pick.get().to_string() on:change=move |ev| {
+                        <select class="chip subs" aria-label=tr!("Subtitles") prop:value=move || sub_pick.get().to_string() on:change=move |ev| {
                             let pick: i64 = event_target_value(&ev).parse().unwrap_or(-1);
                             sub_pick.set(pick);
                             let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else { return };
@@ -1315,7 +1319,7 @@ fn PlayerView(
                             }
                             spawn_local(async move { show_subtitle(&l, &v, pick, sub_pick).await });
                         }>
-                            <option value="-1">"Subtitles off"</option>
+                            <option value="-1">{tr!("Subtitles off")}</option>
                             {subs.into_iter().map(|(i, label)| view! { <option value=i.to_string()>{label}</option> }).collect_view()}
                         </select>
                     })
@@ -1326,7 +1330,7 @@ fn PlayerView(
                 e.map(|e| view! {
                     <div class="player-msg" role="alert">
                         <p>{e}</p>
-                        <button class="primary" on:click=back.clone()>"Back"</button>
+                        <button class="primary" on:click=back.clone()>{tr!("Back")}</button>
                     </div>
                 })
             }}
@@ -1365,11 +1369,11 @@ fn PlayerView(
                 view! {
                     <div class="dialog-back">
                         <div class="dialog room-dialog" role="dialog" aria-modal="true" aria-labelledby="room-dialog-title">
-                            <p class="muted small">"WATCH TOGETHER"</p>
-                            <h2 id="room-dialog-title">{move || room.state.with(|s| s.as_ref().map(|s| together::media_label(&s.media))).unwrap_or_else(|| "Opening a room…".into())}</h2>
-                            <p class="muted">{move || format!(
-                                "Paused for now. Invite people, then start: everyone starts at {} at the same moment, once all of them have loaded it.",
-                                fmt_time(dialog_at.get())
+                            <p class="muted small">{tr!("WATCH TOGETHER")}</p>
+                            <h2 id="room-dialog-title">{move || room.state.with(|s| s.as_ref().map(|s| together::media_label(&s.media))).unwrap_or_else(|| tr!("Opening a room…"))}</h2>
+                            <p class="muted">{move || tr!(
+                                "Paused for now. Invite people, then start: everyone starts at {time} at the same moment, once all of them have loaded it.",
+                                time = fmt_time(dialog_at.get())
                             )}</p>
                             {move || room.state.get().map(|s| {
                                 let people = together::group_members(&s);
@@ -1378,24 +1382,24 @@ fn PlayerView(
                                         <div class="person-row">
                                             <Avatar user_key=p.member.user_key.clone() name=p.member.name.clone() avatar=p.member.avatar.clone() size=32 />
                                             <span class="pname">{p.member.name.clone()}</span>
-                                            <span class="muted small">"In the room"</span>
+                                            <span class="muted small">{tr!("In the room")}</span>
                                         </div>
                                     }).collect_view()}
                                     {s.invited.iter().map(|i| view! {
                                         <div class="person-row">
                                             <Avatar user_key=i.user_key.clone() name=i.name.clone() avatar=i.avatar.clone() size=32 />
                                             <span class="pname">{i.name.clone()}</span>
-                                            <span class="muted small">"Invited"</span>
+                                            <span class="muted small">{tr!("Invited")}</span>
                                         </div>
                                     }).collect_view()}
                                 }
                             })}
                             <div class="actions">
-                                <button disabled=move || room.state.with(|s| s.is_none()) on:click=move |_| picking.set(true)>"Invite people"</button>
+                                <button disabled=move || room.state.with(|s| s.is_none()) on:click=move |_| picking.set(true)>{tr!("Invite people")}</button>
                                 <button class="primary" disabled=move || room.state.with(|s| s.is_none()) on:click=start>
-                                    {move || format!("Start at {}", fmt_time(dialog_at.get()))}
+                                    {move || tr!("Start at {time}", time = fmt_time(dialog_at.get()))}
                                 </button>
-                                <button class="subtle" on:click=cancel>"Cancel"</button>
+                                <button class="subtle" on:click=cancel>{tr!("Cancel")}</button>
                             </div>
                         </div>
                     </div>
@@ -1412,26 +1416,27 @@ fn PlayerView(
                     SegmentKind::Credits if has_next => view! {
                         <div class="skip-row">
                             {move || countdown.get().map(|_| view! {
-                                <button class="small" on:click=move |_| cancelled.set(true)>"Cancel"</button>
+                                <button class="small" on:click=move |_| cancelled.set(true)>{tr!("Cancel")}</button>
                             })}
                             <button class="skip" on:click={
                                 let go_next = go_next.clone();
                                 move |_| go_next()
                             }>
                                 {move || match countdown.get() {
-                                    Some(n) => format!("Next episode in {n} s"),
-                                    None => "Next episode".to_string(),
+                                    Some(n) => tr!("Next episode in {seconds} s", seconds = n),
+                                    None => tr!("Next episode"),
                                 }}
                             </button>
                         </div>
                     }.into_any(),
                     k => {
                         let label = match k {
-                            SegmentKind::Intro => "Skip intro",
-                            SegmentKind::Credits => "Skip credits",
-                            SegmentKind::Recap => "Skip recap",
-                            SegmentKind::Preview => "Skip preview",
-                            SegmentKind::Commercial => "Skip ad",
+                            SegmentKind::Intro => tr!("Skip intro"),
+                            SegmentKind::Credits => tr!("Skip credits"),
+                            SegmentKind::Recap => tr!("Skip recap"),
+                            SegmentKind::Preview => tr!("Skip preview"),
+                            SegmentKind::Commercial => tr!("Skip ad"),
+
                         };
                         view! { <button class="skip" on:click=skip>{label}</button> }.into_any()
                     }

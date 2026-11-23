@@ -63,6 +63,7 @@ import be.alwyapps.watch.ui.SurfaceHigh
 import be.alwyapps.watch.ui.ambientGlow
 import be.alwyapps.watch.ui.dpadEscape
 import be.alwyapps.watch.ui.initialFocus
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -219,33 +220,33 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
     ) {
         if (step == Step.Choose && keep != null) {
             be.alwyapps.watch.ui
-                .PageTitle("Add a server")
+                .PageTitle(tr("Add a server"))
         } else if (step == Step.Choose) {
             Column(Modifier.padding(top = 24.dp, bottom = 8.dp)) {
                 Text("AlwyWatch", style = MaterialTheme.typography.displayLarge)
-                Text("Your Jellyfin and Plex, fast and beautiful.", style = MaterialTheme.typography.bodyLarge, color = Muted)
+                Text(tr("Your Jellyfin and Plex, fast and beautiful."), style = MaterialTheme.typography.bodyLarge, color = Muted)
             }
             // A new profile starts here: a way back to the others.
             val profiles = remember { ctx.services.profiles.list() }
             if (profiles.size > 1) {
                 val me = profiles.firstOrNull { it.id == ctx.services.profile }
-                ActionButton("${me?.name ?: "Profile"} · switch profile", {
+                ActionButton(tr("{name} · switch profile", "name" to (me?.name ?: tr("Profile"))), {
                     ProfileSession.open = false
                     (ctx as android.app.Activity).recreate()
                 }, icon = Icons.Person)
             }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                IconAction(Icons.Back, "Back", {
+                IconAction(Icons.Back, tr("Back"), {
                     back()
                     error = null
                 })
                 Text(
                     when (step) {
-                        Step.AlwyWatch -> "AlwyWatch server"
-                        is Step.Receive -> "Sign in with a code"
-                        is Step.AccountLogin, is Step.Known -> "AlwyWatch account"
-                        Step.Direct -> "Sign in"
+                        Step.AlwyWatch -> tr("AlwyWatch server")
+                        is Step.Receive -> tr("Sign in with a code")
+                        is Step.AccountLogin, is Step.Known -> tr("AlwyWatch account")
+                        Step.Direct -> tr("Sign in")
                         Step.Plex, is Step.PlexServers, is Step.PlexUsers -> "Plex"
                         else -> "Jellyfin"
                     },
@@ -301,30 +302,30 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     }
                 }
                 Text(
-                    "Your AlwyWatch account keeps your profile, settings and server list. To watch, you then sign in to your server.",
+                    tr("Your AlwyWatch account keeps your profile, settings and server list. To watch, you then sign in to your server."),
                     color = Muted,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Field(
                     user,
                     { user = it },
-                    label = { Text("Username") },
+                    label = { Text(tr("Username")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
                 )
                 Field(
                     pass,
                     { pass = it },
-                    label = { Text("Password") },
+                    label = { Text(tr("Password")) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { submit() }),
                     modifier = Modifier.fillMaxWidth().dpadEscape(),
                 )
-                ActionButton(if (busy) "Signing in…" else "Sign in", { submit() }, primary = true)
+                ActionButton(if (busy) tr("Signing in…") else tr("Sign in"), { submit() }, primary = true)
                 Text(
-                    "No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone.",
+                    tr("No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone."),
                     color = Subtle,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -335,13 +336,15 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 var served by remember { mutableStateOf<List<ServerEntry>?>(null) }
                 LaunchedEffect(s.url) { served = runCatching { core.keepServers(s.url) }.getOrDefault(emptyList()) }
                 Text(
-                    "Signed in as ${me?.name ?: "you"}. Now sign in to the server you watch on.",
+                    me?.name?.let { tr("Signed in as {name}. Now sign in to the server you watch on.", "name" to it) }
+                        ?: tr("Signed in as you. Now sign in to the server you watch on."),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 served?.forEach { e -> ServerCard(e) { if (!busy) pick(s.url, e) } }
                 val known = remember(served) { core.knownServers().filter { k -> served.orEmpty().none { it.url.trimEnd('/') == k.url.trimEnd('/') } } }
                 known.forEach { k ->
-                    ChoiceCard(k.name.ifEmpty { k.url }, "${if (k.kind == "plex") "Plex" else "Jellyfin"} · from your other devices", Icons.Library, {
+                    val from = tr("{kind} · from your other devices", "kind" to if (k.kind == "plex") "Plex" else "Jellyfin")
+                    ChoiceCard(k.name.ifEmpty { k.url }, from, Icons.Library, {
                         if (k.kind == "plex") {
                             go(Step.Plex)
                         } else {
@@ -352,7 +355,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                         }
                     })
                 }
-                ChoiceCard("Another server", "Jellyfin or Plex by its address", Icons.Add, { go(Step.Direct) })
+                ChoiceCard(tr("Another server"), tr("Jellyfin or Plex by its address"), Icons.Add, { go(Step.Direct) })
             }
             Step.Direct -> {
                 // No AlwyWatch server on this path: forget one picked earlier then backed out of.
@@ -360,8 +363,8 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     core.keepClearPreset()
                     presetPlexId = null
                 }
-                ChoiceCard("Jellyfin", "Quick Connect or password", Icons.Library, { go(Step.JellyfinUrl) }, Modifier.initialFocus())
-                ChoiceCard("Plex", "Sign in on plex.tv", Icons.Play, { go(Step.Plex) })
+                ChoiceCard("Jellyfin", tr("Quick Connect or password"), Icons.Library, { go(Step.JellyfinUrl) }, Modifier.initialFocus())
+                ChoiceCard("Plex", tr("Sign in on plex.tv"), Icons.Play, { go(Step.Plex) })
             }
 
             Step.JellyfinUrl -> {
@@ -379,15 +382,15 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 Field(
                     url,
                     { url = it },
-                    label = { Text("Server address") },
+                    label = { Text(tr("Server address")) },
                     placeholder = { Text("jellyfin.example.org") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { submit() }),
                     modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
                 )
-                Text("Your Jellyfin server's address, as you use it in a browser.", color = Muted, style = MaterialTheme.typography.bodyMedium)
-                ActionButton(if (busy) "Checking…" else "Continue", { submit() }, primary = true)
+                Text(tr("Your Jellyfin server's address, as you use it in a browser."), color = Muted, style = MaterialTheme.typography.bodyMedium)
+                ActionButton(if (busy) tr("Checking…") else tr("Continue"), { submit() }, primary = true)
             }
 
             is Step.Jellyfin -> {
@@ -401,7 +404,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                             .padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Text("QUICK CONNECT", style = MaterialTheme.typography.labelSmall, color = Accent)
+                        Text(tr("QUICK CONNECT"), style = MaterialTheme.typography.labelSmall, color = Accent)
                         Text(
                             s.quick.code
                                 .chunked(3)
@@ -414,11 +417,11 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                                 ),
                         )
                         Text(
-                            "In a Jellyfin app where you're signed in, open your profile → Quick Connect and enter this code.",
+                            tr("In a Jellyfin app where you're signed in, open your profile → Quick Connect and enter this code."),
                             color = Muted,
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        Text("Waiting for approval…", style = MaterialTheme.typography.bodySmall, color = Subtle)
+                        Text(tr("Waiting for approval…"), style = MaterialTheme.typography.bodySmall, color = Subtle)
                     }
                     LaunchedEffect(s.quick.secret) {
                         while (true) {
@@ -440,28 +443,28 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                             }
                         }
                     }
-                    Text("Or with your password", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
+                    Text(tr("Or with your password"), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
                 }
                 var user by remember { mutableStateOf("") }
                 var pass by remember { mutableStateOf("") }
                 Field(
                     user,
                     { user = it },
-                    label = { Text("Username") },
+                    label = { Text(tr("Username")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().dpadEscape(),
                 )
                 Field(
                     pass,
                     { pass = it },
-                    label = { Text("Password") },
+                    label = { Text(tr("Password")) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { attempt { finish(core.jellyfinSignIn(s.url, user, pass)) } }),
                     modifier = Modifier.fillMaxWidth().dpadEscape(),
                 )
-                ActionButton(if (busy) "Signing in…" else "Sign in", {
+                ActionButton(if (busy) tr("Signing in…") else tr("Sign in"), {
                     attempt { finish(core.jellyfinSignIn(s.url, user, pass)) }
                 }, primary = true)
             }
@@ -518,14 +521,14 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     authUrl?.let { url ->
-                        Text("Sign in on plex.tv in your browser, then come back here.", style = MaterialTheme.typography.titleMedium)
-                        ActionButton("Open plex.tv", { openInBrowser(ctx, url) }, Modifier.initialFocus(), primary = true)
-                        Text("Or, on any device", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = Subtle)
+                        Text(tr("Sign in on plex.tv in your browser, then come back here."), style = MaterialTheme.typography.titleMedium)
+                        ActionButton(tr("Open plex.tv"), { openInBrowser(ctx, url) }, Modifier.initialFocus(), primary = true)
+                        Text(tr("Or, on any device"), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = Subtle)
                     }
-                    Text("PLEX.TV/LINK", style = MaterialTheme.typography.labelSmall, color = Accent)
+                    Text(tr("PLEX.TV/LINK"), style = MaterialTheme.typography.labelSmall, color = Accent)
                     Text(shortCode ?: "…", style = MaterialTheme.typography.displayLarge)
-                    Text("Go to plex.tv/link and enter this code.", color = Muted)
-                    Text("Waiting for Plex…", style = MaterialTheme.typography.bodySmall, color = Subtle)
+                    Text(tr("Go to plex.tv/link and enter this code."), color = Muted)
+                    Text(tr("Waiting for Plex…"), style = MaterialTheme.typography.bodySmall, color = Subtle)
                 }
             }
 
@@ -535,12 +538,12 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 }
 
             is Step.PlexServers -> {
-                Text("Choose a server", style = MaterialTheme.typography.titleMedium)
-                if (s.servers.isEmpty()) Text("This Plex account has no servers.", color = Muted)
+                Text(tr("Choose a server"), style = MaterialTheme.typography.titleMedium)
+                if (s.servers.isEmpty()) Text(tr("This Plex account has no servers."), color = Muted)
                 s.servers.forEachIndexed { i, srv ->
                     ChoiceCard(
                         srv.name,
-                        if (srv.owned) "Your server" else "Shared with you",
+                        if (srv.owned) tr("Your server") else tr("Shared with you"),
                         Icons.Library,
                         { attempt { finish(core.plexConnect(s.accountToken, srv, null)) } },
                         if (i == 0) Modifier.initialFocus() else Modifier,
@@ -579,7 +582,9 @@ private fun AlwyWatchServerPicker(
         }
     }
     Text(
-        "Type the AlwyWatch address the person who runs your server gave you. You then sign in with your Jellyfin or Plex login, or with a code from a device where you already use AlwyWatch.",
+        tr(
+            "Type the AlwyWatch address the person who runs your server gave you. You then sign in with your Jellyfin or Plex login, or with a code from a device where you already use AlwyWatch.",
+        ),
         color = Muted,
         style = MaterialTheme.typography.bodyMedium,
     )
@@ -593,23 +598,25 @@ private fun AlwyWatchServerPicker(
         keyboardActions = KeyboardActions(onGo = { load() }),
         modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
     )
-    ActionButton("Continue", { load() }, primary = entries == null)
+    ActionButton(tr("Continue"), { load() }, primary = entries == null)
     entries?.let { (base, list) ->
         if (list.isEmpty()) {
             Text(
-                "Nothing to sign in to at this address. Check it with the person who runs your server, or go back and sign in to Jellyfin or Plex directly.",
+                tr(
+                    "Nothing to sign in to at this address. Check it with the person who runs your server, or go back and sign in to Jellyfin or Plex directly.",
+                ),
                 color = Muted,
             )
         }
         list.forEach { e -> ServerCard(e) { if (!busy) onPick(base, e) } }
         // Already signed in elsewhere: copy everything instead of signing in again.
-        Text("Already using AlwyWatch on another device?", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
-        ChoiceCard("Sign in with a code", "Scan a QR code with your phone, or approve on a device where you're signed in", Icons.Download, {
+        Text(tr("Already using AlwyWatch on another device?"), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
+        ChoiceCard(tr("Sign in with a code"), tr("Scan a QR code with your phone, or approve on a device where you're signed in"), Icons.Download, {
             onCopy(base)
         })
         ChoiceCard(
-            "AlwyWatch account (optional)",
-            "Only if your server's owner invited you to create one: username and password",
+            tr("AlwyWatch account (optional)"),
+            tr("Only if your server's owner invited you to create one: username and password"),
             Icons.Person,
             { onAccount(base) },
         )
@@ -625,7 +632,7 @@ private fun ServerCard(
     val plex = e.kind == ServerType.PLEX
     ChoiceCard(
         e.name,
-        if (plex) "Plex · sign in on plex.tv" else "Jellyfin · Quick Connect or password",
+        if (plex) tr("Plex · sign in on plex.tv") else tr("Jellyfin · Quick Connect or password"),
         if (plex) Icons.Play else Icons.Library,
         onClick,
         modifier,
@@ -638,17 +645,17 @@ private fun FirstChoices(
     onAlwyWatch: () -> Unit,
     onDirect: () -> Unit,
 ) {
-    Text("Sign in", style = MaterialTheme.typography.titleMedium)
+    Text(tr("Sign in"), style = MaterialTheme.typography.titleMedium)
     ChoiceCard(
-        "I was given an AlwyWatch address",
-        "Something like watch.example.org, from the person who runs your server. Adds requests, watch together and saving titles from deletion.",
+        tr("I was given an AlwyWatch address"),
+        tr("Something like watch.example.org, from the person who runs your server. Adds requests, watch together and saving titles from deletion."),
         Icons.Hourglass,
         onAlwyWatch,
         Modifier.initialFocus(),
     )
     ChoiceCard(
-        "I have a Jellyfin or Plex login",
-        "Sign in directly. You can add an AlwyWatch address later in Settings.",
+        tr("I have a Jellyfin or Plex login"),
+        tr("Sign in directly. You can add an AlwyWatch address later in Settings."),
         Icons.Person,
         onDirect,
     )
@@ -675,22 +682,22 @@ private fun ConnectedChoices(
     }
     val list = missing
     if (list == null) {
-        Text("Checking your AlwyWatch server…", color = Subtle, style = MaterialTheme.typography.bodyMedium)
+        Text(tr("Checking your AlwyWatch server…"), color = Subtle, style = MaterialTheme.typography.bodyMedium)
     } else if (list.isNotEmpty()) {
-        Text("From your AlwyWatch server", style = MaterialTheme.typography.titleMedium)
+        Text(tr("From your AlwyWatch server"), style = MaterialTheme.typography.titleMedium)
         list.forEachIndexed { i, e ->
             ServerCard(e, if (i == 0) Modifier.initialFocus() else Modifier) { if (!busy) onPick(keepUrl, e) }
         }
-        Text("Another server", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
+        Text(tr("Another server"), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
     }
     ChoiceCard(
         "Jellyfin",
-        "Quick Connect or password",
+        tr("Quick Connect or password"),
         Icons.Library,
         onJellyfin,
         if (list != null && list.isEmpty()) Modifier.initialFocus() else Modifier,
     )
-    ChoiceCard("Plex", "Sign in on plex.tv", Icons.Play, onPlex)
+    ChoiceCard("Plex", tr("Sign in on plex.tv"), Icons.Play, onPlex)
 }
 
 /**
@@ -741,7 +748,7 @@ fun PlexUserPicker(
             try {
                 onUser(core.plexSwitchUser(accountToken, u.uuid, pin))
             } catch (_: CoreException.Unauthorized) {
-                error = "Wrong PIN."
+                error = tr("Wrong PIN.")
             } catch (e: CoreException) {
                 error = e.message
             } finally {
@@ -749,11 +756,11 @@ fun PlexUserPicker(
             }
         }
     }
-    Text("Who's watching?", style = MaterialTheme.typography.titleMedium)
+    Text(tr("Who's watching?"), style = MaterialTheme.typography.titleMedium)
     users.forEachIndexed { i, u ->
         ChoiceCard(
             u.title,
-            listOfNotNull(if (u.admin) "Account owner" else null, if (u.protected) "PIN" else null).joinToString(" · ").ifEmpty { "Plex Home" },
+            listOfNotNull(if (u.admin) tr("Account owner") else null, if (u.protected) tr("PIN") else null).joinToString(" · ").ifEmpty { "Plex Home" },
             Icons.Person,
             {
                 if (u.protected) {
@@ -769,14 +776,14 @@ fun PlexUserPicker(
             Field(
                 pin,
                 { pin = it.filter(Char::isDigit).take(4) },
-                label = { Text("PIN for ${u.title}") },
+                label = { Text(tr("PIN for {name}", "name" to u.title)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { switch(u, pin) }),
                 modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
             )
-            ActionButton(if (switching) "Checking…" else "Continue", { switch(u, pin) }, primary = true)
+            ActionButton(if (switching) tr("Checking…") else tr("Continue"), { switch(u, pin) }, primary = true)
         }
     }
     error?.let { Text(it, color = Danger) }
@@ -839,7 +846,7 @@ fun PlexSwitchScreen(
     val scope = rememberCoroutineScope()
     LaunchedEffect(homeToken) {
         if (homeToken == null) {
-            error = "Sign in to Plex again to switch user."
+            error = tr("Sign in to Plex again to switch user.")
             return@LaunchedEffect
         }
         try {
@@ -857,11 +864,11 @@ fun PlexSwitchScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         be.alwyapps.watch.ui
-            .PageTitle("Switch Plex user", account?.let { "${it.userName} on ${it.serverName}" })
+            .PageTitle(tr("Switch Plex user"), account?.let { tr("{name} on {server}", "name" to it.userName, "server" to it.serverName) })
         val list = users
         when {
-            list == null && error == null -> Text("Loading…", color = Subtle)
-            list != null && list.size < 2 -> Text("This Plex account has no other users (it is not a Plex Home).", color = Muted)
+            list == null && error == null -> Text(tr("Loading…"), color = Subtle)
+            list != null && list.size < 2 -> Text(tr("This Plex account has no other users (it is not a Plex Home)."), color = Muted)
             list != null && homeToken != null && account != null ->
                 PlexUserPicker(homeToken, list, busy) { userToken ->
                     busy = true
@@ -869,7 +876,7 @@ fun PlexSwitchScreen(
                         try {
                             val server =
                                 core.plexServers(userToken).firstOrNull { it.machineId == account.serverId }
-                                    ?: throw CoreException.Invalid("This user has no access to ${account.serverName}.")
+                                    ?: throw CoreException.Invalid(tr("This user has no access to {server}.", "server" to account.serverName))
                             val s = core.plexConnect(userToken, server, null)
                             tokens.put(s.account.id, s.token)
                             s.plexAccountToken?.let { tokens.put("${s.account.id}:plextv", it) }

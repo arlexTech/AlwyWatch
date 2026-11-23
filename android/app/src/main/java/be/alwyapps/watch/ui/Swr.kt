@@ -20,6 +20,10 @@ class Swr<T : Any>(
         internal set
     var error by mutableStateOf<String?>(null)
         internal set
+
+    /** The exception behind [error], to tell kinds apart without reading the (translated) text. */
+    var failure by mutableStateOf<CoreException?>(null)
+        internal set
     internal var nonce by mutableIntStateOf(0)
     internal var force = false
 
@@ -46,8 +50,10 @@ fun <T : Any> rememberSwr(
         try {
             state.value = refresh(state.force)
             state.error = null
+            state.failure = null
         } catch (e: CoreException) {
             state.error = e.message ?: e.javaClass.simpleName
+            state.failure = e
         } finally {
             state.force = false
             state.refreshing = false

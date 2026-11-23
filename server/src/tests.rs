@@ -1826,6 +1826,18 @@ async fn admin_sees_who_keeps_what_forever_and_the_overlaps() {
         .call("GET", "/v1/admin/forever", "jfsrv", "jf-alice", None)
         .await;
     assert_eq!(s, StatusCode::OK);
+    let (s, status) = e
+        .call("GET", "/v1/admin/status", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(status["version"], env!("CARGO_PKG_VERSION"));
+    assert!(status["maintainerr"].is_string() && status["registration"].is_string());
+    assert_eq!(
+        e.call("GET", "/v1/admin/status", "jfsrv", "jf-bob", None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
     assert_eq!(
         (st["titles"].clone(), st["shared"].clone()),
         (json!(2), json!(1))

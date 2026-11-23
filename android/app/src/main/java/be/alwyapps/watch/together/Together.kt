@@ -13,6 +13,7 @@ import be.alwyapps.watch.core.keep.TogetherMember
 import be.alwyapps.watch.core.keep.TogetherRoom
 import be.alwyapps.watch.core.keep.TogetherRooms
 import be.alwyapps.watch.core.keep.TogetherState
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,7 +25,12 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** "Show · S1 · E2", or the movie's title. */
-fun TogetherMedia.label(): String = if (untitled()) "Nothing chosen yet" else seriesTitle?.let { "$it · S${season ?: 1} · E${episode ?: 1}" } ?: title
+fun TogetherMedia.label(): String =
+    if (untitled()) {
+        tr("Nothing chosen yet")
+    } else {
+        seriesTitle?.let { tr("{show} · S{season} · E{episode}", "show" to it, "season" to (season ?: 1), "episode" to (episode ?: 1)) } ?: title
+    }
 
 /** A room opened before choosing what to watch ("New room"): no title yet. */
 fun TogetherMedia.untitled(): Boolean = title.isBlank()
@@ -41,13 +47,13 @@ fun friendly(e: CoreException): String {
             ?.takeWhile { it.isDigit() }
             ?.toIntOrNull()
     return when {
-        e is CoreException.Network -> "Can't reach your AlwyWatch server right now."
-        e is CoreException.NotFound -> "This room has closed."
-        status == 429 -> "Too many changes. Try again in a few minutes."
-        status == 409 -> "This room is full."
-        status == 413 -> "This picture is too big."
-        status == 403 -> "Only the host can do that."
-        else -> e.message ?: "Something went wrong."
+        e is CoreException.Network -> tr("Can't reach your AlwyWatch server right now.")
+        e is CoreException.NotFound -> tr("This room has closed.")
+        status == 429 -> tr("Too many changes. Try again in a few minutes.")
+        status == 409 -> tr("This room is full.")
+        status == 413 -> tr("This picture is too big.")
+        status == 403 -> tr("Only the host can do that.")
+        else -> e.message ?: tr("Something went wrong.")
     }
 }
 
@@ -231,7 +237,7 @@ object TogetherSession {
                                 if (seat?.code == s.code) {
                                     TogetherInbox.forget(s.code)
                                     clear()
-                                    ended = "This room has closed."
+                                    ended = tr("This room has closed.")
                                 }
                                 break
                             }
@@ -384,6 +390,8 @@ object TogetherInbox {
         prompt?.let { p -> if (invited.none { it.code == p.code }) prompt = null }
         val newest = fresh.firstOrNull() ?: return
         if (prompt == null) prompt = newest
-        if (playerStarted > 0) noteFlow.tryEmit("${newest.host} invites you to watch ${newest.media.label()}. See Together.")
+        if (playerStarted > 0) {
+            noteFlow.tryEmit(tr("{name} invites you to watch {title}. See Together.", "name" to newest.host, "title" to newest.media.label()))
+        }
     }
 }

@@ -3,6 +3,7 @@
 //! options carry base64url strings where the browser wants bytes, and the answer goes back the
 //! same way (see server/src/passkey.rs).
 
+use i18n::tr;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(inline_js = r#"
@@ -45,9 +46,9 @@ async fn ask(
 ) -> Result<serde_json::Value, String> {
     match f.await {
         Ok(v) => serde_json::from_str(&v.as_string().unwrap_or_default())
-            .map_err(|_| "The browser's answer was unreadable.".to_owned()),
+            .map_err(|_| tr!("The browser's answer was unreadable.")),
         // Cancelled, timed out, or no passkey for this site.
-        Err(_) => Err("No passkey was used.".to_owned()),
+        Err(_) => Err(tr!("No passkey was used.")),
     }
 }
 

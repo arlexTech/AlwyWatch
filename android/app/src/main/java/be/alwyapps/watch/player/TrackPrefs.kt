@@ -69,7 +69,7 @@ fun languageName(code: String?): String? {
     @Suppress("DEPRECATION")
     return java.util
         .Locale(c)
-        .displayLanguage
+        .getDisplayLanguage(java.util.Locale.forLanguageTag(be.alwyapps.watch.ui.I18n.language))
         .ifEmpty { c }
         .replaceFirstChar { it.uppercase() }
 }

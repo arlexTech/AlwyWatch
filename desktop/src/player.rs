@@ -13,6 +13,7 @@ use alwywatch_core::{
 };
 
 use crate::mpv::{self, Mpv};
+use i18n::tr;
 
 pub struct PlayRequest {
     pub media: HttpRequest,
@@ -163,11 +164,9 @@ pub struct Progress {
 /// Starts playback on a new thread. `report` is called for start, every 10 s, pause and stop.
 pub fn spawn(req: PlayRequest, report: impl Fn(Progress) + Send + 'static) -> Result<(), String> {
     if !mpv::available() {
-        return Err(
-            "libmpv is not installed. Install mpv (Linux: your distribution's mpv/libmpv package) \
-             or put libmpv-2.dll next to AlwyWatch.exe (Windows)."
-                .into(),
-        );
+        return Err(tr!(
+            "libmpv is not installed. Install mpv (Linux: your distribution's mpv/libmpv package) or put libmpv-2.dll next to AlwyWatch.exe (Windows)."
+        ));
     }
     std::thread::Builder::new()
         .name("mpv".into())
@@ -181,7 +180,7 @@ pub fn spawn(req: PlayRequest, report: impl Fn(Progress) + Send + 'static) -> Re
                     duration_ms: None,
                     finished: false,
                     go: None,
-                    error: Some(format!("Playback failed: {e}")),
+                    error: Some(tr!("Playback failed: {error}", error = e)),
                 });
             }
         })
@@ -550,7 +549,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 // cancelled (C / "Keep watching").
                 let finished = reason == Some(mpv::END_FILE_EOF) && req.auto_next && !cancelled;
                 let error = (reason == Some(mpv::END_FILE_ERROR))
-                    .then(|| "The player could not play this file.".to_owned());
+                    .then(|| tr!("The player could not play this file."));
                 report(Progress {
                     finished,
                     error,
@@ -705,9 +704,9 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 break;
             }
             view_countdown = left.as_secs() as u32 + 1;
-            Some(format!(
-                "Next episode in {} s   ·   > now   ·   C to keep watching",
-                view_countdown
+            Some(tr!(
+                "Next episode in {seconds} s   ·   > now   ·   C to keep watching",
+                seconds = view_countdown
             ))
         } else {
             if !prompt.credits {
@@ -715,7 +714,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
             }
             // A button on the in-window player; nothing in mpv's window (S still skips there).
             if let Some(seg) = &prompt.skip {
-                view_skip = format!("Skip {}", skip_name(seg.kind));
+                view_skip = skip_label(seg.kind);
             }
             None
         };
@@ -761,7 +760,7 @@ fn push_view(
         if kind == "sub" {
             out.push(TrackItem {
                 id: "no".into(),
-                label: "Off".into(),
+                label: tr!("Off"),
                 selected: matches!(m.get_string("sid").as_deref(), Some("no" | "false") | None),
             });
         }
@@ -775,8 +774,13 @@ fn push_view(
             }
             let Some(id) = prop("id") else { continue };
             let lang = prop("lang").map(|l| language_name(&l));
-            let mut parts: Vec<String> = lang.iter().cloned().collect();
-            if let Some(t) = prop("title").filter(|t| Some(t) != lang.as_ref()) {
+            let mut parts: Vec<String> = lang.iter().map(|(_, name)| name.clone()).collect();
+            // A title that only repeats the language (in English or translated) adds nothing.
+            if let Some(t) = prop("title").filter(|t| {
+                !lang
+                    .as_ref()
+                    .is_some_and(|(en, name)| t == name || (!en.is_empty() && t == en))
+            }) {
                 parts.push(t);
             }
             if kind == "audio"
@@ -787,10 +791,10 @@ fn push_view(
             if m.get_flag(&format!("track-list/{i}/forced"))
                 .unwrap_or(false)
             {
-                parts.push("forced".into());
+                parts.push(tr!("forced"));
             }
             if parts.is_empty() {
-                parts.push(format!("Track {id}"));
+                parts.push(tr!("Track {id}", id = id));
             }
             out.push(TrackItem {
                 id,
@@ -823,25 +827,26 @@ fn push_view(
     }
 }
 
-fn language_name(code: &str) -> String {
-    let name = match code.to_ascii_lowercase().as_str() {
-        "fre" | "fra" | "fr" => "French",
-        "eng" | "en" => "English",
-        "ger" | "deu" | "de" => "German",
-        "spa" | "es" => "Spanish",
-        "ita" | "it" => "Italian",
-        "jpn" | "ja" => "Japanese",
-        "dut" | "nld" | "nl" => "Dutch",
-        "por" | "pt" => "Portuguese",
-        "kor" | "ko" => "Korean",
-        "chi" | "zho" | "zh" => "Chinese",
-        "rus" | "ru" => "Russian",
-        "ara" | "ar" => "Arabic",
-        "pol" | "pl" => "Polish",
-        "und" => "Unknown language",
-        _ => return code.to_owned(),
-    };
-    name.to_owned()
+/// A track language's name: (English, in the selected language). The English one is what a
+/// track title that only repeats the language says.
+fn language_name(code: &str) -> (&'static str, String) {
+    match code.to_ascii_lowercase().as_str() {
+        "fre" | "fra" | "fr" => ("French", tr!("French")),
+        "eng" | "en" => ("English", tr!("English")),
+        "ger" | "deu" | "de" => ("German", tr!("German")),
+        "spa" | "es" => ("Spanish", tr!("Spanish")),
+        "ita" | "it" => ("Italian", tr!("Italian")),
+        "jpn" | "ja" => ("Japanese", tr!("Japanese")),
+        "dut" | "nld" | "nl" => ("Dutch", tr!("Dutch")),
+        "por" | "pt" => ("Portuguese", tr!("Portuguese")),
+        "kor" | "ko" => ("Korean", tr!("Korean")),
+        "chi" | "zho" | "zh" => ("Chinese", tr!("Chinese")),
+        "rus" | "ru" => ("Russian", tr!("Russian")),
+        "ara" | "ar" => ("Arabic", tr!("Arabic")),
+        "pol" | "pl" => ("Polish", tr!("Polish")),
+        "und" => ("Unknown language", tr!("Unknown language")),
+        _ => ("", code.to_owned()),
+    }
 }
 
 /// mpv's audio and subtitle tracks, numbered for the core, with their mpv ids.
@@ -906,12 +911,13 @@ fn seek_to(m: &Mpv, ms: u64) {
     ]);
 }
 
-fn skip_name(kind: SegmentKind) -> &'static str {
+/// The skip button: "Skip intro".
+fn skip_label(kind: SegmentKind) -> String {
     match kind {
-        SegmentKind::Intro => "intro",
-        SegmentKind::Credits => "credits",
-        SegmentKind::Recap => "recap",
-        SegmentKind::Preview => "preview",
-        SegmentKind::Commercial => "ad",
+        SegmentKind::Intro => tr!("Skip intro"),
+        SegmentKind::Credits => tr!("Skip credits"),
+        SegmentKind::Recap => tr!("Skip recap"),
+        SegmentKind::Preview => tr!("Skip preview"),
+        SegmentKind::Commercial => tr!("Skip ad"),
     }
 }

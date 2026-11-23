@@ -44,13 +44,21 @@ import be.alwyapps.watch.ui.PageTitle
 import be.alwyapps.watch.ui.SurfaceHigh
 import be.alwyapps.watch.ui.UrlImage
 import be.alwyapps.watch.ui.Value
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 
-private enum class Spread(
-    val label: String,
-) {
-    ALL("All"),
-    SHARED("Kept by several"),
-    ALONE("Kept by one person"),
+private enum class Spread {
+    ALL,
+    SHARED,
+    ALONE,
+    ;
+
+    fun label(): String =
+        when (this) {
+            ALL -> tr("All")
+            SHARED -> tr("Kept by several")
+            ALONE -> tr("Kept by one person")
+        }
 }
 
 /**
@@ -93,21 +101,27 @@ fun KeepForeverScreen() {
     ) {
         item {
             PageTitle(
-                "Kept forever",
+                tr("Kept forever"),
                 when {
-                    s == null -> if (message == null) "Loading…" else null
+                    s == null -> if (message == null) tr("Loading…") else null
                     s.titles == 0u -> null
-                    else -> "${s.titles} titles · ${s.shared} kept by several people · ${s.titles - s.shared} by one person"
+                    else ->
+                        tr(
+                            "{titles} titles · {shared} kept by several people · {alone} by one person",
+                            "titles" to s.titles,
+                            "shared" to s.shared,
+                            "alone" to s.titles - s.shared,
+                        )
                 },
             )
         }
         message?.let { item { Text(it, color = Accent) } }
         if (s != null && s.people.isEmpty()) {
-            item { Text("Nobody keeps anything forever yet.", color = Muted) }
+            item { Text(tr("Nobody keeps anything forever yet."), color = Muted) }
         }
         if (s != null && s.people.isNotEmpty()) {
             item {
-                Group("People", footer = "Shared: someone else keeps it forever too. Choose a person to see their titles.") {
+                Group(tr("People"), footer = tr("Shared: someone else keeps it forever too. Choose a person to see their titles.")) {
                     s.people.forEachIndexed { i, p ->
                         if (i > 0) Divider()
                         PersonRow(p, selected = person == p.userKey) {
@@ -119,7 +133,7 @@ fun KeepForeverScreen() {
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Spread.entries.toList()) { v ->
-                        ActionButton(v.label, { spread = v }, selected = spread == v)
+                        ActionButton(v.label(), { spread = v }, selected = spread == v)
                     }
                     person?.let { k ->
                         item { ActionButton("${names[k] ?: k} ✕", { person = null }, selected = true) }
@@ -128,10 +142,10 @@ fun KeepForeverScreen() {
             }
             item {
                 Group(
-                    listOfNotNull(person?.let { names[it] }, "${shown.size} titles").joinToString(" · "),
+                    listOfNotNull(person?.let { names[it] }, trn("{n} title", "{n} titles", shown.size)).joinToString(" · "),
                 ) {
                     if (shown.isEmpty()) {
-                        Text("Nothing here.", Modifier.padding(16.dp), color = Muted)
+                        Text(tr("Nothing here."), Modifier.padding(16.dp), color = Muted)
                     }
                     shown.forEachIndexed { i, t ->
                         if (i > 0) Divider()
@@ -140,8 +154,8 @@ fun KeepForeverScreen() {
                             t.title + (t.year?.let { " ($it)" } ?: ""),
                             subtitle =
                                 when {
-                                    person != null && others.isEmpty() -> "Only them"
-                                    person != null -> "Also " + others.joinToString(", ")
+                                    person != null && others.isEmpty() -> tr("Only them")
+                                    person != null -> tr("Also {names}", "names" to others.joinToString(", "))
                                     else -> t.keepers.joinToString(", ") { names[it] ?: it }
                                 },
                             leading = {
@@ -157,7 +171,7 @@ fun KeepForeverScreen() {
                             },
                             trailing = {
                                 val n = t.keepers.size
-                                Value(if (n == 1) "1 person" else "$n people")
+                                Value(trn("{n} person", "{n} people", n))
                             },
                         )
                     }
@@ -179,11 +193,12 @@ private fun PersonRow(
             subtitle =
                 listOfNotNull(
                     p.mediaName.takeIf { it.isNotEmpty() && !it.equals(p.name, true) },
-                    "${p.shared} shared · ${p.alone} only them",
+                    tr("{shared} shared · {alone} only them", "shared" to p.shared, "alone" to p.alone),
                     p.overlaps
                         .take(3)
                         .takeIf { it.isNotEmpty() }
-                        ?.joinToString(", ", prefix = "most with ") { "${it.name} (${it.both})" },
+                        ?.joinToString(", ") { "${it.name} (${it.both})" }
+                        ?.let { tr("most with {names}", "names" to it) },
                 ).joinToString(" · "),
             leading = {
                 Box(

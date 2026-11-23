@@ -54,11 +54,12 @@ fn plan_text(p: &HistoryPlan) -> (String, String, String) {
     let watched = p.changes.iter().filter(|c| c.played).count();
     let started = p.changes.len() - watched;
     let summary = if p.changes.is_empty() {
-        "Nothing to copy: everything is already there.".to_owned()
+        tr!("Nothing to copy: everything is already there.")
     } else {
         [
-            (watched > 0).then(|| format!("{watched} to mark as watched")),
-            (started > 0).then(|| format!("{started} resume points")),
+            (watched > 0)
+                .then(|| trn!("{n} to mark as watched", "{n} to mark as watched", watched)),
+            (started > 0).then(|| trn!("{n} resume point", "{n} resume points", started)),
         ]
         .into_iter()
         .flatten()
@@ -66,8 +67,20 @@ fn plan_text(p: &HistoryPlan) -> (String, String, String) {
         .join(" · ")
     };
     let detail = [
-        (p.up_to_date > 0).then(|| format!("{} already up to date", p.up_to_date)),
-        (!p.not_found.is_empty()).then(|| format!("{} not on that server", p.not_found.len())),
+        (p.up_to_date > 0).then(|| {
+            trn!(
+                "{n} already up to date",
+                "{n} already up to date",
+                p.up_to_date
+            )
+        }),
+        (!p.not_found.is_empty()).then(|| {
+            trn!(
+                "{n} not on that server",
+                "{n} not on that server",
+                p.not_found.len()
+            )
+        }),
     ]
     .into_iter()
     .flatten()
@@ -76,35 +89,41 @@ fn plan_text(p: &HistoryPlan) -> (String, String, String) {
     let copy = if p.changes.is_empty() {
         String::new()
     } else {
-        format!("Copy {} titles", p.changes.len())
+        trn!("Copy {n} title", "Copy {n} titles", p.changes.len())
     };
     (summary, detail, copy)
 }
 
 fn result_text(r: &HistoryCopyResult) -> String {
     if r.failed > 0 {
-        format!(
-            "Done: {} titles copied, {} failed (try again).",
-            r.applied, r.failed
+        tr!(
+            "Done: {copied} titles copied, {failed} failed (try again).",
+            copied = r.applied,
+            failed = r.failed
         )
     } else {
-        format!("Done: {} titles copied.", r.applied)
+        trn!(
+            "Done: {n} title copied.",
+            "Done: {n} titles copied.",
+            r.applied
+        )
     }
 }
 
 /// The step it is on and, when the count is known, how far (and the bar's fraction, else -1).
 fn step_text(p: Option<&HistoryProgress>) -> (String, f32) {
     let step = p
-        .map(|p| p.step.as_str())
+        .map(|p| p.step.clone())
         .filter(|s| !s.is_empty())
-        .unwrap_or("Starting");
+        .unwrap_or_else(|| tr!("Starting"));
     match p.filter(|p| p.total > 0) {
         Some(p) => (
-            format!(
-                "{step} · {} of {} ({} %)",
-                p.done,
-                p.total,
-                u64::from(p.done) * 100 / u64::from(p.total)
+            tr!(
+                "{step} · {done} of {total} ({percent} %)",
+                step = step,
+                done = p.done,
+                total = p.total,
+                percent = u64::from(p.done) * 100 / u64::from(p.total)
             ),
             p.done as f32 / p.total as f32,
         ),
@@ -184,7 +203,7 @@ impl App {
         ui.set_history_show_missing(job.show_missing);
         let error = match &job.error {
             Some(e) => e.clone(),
-            None if accounts.len() >= 2 && from == to => "Pick two different servers.".into(),
+            None if accounts.len() >= 2 && from == to => tr!("Pick two different servers."),
             None => String::new(),
         };
         ui.set_history_error(sstr(error));
@@ -264,7 +283,9 @@ impl App {
                 job.running = false;
                 match r {
                     Ok(p) => job.plan = Some(p),
-                    Err(e) => job.error = Some(format!("Couldn't check the history: {e}")),
+                    Err(e) => {
+                        job.error = Some(tr!("Couldn't check the history: {error}", error = e))
+                    }
                 }
             }
             t.history_finished();
@@ -304,7 +325,7 @@ impl App {
                         job.plan = None;
                         job.show_missing = false;
                     }
-                    Err(e) => job.error = Some(format!("The copy stopped: {e}")),
+                    Err(e) => job.error = Some(tr!("The copy stopped: {error}", error = e)),
                 }
             }
             t.history_finished();
@@ -374,7 +395,7 @@ mod tests {
         assert_eq!(
             plan_text(&p),
             (
-                "2 to mark as watched · 1 resume points".into(),
+                "2 to mark as watched · 1 resume point".into(),
                 "4 already up to date · 1 not on that server".into(),
                 "Copy 3 titles".into()
             )

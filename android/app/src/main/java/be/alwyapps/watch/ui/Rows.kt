@@ -48,7 +48,7 @@ fun PageTitle(
     // Phones: screens opened from the top bar (search, downloads, settings…) get a back arrow.
     val back = !d.isTv && nav.stack.size > 1
     Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (back) IconAction(Icons.Back, "Back", { nav.pop() })
+        if (back) IconAction(Icons.Back, tr("Back"), { nav.pop() })
         Column {
             Text(title, style = MaterialTheme.typography.displaySmall)
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Muted) }
@@ -195,7 +195,7 @@ fun Chevron() = Icon(Icons.ChevronRight, null, Modifier.size(22.dp), tint = Subt
 fun ConfirmDialog(
     title: String,
     text: String,
-    confirm: String = "Delete",
+    confirm: String = tr("Delete"),
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -209,7 +209,7 @@ fun ConfirmDialog(
                 onDismiss()
             }, primary = true)
         },
-        dismissButton = { ActionButton("Cancel", onDismiss) },
+        dismissButton = { ActionButton(tr("Cancel"), onDismiss) },
         containerColor = Background,
     )
 }
@@ -284,7 +284,7 @@ fun ChoiceDialog(
                 }
             }
         },
-        confirmButton = { ActionButton("Close", onDismiss) },
+        confirmButton = { ActionButton(tr("Close"), onDismiss) },
         containerColor = Background,
     )
 }

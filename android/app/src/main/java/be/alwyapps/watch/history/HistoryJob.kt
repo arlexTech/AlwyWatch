@@ -24,6 +24,8 @@ import be.alwyapps.watch.core.CoreException
 import be.alwyapps.watch.core.HistoryCopyResult
 import be.alwyapps.watch.core.HistoryPlan
 import be.alwyapps.watch.services
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -100,7 +102,7 @@ class HistoryWorker(
             val from = inputData.getString(HistoryJob.KEY_FROM).orEmpty()
             val to = inputData.getString(HistoryJob.KEY_TO).orEmpty()
             val core = applicationContext.services.core.await()
-            runCatching { setForeground(info("Copy watch history", "Starting…", 0, 0)) }
+            runCatching { setForeground(info(tr("Copy watch history"), tr("Starting…"), 0, 0)) }
             val progress =
                 launch {
                     while (true) {
@@ -108,8 +110,13 @@ class HistoryWorker(
                         if (p != null && p.running) {
                             val total = p.total.toInt()
                             val done = p.done.toInt()
-                            val text = if (total > 0) "${p.step} · $done of $total" else "${p.step}…"
-                            runCatching { setForeground(info("Copy watch history", text, done, total)) }
+                            val text =
+                                if (total > 0) {
+                                    tr("{step} · {done} of {total}", "step" to p.step, "done" to done, "total" to total)
+                                } else {
+                                    tr("{step}…", "step" to p.step)
+                                }
+                            runCatching { setForeground(info(tr("Copy watch history"), text, done, total)) }
                         }
                         delay(1000)
                     }
@@ -120,18 +127,29 @@ class HistoryWorker(
                     val r = core.historyCopyApply(to, changes)
                     job.result = r
                     job.plan = null
-                    done("Watch history copied", "${r.applied} titles" + if (r.failed > 0u) ", ${r.failed} failed" else "")
+                    done(
+                        tr("Watch history copied"),
+                        if (r.failed > 0u) {
+                            tr("{copied} titles, {failed} failed", "copied" to r.applied, "failed" to r.failed)
+                        } else {
+                            trn("{n} title", "{n} titles", r.applied.toLong())
+                        },
+                    )
                 } else {
                     val p = core.historyCopyPlan(from, to)
                     job.plan = p
                     done(
-                        "Watch history checked",
-                        if (p.changes.isEmpty()) "Nothing to copy" else "${p.changes.size} titles to copy: open AlwyWatch to confirm",
+                        tr("Watch history checked"),
+                        if (p.changes.isEmpty()) {
+                            tr("Nothing to copy")
+                        } else {
+                            trn("{n} title to copy: open AlwyWatch to confirm", "{n} titles to copy: open AlwyWatch to confirm", p.changes.size)
+                        },
                     )
                 }
             } catch (e: CoreException) {
                 job.error = e.message
-                done("Copy watch history stopped", e.message.orEmpty())
+                done(tr("Copy watch history stopped"), e.message.orEmpty())
             } finally {
                 progress.cancel()
                 job.running = false
@@ -141,7 +159,7 @@ class HistoryWorker(
 
     private fun channel(nm: NotificationManager) {
         if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Watch history", NotificationManager.IMPORTANCE_LOW))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Watch history"), NotificationManager.IMPORTANCE_LOW))
         }
     }
 

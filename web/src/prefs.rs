@@ -2,6 +2,7 @@
 //! Playback preferences, kept in this browser: same names, defaults and rules as the apps'
 //! Playback settings (skip intros, next episode countdown, subtitle mode and language).
 
+use i18n::{tr, trn};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -47,25 +48,48 @@ pub fn save(p: &PlayerPrefs) {
     state::save(KEY, p)
 }
 
-/// The languages offered, as on the apps: ISO 639-2/T, 639-1, 639-2/B, English name.
-const LANGUAGES: &[(&str, &str, &str, &str)] = &[
-    ("eng", "en", "eng", "English"),
-    ("fra", "fr", "fre", "French"),
-    ("nld", "nl", "dut", "Dutch"),
-    ("deu", "de", "ger", "German"),
-    ("spa", "es", "spa", "Spanish"),
-    ("ita", "it", "ita", "Italian"),
-    ("por", "pt", "por", "Portuguese"),
-    ("jpn", "ja", "jpn", "Japanese"),
-    ("kor", "ko", "kor", "Korean"),
-    ("zho", "zh", "chi", "Chinese"),
-    ("ara", "ar", "ara", "Arabic"),
-    ("rus", "ru", "rus", "Russian"),
-    ("pol", "pl", "pol", "Polish"),
-    ("swe", "sv", "swe", "Swedish"),
-    ("tur", "tr", "tur", "Turkish"),
-    ("hin", "hi", "hin", "Hindi"),
+/// The languages offered, as on the apps: ISO 639-2/T, 639-1, 639-2/B (names: `language_label`).
+const LANGUAGES: &[(&str, &str, &str)] = &[
+    ("eng", "en", "eng"),
+    ("fra", "fr", "fre"),
+    ("nld", "nl", "dut"),
+    ("deu", "de", "ger"),
+    ("spa", "es", "spa"),
+    ("ita", "it", "ita"),
+    ("por", "pt", "por"),
+    ("jpn", "ja", "jpn"),
+    ("kor", "ko", "kor"),
+    ("zho", "zh", "chi"),
+    ("ara", "ar", "ara"),
+    ("rus", "ru", "rus"),
+    ("pol", "pl", "pol"),
+    ("swe", "sv", "swe"),
+    ("tur", "tr", "tur"),
+    ("hin", "hi", "hin"),
 ];
+
+/// A language's name in the selected language (codes from `LANGUAGES`).
+fn language_label(code: &str) -> Option<String> {
+    Some(match code {
+        "eng" => tr!("English"),
+        "fra" => tr!("French"),
+        "nld" => tr!("Dutch"),
+        "deu" => tr!("German"),
+        "spa" => tr!("Spanish"),
+        "ita" => tr!("Italian"),
+        "por" => tr!("Portuguese"),
+        "jpn" => tr!("Japanese"),
+        "kor" => tr!("Korean"),
+        "zho" => tr!("Chinese"),
+        "ara" => tr!("Arabic"),
+        "rus" => tr!("Russian"),
+        "pol" => tr!("Polish"),
+        "swe" => tr!("Swedish"),
+        "tur" => tr!("Turkish"),
+        "hin" => tr!("Hindi"),
+        _ => return None,
+    })
+}
 
 /// Any language code ("fr", "fre", "fra", "fr-BE") as ISO 639-2/T; unknown ones as given.
 pub fn lang3(code: &str) -> Option<String> {
@@ -81,17 +105,14 @@ pub fn lang3(code: &str) -> Option<String> {
     Some(
         LANGUAGES
             .iter()
-            .find(|(t, one, b, _)| c == *t || c == *one || c == *b)
+            .find(|(t, one, b)| c == *t || c == *one || c == *b)
             .map_or(c, |(t, ..)| (*t).to_owned()),
     )
 }
 
 fn language_name(code: &str) -> String {
     let c = lang3(code).unwrap_or_default();
-    LANGUAGES
-        .iter()
-        .find(|(t, ..)| *t == c)
-        .map_or(c, |(.., name)| (*name).to_owned())
+    language_label(&c).unwrap_or(c)
 }
 
 /// The browser's language ("fr-BE").
@@ -159,41 +180,41 @@ pub fn PlaybackSettings() -> impl IntoView {
     };
     view! {
         <section class="group">
-            <h2>"Intros and credits"</h2>
+            <h2>{tr!("Intros and credits")}</h2>
             <label class="row toggle">
-                <div>"Skip intros automatically"<div class="muted small">"Otherwise a Skip intro button appears."</div></div>
+                <div>{tr!("Skip intros automatically")}<div class="muted small">{tr!("Otherwise a Skip intro button appears.")}</div></div>
                 <input type="checkbox" prop:checked=move || prefs.with(|p| p.auto_skip_intro)
                     on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.auto_skip_intro = on) } />
             </label>
             <label class="row toggle">
-                <div>"Play the next episode automatically"<div class="muted small">"A countdown during the credits, which Cancel stops. Off: playback stops at the end of the episode."</div></div>
+                <div>{tr!("Play the next episode automatically")}<div class="muted small">{tr!("A countdown during the credits, which Cancel stops. Off: playback stops at the end of the episode.")}</div></div>
                 <input type="checkbox" prop:checked=move || prefs.with(|p| p.auto_next)
                     on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.auto_next = on) } />
             </label>
             <div class="row">
-                <span>"Next episode countdown"</span>
-                <select class="chip" aria-label="Next episode countdown"
+                <span>{tr!("Next episode countdown")}</span>
+                <select class="chip" aria-label=tr!("Next episode countdown")
                     prop:value=move || prefs.with(|p| p.countdown_s.to_string())
                     on:change=move |ev| { let s: u32 = event_target_value(&ev).parse().unwrap_or(10); change(&|p| p.countdown_s = s) }>
-                    {[5u32, 10, 15, 30].map(|s| view! { <option value=s.to_string()>{format!("{s} seconds")}</option> }).collect_view()}
+                    {[5u32, 10, 15, 30].map(|s| view! { <option value=s.to_string()>{trn!("{n} second", "{n} seconds", s)}</option> }).collect_view()}
                 </select>
             </div>
         </section>
         <section class="group">
-            <h2>"Watch together"</h2>
-            <p class="muted small">"In rooms you create, what the others may do. You can always do everything."</p>
+            <h2>{tr!("Watch together")}</h2>
+            <p class="muted small">{tr!("In rooms you create, what the others may do. You can always do everything.")}</p>
             <label class="row toggle">
-                <div>"Others can change what's playing"<div class="muted small">"Next episode, another title."</div></div>
+                <div>{tr!("Others can change what's playing")}<div class="muted small">{tr!("Next episode, another title.")}</div></div>
                 <input type="checkbox" prop:checked=move || prefs.with(|p| p.together.change_title)
                     on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.together.change_title = on) } />
             </label>
             <label class="row toggle">
-                <div>"Others can pause and play"</div>
+                <div>{tr!("Others can pause and play")}</div>
                 <input type="checkbox" prop:checked=move || prefs.with(|p| p.together.play_pause)
                     on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.together.play_pause = on) } />
             </label>
             <label class="row toggle">
-                <div>"Others can move forward or back"</div>
+                <div>{tr!("Others can move forward or back")}</div>
                 <input type="checkbox" prop:checked=move || prefs.with(|p| p.together.seek)
                     on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.together.seek = on) } />
             </label>
@@ -212,28 +233,28 @@ pub fn AudioSettings() -> impl IntoView {
     let browser = language_name(&browser_language());
     view! {
         <section class="group">
-            <h2>"Languages"</h2>
+            <h2>{tr!("Languages")}</h2>
             <div class="row">
-                <div>"Subtitles"<div class="muted small">"Automatic: when the audio is not in your subtitle language."</div></div>
-                <select class="chip" aria-label="Subtitles"
+                <div>{tr!("Subtitles")}<div class="muted small">{tr!("Automatic: when the audio is not in your subtitle language.")}</div></div>
+                <select class="chip" aria-label=tr!("Subtitles")
                     prop:value=move || prefs.with(|p| p.sub_mode.clone())
                     on:change=move |ev| { let m = event_target_value(&ev); change(&|p| p.sub_mode = m.clone()) }>
-                    <option value="auto">"Automatic"</option>
-                    <option value="forced">"Only foreign-language parts"</option>
-                    <option value="always">"Always"</option>
-                    <option value="off">"Off"</option>
+                    <option value="auto">{tr!("Automatic")}</option>
+                    <option value="forced">{tr!("Only foreign-language parts")}</option>
+                    <option value="always">{tr!("Always")}</option>
+                    <option value="off">{tr!("Off")}</option>
                 </select>
             </div>
             <div class="row">
-                <span>"Subtitle language"</span>
-                <select class="chip" aria-label="Subtitle language"
+                <span>{tr!("Subtitle language")}</span>
+                <select class="chip" aria-label=tr!("Subtitle language")
                     prop:value=move || prefs.with(|p| p.sub_lang.clone())
                     on:change=move |ev| { let l = event_target_value(&ev); change(&|p| p.sub_lang = l.clone()) }>
-                    <option value="">{format!("Browser language ({browser})")}</option>
-                    {LANGUAGES.iter().map(|(code, .., name)| view! { <option value=*code>{*name}</option> }).collect_view()}
+                    <option value="">{tr!("Browser language ({language})", language = browser)}</option>
+                    {LANGUAGES.iter().map(|(code, ..)| view! { <option value=*code>{language_label(code)}</option> }).collect_view()}
                 </select>
             </div>
-            <p class="muted small">"Only text subtitles can be shown in the browser. These settings are kept in this browser."</p>
+            <p class="muted small">{tr!("Only text subtitles can be shown in the browser. These settings are kept in this browser.")}</p>
         </section>
     }
 }

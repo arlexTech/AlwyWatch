@@ -66,9 +66,11 @@ import be.alwyapps.watch.ui.UrlImage
 import be.alwyapps.watch.ui.dpadScroll
 import be.alwyapps.watch.ui.fadeEdges
 import be.alwyapps.watch.ui.focusOnAppear
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 
 /** The state of a title as one label ("Available", "Requested", "Downloading 42%"…). */
-private fun SeerrDetails.stateLabel(): String? = downloadProgress?.let { "Downloading ${(it * 100).toInt()}%" } ?: availability.label()
+private fun SeerrDetails.stateLabel(): String? = downloadProgress?.let { tr("Downloading {percent}%", "percent" to (it * 100).toInt()) } ?: availability.label()
 
 /** The search-result form of a title, for the request panel. */
 private fun SeerrDetails.asResult() = SeerrResult(tmdbId, mediaType, title, year, overview, posterUrl, availability, downloadProgress)
@@ -124,7 +126,7 @@ fun SeerrTitleScreen(
                 UrlImage(title?.backdropUrl, 1280.dp, Modifier.fillMaxSize().fadeEdges(bottomFrom = 0.45f))
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.5f), 0.25f to Color.Transparent)))
                 if (!d.isTv) {
-                    IconAction(Icons.Back, "Back", { nav.pop() }, Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp))
+                    IconAction(Icons.Back, tr("Back"), { nav.pop() }, Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp))
                 }
             }
         }
@@ -138,7 +140,7 @@ fun SeerrTitleScreen(
                     Text(
                         listOfNotNull(
                             t.year,
-                            if (t.mediaType == SeerrMediaType.TV) t.seasons?.let { "$it season${if (it > 1u) "s" else ""}" } ?: "Show" else null,
+                            if (t.mediaType == SeerrMediaType.TV) t.seasons?.let { trn("{n} season", "{n} seasons", it.toLong()) } ?: tr("Show") else null,
                             t.runtimeMin?.let { formatRuntimeMin(it.toInt()) },
                             t.rating?.let { "★ %.1f".format(it) },
                         ).joinToString(" · "),
@@ -193,7 +195,7 @@ fun SeerrTitleScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text("PART OF THE SAGA", style = MaterialTheme.typography.labelSmall, color = Accent)
+                                Text(tr("PART OF THE SAGA"), style = MaterialTheme.typography.labelSmall, color = Accent)
                                 Text(c.name, style = MaterialTheme.typography.titleMedium)
                             }
                             be.alwyapps.watch.ui
@@ -206,7 +208,7 @@ fun SeerrTitleScreen(
         if (t.cast.isNotEmpty()) {
             item(key = "cast") {
                 Column(Modifier.padding(top = 16.dp)) {
-                    Text("Cast", Modifier.padding(horizontal = d.gutter), style = MaterialTheme.typography.titleMedium)
+                    Text(tr("Cast"), Modifier.padding(horizontal = d.gutter), style = MaterialTheme.typography.titleMedium)
                     LazyRow(contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         items(t.cast) { p ->
                             Column(Modifier.width(88.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -253,14 +255,14 @@ private fun SeerrDetails.canRequestTitle() =
 private fun SeerrDetails.whyNoRequest(plan: be.alwyapps.watch.core.seerr.SeasonPlan?): String =
     when {
         plan != null && mediaType == SeerrMediaType.TV && availability != Availability.AVAILABLE ->
-            "Every season is on your servers or already requested."
-        downloadProgress != null -> "Already requested: it is downloading."
-        availability == Availability.AVAILABLE -> "Already on your servers: search for it to watch it."
-        availability == Availability.PARTIALLY_AVAILABLE -> "Already partly on your servers."
-        availability == Availability.PROCESSING -> "Already requested and approved: it will be added soon."
-        availability == Availability.PENDING -> "Already requested: waiting for approval."
-        availability == Availability.BLOCKLISTED -> "Blocked on the request server: it can't be requested."
-        else -> "It can't be requested."
+            tr("Every season is on your servers or already requested.")
+        downloadProgress != null -> tr("Already requested: it is downloading.")
+        availability == Availability.AVAILABLE -> tr("Already on your servers: search for it to watch it.")
+        availability == Availability.PARTIALLY_AVAILABLE -> tr("Already partly on your servers.")
+        availability == Availability.PROCESSING -> tr("Already requested and approved: it will be added soon.")
+        availability == Availability.PENDING -> tr("Already requested: waiting for approval.")
+        availability == Availability.BLOCKLISTED -> tr("Blocked on the request server: it can't be requested.")
+        else -> tr("It can't be requested.")
     }
 
 /**
@@ -277,15 +279,16 @@ private fun PrimaryAction(
     val d = LocalDimens.current
     // focusOnAppear: it also comes back in place of the request panel (closed, or request sent).
     if (t.canRequest(plan)) {
-        val label = if (t.mediaType == SeerrMediaType.TV && plan?.hasSome == true) "Request the missing seasons" else "Request"
+        val label = if (t.mediaType == SeerrMediaType.TV && plan?.hasSome == true) tr("Request the missing seasons") else tr("Request")
         ActionButton(label, onRequest, Modifier.then(if (d.isTv) Modifier else Modifier.fillMaxWidth()).focusOnAppear(), primary = true, icon = Icons.Add)
     } else {
         Text(t.whyNoRequest(plan), color = Muted, style = MaterialTheme.typography.bodyMedium)
-        if (d.isTv) ActionButton("Back", onBack, Modifier.focusOnAppear(), icon = Icons.Back)
+        if (d.isTv) ActionButton(tr("Back"), onBack, Modifier.focusOnAppear(), icon = Icons.Back)
     }
 }
 
-private fun formatRuntimeMin(min: Int) = if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"
+private fun formatRuntimeMin(min: Int) =
+    if (min >= 60) tr("{hours} h {minutes} min", "hours" to min / 60, "minutes" to min % 60) else tr("{minutes} min", "minutes" to min)
 
 /** A saga: its films with their state; each opens its page. */
 @Composable
@@ -317,7 +320,7 @@ fun SeerrSagaScreen(
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 be.alwyapps.watch.ui
-                    .PageTitle(saga?.name ?: name, saga?.parts?.let { "${it.size} films" })
+                    .PageTitle(saga?.name ?: name, saga?.parts?.let { trn("{n} film", "{n} films", it.size) })
                 saga?.overview?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodyMedium) }
             }
         }

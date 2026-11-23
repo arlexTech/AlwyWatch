@@ -5,6 +5,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
+use i18n::tr;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::{APP, App};
@@ -65,7 +66,7 @@ impl App {
             list.iter()
                 .find(|t| t.selected)
                 .map(|t| t.label.split(" · ").next().unwrap_or_default().to_owned())
-                .unwrap_or_else(|| "Off".into())
+                .unwrap_or_else(|| tr!("Off"))
         };
         ui.set_player_audio_label(label(&v.audio).into());
         ui.set_player_subtitle_label(label(&v.subtitles).into());

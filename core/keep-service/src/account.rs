@@ -144,18 +144,22 @@ pub const SERVERS_SETTING: &str = "account.servers";
 
 /// A user-facing reason for an account call's failure.
 pub fn explain(e: &net::Error, signing_in: bool) -> String {
+    use i18n::tr;
+
     match e {
-        net::Error::Unauthorized if signing_in => "Wrong username or password.".into(),
-        net::Error::Unauthorized => "This sign-in has ended. Sign in again.".into(),
-        net::Error::NotFound => "Unknown or expired code.".into(),
-        net::Error::Status { status: 409 } => "This username is already taken.".into(),
+        net::Error::Unauthorized if signing_in => tr!("Wrong username or password."),
+        net::Error::Unauthorized => tr!("This sign-in has ended. Sign in again."),
+        net::Error::NotFound => tr!("Unknown or expired code."),
+        net::Error::Status { status: 409 } => tr!("This username is already taken."),
         net::Error::Status { status: 429 } => {
-            "Too many attempts. Try again in a few minutes.".into()
+            tr!("Too many attempts. Try again in a few minutes.")
         }
         net::Error::Status { status: 400 } => {
-            "Check what you typed: usernames are 3 to 32 letters, digits, dots, dashes or underscores; passwords at least 8 characters.".into()
+            tr!(
+                "Check what you typed: usernames are 3 to 32 letters, digits, dots, dashes or underscores; passwords at least 8 characters."
+            )
         }
-        net::Error::Status { status: 501 } => "This server doesn't offer that.".into(),
+        net::Error::Status { status: 501 } => tr!("This server doesn't offer that."),
         other => other.to_string(),
     }
 }

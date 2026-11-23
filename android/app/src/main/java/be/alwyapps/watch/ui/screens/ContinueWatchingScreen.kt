@@ -20,6 +20,7 @@ import be.alwyapps.watch.ui.LocalServerBadges
 import be.alwyapps.watch.ui.PageTitle
 import be.alwyapps.watch.ui.PosterCard
 import be.alwyapps.watch.ui.Route
+import be.alwyapps.watch.ui.tr
 
 /** What the home's Continue watching row held when its See all was chosen: (account, item). */
 object ContinueWatchingList {
@@ -39,7 +40,7 @@ fun ContinueWatchingScreen() {
         horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { PageTitle("Continue watching") }
+        item(span = { GridItemSpan(maxLineSpan) }) { PageTitle(tr("Continue watching")) }
         items(entries, key = { (a, i) -> "$a/${i.id}" }) { (a, i) ->
             CompositionLocalProvider(
                 LocalItemOwners provides mapOf(i.id to a),

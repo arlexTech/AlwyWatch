@@ -115,13 +115,13 @@ pub(super) fn http_client() -> Option<net::reqwest::Client> {
 /// A failed profile call in plain words.
 fn profile_error(e: &CoreError) -> String {
     match e {
-        CoreError::Server { status: 429 } => "Too many changes: try again in a few minutes.".into(),
-        CoreError::Server { status: 413 } => "This picture is too large.".into(),
-        CoreError::Server { status: 400 } => "Your AlwyWatch server refused this.".into(),
+        CoreError::Server { status: 429 } => tr!("Too many changes: try again in a few minutes."),
+        CoreError::Server { status: 413 } => tr!("This picture is too large."),
+        CoreError::Server { status: 400 } => tr!("Your AlwyWatch server refused this."),
         CoreError::NotFound | CoreError::Server { status: 405 } => {
-            "Your AlwyWatch server doesn't support this yet: it needs an update.".into()
+            tr!("Your AlwyWatch server doesn't support this yet: it needs an update.")
         }
-        CoreError::Network { .. } => "Can't reach your AlwyWatch server right now.".into(),
+        CoreError::Network { .. } => tr!("Can't reach your AlwyWatch server right now."),
         e => e.to_string(),
     }
 }
@@ -315,7 +315,7 @@ impl App {
         let Some(me) = self.state.borrow().me.me.clone() else {
             ui.set_me_loaded(false);
             ui.set_me_avatar(default_avatar("?"));
-            ui.set_me_detail("How the people you watch with see you.".into());
+            ui.set_me_detail(sstr(tr!("How the people you watch with see you.")));
             return;
         };
         ui.set_me_loaded(true);
@@ -323,19 +323,19 @@ impl App {
         ui.set_me_name(sstr(&me.name));
         ui.set_me_detail(sstr(
             if me.name_is_custom && !me.media_name.is_empty() && me.media_name != me.name {
-                format!(
-                    "How the people you watch with see you ({} on your media server).",
-                    me.media_name
+                tr!(
+                    "How the people you watch with see you ({name} on your media server).",
+                    name = me.media_name
                 )
             } else {
-                "How the people you watch with see you.".to_owned()
+                tr!("How the people you watch with see you.")
             },
         ));
         ui.set_me_name_custom(me.name_is_custom);
         ui.set_me_media_name(sstr(if me.media_name.is_empty() {
-            "your media server"
+            tr!("your media server")
         } else {
-            &me.media_name
+            me.media_name.clone()
         }));
         ui.set_me_has_avatar(me.avatar.preset.is_some() || me.avatar.custom_version.is_some());
     }
@@ -592,9 +592,9 @@ impl App {
                 t.set_me(m);
             }
             if let Some(e) = failed {
-                t.ui().set_error(sstr(format!(
-                    "Your name and avatar couldn't all be saved: {}",
-                    profile_error(&e)
+                t.ui().set_error(sstr(tr!(
+                    "Your name and avatar couldn't all be saved: {error}",
+                    error = profile_error(&e)
                 )));
             }
         })
@@ -629,8 +629,8 @@ impl App {
             .spawn(move || {
                 let path = preset.or_else(|| {
                     rfd::FileDialog::new()
-                        .set_title("Choose a picture")
-                        .add_filter("Pictures", &["jpg", "jpeg", "png", "webp"])
+                        .set_title(tr!("Choose a picture"))
+                        .add_filter(tr!("Pictures"), &["jpg", "jpeg", "png", "webp"])
                         .pick_file()
                 });
                 let _ = slint::invoke_from_event_loop(move || {
@@ -666,7 +666,7 @@ impl App {
                     ))
                 })
                 .await
-                .unwrap_or_else(|_| Err("Can't read this picture.".into()));
+                .unwrap_or_else(|_| Err(tr!("Can't read this picture.")));
             let Some(t) = this.upgrade() else { return };
             let ui = t.ui();
             match read {
@@ -759,14 +759,16 @@ impl App {
                 .spawn_blocking(move || {
                     let img = avatars::open_oriented(&path)?;
                     let bytes = avatars::render_upload(&img, &crop)?;
-                    let small = avatars::decode(&bytes).ok_or("Can't prepare the picture.")?;
+                    let small =
+                        avatars::decode(&bytes).ok_or_else(|| tr!("Can't prepare the picture."))?;
                     let (w, h) = small.dimensions();
                     let buf =
                         SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(small.as_raw(), w, h);
                     Ok::<_, String>((bytes, buf))
                 })
                 .await
-                .unwrap_or_else(|_| Err("Can't prepare the picture.".into()));
+                .unwrap_or_else(|_| Err(tr!("Can't prepare the picture.")));
+
             let Some(t) = this.upgrade() else { return };
             let (bytes, buf) = match made {
                 Ok(m) => m,

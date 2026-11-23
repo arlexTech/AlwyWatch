@@ -87,6 +87,8 @@ import be.alwyapps.watch.ui.remaining
 import be.alwyapps.watch.ui.rememberFocus
 import be.alwyapps.watch.ui.rememberSwr
 import be.alwyapps.watch.ui.thumb
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.launch
 
 fun play(
@@ -147,7 +149,7 @@ fun DetailScreen(
             runCatching { core.setWatchlisted(account, itemId, on) }.onFailure {
                 watchlisted = !on
                 android.widget.Toast
-                    .makeText(ctx, "My list: ${it.message}", android.widget.Toast.LENGTH_LONG)
+                    .makeText(ctx, tr("My list: {error}", "error" to it.message), android.widget.Toast.LENGTH_LONG)
                     .show()
             }
         }
@@ -225,7 +227,10 @@ fun DetailScreen(
         if (show != null) {
             val seasonItem =
                 if (item.kind == ItemKind.EPISODE) {
-                    item.seasonId?.let { sid -> item.copy(id = sid, kind = ItemKind.SEASON, title = "Season ${item.seasonNumber ?: ""}".trim()) }
+                    item.seasonId?.let { sid ->
+                        val title = item.seasonNumber?.let { tr("Season {season}", "season" to it) } ?: tr("Season")
+                        item.copy(id = sid, kind = ItemKind.SEASON, title = title)
+                    }
                 } else {
                     selectedSeason
                 }
@@ -424,7 +429,7 @@ fun DetailScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Box(Modifier.weight(1f, fill = false)) { TitleArt(item, if (d.isTv) 340.dp else 280.dp) }
-                                    if (sid != null) Icon(Icons.ChevronRight, "Open the show", Modifier.size(32.dp), tint = Muted)
+                                    if (sid != null) Icon(Icons.ChevronRight, tr("Open the show"), Modifier.size(32.dp), tint = Muted)
                                 }
                                 Text(item.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             } else {
@@ -439,12 +444,17 @@ fun DetailScreen(
                                     be.alwyapps.watch.player
                                         .formatTime(it.user.positionMs.toLong())
                                 }
-                            val epLabel = target?.takeIf { !playable }?.let { "S${it.seasonNumber ?: 1} · E${it.episodeNumber ?: 1}" }
+                            val epLabel =
+                                target?.takeIf { !playable }?.let {
+                                    tr("S{season} · E{episode}", "season" to (it.seasonNumber ?: 1), "episode" to (it.episodeNumber ?: 1))
+                                }
                             val playLabel: String? =
                                 when {
                                     target == null -> null
-                                    resumable -> listOfNotNull("Resume", epLabel, "from $at").joinToString(" ")
-                                    else -> listOfNotNull("Play", epLabel).joinToString(" ")
+                                    resumable && epLabel != null -> tr("Resume {episode} from {time}", "episode" to epLabel, "time" to at)
+                                    resumable -> tr("Resume from {time}", "time" to at)
+                                    epLabel != null -> tr("Play {episode}", "episode" to epLabel)
+                                    else -> tr("Play")
                                 }
                             val playAction: (() -> Unit)? = target?.let { t -> { play(ctx, account, t, fromStart = false) } }
                             val fromStart: (() -> Unit)? = target?.takeIf { resumable }?.let { t -> { play(ctx, account, t, fromStart = true) } }
@@ -501,7 +511,7 @@ fun DetailScreen(
                                             icon = Icons.Play,
                                         )
                                     }
-                                    fromStart?.let { ActionButton("From start", it, Modifier.rememberFocus(focusKey, "start")) }
+                                    fromStart?.let { ActionButton(tr("From start"), it, Modifier.rememberFocus(focusKey, "start")) }
                                     watchTogether?.let {
                                         IconAction(
                                             Icons.Group,
@@ -509,9 +519,9 @@ fun DetailScreen(
                                                 be.alwyapps.watch.together.TogetherSession
                                                     .isHost()
                                             ) {
-                                                "Watch in your room"
+                                                tr("Watch in your room")
                                             } else {
-                                                "Watch together"
+                                                tr("Watch together")
                                             },
                                             it,
                                             Modifier.rememberFocus(focusKey, "together"),
@@ -520,7 +530,7 @@ fun DetailScreen(
                                     if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
                                         IconAction(
                                             if (watchlisted) Icons.BookmarkFilled else Icons.Bookmark,
-                                            if (watchlisted) "Remove from my list" else "Add to my list",
+                                            if (watchlisted) tr("Remove from my list") else tr("Add to my list"),
                                             toggleList,
                                             Modifier.rememberFocus(focusKey, "list"),
                                             active = watchlisted,
@@ -529,9 +539,9 @@ fun DetailScreen(
                                     IconAction(
                                         Icons.Check,
                                         when {
-                                            item.kind == ItemKind.SERIES -> "Watched or not"
-                                            item.user.played -> "Mark unwatched"
-                                            else -> "Mark watched"
+                                            item.kind == ItemKind.SERIES -> tr("Watched or not")
+                                            item.user.played -> tr("Mark unwatched")
+                                            else -> tr("Mark watched")
                                         },
                                         toggleWatched,
                                         Modifier
@@ -547,15 +557,15 @@ fun DetailScreen(
                                 }
                                 Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                                     if (fromStart != null) {
-                                        CaptionAction("From start", fromStart) {
+                                        CaptionAction(tr("From start"), fromStart) {
                                             Icon(Icons.Refresh, null, Modifier.size(22.dp))
                                         }
                                     }
                                     watchTogether?.let {
-                                        CaptionAction("Together", it) { Icon(Icons.Group, null, Modifier.size(22.dp)) }
+                                        CaptionAction(tr("Together"), it) { Icon(Icons.Group, null, Modifier.size(22.dp)) }
                                     }
                                     if (item.kind == ItemKind.MOVIE || item.kind == ItemKind.SERIES) {
-                                        CaptionAction(if (watchlisted) "In my list" else "My list", toggleList, highlighted = watchlisted) {
+                                        CaptionAction(if (watchlisted) tr("In my list") else tr("My list"), toggleList, highlighted = watchlisted) {
                                             Icon(
                                                 if (watchlisted) Icons.BookmarkFilled else Icons.Bookmark,
                                                 null,
@@ -564,7 +574,7 @@ fun DetailScreen(
                                             )
                                         }
                                     }
-                                    CaptionAction(if (item.user.played) "Watched" else "Mark watched", toggleWatched, highlighted = item.user.played) {
+                                    CaptionAction(if (item.user.played) tr("Watched") else tr("Mark watched"), toggleWatched, highlighted = item.user.played) {
                                         Icon(Icons.Check, null, Modifier.size(22.dp), tint = if (item.user.played) Color.Black else OnSurface)
                                     }
                                     when (item.kind) {
@@ -586,7 +596,7 @@ fun DetailScreen(
                     if (!d.isTv) {
                         IconAction(
                             Icons.Back,
-                            "Back",
+                            tr("Back"),
                             { nav.pop() },
                             Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
                         )
@@ -615,7 +625,7 @@ fun DetailScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                playTrailer?.let { ActionButton("Trailer", it, Modifier.rememberFocus(focusKey, "trailer"), icon = Icons.Movie) }
+                                playTrailer?.let { ActionButton(tr("Trailer"), it, Modifier.rememberFocus(focusKey, "trailer"), icon = Icons.Movie) }
                                 saga?.let { c ->
                                     ActionButton(sagaLabel(c.name), { nav.push(Route.SeerrSaga(c.id, c.name)) }, icon = Icons.Library)
                                 }
@@ -631,7 +641,7 @@ fun DetailScreen(
                             .takeIf { it.isNotEmpty() }
                             ?.let { dirs ->
                                 Text(
-                                    "Directed by " + dirs.joinToString(", ") { it.name },
+                                    tr("Directed by {names}", "names" to dirs.joinToString(", ") { it.name }),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Muted,
                                 )
@@ -666,18 +676,18 @@ fun DetailScreen(
 
 private fun streamLanguage(st: be.alwyapps.watch.core.media.MediaStream) =
     be.alwyapps.watch.player
-        .languageName(st.language) ?: st.title ?: "Unknown"
+        .languageName(st.language) ?: st.title ?: tr("Unknown")
 
 private fun audioLabel(st: be.alwyapps.watch.core.media.MediaStream): String {
     val codec = st.codec.uppercase()
     val channels =
         when (st.channels?.toInt()) {
             null, 0 -> null
-            1 -> "Mono"
-            2 -> "Stereo"
+            1 -> tr("Mono")
+            2 -> tr("Stereo")
             6 -> "5.1"
             8 -> "7.1"
-            else -> "${st.channels} ch"
+            else -> tr("{count} ch", "count" to st.channels)
         }
     // The track's own title often repeats language and codec ("French VFQ AC3 5.1"): keep only
     // what it adds ("VFQ").
@@ -721,7 +731,7 @@ private fun audioLabel(st: be.alwyapps.watch.core.media.MediaStream): String {
 private fun subtitleLabel(st: be.alwyapps.watch.core.media.MediaStream): String =
     listOfNotNull(
         streamLanguage(st),
-        "forced".takeIf { st.isForced },
+        tr("forced").takeIf { st.isForced },
         st.title?.takeIf {
             it.isNotBlank() &&
                 be.alwyapps.watch.player
@@ -836,17 +846,17 @@ private fun TrackPills(
             ?: audio.firstOrNull { it.index == src.defaultAudioIndex } ?: audio.firstOrNull { it.isDefault } ?: audio.firstOrNull()
     val subsText =
         when {
-            p?.subs == "off" -> "Off"
+            p?.subs == "off" -> tr("Off")
             p?.subs != null ->
                 rememberedSubs?.let(::subtitleLabel) ?: (
                     be.alwyapps.watch.player
-                        .languageName(p.subs) ?: p.subs
-                ) + if (p.forced) " · forced" else ""
-            subs.isEmpty() -> "None"
+                        .languageName(p.subs) ?: p.subs.orEmpty()
+                ).let { if (p.forced) tr("{language} · forced", "language" to it) else it }
+            subs.isEmpty() -> tr("None")
             else ->
                 when (settings.subtitleMode) {
-                    "off" -> "Off"
-                    "forced" -> "Only foreign-language parts"
+                    "off" -> tr("Off")
+                    "forced" -> tr("Only foreign-language parts")
                     "always" ->
                         be.alwyapps.watch.player
                             .languageName(
@@ -855,8 +865,8 @@ private fun TrackPills(
                                         .getDefault()
                                         .language
                                 },
-                            ) ?: "On"
-                    else -> "Automatic"
+                            ) ?: tr("On")
+                    else -> tr("Automatic")
                 }
         }
     var open by remember { mutableStateOf<String?>(null) }
@@ -866,20 +876,20 @@ private fun TrackPills(
     ) {
         val vLabel = videoLabel(src)
         if (pi.sources.size > 1) {
-            SmallPill(Icons.Movie, vLabel ?: "Version") { open = "version" }
+            SmallPill(Icons.Movie, vLabel ?: tr("Version")) { open = "version" }
         } else if (vLabel != null) {
             SmallPill(Icons.Movie, vLabel) { open = "info" }
         }
-        if (audio.isNotEmpty()) SmallPill(Icons.Volume, currentAudio?.let(::audioLabel) ?: "Audio") { open = "audio" }
+        if (audio.isNotEmpty()) SmallPill(Icons.Volume, currentAudio?.let(::audioLabel) ?: tr("Audio")) { open = "audio" }
         SmallPill(Icons.Subtitles, subsText) { open = "subs" }
-        SmallPill(Icons.Info, "File info") { open = "info" }
+        SmallPill(Icons.Info, tr("File info")) { open = "info" }
     }
     when (open) {
         "version" ->
             be.alwyapps.watch.ui.ChoiceDialog(
-                "Version",
+                tr("Version"),
                 pi.sources.map { s ->
-                    s.id to listOfNotNull(videoLabel(s), s.size?.let { "%.1f GB".format(it.toDouble() / 1e9) }).joinToString(" · ")
+                    s.id to listOfNotNull(videoLabel(s), s.size?.let { tr("{size} GB", "size" to "%.1f".format(it.toDouble() / 1e9)) }).joinToString(" · ")
                 },
                 src.id,
                 onPick = {
@@ -892,7 +902,7 @@ private fun TrackPills(
             )
         "audio" ->
             be.alwyapps.watch.ui.ChoiceDialog(
-                "Audio",
+                tr("Audio"),
                 audio.map { it.index.toString() to audioLabel(it) },
                 currentAudio?.index?.toString(),
                 onPick = { k ->
@@ -906,8 +916,8 @@ private fun TrackPills(
             )
         "subs" ->
             be.alwyapps.watch.ui.ChoiceDialog(
-                "Subtitles",
-                listOf("auto" to "Automatic (settings)", "off" to "Off") + subs.map { it.index.toString() to subtitleLabel(it) },
+                tr("Subtitles"),
+                listOf("auto" to tr("Automatic (settings)"), "off" to tr("Off")) + subs.map { it.index.toString() to subtitleLabel(it) },
                 when {
                     p?.subs == null -> "auto"
                     p.subs == "off" -> "off"
@@ -969,13 +979,13 @@ private fun FileInfoDialog(
 ) {
     val lines =
         buildList {
-            src.fileName?.let { add("File" to it) }
-            src.container?.let { add("Container" to it.uppercase()) }
-            src.size?.let { add("Size" to "%.2f GB".format(it.toDouble() / 1e9)) }
-            src.bitrate?.let { add("Bitrate" to "%.1f Mb/s".format(it.toDouble() / 1e6)) }
+            src.fileName?.let { add(tr("File") to it) }
+            src.container?.let { add(tr("Container") to it.uppercase()) }
+            src.size?.let { add(tr("Size") to tr("{size} GB", "size" to "%.2f".format(it.toDouble() / 1e9))) }
+            src.bitrate?.let { add(tr("Bitrate") to tr("{rate} Mb/s", "rate" to "%.1f".format(it.toDouble() / 1e6))) }
             src.durationMs?.let {
                 add(
-                    "Duration" to
+                    tr("Duration") to
                         be.alwyapps.watch.player
                             .formatTime(it.toLong()),
                 )
@@ -984,18 +994,25 @@ private fun FileInfoDialog(
                 when (st.kind) {
                     be.alwyapps.watch.core.media.StreamKind.VIDEO ->
                         add(
-                            "Video" to
+                            tr("Video") to
                                 listOfNotNull(
                                     st.width?.let { w -> "$w×${st.height}" },
                                     st.codec.uppercase(),
                                     st.profile,
-                                    st.bitDepth?.let { "$it-bit" },
+                                    st.bitDepth?.let { tr("{bits}-bit", "bits" to it) },
                                     st.hdr?.name?.takeIf { it != "SDR" },
                                 ).joinToString(" "),
                         )
-                    be.alwyapps.watch.core.media.StreamKind.AUDIO -> add("Audio" to audioLabel(st))
+                    be.alwyapps.watch.core.media.StreamKind.AUDIO -> add(tr("Audio") to audioLabel(st))
                     be.alwyapps.watch.core.media.StreamKind.SUBTITLE ->
-                        add("Subtitles" to subtitleLabel(st) + " (" + st.codec.uppercase() + if (st.isExternal) ", external)" else ")")
+                        add(
+                            tr("Subtitles") to
+                                if (st.isExternal) {
+                                    tr("{track} ({format}, external)", "track" to subtitleLabel(st), "format" to st.codec.uppercase())
+                                } else {
+                                    "${subtitleLabel(st)} (${st.codec.uppercase()})"
+                                },
+                        )
                     else -> {}
                 }
             }
@@ -1003,7 +1020,7 @@ private fun FileInfoDialog(
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = be.alwyapps.watch.ui.Background,
-        title = { Text("File info") },
+        title = { Text(tr("File info")) },
         text = {
             androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(lines.size) { n ->
@@ -1015,7 +1032,7 @@ private fun FileInfoDialog(
                 }
             }
         },
-        confirmButton = { ActionButton("Close", onDismiss, primary = true) },
+        confirmButton = { ActionButton(tr("Close"), onDismiss, primary = true) },
     )
 }
 
@@ -1123,7 +1140,7 @@ private fun Overview(
                     style = MaterialTheme.typography.bodyLarge,
                 )
             },
-            confirmButton = { ActionButton("Close", { full = false }) },
+            confirmButton = { ActionButton(tr("Close"), { full = false }) },
             containerColor = be.alwyapps.watch.ui.Background,
         )
     }
@@ -1142,7 +1159,7 @@ private fun CastRow(cast: List<be.alwyapps.watch.core.media.Person>) {
                 .FocusRequester()
         }
     Column(Modifier.padding(top = 16.dp)) {
-        Text("Cast", Modifier.padding(horizontal = d.gutter), style = MaterialTheme.typography.titleMedium)
+        Text(tr("Cast"), Modifier.padding(horizontal = d.gutter), style = MaterialTheme.typography.titleMedium)
         androidx.compose.foundation.lazy.LazyRow(
             Modifier.focusRestorer(first),
             contentPadding =
@@ -1244,13 +1261,13 @@ private fun downloadCaption(
     pending: Boolean,
 ): String =
     when {
-        dl == null -> if (pending) "Starting…" else "Download"
-        dl.state == DownloadState.COMPLETED -> "Downloaded · ${dl.progressLabel()}"
-        dl.state == DownloadState.PAUSED -> "Paused · ${dl.progressLabel()}"
-        dl.state == DownloadState.WAITING -> "Waiting for network"
-        dl.state == DownloadState.FAILED -> "Download failed"
-        dl.downloaded == 0uL -> "Starting…"
-        else -> "Downloading ${dl.progressLabel()}"
+        dl == null -> if (pending) tr("Starting…") else tr("Download")
+        dl.state == DownloadState.COMPLETED -> tr("Downloaded · {progress}", "progress" to dl.progressLabel())
+        dl.state == DownloadState.PAUSED -> tr("Paused · {progress}", "progress" to dl.progressLabel())
+        dl.state == DownloadState.WAITING -> tr("Waiting for network")
+        dl.state == DownloadState.FAILED -> tr("Download failed")
+        dl.downloaded == 0uL -> tr("Starting…")
+        else -> tr("Downloading {progress}", "progress" to dl.progressLabel())
     }
 
 /**
@@ -1283,10 +1300,10 @@ private fun SeriesDownloadAction(
     val pending = DownloadPending.contains(series.id) && mine.isEmpty()
     val caption =
         when {
-            pending -> "Starting…"
-            active.isNotEmpty() -> "Downloading ${active.size}"
-            done > 0 -> "$done downloaded"
-            else -> "Download"
+            pending -> tr("Starting…")
+            active.isNotEmpty() -> tr("Downloading {count}", "count" to active.size)
+            done > 0 -> tr("{count} downloaded", "count" to done)
+            else -> tr("Download")
         }
     // The ring follows the whole batch.
     val total = mine.sumOf { (it.total ?: 0uL).toLong() }
@@ -1320,16 +1337,16 @@ private fun rememberDownloadToggle(
     if (confirm && dl != null) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirm = false },
-            title = { Text(if (dl.state == DownloadState.COMPLETED) "Remove the download?" else "Cancel the download?") },
-            text = { Text("${item.title} (${dl.progressLabel()}) will be deleted from this device.") },
+            title = { Text(if (dl.state == DownloadState.COMPLETED) tr("Remove the download?") else tr("Cancel the download?")) },
+            text = { Text(tr("{title} ({size}) will be deleted from this device.", "title" to item.title, "size" to dl.progressLabel())) },
             confirmButton = {
-                ActionButton("Remove", {
+                ActionButton(tr("Remove"), {
                     core.removeDownload(dl.id)
                     DownloadPending.changed()
                     confirm = false
                 }, primary = true)
             },
-            dismissButton = { ActionButton("Keep", { confirm = false }) },
+            dismissButton = { ActionButton(tr("Keep"), { confirm = false }) },
             containerColor = be.alwyapps.watch.ui.Background,
         )
     }
@@ -1382,7 +1399,7 @@ private fun SeasonPicker(
                 .FocusRequester()
         }
     Column {
-        Text("Episodes", Modifier.padding(horizontal = d.gutter, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
+        Text(tr("Episodes"), Modifier.padding(horizontal = d.gutter, vertical = 8.dp), style = MaterialTheme.typography.titleMedium)
         LazyRow(
             Modifier
                 .focusProperties {
@@ -1408,7 +1425,7 @@ private fun SeasonPicker(
             }
             if (onMore != null) {
                 item(key = "more") {
-                    ActionButton("More seasons", onMore, Modifier.focusRequester(moreFocus), icon = Icons.Add)
+                    ActionButton(tr("More seasons"), onMore, Modifier.focusRequester(moreFocus), icon = Icons.Add)
                 }
             }
         }
@@ -1416,7 +1433,7 @@ private fun SeasonPicker(
         // under the seasons (a lone ✓ next to them read as one more season, or as "selected").
         Row(Modifier.padding(start = d.gutter, end = d.gutter, top = 10.dp)) {
             ActionButton(
-                "Mark ${selected.title} watched or unwatched",
+                tr("Mark {title} watched or unwatched", "title" to selected.title),
                 { onMark(selected) },
                 Modifier.focusRequester(markFocus),
                 icon = Icons.Check,
@@ -1462,7 +1479,7 @@ private fun EpisodeRow(
                     if (ep.user.played) {
                         Icon(
                             Icons.Check,
-                            "Watched",
+                            tr("Watched"),
                             Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(6.dp)
@@ -1476,7 +1493,7 @@ private fun EpisodeRow(
                 }
                 Column(Modifier.padding(start = 14.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        "${ep.episodeNumber ?: ""}. ${ep.title}",
+                        tr("{number}. {title}", "number" to (ep.episodeNumber ?: ""), "title" to ep.title),
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1485,7 +1502,9 @@ private fun EpisodeRow(
                         listOfNotNull(
                             ep.runtimeMs?.let { formatRuntime(it.toLong()) },
                             ep.remaining(),
-                            dl?.let { if (it.state == DownloadState.COMPLETED) it.progressLabel() else "downloading ${it.progressLabel()}" },
+                            dl?.let {
+                                if (it.state == DownloadState.COMPLETED) it.progressLabel() else tr("downloading {progress}", "progress" to it.progressLabel())
+                            },
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = Subtle,
@@ -1544,17 +1563,17 @@ private fun KeepPanel(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Hourglass, null, Modifier.size(20.dp), tint = if (unplanned) Muted else be.alwyapps.watch.ui.Accent)
-            Text(if (unplanned || entry == null) "Not scheduled for deletion" else keepPolicy(entry), style = MaterialTheme.typography.titleSmall)
+            Text(if (unplanned || entry == null) tr("Not scheduled for deletion") else keepPolicy(entry), style = MaterialTheme.typography.titleSmall)
         }
         if (unplanned) {
             Text(
-                "The server doesn't plan to delete this. You can still say you want it kept, in case it does later.",
+                tr("The server doesn't plan to delete this. You can still say you want it kept, in case it does later."),
                 color = Muted,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
         entry?.let { e -> keepDetail(e)?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) } }
-        Text(entry?.voteLabel() ?: "You haven't chosen anything", style = MaterialTheme.typography.bodyMedium)
+        Text(entry?.voteLabel() ?: tr("You haven't chosen anything"), style = MaterialTheme.typography.bodyMedium)
         if (choosing && entry != null) {
             val first =
                 remember {
@@ -1574,9 +1593,9 @@ private fun KeepPanel(
         } else {
             ActionButton(
                 when {
-                    looking -> "Looking it up…"
-                    entry?.myVote == null -> "Keep it"
-                    else -> "Change my choice"
+                    looking -> tr("Looking it up…")
+                    entry?.myVote == null -> tr("Keep it")
+                    else -> tr("Change my choice")
                 },
                 {
                     if (entry != null) {
@@ -1592,7 +1611,7 @@ private fun KeepPanel(
                             } catch (e: be.alwyapps.watch.core.CoreException) {
                                 error =
                                     if (e is be.alwyapps.watch.core.CoreException.NotFound) {
-                                        "This title is never deleted automatically."
+                                        tr("This title is never deleted automatically.")
                                     } else {
                                         e.message
                                     }
@@ -1619,26 +1638,31 @@ private fun KeepPanel(
 /** "Kept forever", "Kept until 2 people have watched it", "Leaves in 12 days"… */
 private fun keepPolicy(e: be.alwyapps.watch.core.keep.LeavingItem): String =
     when (e.protection) {
-        be.alwyapps.watch.core.keep.Protection.FOREVER -> "Kept forever"
+        be.alwyapps.watch.core.keep.Protection.FOREVER -> tr("Kept forever")
         be.alwyapps.watch.core.keep.Protection.UNTIL_WATCHED -> {
             val n = e.counts.untilWatched.toInt()
-            if (n <= 1) "Kept until the person who asked has watched it" else "Kept until $n people have watched it"
+            if (n <= 1) {
+                tr("Kept until the person who asked has watched it")
+            } else {
+                trn("Kept until {n} person has watched it", "Kept until {n} people have watched it", n)
+            }
         }
         // Past its date while deletion is off: listed, but nothing is planned.
-        else -> if (e.paused()) "On the deletion list" else e.leavesLabel()
+        else -> if (e.paused()) tr("On the deletion list") else e.leavesLabel()
     }
 
 /** Which list it is in and why nothing happens yet, plus who keeps it. */
 private fun keepDetail(e: be.alwyapps.watch.core.keep.LeavingItem): String? {
     val parts = mutableListOf<String>()
     // (A title taken out of its list by a keep still remembers which one it was in.)
-    if (e.listed) e.collectionTitle?.let { parts += "In “$it”" }
-    if (e.listed && e.protection == be.alwyapps.watch.core.keep.Protection.NONE && !e.collectionActive) parts += "deletion isn't turned on yet"
+    if (e.listed) e.collectionTitle?.let { parts += tr("In “{list}”", "list" to it) }
+    if (e.listed && e.protection == be.alwyapps.watch.core.keep.Protection.NONE && !e.collectionActive) parts += tr("deletion isn't turned on yet")
     e.effectiveDeletionDate?.takeIf { e.listed && !e.paused() }?.let {
-        parts += "date " +
+        val date =
             java.text.DateFormat
-                .getDateInstance(java.text.DateFormat.MEDIUM)
+                .getDateInstance(java.text.DateFormat.MEDIUM, java.util.Locale.forLanguageTag(be.alwyapps.watch.ui.I18n.language))
                 .format(java.util.Date(it * 1000))
+        parts += tr("date {date}", "date" to date)
     }
     val c = e.counts
     val keepers =
@@ -1646,19 +1670,20 @@ private fun keepDetail(e: be.alwyapps.watch.core.keep.LeavingItem): String? {
             c.forever
                 .toInt()
                 .takeIf { it > 0 }
-                ?.let { "$it forever" },
+                ?.let { tr("{n} forever", "n" to it) },
             c.untilWatched
                 .toInt()
                 .takeIf { it > 0 }
-                ?.let { "$it until watched" },
+                ?.let { tr("{n} until watched", "n" to it) },
             c.days
                 .toInt()
                 .takeIf { it > 0 }
-                ?.let { "$it for a while" },
+                ?.let { tr("{n} for a while", "n" to it) },
         )
-    if (keepers.isNotEmpty()) parts += "kept by " + keepers.joinToString(", ")
+    if (keepers.isNotEmpty()) parts += tr("kept by {list}", "list" to keepers.joinToString(", "))
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")?.replaceFirstChar { it.uppercase() }
 }
 
 /** "Saga · Alien", or the name alone when it already says so ("Very Bad Trip - Saga"). */
-private fun sagaLabel(name: String): String = if (listOf("saga", "collection").any { name.contains(it, ignoreCase = true) }) name else "Saga · $name"
+private fun sagaLabel(name: String): String =
+    if (listOf("saga", "collection").any { name.contains(it, ignoreCase = true) }) name else tr("Saga · {name}", "name" to name)

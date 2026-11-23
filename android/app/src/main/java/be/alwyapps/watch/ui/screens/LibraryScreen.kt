@@ -41,6 +41,8 @@ import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.PosterCard
 import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.rememberFocus
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 private const val PAGE = 60
@@ -116,13 +118,20 @@ private class Pager(
     }
 }
 
-private enum class LibTab(
-    val label: String,
-) {
-    RECOMMENDED("Recommended"),
-    BROWSE("Browse"),
-    COLLECTIONS("Collections"),
-    CATEGORIES("Categories"),
+private enum class LibTab {
+    RECOMMENDED,
+    BROWSE,
+    COLLECTIONS,
+    CATEGORIES,
+    ;
+
+    fun label(): String =
+        when (this) {
+            RECOMMENDED -> tr("Recommended")
+            BROWSE -> tr("Browse")
+            COLLECTIONS -> tr("Collections")
+            CATEGORIES -> tr("Categories")
+        }
 }
 
 /**
@@ -164,7 +173,7 @@ fun LibraryScreen(
                 items(LibTab.entries.size) { i ->
                     val t = LibTab.entries[i]
                     // Selected = accent fill, focused = white outline (they looked alike); OK switches.
-                    be.alwyapps.watch.ui.TabChip(t.label, tab == t, {
+                    be.alwyapps.watch.ui.TabChip(t.label(), tab == t, {
                         tab = t
                         runCatching { core.setSetting(tabKey, t.name) }
                         // Back from what the page opened: focus where it was (the opened title, a
@@ -224,7 +233,7 @@ private fun Recommended(
                 Column {
                     be.alwyapps.watch.ui
                         .Rail(
-                            "Continue watching",
+                            tr("Continue watching"),
                             h.continueWatching.filter(keep),
                             open,
                             focusKey = "lib.$id",
@@ -248,7 +257,7 @@ private fun Recommended(
                         }
                         be.alwyapps.watch.ui
                             .Rail(
-                                "Recently added",
+                                tr("Recently added"),
                                 rail.items,
                                 openNoted,
                                 focusKey = "lib.$id",
@@ -290,7 +299,7 @@ private fun Collections(id: String) {
         list.error?.let { msg -> item(span = { GridItemSpan(maxLineSpan) }) { ErrorBanner(msg) { list.reload() } } }
         val cols = list.value
         if (cols != null && cols.isEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Text("No collections in this library.", color = Muted) }
+            item(span = { GridItemSpan(maxLineSpan) }) { Text(tr("No collections in this library."), color = Muted) }
         }
         itemsIndexed(cols.orEmpty(), key = { _, it -> it.id }) { _, c ->
             PosterCard(
@@ -409,14 +418,15 @@ fun LibraryGrid(
                 // Always one line, empty until the count is known: appearing after the first
                 // page loaded, it pushed the sort chips (and the grid) down under the focus.
                 Text(
-                    if (pager.total > 0) "%,d titles".format(pager.total) else "",
+                    if (pager.total > 0) trn("{count} title", "{count} titles", pager.total, "count" to "%,d".format(pager.total)) else "",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Muted,
                     minLines = 1,
                 )
                 if (sortable) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for ((label, s) in listOf("A–Z" to SortBy.TITLE, "Recently added" to SortBy.DATE_ADDED, "Release date" to SortBy.RELEASE_DATE)) {
+                        val sorts = listOf(tr("A–Z") to SortBy.TITLE, tr("Recently added") to SortBy.DATE_ADDED, tr("Release date") to SortBy.RELEASE_DATE)
+                        for ((label, s) in sorts) {
                             ActionButton(label, { sort = s }, selected = sort == s)
                         }
                     }
@@ -436,7 +446,7 @@ fun LibraryGrid(
             )
         }
         if (pager.total == 0) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Text("Nothing here.", color = Muted) }
+            item(span = { GridItemSpan(maxLineSpan) }) { Text(tr("Nothing here."), color = Muted) }
         }
     }
 }

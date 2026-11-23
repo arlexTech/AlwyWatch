@@ -30,6 +30,8 @@ import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.PageTitle
 import be.alwyapps.watch.ui.initialFocus
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 
 /**
  * Copy watch history from one server to another (Plex → Jellyfin when moving): watched titles
@@ -94,26 +96,27 @@ fun HistoryCopyScreen() {
             .widthIn(max = 640.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        PageTitle("Copy watch history")
+        PageTitle(tr("Copy watch history"))
         Text(
-            "Marks what you watched on one server as watched on the other, and copies where you " +
-                "stopped. It only adds: nothing gets unmarked, and a resume point never goes back.",
+            tr(
+                "Marks what you watched on one server as watched on the other, and copies where you stopped. It only adds: nothing gets unmarked, and a resume point never goes back.",
+            ),
             color = Muted,
             style = MaterialTheme.typography.bodyMedium,
         )
         if (accounts.size < 2) {
-            Text("Sign in to both servers first: Settings → Servers → Add a server.", color = Muted)
+            Text(tr("Sign in to both servers first: Settings → Servers → Add a server."), color = Muted)
             return@Column
         }
         Group(null) {
-            ChoiceRow("From", options, from, {
+            ChoiceRow(tr("From"), options, from, {
                 job.from = it
                 job.reset()
             }, icon = Icons.Download, mark = {
                 be.alwyapps.watch.ui
                     .ServerBadge(it, diameter = 28.dp)
             })
-            ChoiceRow("To", options, to, {
+            ChoiceRow(tr("To"), options, to, {
                 job.to = it
                 job.reset()
             }, icon = Icons.Check, mark = {
@@ -121,38 +124,38 @@ fun HistoryCopyScreen() {
                     .ServerBadge(it, diameter = 28.dp)
             })
         }
-        if (from == to) Text("Pick two different servers.", color = Danger)
+        if (from == to) Text(tr("Pick two different servers."), color = Danger)
         when {
             job.running -> RunningProgress(progress)
             plan == null && result == null ->
-                ActionButton("Check what will change", { check() }, Modifier.initialFocus(), primary = true, icon = Icons.Search)
+                ActionButton(tr("Check what will change"), { check() }, Modifier.initialFocus(), primary = true, icon = Icons.Search)
         }
         plan?.let { p ->
             val watched = p.changes.count { it.played }
             val started = p.changes.size - watched
             Text(
                 if (p.changes.isEmpty()) {
-                    "Nothing to copy: everything is already there."
+                    tr("Nothing to copy: everything is already there.")
                 } else {
                     listOfNotNull(
-                        "$watched to mark as watched".takeIf { watched > 0 },
-                        "$started resume points".takeIf { started > 0 },
+                        tr("{count} to mark as watched", "count" to watched).takeIf { watched > 0 },
+                        trn("{n} resume point", "{n} resume points", started).takeIf { started > 0 },
                     ).joinToString(" · ")
                 },
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
                 listOfNotNull(
-                    "${p.upToDate} already up to date".takeIf { p.upToDate > 0u },
-                    "${p.notFound.size} not on that server".takeIf { p.notFound.isNotEmpty() },
+                    tr("{count} already up to date", "count" to p.upToDate).takeIf { p.upToDate > 0u },
+                    tr("{count} not on that server", "count" to p.notFound.size).takeIf { p.notFound.isNotEmpty() },
                 ).joinToString(" · "),
                 color = Muted,
             )
             if (p.changes.isNotEmpty() && !job.running) {
-                ActionButton("Copy ${p.changes.size} titles", { copy() }, Modifier.initialFocus(), primary = true, icon = Icons.Check)
+                ActionButton(trn("Copy {n} title", "Copy {n} titles", p.changes.size), { copy() }, Modifier.initialFocus(), primary = true, icon = Icons.Check)
             }
             if (p.notFound.isNotEmpty()) {
-                ActionButton(if (showMissing) "Hide missing titles" else "Show missing titles", { showMissing = !showMissing })
+                ActionButton(if (showMissing) tr("Hide missing titles") else tr("Show missing titles"), { showMissing = !showMissing })
                 if (showMissing) {
                     Text(p.notFound.joinToString("\n"), color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
@@ -160,10 +163,14 @@ fun HistoryCopyScreen() {
         }
         result?.let { r ->
             Text(
-                "Done: ${r.applied} titles copied" + if (r.failed > 0u) ", ${r.failed} failed (try again)." else ".",
+                if (r.failed > 0u) {
+                    tr("Done: {copied} titles copied, {failed} failed (try again).", "copied" to r.applied, "failed" to r.failed)
+                } else {
+                    trn("Done: {n} title copied.", "Done: {n} titles copied.", r.applied.toLong())
+                },
                 style = MaterialTheme.typography.titleMedium,
             )
-            ActionButton("Check again", { check() })
+            ActionButton(tr("Check again"), { check() })
         }
         error?.let { Text(it, color = Danger) }
     }
@@ -176,7 +183,13 @@ private fun RunningProgress(p: be.alwyapps.watch.core.HistoryProgress?) {
         val total = p?.total?.toInt() ?: 0
         val done = p?.done?.toInt() ?: 0
         Text(
-            (p?.step?.ifEmpty { null } ?: "Starting") + if (total > 0) " · $done of $total (${done * 100 / total} %)" else "…",
+            (p?.step?.ifEmpty { null } ?: tr("Starting")).let { step ->
+                if (total > 0) {
+                    tr("{step} · {done} of {total} ({percent} %)", "step" to step, "done" to done, "total" to total, "percent" to done * 100 / total)
+                } else {
+                    tr("{step}…", "step" to step)
+                }
+            },
             style = MaterialTheme.typography.titleSmall,
         )
         if (total > 0) {
@@ -189,7 +202,7 @@ private fun RunningProgress(p: be.alwyapps.watch.core.HistoryProgress?) {
             androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth(), color = be.alwyapps.watch.ui.Accent)
         }
         Text(
-            "You can leave the app: it keeps going (see the notification), and this page shows where it is when you come back.",
+            tr("You can leave the app: it keeps going (see the notification), and this page shows where it is when you come back."),
             color = Muted,
             style = MaterialTheme.typography.bodySmall,
         )

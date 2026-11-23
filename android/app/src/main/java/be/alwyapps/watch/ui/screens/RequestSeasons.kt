@@ -42,6 +42,8 @@ import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.Subtle
 import be.alwyapps.watch.ui.focusOnAppear
 import be.alwyapps.watch.ui.ignoreHeldOk
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.launch
 
 /** A Seerr request error in plain words (the web app's wording). */
@@ -49,12 +51,18 @@ fun requestErrorText(e: CoreException): String =
     when (e) {
         // Seerr answers 403 both when the quota is used up and when the person may not request.
         is CoreException.Unauthorized ->
-            "The request was refused: you may have no requests left, or not be allowed to request. If it keeps happening, sign in again in Settings."
-        is CoreException.Network -> "Can't reach the request site right now."
-        is CoreException.NotFound -> "The request site doesn't know this title."
+            tr(
+                "The request was refused: you may have no requests left, or not be allowed to request. If it keeps happening, sign in again in Settings.",
+            )
+        is CoreException.Network -> tr("Can't reach the request site right now.")
+        is CoreException.NotFound -> tr("The request site doesn't know this title.")
         is CoreException.Server ->
-            if (e.message.orEmpty().contains("409")) "It has already been requested." else "The request site had a problem. Try again in a moment."
-        else -> e.message ?: "Something went wrong."
+            if (e.message.orEmpty().contains("409")) {
+                tr("It has already been requested.")
+            } else {
+                tr("The request site had a problem. Try again in a moment.")
+            }
+        else -> e.message ?: tr("Something went wrong.")
     }
 
 /**
@@ -66,9 +74,9 @@ internal fun seasonLabel(
     number: UInt,
     name: String,
 ): String {
-    if (number == 0u) return name.ifBlank { "Specials" }
+    if (number == 0u) return name.ifBlank { tr("Specials") }
     val generic = name.isBlank() || Regex("^\\p{L}+\\.?\\s*0*$number$").matches(name.trim())
-    return if (generic) "Season $number" else name
+    return if (generic) tr("Season {number}", "number" to number) else name
 }
 
 /** A square check box (the row around it is the click and focus target). */
@@ -139,7 +147,7 @@ fun RequestSeasonsDialog(
                 // The new states (requested, maybe already downloading).
                 runCatching { core.seerrSeasonInfo(tmdbId) }.onSuccess { info = it }
             } catch (e: CoreException) {
-                error = "Couldn't request them: ${requestErrorText(e)}"
+                error = tr("Couldn't request them: {reason}", "reason" to requestErrorText(e))
             }
             busy = false
         }
@@ -150,7 +158,7 @@ fun RequestSeasonsDialog(
         containerColor = Background,
         title = {
             Column {
-                Text("Request more seasons")
+                Text(tr("Request more seasons"))
                 Text(showTitle, color = Muted, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
             }
         },
@@ -179,20 +187,19 @@ fun RequestSeasonsDialog(
         },
         dismissButton = {
             if (plan.missing.size > 1) {
-                ActionButton("Select all missing", { chosen = plan.missing.toSet() }, Modifier.ignoreHeldOk())
+                ActionButton(tr("Select all missing"), { chosen = plan.missing.toSet() }, Modifier.ignoreHeldOk())
             }
         },
         confirmButton = {
             if (plan.missing.isEmpty()) {
                 // Everything is there or asked for (after a request): the way out, focused.
-                ActionButton("Close", close, Modifier.ignoreHeldOk().focusOnAppear(), primary = true)
+                ActionButton(tr("Close"), close, Modifier.ignoreHeldOk().focusOnAppear(), primary = true)
             } else {
                 val n = chosen.size
                 ActionButton(
                     when {
-                        busy -> "Requesting…"
-                        n == 1 -> "Request 1 season"
-                        else -> "Request $n seasons"
+                        busy -> tr("Requesting…")
+                        else -> trn("Request {n} season", "Request {n} seasons", n)
                     },
                     { send() },
                     // Dimmed at 0, but still focusable: it keeps the focus once a request is sent.

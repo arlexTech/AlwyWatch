@@ -95,6 +95,7 @@ import be.alwyapps.watch.ui.PresetAvatar
 import be.alwyapps.watch.ui.SurfaceColor
 import be.alwyapps.watch.ui.dpadEscape
 import be.alwyapps.watch.ui.focusOnAppear
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -102,7 +103,8 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-private const val TV_NO_UPLOAD = "You can set a custom picture from your phone, computer or the web app."
+@Composable
+private fun tvNoUpload() = tr("You can set a custom picture from your phone, computer or the web app.")
 
 /** My AlwyWatch account as the server last said (name, avatar, welcome step done). */
 object MyAccount {
@@ -127,7 +129,7 @@ object MyAccount {
 }
 
 /** Plain words for a failed profile change. */
-private fun problemOf(e: Throwable): String = (e as? CoreException)?.let { friendly(it) } ?: (e.message ?: "Something went wrong.")
+private fun problemOf(e: Throwable): String = (e as? CoreException)?.let { friendly(it) } ?: (e.message ?: tr("Something went wrong."))
 
 // ----- Choosing an avatar ---------------------------------------------------------------------
 
@@ -188,20 +190,20 @@ private fun AvatarGrid(
         }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Tile(pick == Pick.Default, "Your initial", { onPick(Pick.Default) }) { DefaultAvatar(name.ifBlank { me.name }, size) }
+        Tile(pick == Pick.Default, tr("Your initial"), { onPick(Pick.Default) }) { DefaultAvatar(name.ifBlank { me.name }, size) }
         for (p in AvatarPresets.all) {
-            Tile(pick == Pick.Preset(p.id), "Picture ${p.shape}", { onPick(Pick.Preset(p.id)) }) { PresetAvatar(p, size) }
+            Tile(pick == Pick.Preset(p.id), tr("Picture {shape}", "shape" to p.shape), { onPick(Pick.Preset(p.id)) }) { PresetAvatar(p, size) }
         }
         if (me.avatar.customVersion != null) {
-            Tile(pick == Pick.Current, "Your picture", { onPick(Pick.Current) }) { Avatar(me.avatar, me.name, me.userKey, size) }
+            Tile(pick == Pick.Current, tr("Your picture"), { onPick(Pick.Current) }) { Avatar(me.avatar, me.name, me.userKey, size) }
         }
         if (upload != null) {
-            Tile(pick === upload, "New picture", { onPick(upload) }) {
+            Tile(pick === upload, tr("New picture"), { onPick(upload) }) {
                 Image(upload.preview, null, Modifier.size(size).clip(CircleShape), contentScale = ContentScale.Crop)
             }
         }
         if (onUpload != null) {
-            Tile(false, "Upload a picture", onUpload) {
+            Tile(false, tr("Upload a picture"), onUpload) {
                 Box(Modifier.size(size).clip(CircleShape).background(SurfaceColor), contentAlignment = Alignment.Center) {
                     Icon(Icons.Add, null, tint = Muted)
                 }
@@ -252,7 +254,7 @@ fun AlwyWatchAccountGroup() {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { choosing = false },
             containerColor = Background,
-            title = { Text("Choose a picture") },
+            title = { Text(tr("Choose a picture")) },
             text = {
                 CompositionLocalProvider(LocalInitialFocusDone provides null) {
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -278,15 +280,15 @@ fun AlwyWatchAccountGroup() {
                                     }
                                 },
                         )
-                        if (d.isTv) Text(TV_NO_UPLOAD, color = Muted, style = MaterialTheme.typography.bodySmall)
+                        if (d.isTv) Text(tvNoUpload(), color = Muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
-            confirmButton = { ActionButton("Close", { choosing = false }) },
+            confirmButton = { ActionButton(tr("Close"), { choosing = false }) },
             dismissButton =
                 if (me.pick() != Pick.Default) {
                     {
-                        ActionButton("Remove", {
+                        ActionButton(tr("Remove"), {
                             choosing = false
                             change { core.keepRemoveAvatar() }
                         }, icon = Icons.Delete)
@@ -296,29 +298,29 @@ fun AlwyWatchAccountGroup() {
                 },
         )
     }
-    Group("Your AlwyWatch account", footer = "Others see this name and picture when you watch together.") {
+    Group(tr("Your AlwyWatch account"), footer = tr("Others see this name and picture when you watch together.")) {
         ListRow(
             me.name,
             subtitle =
                 listOfNotNull(
-                    if (me.nameIsCustom && me.mediaName.isNotEmpty()) "Signed in as ${me.mediaName}" else "How others see you",
+                    if (me.nameIsCustom && me.mediaName.isNotEmpty()) tr("Signed in as {name}", "name" to me.mediaName) else tr("How others see you"),
                     // Linked sign-ins: the others, on a second line.
                     alsoSignedInAs(Identity.links),
                 ).joinToString("\n"),
             leading = { Avatar(me.avatar, me.name, me.userKey, if (d.isTv) 52.dp else 46.dp) },
         )
         Divider()
-        ListRow("Change name", icon = Icons.Person, onClick = { editing = true }, trailing = { Chevron() })
+        ListRow(tr("Change name"), icon = Icons.Person, onClick = { editing = true }, trailing = { Chevron() })
         if (me.nameIsCustom && me.mediaName.isNotEmpty()) {
             Divider()
-            ListRow("Reset to ${me.mediaName}", subtitle = "Your name on your media server", icon = Icons.Refresh, onClick = {
+            ListRow(tr("Reset to {name}", "name" to me.mediaName), subtitle = tr("Your name on your media server"), icon = Icons.Refresh, onClick = {
                 change { core.keepResetDisplayName() }
             })
         }
         Divider()
         ListRow(
-            "Change picture",
-            subtitle = if (d.isTv) "Built-in pictures" else "A built-in one, or a photo",
+            tr("Change picture"),
+            subtitle = if (d.isTv) tr("Built-in pictures") else tr("A built-in one, or a photo"),
             icon = Icons.Group,
             onClick = { choosing = true },
             trailing = { Chevron() },
@@ -368,11 +370,11 @@ private fun EditNameDialog(
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onClose,
         containerColor = Background,
-        title = { Text("Your name") },
+        title = { Text(tr("Your name")) },
         text = {
             CompositionLocalProvider(LocalInitialFocusDone provides null) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("This is the name others see.", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                    Text(tr("This is the name others see."), color = Muted, style = MaterialTheme.typography.bodyMedium)
                     Field(
                         name,
                         {
@@ -390,8 +392,8 @@ private fun EditNameDialog(
                 }
             }
         },
-        confirmButton = { ActionButton(if (busy) "Saving…" else "Save", { save() }, primary = problem == null) },
-        dismissButton = { ActionButton("Cancel", onClose) },
+        confirmButton = { ActionButton(if (busy) tr("Saving…") else tr("Save"), { save() }, primary = problem == null) },
+        dismissButton = { ActionButton(tr("Cancel"), onClose) },
     )
 }
 
@@ -495,8 +497,8 @@ private fun WelcomeDialog(me: Me) {
                             Pick.Default -> DefaultAvatar(name.ifBlank { me.name }, big)
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Welcome!", style = MaterialTheme.typography.displaySmall)
-                            Text("This is how others see you", style = MaterialTheme.typography.bodyLarge, color = Muted)
+                            Text(tr("Welcome!"), style = MaterialTheme.typography.displaySmall)
+                            Text(tr("This is how others see you"), style = MaterialTheme.typography.bodyLarge, color = Muted)
                         }
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -504,13 +506,13 @@ private fun WelcomeDialog(me: Me) {
                             name,
                             { name = it },
                             Modifier.fillMaxWidth().dpadEscape(),
-                            label = { Text("Your name") },
+                            label = { Text(tr("Your name")) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         )
                         problem?.let { Text(it.replaceFirstChar { c -> c.uppercase() }, color = Danger, style = MaterialTheme.typography.bodySmall) }
                     }
-                    Text("Your picture", style = MaterialTheme.typography.titleMedium)
+                    Text(tr("Your picture"), style = MaterialTheme.typography.titleMedium)
                     AvatarGrid(
                         me,
                         name,
@@ -519,12 +521,12 @@ private fun WelcomeDialog(me: Me) {
                         onUpload = if (d.isTv) null else upload,
                         upload = uploaded,
                     )
-                    if (d.isTv) Text(TV_NO_UPLOAD, color = Muted, style = MaterialTheme.typography.bodySmall)
+                    if (d.isTv) Text(tvNoUpload(), color = Muted, style = MaterialTheme.typography.bodySmall)
                     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ActionButton("Continue", { finish(save = true) }, Modifier.focusOnAppear(), primary = true, icon = Icons.Check)
-                        ActionButton("Skip", { finish(save = false) })
+                        ActionButton(tr("Continue"), { finish(save = true) }, Modifier.focusOnAppear(), primary = true, icon = Icons.Check)
+                        ActionButton(tr("Skip"), { finish(save = false) })
                     }
-                    Text("You can change this later in Settings.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text(tr("You can change this later in Settings."), color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -661,7 +663,7 @@ private fun AvatarCropper(
                 .navigationBarsPadding(),
         ) {
             Text(
-                "Move and zoom your picture",
+                tr("Move and zoom your picture"),
                 Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
@@ -673,8 +675,8 @@ private fun AvatarCropper(
                 val boxH = with(density) { maxHeight.toPx() }
                 val frame = min(boxW, boxH) * 0.82f
                 when {
-                    failed -> Text("Couldn't open this picture.", color = Color.White)
-                    src == null -> Text("Opening…", color = Muted)
+                    failed -> Text(tr("Couldn't open this picture."), color = Color.White)
+                    src == null -> Text(tr("Opening…"), color = Muted)
                     else -> {
                         val image = remember(src) { src.asImageBitmap() }
                         val w = src.width.toFloat()
@@ -746,8 +748,8 @@ private fun AvatarCropper(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
             ) {
-                ActionButton("Cancel", onCancel)
-                ActionButton(if (saving) "Saving…" else "Save", {
+                ActionButton(tr("Cancel"), onCancel)
+                ActionButton(if (saving) tr("Saving…") else tr("Save"), {
                     if (bitmap != null && !saving) saving = true
                 }, primary = true, icon = Icons.Check)
             }

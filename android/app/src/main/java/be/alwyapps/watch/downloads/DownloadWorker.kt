@@ -17,6 +17,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import be.alwyapps.watch.core.downloads.DownloadState
 import be.alwyapps.watch.services
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -32,7 +33,7 @@ class DownloadWorker(
     override suspend fun doWork(): Result =
         coroutineScope {
             val core = applicationContext.services.core.await()
-            runCatching { setForeground(foregroundInfo("Starting downloads…", 0, 0)) }
+            runCatching { setForeground(foregroundInfo(tr("Starting downloads…"), 0, 0)) }
             val progress =
                 launch {
                     while (true) {
@@ -63,7 +64,7 @@ class DownloadWorker(
     ): ForegroundInfo {
         val nm = applicationContext.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Downloads"), NotificationManager.IMPORTANCE_LOW))
         }
         val n =
             NotificationCompat

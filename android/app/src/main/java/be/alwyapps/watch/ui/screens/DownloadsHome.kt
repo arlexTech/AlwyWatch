@@ -74,6 +74,8 @@ import be.alwyapps.watch.ui.SurfaceColor
 import be.alwyapps.watch.ui.SurfaceHigh
 import be.alwyapps.watch.ui.poster
 import be.alwyapps.watch.ui.thumb
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -92,10 +94,28 @@ val RulePresets: List<DeleteRule> =
 
 fun DeleteRule.label(): String =
     when (this) {
-        is DeleteRule.Never -> "Keep"
-        is DeleteRule.WhenWatched -> "Once watched"
-        is DeleteRule.DaysAfterWatched -> if (days == 1u) "1 day after watching" else "$days days after watching"
-        is DeleteRule.AfterDays -> "After $days days"
+        is DeleteRule.Never -> tr("Keep")
+        is DeleteRule.WhenWatched -> tr("Once watched")
+        is DeleteRule.DaysAfterWatched -> trn("{n} day after watching", "{n} days after watching", days.toLong())
+        is DeleteRule.AfterDays -> trn("After {n} day", "After {n} days", days.toLong())
+    }
+
+/** "deletes once watched"…, after a downloaded file's size (null: kept). */
+private fun DeleteRule.deletesLabel(): String? =
+    when (this) {
+        is DeleteRule.Never -> null
+        is DeleteRule.WhenWatched -> tr("deletes once watched")
+        is DeleteRule.DaysAfterWatched -> trn("deletes {n} day after watching", "deletes {n} days after watching", days.toLong())
+        is DeleteRule.AfterDays -> trn("deletes after {n} day", "deletes after {n} days", days.toLong())
+    }
+
+/** "Deletes them once watched"…, under "Keeps the next N episodes". */
+private fun DeleteRule.deletesThemLabel(): String =
+    when (this) {
+        is DeleteRule.Never -> tr("Keep")
+        is DeleteRule.WhenWatched -> tr("Deletes them once watched")
+        is DeleteRule.DaysAfterWatched -> trn("Deletes them {n} day after watching", "Deletes them {n} days after watching", days.toLong())
+        is DeleteRule.AfterDays -> trn("Deletes them after {n} day", "Deletes them after {n} days", days.toLong())
     }
 
 @Composable
@@ -127,24 +147,24 @@ private fun Download.seasonEpisode(): Pair<Int, Int> {
 
 private fun Download.episodeTitle(): String = title.split(" · ").last()
 
-private fun gb(b: ULong) = "%.1f GB".format(b.toDouble() / 1e9)
+private fun gb(b: ULong) = tr("{size} GB", "size" to "%.1f".format(b.toDouble() / 1e9))
 
 fun Download.status(): String {
     // "42% · 0.8 GB" (the total size), or what is there when the size is unknown.
     val size =
         total?.takeIf { it > 0uL }?.let { "${(downloaded.toLong() * 100 / it.toLong()).coerceIn(0, 100)}% · ${gb(it)}" } ?: gb(downloaded)
     return when (state) {
-        DownloadState.QUEUED -> "Queued · $size"
-        DownloadState.RUNNING -> "Downloading $size"
-        DownloadState.PAUSED -> "Paused · $size"
-        DownloadState.PAUSED_NO_SPACE -> "Paused: storage full. Free some space, then resume."
-        DownloadState.WAITING -> "Waiting for the network · $size"
-        DownloadState.FAILED -> "Failed: ${error ?: "unknown error"}"
+        DownloadState.QUEUED -> tr("Queued · {progress}", "progress" to size)
+        DownloadState.RUNNING -> tr("Downloading {progress}", "progress" to size)
+        DownloadState.PAUSED -> tr("Paused · {progress}", "progress" to size)
+        DownloadState.PAUSED_NO_SPACE -> tr("Paused: storage full. Free some space, then resume.")
+        DownloadState.WAITING -> tr("Waiting for the network · {progress}", "progress" to size)
+        DownloadState.FAILED -> tr("Failed: {reason}", "reason" to (error ?: tr("unknown error")))
         DownloadState.COMPLETED ->
             listOfNotNull(
                 total?.let(::gb),
-                if (watchedAt != null) "watched" else null,
-                deleteRule.takeIf { it !is DeleteRule.Never }?.let { "deletes ${it.label().lowercase()}" },
+                if (watchedAt != null) tr("watched") else null,
+                deleteRule.deletesLabel(),
             ).joinToString(" · ")
     }
 }
@@ -251,7 +271,7 @@ fun DownloadStateIcon(
 ) {
     val t = dl?.total?.toLong() ?: 0L
     when {
-        dl == null && !pending -> Icon(Icons.Download, "Download", Modifier.size(22.dp))
+        dl == null && !pending -> Icon(Icons.Download, tr("Download"), Modifier.size(22.dp))
         dl == null || (!dl.done && (dl.downloaded == 0uL || t == 0L) && dl.state != DownloadState.PAUSED) ->
             androidx.compose.material3.CircularProgressIndicator(
                 Modifier.size(size),
@@ -259,11 +279,11 @@ fun DownloadStateIcon(
                 trackColor = Color.White.copy(alpha = 0.15f),
                 strokeWidth = 3.dp,
             )
-        dl.done -> Icon(Icons.Download, "Downloaded", Modifier.size(22.dp), tint = Color.Black)
+        dl.done -> Icon(Icons.Download, tr("Downloaded"), Modifier.size(22.dp), tint = Color.Black)
         dl.state == DownloadState.PAUSED || dl.state == DownloadState.PAUSED_NO_SPACE || dl.state == DownloadState.FAILED ->
             Box(contentAlignment = Alignment.Center) {
                 ProgressRing(dl.downloaded.toLong().toFloat() / t.coerceAtLeast(1), size)
-                Icon(Icons.Pause, "Paused", Modifier.size(16.dp), tint = Muted)
+                Icon(Icons.Pause, tr("Paused"), Modifier.size(16.dp), tint = Muted)
             }
         else -> ProgressRing(dl.downloaded.toLong().toFloat() / t, size)
     }
@@ -280,9 +300,9 @@ fun DownloadStateButton(
 ) {
     val label =
         when {
-            dl == null -> if (pending) "Starting download" else "Download"
-            dl.done -> "Downloaded, ${dl.progressLabel()}"
-            else -> "Downloading, ${dl.progressLabel()}"
+            dl == null -> if (pending) tr("Starting download") else tr("Download")
+            dl.done -> tr("Downloaded, {progress}", "progress" to dl.progressLabel())
+            else -> tr("Downloading, {progress}", "progress" to dl.progressLabel())
         }
     Box(
         modifier
@@ -297,12 +317,15 @@ fun DownloadStateButton(
 /** Next to the button: "Downloading 42% · 0.3 / 0.8 GB" or "Downloaded · 0.8 GB". */
 fun Download.summary(): String =
     when {
-        done -> "Downloaded · ${gb(total ?: downloaded)}"
-        state == DownloadState.WAITING -> "Waiting for the network · ${progressLabel()}"
-        state == DownloadState.PAUSED -> "Paused · ${progressLabel()}"
-        state == DownloadState.FAILED -> "Download failed"
-        state == DownloadState.PAUSED_NO_SPACE -> "Paused: storage full"
-        else -> "Downloading ${progressLabel()}" + (total?.let { " · ${gb(downloaded)} / ${gb(it)}" } ?: "")
+        done -> tr("Downloaded · {size}", "size" to gb(total ?: downloaded))
+        state == DownloadState.WAITING -> tr("Waiting for the network · {progress}", "progress" to progressLabel())
+        state == DownloadState.PAUSED -> tr("Paused · {progress}", "progress" to progressLabel())
+        state == DownloadState.FAILED -> tr("Download failed")
+        state == DownloadState.PAUSED_NO_SPACE -> tr("Paused: storage full")
+        else ->
+            total?.let {
+                tr("Downloading {progress} · {done} / {total}", "progress" to progressLabel(), "done" to gb(downloaded), "total" to gb(it))
+            } ?: tr("Downloading {progress}", "progress" to progressLabel())
     }
 
 private fun cached(
@@ -340,18 +363,18 @@ fun DownloadsHome(modifier: Modifier = Modifier) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Icon(Icons.Download, null, Modifier.size(56.dp), tint = Subtle)
-                    Text("Nothing downloaded yet", style = MaterialTheme.typography.titleMedium)
-                    Text("Download a movie, an episode, a season or a whole show from its page.", color = Muted)
+                    Text(tr("Nothing downloaded yet"), style = MaterialTheme.typography.titleMedium)
+                    Text(tr("Download a movie, an episode, a season or a whole show from its page."), color = Muted)
                 }
             }
         }
         if (active.isNotEmpty()) {
-            item { SectionHeader("Downloading", Modifier.padding(top = 16.dp, bottom = 8.dp)) }
+            item { SectionHeader(tr("Downloading"), Modifier.padding(top = 16.dp, bottom = 8.dp)) }
             items(active, key = { it.id }) { DownloadRow(it, refresh, Modifier.padding(horizontal = d.gutter, vertical = 5.dp)) }
         }
         if (shows.isNotEmpty()) {
             item {
-                SectionHeader("Shows", Modifier.padding(top = 24.dp))
+                SectionHeader(tr("Shows"), Modifier.padding(top = 24.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
@@ -360,7 +383,7 @@ fun DownloadsHome(modifier: Modifier = Modifier) {
                         val (id, title) = key
                         val show = remember(id) { cached(core, account, id) }
                         val art = show?.poster() ?: eps.firstNotNullOfOrNull { cached(core, account, it.itemId)?.poster() }
-                        PosterTile(id, art, title, "${eps.size} episode${if (eps.size > 1) "s" else ""}") {
+                        PosterTile(id, art, title, trn("{n} episode", "{n} episodes", eps.size)) {
                             nav.push(Route.DownloadedShow(id, title))
                         }
                     }
@@ -369,7 +392,7 @@ fun DownloadsHome(modifier: Modifier = Modifier) {
         }
         if (movies.isNotEmpty()) {
             item {
-                SectionHeader("Movies", Modifier.padding(top = 16.dp))
+                SectionHeader(tr("Movies"), Modifier.padding(top = 16.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
@@ -386,7 +409,7 @@ fun DownloadsHome(modifier: Modifier = Modifier) {
         if (mine.isNotEmpty()) {
             item {
                 ActionButton(
-                    "Manage downloads",
+                    tr("Manage downloads"),
                     { nav.push(Route.ManageDownloads) },
                     Modifier.padding(horizontal = d.gutter, vertical = 24.dp),
                     icon = Icons.Settings,
@@ -408,7 +431,7 @@ private fun PosterTile(
     Column(Modifier.width(d.posterWidth)) {
         FocusCard(onClick = onClick) {
             RemoteImage(id, image, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f), contentDescription = title)
-            Badge("Offline", Modifier.align(Alignment.TopStart).padding(8.dp), color = Color.Black.copy(alpha = 0.6f))
+            Badge(tr("Offline"), Modifier.align(Alignment.TopStart).padding(8.dp), color = Color.Black.copy(alpha = 0.6f))
         }
         Text(title, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -442,7 +465,7 @@ fun DownloadRow(
             if (dl.watchedAt != null) {
                 Icon(
                     Icons.Check,
-                    "Watched",
+                    tr("Watched"),
                     Modifier
                         .align(Alignment.TopEnd)
                         .padding(5.dp)
@@ -464,7 +487,7 @@ fun DownloadRow(
                 Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             if (!(core.profile() in dl.owners)) {
-                Text("Another profile's download", style = MaterialTheme.typography.bodySmall, color = Subtle)
+                Text(tr("Another profile's download"), style = MaterialTheme.typography.bodySmall, color = Subtle)
             }
             Text(
                 dl.status(),
@@ -490,12 +513,12 @@ fun DownloadRow(
         when (dl.state) {
             DownloadState.COMPLETED -> {}
             DownloadState.RUNNING, DownloadState.QUEUED, DownloadState.WAITING ->
-                IconAction(Icons.Pause, "Pause", {
+                IconAction(Icons.Pause, tr("Pause"), {
                     core.pauseDownload(dl.id)
                     refresh()
                 })
             else ->
-                IconAction(Icons.Refresh, "Resume", {
+                IconAction(Icons.Refresh, tr("Resume"), {
                     core.resumeDownload(dl.id)
                     startDownloads(ctx)
                     refresh()
@@ -506,9 +529,13 @@ fun DownloadRow(
         var confirm by remember { mutableStateOf(false) }
         if (confirm) {
             be.alwyapps.watch.ui.ConfirmDialog(
-                if (dl.done) "Delete the download?" else "Cancel the download?",
-                "${dl.title.split(" · ").first()} (${dl.progressLabel()}) will be removed from this device.",
-                confirm = if (dl.done) "Delete" else "Cancel download",
+                if (dl.done) tr("Delete the download?") else tr("Cancel the download?"),
+                tr(
+                    "{title} ({progress}) will be removed from this device.",
+                    "title" to dl.title.split(" · ").first(),
+                    "progress" to dl.progressLabel(),
+                ),
+                confirm = if (dl.done) tr("Delete") else tr("Cancel download"),
                 onConfirm = {
                     core.removeDownload(dl.id)
                     DownloadPending.changed()
@@ -517,7 +544,7 @@ fun DownloadRow(
                 onDismiss = { confirm = false },
             )
         }
-        if (mine) IconAction(Icons.Delete, "Delete", { confirm = true })
+        if (mine) IconAction(Icons.Delete, tr("Delete"), { confirm = true })
     }
 }
 
@@ -552,7 +579,7 @@ fun DownloadedShowScreen(
     ) {
         item {
             be.alwyapps.watch.ui
-                .PageTitle(title, "${eps.size} downloaded")
+                .PageTitle(title, tr("{count} downloaded", "count" to eps.size))
         }
         auto?.let { a ->
             item {
@@ -566,10 +593,10 @@ fun DownloadedShowScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Keeps the next ${a.count} episodes", style = MaterialTheme.typography.titleSmall)
-                        Text("Deletes them ${a.rule.label().lowercase()}", style = MaterialTheme.typography.bodySmall, color = Muted)
+                        Text(trn("Keeps the next {n} episode", "Keeps the next {n} episodes", a.count.toLong()), style = MaterialTheme.typography.titleSmall)
+                        Text(a.rule.deletesThemLabel(), style = MaterialTheme.typography.bodySmall, color = Muted)
                     }
-                    ActionButton("Stop", {
+                    ActionButton(tr("Stop"), {
                         scope.launch {
                             runCatching { core.setAutoDownload(account, seriesId, title, 0u, DeleteRule.Never) }
                             auto = null
@@ -580,7 +607,7 @@ fun DownloadedShowScreen(
         }
         if (!seriesId.startsWith("title:")) {
             item {
-                ActionButton("Open the show", {
+                ActionButton(tr("Open the show"), {
                     nav.push(Route.Detail(seriesId))
                 }, icon = Icons.Info)
             }
@@ -592,13 +619,13 @@ fun DownloadedShowScreen(
                 lastSeason = season
                 item(key = "season-$season") {
                     Text(
-                        if (season == 0) "Episodes" else "Season $season",
+                        if (season == 0) tr("Episodes") else tr("Season {number}", "number" to season),
                         Modifier.padding(top = 14.dp, bottom = 4.dp),
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
             }
-            item(key = dl.id) { DownloadRow(dl, refresh, label = "E$episode · ${dl.episodeTitle()}") }
+            item(key = dl.id) { DownloadRow(dl, refresh, label = tr("E{number} · {title}", "number" to episode, "title" to dl.episodeTitle())) }
         }
         item { Spacer(Modifier.navigationBarsPadding().height(24.dp)) }
     }
@@ -650,24 +677,24 @@ fun DownloadSheet(
             Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Download", style = MaterialTheme.typography.headlineMedium)
+            Text(tr("Download"), style = MaterialTheme.typography.headlineMedium)
             Text(seriesTitle, color = Muted)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (episode != null) {
-                    ActionButton("This episode", { choice = "episode" }, selected = choice == "episode")
+                    ActionButton(tr("This episode"), { choice = "episode" }, selected = choice == "episode")
                 }
                 if (season != null) {
                     ActionButton(season.title, { choice = "season" }, selected = choice == "season")
                 }
-                ActionButton("Whole show", { choice = "show" }, selected = choice == "show")
-                ActionButton("Next episodes", {
+                ActionButton(tr("Whole show"), { choice = "show" }, selected = choice == "show")
+                ActionButton(tr("Next episodes"), {
                     choice = "next"
                     if (rule is DeleteRule.Never) rule = DeleteRule.WhenWatched
                 }, selected = choice == "next")
             }
             if (choice == "next") {
                 Text(
-                    "Keeps your next unwatched episodes on this device and replaces them as you watch.",
+                    tr("Keeps your next unwatched episodes on this device and replaces them as you watch."),
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                 )
@@ -675,11 +702,11 @@ fun DownloadSheet(
                     for (n in listOf(1, 3, 5, 10)) ActionButton("$n", { count = n }, primary = count == n)
                 }
             }
-            Text("Delete them", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.titleMedium)
+            Text(tr("Delete them"), Modifier.padding(top = 4.dp), style = MaterialTheme.typography.titleMedium)
             RuleChips(rule) { rule = it }
             error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodySmall) }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ActionButton(if (busy) "Adding…" else "Download", {
+                ActionButton(if (busy) tr("Adding…") else tr("Download"), {
                     if (busy) return@ActionButton
                     busy = true
                     if (android.os.Build.VERSION.SDK_INT >= 33) permission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
@@ -713,7 +740,7 @@ fun DownloadSheet(
                 ask?.let { (question, list) ->
                     be.alwyapps.watch.ui.ConfirmDialog(
                         question,
-                        "%.1f GB will be freed on this device.".format(list.sumOf { it.downloaded.toLong() } / 1e9),
+                        tr("{size} GB will be freed on this device.", "size" to "%.1f".format(list.sumOf { it.downloaded.toLong() } / 1e9)),
                         onConfirm = {
                             list.forEach { core.removeDownload(it.id) }
                             DownloadPending.changed()
@@ -724,25 +751,25 @@ fun DownloadSheet(
                 }
                 val mine = episode?.let { ep -> all.firstOrNull { it.itemId == ep.id } }
                 if (mine != null) {
-                    ActionButton(if (mine.done) "Remove this episode" else "Cancel this episode", {
-                        ask = (if (mine.done) "Remove this episode's download?" else "Cancel this episode's download?") to listOf(mine)
+                    ActionButton(if (mine.done) tr("Remove this episode") else tr("Cancel this episode"), {
+                        ask = (if (mine.done) tr("Remove this episode's download?") else tr("Cancel this episode's download?")) to listOf(mine)
                     }, icon = Icons.Delete)
                 }
                 // The whole show: cancel what is still downloading, or remove everything.
                 val show = all.filter { it.episode?.seriesId == seriesId }
                 val running = show.filter { !it.done }
                 if (running.isNotEmpty()) {
-                    ActionButton("Cancel ${running.size} downloading", {
-                        ask = "Cancel ${running.size} downloads in progress?" to running
+                    ActionButton(tr("Cancel {count} downloading", "count" to running.size), {
+                        ask = trn("Cancel {n} download in progress?", "Cancel {n} downloads in progress?", running.size) to running
                     }, icon = Icons.Close)
                 }
                 if (show.any { it.done }) {
-                    ActionButton("Remove all ${show.size} downloads", {
-                        ask = "Remove all ${show.size} downloads of $seriesTitle?" to show
+                    ActionButton(trn("Remove all {n} download", "Remove all {n} downloads", show.size), {
+                        ask = trn("Remove all {n} download of {title}?", "Remove all {n} downloads of {title}?", show.size, "title" to seriesTitle) to show
                     }, icon = Icons.Delete)
                 }
                 if (existing != null) {
-                    ActionButton("Stop keeping next", {
+                    ActionButton(tr("Stop keeping next"), {
                         scope.launch {
                             runCatching { core.setAutoDownload(account, seriesId, seriesTitle, 0u, DeleteRule.Never) }
                             onDismiss()

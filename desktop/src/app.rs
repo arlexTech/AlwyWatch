@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use alwywatch_core::*;
+use i18n::{tr, trn};
 use slint::{
     ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
     Weak,
@@ -215,7 +216,7 @@ fn item_subtitle(i: &Item) -> String {
             i.year.map(|y| y.to_string()),
             i.runtime_ms
                 .filter(|&r| r >= 60_000)
-                .map(|r| format!("{} min", r / 60_000)),
+                .map(|r| tr!("{minutes} min", minutes = r / 60_000)),
         ]
         .into_iter()
         .flatten()
@@ -400,7 +401,7 @@ impl App {
     }
 
     fn refresh_downloads(&self) {
-        let gb = |b: u64| format!("{:.1} GB", b as f64 / 1e9);
+        let gb = |b: u64| tr!("{size} GB", size = format!("{:.1}", b as f64 / 1e9));
         let rows: Vec<DownloadRow> = self
             .core
             .downloads()
@@ -409,20 +410,25 @@ impl App {
             .map(|d| {
                 let size = d
                     .total
-                    .map(|t| format!("{} / {}", gb(d.downloaded), gb(t)))
+                    .map(|t| tr!("{done} / {total}", done = gb(d.downloaded), total = gb(t)))
                     .unwrap_or_else(|| gb(d.downloaded));
                 let status = match d.state {
-                    DownloadState::Queued => format!("Queued · {size}"),
-                    DownloadState::Running => format!("Downloading · {size}"),
-                    DownloadState::Paused => format!("Paused · {size}"),
+                    DownloadState::Queued => tr!("Queued · {size}", size = size),
+                    DownloadState::Running => tr!("Downloading · {size}", size = size),
+                    DownloadState::Paused => tr!("Paused · {size}", size = size),
                     DownloadState::PausedNoSpace => {
-                        "Paused: disk full. Free some space, then resume.".into()
+                        tr!("Paused: disk full. Free some space, then resume.")
                     }
-                    DownloadState::Waiting => format!("Waiting for the network · {size}"),
-                    DownloadState::Failed => {
-                        format!("Failed: {}", d.error.clone().unwrap_or_default())
+                    DownloadState::Waiting => {
+                        tr!("Waiting for the network · {size}", size = size)
                     }
-                    DownloadState::Completed => format!("Downloaded · {}", d.file_path),
+                    DownloadState::Failed => tr!(
+                        "Failed: {error}",
+                        error = d.error.clone().unwrap_or_default()
+                    ),
+                    DownloadState::Completed => {
+                        tr!("Downloaded · {path}", path = d.file_path)
+                    }
                 };
                 DownloadRow {
                     id: d.id as i32,
@@ -473,26 +479,27 @@ impl App {
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
         let when = match i.protection {
-            Protection::Forever => "Kept forever".to_owned(),
-            Protection::UntilWatched => "Kept until watched".to_owned(),
+            Protection::Forever => tr!("Kept forever"),
+            Protection::UntilWatched => tr!("Kept until watched"),
             p => match i.effective_deletion_date {
-                None => "No date".into(),
+                None => tr!("No date"),
                 // Date passed but the owner has not turned deletion on: nothing happens yet.
                 Some(d) if d < now && !i.collection_active && p == Protection::None => {
-                    "Deletion paused".to_owned()
+                    tr!("Deletion paused")
                 }
                 Some(d) => {
                     let days = (d - now).div_euclid(86_400);
-                    let mut s = match days {
-                        d if d < 0 => "Any day now".to_owned(),
-                        0 => "Leaves today".into(),
-                        1 => "Leaves tomorrow".into(),
-                        d => format!("Leaves in {d} days"),
+                    let s = match days {
+                        d if d < 0 => tr!("Any day now"),
+                        0 => tr!("Leaves today"),
+                        1 => tr!("Leaves tomorrow"),
+                        d => trn!("Leaves in {n} day", "Leaves in {n} days", d),
                     };
                     if p == Protection::Extended {
-                        s.push_str(" (extended)");
+                        tr!("{when} (extended)", when = s)
+                    } else {
+                        s
                     }
-                    s
                 }
             },
         };
@@ -500,16 +507,13 @@ impl App {
             .my_vote
             .as_ref()
             .map(|v| match v.kind {
-                VoteKind::DontCare => "You're fine with it going".to_owned(),
-                VoteKind::KeepDays => "You keep it a while".into(),
-                VoteKind::KeepUntilWatched => "You keep it until you watch it".into(),
-                VoteKind::KeepForever => format!(
-                    "You keep it forever{}",
-                    v.reason
-                        .as_ref()
-                        .map(|r| format!(" ({r})"))
-                        .unwrap_or_default()
-                ),
+                VoteKind::DontCare => tr!("You're fine with it going"),
+                VoteKind::KeepDays => tr!("You keep it a while"),
+                VoteKind::KeepUntilWatched => tr!("You keep it until you watch it"),
+                VoteKind::KeepForever => match &v.reason {
+                    Some(r) => tr!("You keep it forever ({reason})", reason = r),
+                    None => tr!("You keep it forever"),
+                },
             })
             .unwrap_or_default();
         let others = i.counts.forever + i.counts.until_watched + i.counts.days;
@@ -526,7 +530,7 @@ impl App {
             when: sstr(when),
             vote: sstr(vote),
             others: sstr(if others > 0 {
-                format!("{others} keep request(s)")
+                trn!("{n} keep request", "{n} keep requests", others)
             } else {
                 String::new()
             }),
@@ -728,26 +732,32 @@ impl App {
                         .any(|o| o.user_key != u.user_key && o.name.eq_ignore_ascii_case(&u.name)),
                 )),
                 avatar: self.person_avatar(&u.user_key, &u.name, &u.avatar),
-                detail: sstr(format!(
-                    "{}{} kept forever",
-                    if u.is_admin { "admin · " } else { "" },
-                    u.forever_count
-                )),
-                forever: sstr(if u.rights.can_keep_forever {
-                    "Forever: allowed"
+                detail: sstr(if u.is_admin {
+                    trn!(
+                        "admin · {n} kept forever",
+                        "admin · {n} kept forever",
+                        u.forever_count
+                    )
                 } else {
-                    "Forever: blocked"
+                    trn!("{n} kept forever", "{n} kept forever", u.forever_count)
                 }),
-                max_forever: sstr(format!(
-                    "Max forever: {}",
-                    u.rights
+                forever: sstr(if u.rights.can_keep_forever {
+                    tr!("Forever: allowed")
+                } else {
+                    tr!("Forever: blocked")
+                }),
+                max_forever: sstr(tr!(
+                    "Max forever: {count}",
+                    count = u
+                        .rights
                         .max_forever
                         .map(|v| v.to_string())
                         .unwrap_or("∞".into())
                 )),
-                max_days: sstr(format!(
-                    "Max days: {}",
-                    u.rights
+                max_days: sstr(tr!(
+                    "Max days: {days}",
+                    days = u
+                        .rights
                         .max_keep_days
                         .map(|v| v.to_string())
                         .unwrap_or("∞".into())
@@ -799,13 +809,13 @@ impl App {
         };
         let ui = self.ui();
         if s.people.is_empty() {
-            ui.set_forever_summary("Nobody keeps anything forever yet.".into());
+            ui.set_forever_summary(sstr(tr!("Nobody keeps anything forever yet.")));
         } else {
-            ui.set_forever_summary(sstr(format!(
-                "{} titles · {} kept by several people · {} by one person",
-                s.titles,
-                s.shared,
-                s.titles.saturating_sub(s.shared)
+            ui.set_forever_summary(sstr(tr!(
+                "{titles} titles · {shared} kept by several people · {alone} by one person",
+                titles = s.titles,
+                shared = s.shared,
+                alone = s.titles.saturating_sub(s.shared)
             )));
         }
         let names: HashMap<&str, &str> = s
@@ -834,16 +844,20 @@ impl App {
                         person_label(&p.name, &p.media_name, twin),
                         p.count
                     )),
-                    detail: sstr(format!(
-                        "{} shared · {} only them{}",
-                        p.shared,
-                        p.alone,
-                        if overlaps.is_empty() {
-                            String::new()
-                        } else {
-                            format!(" · most with {overlaps}")
-                        }
-                    )),
+                    detail: sstr(if overlaps.is_empty() {
+                        tr!(
+                            "{shared} shared · {alone} only them",
+                            shared = p.shared,
+                            alone = p.alone
+                        )
+                    } else {
+                        tr!(
+                            "{shared} shared · {alone} only them · most with {people}",
+                            shared = p.shared,
+                            alone = p.alone,
+                            people = overlaps
+                        )
+                    }),
                     shared: p.shared as f32 / p.count.max(1) as f32,
                     avatar: self.person_avatar(&p.user_key, &p.name, &p.avatar),
                 }
@@ -923,8 +937,9 @@ impl App {
         let confirmed = self.state.borrow().armed.as_ref() == Some(&(collection.clone(), stagger));
         if !confirmed {
             self.state.borrow_mut().armed = Some((collection, stagger));
-            self.ui()
-                .set_keep_message("Click the same button again to confirm the countdown.".into());
+            self.ui().set_keep_message(sstr(tr!(
+                "Click the same button again to confirm the countdown."
+            )));
             return;
         }
         self.state.borrow_mut().armed = None;
@@ -936,9 +951,10 @@ impl App {
             let r = core.keep_admin_countdown(id, stagger.max(0) as u32).await;
             if let Some(t) = this.upgrade() {
                 t.ui().set_keep_message(sstr(match r {
-                    Ok(r) => format!(
-                        "Countdown restarted: {} items, {} skipped.",
-                        r.reset, r.skipped
+                    Ok(r) => tr!(
+                        "Countdown restarted: {items} items, {skipped} skipped.",
+                        items = r.reset,
+                        skipped = r.skipped
                     ),
                     Err(e) => e.to_string(),
                 }));
@@ -995,12 +1011,19 @@ impl App {
         ui.set_keep_can_switch(self.core.accounts().map(|a| a.len() > 1).unwrap_or(false));
         if let Some(k) = self.core.keep_connection() {
             ui.set_keep_admin(k.is_admin);
-            ui.set_keep_label(sstr(format!(
-                "Signed in as {} on {}{}",
-                k.user_name,
-                k.base_url,
-                if k.is_admin { " (admin)" } else { "" }
-            )));
+            ui.set_keep_label(sstr(if k.is_admin {
+                tr!(
+                    "Signed in as {name} on {server} (admin)",
+                    name = k.user_name,
+                    server = k.base_url
+                )
+            } else {
+                tr!(
+                    "Signed in as {name} on {server}",
+                    name = k.user_name,
+                    server = k.base_url
+                )
+            }));
         }
     }
 
@@ -1034,9 +1057,9 @@ impl App {
         let ui = self.ui();
         if usable.is_empty() {
             let names: Vec<&str> = list.iter().map(|e| e.name.as_str()).collect();
-            ui.set_keep_message(sstr(format!(
-                "This needs a login on one of its servers ({}). Add one first: Settings → Servers → Add a server.",
-                names.join(", ")
+            ui.set_keep_message(sstr(tr!(
+                "This needs a login on one of its servers ({servers}). Add one first: Settings → Servers → Add a server.",
+                servers = names.join(", ")
             )));
             return;
         }
@@ -1092,9 +1115,9 @@ impl App {
             return;
         };
         let Some(token) = self.keep_token(&account.id) else {
-            self.ui().set_keep_message(sstr(format!(
-                "Sign in to {} again first.",
-                account.server_name
+            self.ui().set_keep_message(sstr(tr!(
+                "Sign in to {server} again first.",
+                server = account.server_name
             )));
             return;
         };
@@ -1136,9 +1159,9 @@ impl App {
         let due = self.core.keep_due_reminders(now);
         if !due.is_empty() {
             let titles: Vec<String> = due.iter().map(|i| i.title.clone()).collect();
-            self.ui().set_keep_message(sstr(format!(
-                "Reminder: you wanted to watch {} before it leaves.",
-                titles.join(", ")
+            self.ui().set_keep_message(sstr(tr!(
+                "Reminder: you wanted to watch {titles} before it leaves.",
+                titles = titles.join(", ")
             )));
         }
     }
@@ -1225,14 +1248,14 @@ impl App {
         }
     }
 
-    fn availability_label(a: Availability) -> &'static str {
+    fn availability_label(a: Availability) -> String {
         match a {
-            Availability::Available => "Available",
-            Availability::PartiallyAvailable => "Partly available",
-            Availability::Processing => "Downloading",
-            Availability::Pending => "Requested",
-            Availability::Blocklisted => "Blocked",
-            _ => "",
+            Availability::Available => tr!("Available"),
+            Availability::PartiallyAvailable => tr!("Partly available"),
+            Availability::Processing => tr!("Downloading"),
+            Availability::Pending => tr!("Requested"),
+            Availability::Blocklisted => tr!("Blocked"),
+            _ => String::new(),
         }
     }
 
@@ -1242,16 +1265,16 @@ impl App {
                 .into_iter()
                 .map(|r| {
                     let status = match r.status {
-                        RequestStatus::Pending => "Waiting for approval",
-                        RequestStatus::Approved => "Approved",
-                        RequestStatus::Declined => "Declined",
-                        RequestStatus::Failed => "Failed",
-                        RequestStatus::Completed => "Available",
+                        RequestStatus::Pending => tr!("Waiting for approval"),
+                        RequestStatus::Approved => tr!("Approved"),
+                        RequestStatus::Declined => tr!("Declined"),
+                        RequestStatus::Failed => tr!("Failed"),
+                        RequestStatus::Completed => tr!("Available"),
                     };
                     (
                         format!("{:?}:{}", r.media_type, r.tmdb_id),
                         r.title.unwrap_or_else(|| format!("TMDB {}", r.tmdb_id)),
-                        status.to_owned(),
+                        status,
                         r.poster_url,
                     )
                 })
@@ -1353,16 +1376,15 @@ impl App {
             let mut meta: Vec<String> = t.year.iter().cloned().collect();
             if is_tv {
                 meta.push(match t.seasons {
-                    Some(1) => "1 season".into(),
-                    Some(n) => format!("{n} seasons"),
-                    None => "Show".into(),
+                    Some(n) => trn!("{n} season", "{n} seasons", n),
+                    None => tr!("Show"),
                 });
             }
             meta.extend(t.runtime_min.map(|m| {
                 if m >= 60 {
-                    format!("{} h {} min", m / 60, m % 60)
+                    tr!("{hours} h {minutes} min", hours = m / 60, minutes = m % 60)
                 } else {
-                    format!("{m} min")
+                    tr!("{minutes} min", minutes = m)
                 }
             }));
             meta.extend(t.rating.map(|r| format!("★ {r:.1}")));
@@ -1488,7 +1510,7 @@ impl App {
             ui.set_seerr_saga(SeerrPage {
                 key: sstr(id.to_string()),
                 title: sstr(&c.name),
-                meta: sstr(format!("{} films", c.parts.len())),
+                meta: sstr(trn!("{n} film", "{n} films", c.parts.len())),
                 overview: sstr(c.overview.clone().unwrap_or_default()),
                 ..Default::default()
             });
@@ -1504,7 +1526,7 @@ impl App {
             .map(|r| {
                 let sub = [
                     r.year.clone().unwrap_or_default(),
-                    Self::availability_label(r.availability).to_owned(),
+                    Self::availability_label(r.availability),
                 ]
                 .into_iter()
                 .filter(|s| !s.is_empty())
@@ -1559,7 +1581,7 @@ impl App {
         };
         if !all && r.media_type == SeerrMediaType::Tv && seasons.is_empty() {
             self.ui()
-                .set_seerr_message("Pick at least one season.".into());
+                .set_seerr_message(sstr(tr!("Pick at least one season.")));
             return;
         }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
@@ -1567,8 +1589,12 @@ impl App {
             let res = core.seerr_request(r.media_type, r.tmdb_id, seasons).await;
             let Some(t) = this.upgrade() else { return };
             t.ui().set_seerr_message(sstr(match res {
-                Ok(_) => format!("Requested: {}", r.title),
-                Err(e) => format!("Could not request {}: {e}", r.title),
+                Ok(_) => tr!("Requested: {title}", title = r.title),
+                Err(e) => tr!(
+                    "Could not request {title}: {error}",
+                    title = r.title,
+                    error = e
+                ),
             }));
             let _ = core.refresh_seerr_requests(true, false).await;
             let key = t.ui().get_seerr_title().key.to_string();
@@ -1587,7 +1613,7 @@ impl App {
         ui.set_seerr_active(self.core.seerr_active());
         if let Some(c) = self.core.seerr_connection() {
             ui.set_seerr_label(sstr(if c.via_keep {
-                format!("{} (through your AlwyWatch server)", c.user_name)
+                tr!("{name} (through your AlwyWatch server)", name = c.user_name)
             } else {
                 format!("{} @ {}", c.user_name, c.base_url)
             }));
@@ -1615,8 +1641,10 @@ impl App {
         match r {
             Ok(s) => {
                 if let Err(e) = self.tokens.put("seerr", &s.cookie) {
-                    self.ui()
-                        .set_seerr_message(sstr(format!("could not store the session: {e}")));
+                    self.ui().set_seerr_message(sstr(tr!(
+                        "could not store the session: {error}",
+                        error = e
+                    )));
                     return;
                 }
                 self.ui().set_seerr_message(SharedString::new());
@@ -1643,10 +1671,11 @@ impl App {
                         .iter()
                         .filter_map(|l| {
                             let (id, title) = match l {
-                                SeerrLogin::Plex => ("plex", "Sign in with Plex"),
-                                SeerrLogin::Jellyfin => ("jellyfin", "Sign in with Jellyfin"),
-                                SeerrLogin::Emby => ("emby", "Sign in with Emby"),
-                                SeerrLogin::Local => ("local", "Seerr account"),
+                                SeerrLogin::Plex => ("plex", tr!("Sign in with Plex")),
+                                SeerrLogin::Jellyfin => ("jellyfin", tr!("Sign in with Jellyfin")),
+                                SeerrLogin::Emby => ("emby", tr!("Sign in with Emby")),
+                                SeerrLogin::Local => ("local", tr!("Seerr account")),
+
                                 SeerrLogin::NotConfigured => return None,
                             };
                             Some(NamedId {
@@ -1910,12 +1939,12 @@ impl App {
             }
             Route::MyList => {
                 ui.set_page(Page::Mylist);
-                ui.set_list_title("My list".into());
+                ui.set_list_title(sstr(tr!("My list")));
                 self.load_watchlist();
             }
             Route::Continue => {
                 ui.set_page(Page::Mylist);
-                ui.set_list_title("Continue watching".into());
+                ui.set_list_title(sstr(tr!("Continue watching")));
                 ui.set_status(SharedString::new());
                 let items = self.state.borrow().continue_items.clone();
                 let model = self.state.borrow().grid_model.clone();
@@ -2167,31 +2196,28 @@ impl App {
             home.continue_watching.clone()
         };
         self.state.borrow_mut().continue_items = cw.clone();
-        let mut rails: Vec<(String, Vec<Item>)> = vec![("Continue watching".into(), cw)];
+        let cw_title = tr!("Continue watching");
+        let new_in = |library: &str| tr!("New in {library}", library = library);
+        let mut rails: Vec<(String, Vec<Item>)> = vec![(cw_title.clone(), cw)];
         rails.extend(
             home.latest
                 .iter()
-                .map(|r| (format!("New in {}", r.library.title), r.items.clone())),
+                .map(|r| (new_in(&r.library.title), r.items.clone())),
         );
         // "See all" keys, by title.
         let mut keys: HashMap<String, String> = home
             .latest
             .iter()
-            .map(|r| {
-                (
-                    format!("New in {}", r.library.title),
-                    format!("lib:{}", r.library.id),
-                )
-            })
+            .map(|r| (new_in(&r.library.title), format!("lib:{}", r.library.id)))
             .collect();
-        keys.insert("Continue watching".into(), "continue".into());
+        keys.insert(cw_title.clone(), "continue".into());
         self.keep_notes(home.latest.iter().flat_map(|r| &r.notes));
         rails.retain(|(_, items)| !items.is_empty());
         let models: Vec<Rc<VecModel<Card>>> =
             rails.iter().map(|_| Rc::new(VecModel::default())).collect();
         // Posters everywhere, like Plex: an episode shows its show's poster.
         for ((t, items), m) in rails.iter().zip(&models) {
-            if t == "Continue watching" {
+            if *t == cw_title {
                 self.fill(m, items, ImageKind::SeriesPrimary, POSTER_PX, 0, badges);
             } else {
                 self.fill(m, items, ImageKind::Primary, POSTER_PX, 0, badges);
@@ -2250,12 +2276,12 @@ impl App {
                 // After what the user is watching.
                 let at = rail_vec
                     .iter()
-                    .take_while(|r| r.title == "Continue watching")
+                    .take_while(|r| r.title == cw_title.as_str())
                     .count();
                 rail_vec.insert(
                     at,
                     Rail {
-                        title: "Leaving soon".into(),
+                        title: sstr(tr!("Leaving soon")),
                         items: ModelRc::from(model),
                         landscape: false,
                         see_all: "leaving".into(),
@@ -2277,7 +2303,7 @@ impl App {
         )));
         self.state.borrow_mut().rail_models = models;
         ui.set_status(if rails.is_empty() {
-            "Nothing here yet.".into()
+            sstr(tr!("Nothing here yet."))
         } else {
             SharedString::new()
         });
@@ -2328,7 +2354,7 @@ impl App {
             })
             .collect();
         if cached.is_empty() {
-            self.ui().set_status("Loading…".into());
+            self.ui().set_status(sstr(tr!("Loading…")));
         } else {
             self.render_merged(cached.clone());
         }
@@ -2428,24 +2454,25 @@ impl App {
             this.own(&cw, account);
             this.own(&added, account);
             let mut rails = vec![];
-            for (title, items, landscape) in [
-                ("Continue watching", cw, false),
-                ("Recently added", added, false),
-            ] {
+            for (recent, items, landscape) in [(false, cw, false), (true, added, false)] {
                 if items.is_empty() {
                     continue;
                 }
                 let m = Rc::new(VecModel::default());
                 // Posters, an episode showing its show's.
                 this.fill(&m, &items, ImageKind::SeriesPrimary, POSTER_PX, 0, false);
-                if title == "Recently added" {
+                if recent {
                     this.label_noted(&m);
                 }
                 rails.push(Rail {
-                    title: sstr(title),
+                    title: sstr(if recent {
+                        tr!("Recently added")
+                    } else {
+                        tr!("Continue watching")
+                    }),
                     items: ModelRc::from(m),
                     landscape,
-                    see_all: if title == "Recently added" {
+                    see_all: if recent {
                         sstr(format!("lib:{library}"))
                     } else {
                         "continue".into()
@@ -2482,9 +2509,9 @@ impl App {
             model.set_vec(vec![]);
             this.fill(&model, cols, ImageKind::Primary, POSTER_PX, 0, false);
             this.ui().set_status(sstr(if cols.is_empty() {
-                "No collections in this library."
+                tr!("No collections in this library.")
             } else {
-                ""
+                String::new()
             }));
         };
         if let Some(c) = self
@@ -2558,9 +2585,9 @@ impl App {
 
     fn render_sorts(&self, sort: SortBy) {
         let sorts = [
-            ("title", "A–Z", SortBy::Title),
-            ("added", "Added", SortBy::DateAdded),
-            ("released", "Released", SortBy::ReleaseDate),
+            ("title", tr!("A–Z"), SortBy::Title),
+            ("added", tr!("Added"), SortBy::DateAdded),
+            ("released", tr!("Released"), SortBy::ReleaseDate),
         ];
         self.ui().set_sorts(ModelRc::new(VecModel::from(
             sorts
@@ -3019,7 +3046,7 @@ impl App {
     /// Settings → Audio & subtitles: the next choice of a setting (same values as Android).
     fn cycle_setting(&self, key: String) {
         let codes: Vec<&str> = std::iter::once("")
-            .chain(LANGUAGES.iter().map(|(c, _)| *c))
+            .chain(LANGUAGES.iter().copied())
             .collect();
         let options: Vec<&str> = match key.as_str() {
             "player.sub_mode" => vec!["auto", "forced", "always", "off"],
@@ -3076,24 +3103,20 @@ impl App {
         let ui = self.ui();
         ui.set_auto_skip_intro(get("player.auto_skip_intro").as_deref() == Some("1"));
         ui.set_auto_next(get("player.auto_next").as_deref() != Some("0"));
-        let lang = |code: &str| {
-            LANGUAGES
-                .iter()
-                .find(|(c, _)| *c == code)
-                .map_or_else(|| code.to_owned(), |(_, n)| (*n).to_owned())
-        };
+        let lang = |code: &str| language_name(code).unwrap_or_else(|| code.to_owned());
         ui.set_audio_lang_label(sstr(match get("player.audio_lang").as_deref() {
-            None | Some("") => "Original".to_owned(),
+            None | Some("") => tr!("Original"),
             Some(c) => lang(c),
         }));
         ui.set_sub_mode_label(sstr(match get("player.sub_mode").as_deref() {
-            Some("forced") => "Only foreign-language parts",
-            Some("always") => "Always",
-            Some("off") => "Off",
-            _ => "Automatic",
+            Some("forced") => tr!("Only foreign-language parts"),
+            Some("always") => tr!("Always"),
+            Some("off") => tr!("Off"),
+            _ => tr!("Automatic"),
         }));
         ui.set_sub_lang_label(sstr(match get("player.sub_lang").as_deref() {
-            None | Some("") => "System language".to_owned(),
+            None | Some("") => tr!("System language"),
+
             Some(c) => lang(c),
         }));
         let r = self.core.together_rights();
@@ -3389,7 +3412,7 @@ impl App {
         d.crew = sstr(if directors.is_empty() {
             String::new()
         } else {
-            format!("Directed by {}", directors.join(", "))
+            tr!("Directed by {names}", names = directors.join(", "))
         });
         ui.set_detail(d);
         let cast = people
@@ -3482,8 +3505,8 @@ impl App {
             // In no list and never looked up: "Keep it" asks the server for its entry.
             None => KeepPanel {
                 shown: true,
-                title: "Not scheduled for deletion".into(),
-                choice: "You haven't chosen anything".into(),
+                title: sstr(tr!("Not scheduled for deletion")),
+                choice: sstr(tr!("You haven't chosen anything")),
                 ..Default::default()
             },
             Some(e) => {
@@ -3498,11 +3521,11 @@ impl App {
                     title: if planned {
                         sstr(keep_policy(&e, &row.when))
                     } else {
-                        "Not scheduled for deletion".into()
+                        sstr(tr!("Not scheduled for deletion"))
                     },
                     detail: sstr(keep_detail(&e)),
                     choice: if row.vote.is_empty() {
-                        "You haven't chosen anything".into()
+                        sstr(tr!("You haven't chosen anything"))
                     } else {
                         row.vote
                     },
@@ -3542,9 +3565,7 @@ impl App {
                     let mut panel = ui.get_detail_keep();
                     panel.looking = false;
                     panel.error = sstr(match e {
-                        CoreError::NotFound => {
-                            "This title is never deleted automatically.".to_owned()
-                        }
+                        CoreError::NotFound => tr!("This title is never deleted automatically."),
                         e => e.to_string(),
                     });
                     ui.set_detail_keep(panel);
@@ -3632,9 +3653,9 @@ impl App {
                 }
             }
             if items.is_empty() {
-                this.ui().set_status(sstr(
-                    "Nothing saved yet. On a movie or show, press the bookmark to keep it here.",
-                ));
+                this.ui().set_status(sstr(tr!(
+                    "Nothing saved yet. On a movie or show, press the bookmark to keep it here."
+                )));
             }
             let model = this.state.borrow().grid_model.clone();
             model.set_vec(vec![]);
@@ -3756,11 +3777,19 @@ impl App {
             )
         };
         self.state.borrow_mut().mark_pending = Some(target);
-        self.ui().set_mark_confirm(sstr(format!(
-            "Mark all {}episodes of {} unwatched? This forgets where you stopped.",
-            count.map(|n| format!("{n} ")).unwrap_or_default(),
-            what.trim()
-        )));
+        let what = what.trim();
+        self.ui().set_mark_confirm(sstr(match count {
+            Some(n) => trn!(
+                "Mark all {n} episode of {title} unwatched? This forgets where you stopped.",
+                "Mark all {n} episodes of {title} unwatched? This forgets where you stopped.",
+                n,
+                title = what
+            ),
+            None => tr!(
+                "Mark all episodes of {title} unwatched? This forgets where you stopped.",
+                title = what
+            ),
+        }));
     }
 
     fn mark_confirmed(self: &Rc<Self>, ok: bool) {
@@ -3891,32 +3920,40 @@ impl App {
             .unwrap_or_default()
             .into_iter()
             .map(|a| {
-                let sync = match &keep {
-                    Some(k) if k.account_id == a.id => " · used for AlwyWatch",
-                    Some(_) => "",
-                    None => "",
+                let kind = format!("{:?}", a.kind);
+                let detail = match &keep {
+                    Some(k) if k.account_id == a.id => tr!(
+                        "{kind} · {url} · used for AlwyWatch",
+                        kind = kind,
+                        url = a.base_url
+                    ),
+                    _ => format!("{kind} · {}", a.base_url),
                 };
                 AccountRow {
                     current: Some(&a.id) == current.as_ref(),
-                    label: sstr(format!("{} on {}", a.user_name, a.server_name)),
-                    detail: sstr(format!("{:?} · {}{sync}", a.kind, a.base_url)),
+                    label: sstr(tr!(
+                        "{name} on {server}",
+                        name = a.user_name,
+                        server = a.server_name
+                    )),
+                    detail: sstr(detail),
                     id: sstr(a.id),
                 }
             })
             .collect();
         ui.set_accounts(ModelRc::new(VecModel::from(rows)));
-        ui.set_cache_size(sstr(format!(
-            "{} MB",
-            self.core.image_cache_bytes() / (1024 * 1024)
+        ui.set_cache_size(sstr(tr!(
+            "{size} MB",
+            size = self.core.image_cache_bytes() / (1024 * 1024)
         )));
-        ui.set_about(sstr(format!(
-            "AlwyWatch {} (core {}) · GNU AGPL v3 or later · player: {}",
-            env!("CARGO_PKG_VERSION"),
-            core_version(),
-            if crate::mpv::available() {
-                "libmpv found"
+        ui.set_about(sstr(tr!(
+            "AlwyWatch {version} (core {core}) · GNU AGPL v3 or later · player: {player}",
+            version = env!("CARGO_PKG_VERSION"),
+            core = core_version(),
+            player = if crate::mpv::available() {
+                tr!("libmpv found")
             } else {
-                "libmpv missing"
+                tr!("libmpv missing")
             }
         )));
     }
@@ -3929,12 +3966,13 @@ impl App {
         }
         if let Err(e) = self.tokens.put(&s.account.id, &s.token) {
             self.ui()
-                .set_status(sstr(format!("could not store the token: {e}")));
+                .set_status(sstr(tr!("could not store the token: {error}", error = e)));
             return;
         }
         let _ = self
             .core
             .set_setting("current_account".into(), s.account.id.clone());
+
         // Leaving soon + Seerr through the AlwyWatch server the user started from (if any).
         if let Some(token) = self.keep_token(&s.account.id) {
             let (core, this, id) = (self.core.clone(), Rc::downgrade(self), s.account.id.clone());
@@ -4061,20 +4099,19 @@ impl App {
                         ServerChoice {
                             id: sstr(i.to_string()),
                             title: sstr(&e.name),
-                            subtitle: match (plex, signed_in.contains(&e.id)) {
-                                (true, true) => "Plex · already signed in",
-                                (false, true) => "Jellyfin · already signed in",
-                                (true, false) => "Plex · sign in on plex.tv",
-                                (false, false) => "Jellyfin · Quick Connect or password",
-                            }
-                            .into(),
+                            subtitle: sstr(match (plex, signed_in.contains(&e.id)) {
+                                (true, true) => tr!("Plex · already signed in"),
+                                (false, true) => tr!("Jellyfin · already signed in"),
+                                (true, false) => tr!("Plex · sign in on plex.tv"),
+                                (false, false) => tr!("Jellyfin · Quick Connect or password"),
+                            }),
                             plex,
                         }
                     })
                     .collect::<Vec<_>>(),
             )));
             t.ui().set_status(if list.is_empty() {
-                "This AlwyWatch server lists no media servers.".into()
+                sstr(tr!("This AlwyWatch server lists no media servers."))
             } else {
                 SharedString::new()
             });
@@ -4216,7 +4253,7 @@ impl App {
                                 .map(|s| NamedId {
                                     id: sstr(&s.machine_id),
                                     title: sstr(if s.owned {
-                                        format!("{} (yours)", s.name)
+                                        tr!("{name} (yours)", name = s.name)
                                     } else {
                                         s.name.clone()
                                     }),
@@ -4300,18 +4337,18 @@ impl App {
     /// New device: stores what arrived and signs in with it. Returns the account to open.
     fn restore_bundle(&self, json: &str) -> Result<Option<String>, CoreError> {
         let invalid = |detail: String| CoreError::Invalid { detail };
-        let v: serde_json::Value =
-            serde_json::from_str(json).map_err(|e| invalid(format!("unreadable transfer: {e}")))?;
+        let v: serde_json::Value = serde_json::from_str(json)
+            .map_err(|e| invalid(tr!("unreadable transfer: {error}", error = e)))?;
         let core = v["core"]
             .as_str()
-            .ok_or_else(|| invalid("unreadable transfer".into()))?;
+            .ok_or_else(|| invalid(tr!("unreadable transfer")))?;
         let ids = self.core.import_config(core.to_owned())?;
         if let Some(t) = v["tokens"].as_object() {
             for (k, t) in t {
                 if let Some(t) = t.as_str() {
-                    self.tokens
-                        .put(k, t)
-                        .map_err(|e| invalid(format!("could not store the token: {e}")))?;
+                    self.tokens.put(k, t).map_err(|e| {
+                        invalid(tr!("could not store the token: {error}", error = e))
+                    })?;
                 }
             }
         }
@@ -4329,8 +4366,9 @@ impl App {
     /// to the server the user watches on.
     fn account_ready(self: &Rc<Self>, url: String, name: String) {
         let ui = self.ui();
-        ui.set_account_note(sstr(format!(
-            "Signed in as {name}. Now sign in to the server you watch on."
+        ui.set_account_note(sstr(tr!(
+            "Signed in as {name}. Now sign in to the server you watch on.",
+            name = name
         )));
         ui.set_add_step("alwywatch".into());
         ui.set_keep_address(sstr(&url));
@@ -4360,9 +4398,10 @@ impl App {
             match r {
                 Ok(s) => {
                     if let Err(e) = t.tokens.put(ACCOUNT_TOKEN, &s.token) {
-                        return t
-                            .ui()
-                            .set_transfer_status(sstr(format!("could not store the token: {e}")));
+                        return t.ui().set_transfer_status(sstr(tr!(
+                            "could not store the token: {error}",
+                            error = e
+                        )));
                     }
                     t.account_ready(url, s.account.name);
                 }
@@ -4464,9 +4503,9 @@ impl App {
                     let Some(bundle) = got.bundle else {
                         match account {
                             Some(a) => t.account_ready(url.clone(), a.name),
-                            None => t.ui().set_transfer_status(
-                                "Nothing to copy: that device has no accounts.".into(),
-                            ),
+                            None => t.ui().set_transfer_status(sstr(tr!(
+                                "Nothing to copy: that device has no accounts."
+                            ))),
                         }
                         return;
                     };
@@ -4481,9 +4520,9 @@ impl App {
                             t.refresh_seerr_settings();
                             t.reset(Route::Home);
                         }
-                        Ok(None) => t.ui().set_transfer_status(
-                            "Nothing to copy: that device has no accounts.".into(),
-                        ),
+                        Ok(None) => t.ui().set_transfer_status(sstr(tr!(
+                            "Nothing to copy: that device has no accounts."
+                        ))),
                         Err(e) => t.ui().set_transfer_status(sstr(e.to_string())),
                     }
                     return;
@@ -4498,7 +4537,7 @@ impl App {
         let code: String = code.chars().filter(char::is_ascii_digit).collect();
         let ui = self.ui();
         if code.len() != 6 {
-            ui.set_send_error("Type the 6 digits the new device shows.".into());
+            ui.set_send_error(sstr(tr!("Type the 6 digits the new device shows.")));
             return;
         }
         ui.set_send_error(SharedString::new());
@@ -4515,7 +4554,7 @@ impl App {
                     ui.set_send_step("confirm".into());
                 }
                 Err(CoreError::NotFound) => {
-                    ui.set_send_error("Unknown or expired code.".into());
+                    ui.set_send_error(sstr(tr!("Unknown or expired code.")));
                 }
                 Err(e) => ui.set_send_error(sstr(e.to_string())),
             }
@@ -4917,7 +4956,15 @@ impl App {
                 "leaving" => a.navigate(Route::Leaving),
                 k => {
                     if let Some(lib) = k.strip_prefix("lib:") {
-                        let name = title.strip_prefix("New in ").unwrap_or(&title).to_owned();
+                        // The rail's title is "New in {library}" in the selected language.
+                        let tpl = i18n::tr("New in {library}");
+                        let (pre, post) = tpl.split_once("{library}").unwrap_or(("", ""));
+                        let name = title
+                            .strip_prefix(pre)
+                            .and_then(|s| s.strip_suffix(post))
+                            .unwrap_or(&title)
+                            .to_owned();
+
                         a.navigate(Route::Recent(lib.to_owned(), name));
                     }
                 }
@@ -5115,24 +5162,33 @@ impl App {
 }
 
 /// Languages offered for audio and subtitles (the codes Android stores too).
-const LANGUAGES: [(&str, &str); 16] = [
-    ("eng", "English"),
-    ("fra", "French"),
-    ("nld", "Dutch"),
-    ("deu", "German"),
-    ("spa", "Spanish"),
-    ("ita", "Italian"),
-    ("por", "Portuguese"),
-    ("jpn", "Japanese"),
-    ("kor", "Korean"),
-    ("zho", "Chinese"),
-    ("ara", "Arabic"),
-    ("rus", "Russian"),
-    ("pol", "Polish"),
-    ("swe", "Swedish"),
-    ("tur", "Turkish"),
-    ("hin", "Hindi"),
+const LANGUAGES: [&str; 16] = [
+    "eng", "fra", "nld", "deu", "spa", "ita", "por", "jpn", "kor", "zho", "ara", "rus", "pol",
+    "swe", "tur", "hin",
 ];
+
+/// The name of one of [`LANGUAGES`] in the selected language.
+fn language_name(code: &str) -> Option<String> {
+    Some(match code {
+        "eng" => tr!("English"),
+        "fra" => tr!("French"),
+        "nld" => tr!("Dutch"),
+        "deu" => tr!("German"),
+        "spa" => tr!("Spanish"),
+        "ita" => tr!("Italian"),
+        "por" => tr!("Portuguese"),
+        "jpn" => tr!("Japanese"),
+        "kor" => tr!("Korean"),
+        "zho" => tr!("Chinese"),
+        "ara" => tr!("Arabic"),
+        "rus" => tr!("Russian"),
+        "pol" => tr!("Polish"),
+        "swe" => tr!("Swedish"),
+        "tur" => tr!("Turkish"),
+        "hin" => tr!("Hindi"),
+        _ => return None,
+    })
+}
 
 /// The AlwyWatch account token, in the token store like media tokens.
 const ACCOUNT_TOKEN: &str = "alwywatch_account";
@@ -5219,7 +5275,7 @@ fn saga_label(name: &str) -> String {
     if lower.contains("saga") || lower.contains("collection") {
         name.to_owned()
     } else {
-        format!("Saga · {name}")
+        tr!("Saga · {name}", name = name)
     }
 }
 
@@ -5241,12 +5297,16 @@ fn keep_paused(e: &LeavingItem, now: i64) -> bool {
 /// Leaving soon row's label).
 fn keep_policy(e: &LeavingItem, leaves: &str) -> String {
     match e.protection {
-        Protection::Forever => "Kept forever".into(),
+        Protection::Forever => tr!("Kept forever"),
         Protection::UntilWatched => match e.counts.until_watched {
-            ..=1 => "Kept until the person who asked has watched it".into(),
-            n => format!("Kept until {n} people have watched it"),
+            ..=1 => tr!("Kept until the person who asked has watched it"),
+            n => trn!(
+                "Kept until {n} person has watched it",
+                "Kept until {n} people have watched it",
+                n
+            ),
         },
-        _ if keep_paused(e, now_secs()) => "On the deletion list".into(),
+        _ if keep_paused(e, now_secs()) => tr!("On the deletion list"),
         _ => leaves.to_owned(),
     }
 }
@@ -5262,29 +5322,34 @@ fn keep_detail(e: &LeavingItem) -> String {
     let mut parts = vec![];
     // (A title taken out of its list by a keep still remembers which one it was in.)
     if let Some(t) = e.collection_title.as_ref().filter(|_| e.listed) {
-        parts.push(format!("In “{t}”"));
+        parts.push(tr!("In “{list}”", list = t));
     }
     if e.listed && e.protection == Protection::None && !e.collection_active {
-        parts.push("deletion isn't turned on yet".to_owned());
+        parts.push(tr!("deletion isn't turned on yet"));
     }
     if let Some(d) = e.effective_deletion_date
         && e.listed
         && !keep_paused(e, now_secs())
     {
-        parts.push(format!("date {}", medium_date(d)));
+        parts.push(tr!("date {date}", date = medium_date(d)));
     }
     let c = &e.counts;
-    let keepers: Vec<String> = [
-        (c.forever, "forever"),
-        (c.until_watched, "until watched"),
-        (c.days, "for a while"),
-    ]
-    .into_iter()
-    .filter(|(n, _)| *n > 0)
-    .map(|(n, what)| format!("{n} {what}"))
-    .collect();
+    let mut keepers: Vec<String> = vec![];
+    if c.forever > 0 {
+        keepers.push(trn!("{n} forever", "{n} forever", c.forever));
+    }
+    if c.until_watched > 0 {
+        keepers.push(trn!(
+            "{n} until watched",
+            "{n} until watched",
+            c.until_watched
+        ));
+    }
+    if c.days > 0 {
+        keepers.push(trn!("{n} for a while", "{n} for a while", c.days));
+    }
     if !keepers.is_empty() {
-        parts.push(format!("kept by {}", keepers.join(", ")));
+        parts.push(tr!("kept by {people}", people = keepers.join(", ")));
     }
     let s = parts.join(" · ");
     let mut chars = s.chars();
@@ -5306,10 +5371,26 @@ fn medium_date(ts: i64) -> String {
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + i64::from(month <= 2);
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    format!("{day} {} {year}", MONTHS[(month - 1) as usize])
+    let month = match month {
+        1 => tr!("Jan"),
+        2 => tr!("Feb"),
+        3 => tr!("Mar"),
+        4 => tr!("Apr"),
+        5 => tr!("May"),
+        6 => tr!("Jun"),
+        7 => tr!("Jul"),
+        8 => tr!("Aug"),
+        9 => tr!("Sep"),
+        10 => tr!("Oct"),
+        11 => tr!("Nov"),
+        _ => tr!("Dec"),
+    };
+    tr!(
+        "{day} {month} {year}",
+        day = day,
+        month = month,
+        year = year
+    )
 }
 
 async fn async_sleep(d: Duration) {

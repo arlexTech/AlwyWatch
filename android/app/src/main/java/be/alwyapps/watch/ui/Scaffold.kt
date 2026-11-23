@@ -104,9 +104,9 @@ fun tabs(): List<Tab> {
     val d = LocalDimens.current
     val rail = usesRail()
     val services = keepServices()
-    val out = mutableListOf(Tab(Route.Home, "Home", Icons.Home, Icons.HomeFilled))
-    if (rail) out += Tab(Route.Watchlist, "My list", Icons.Bookmark, Icons.BookmarkFilled)
-    if (rail) out += Tab(Route.Search, "Search", Icons.Search)
+    val out = mutableListOf(Tab(Route.Home, tr("Home"), Icons.Home, Icons.HomeFilled))
+    if (rail) out += Tab(Route.Watchlist, tr("My list"), Icons.Bookmark, Icons.BookmarkFilled)
+    if (rail) out += Tab(Route.Search, tr("Search"), Icons.Search)
     if (rail) {
         // Libraries as destinations (from the cached home: no network).
         val account = LocalAccount.current
@@ -118,13 +118,13 @@ fun tabs(): List<Tab> {
         }
     }
     // Leaving soon needs Maintainerr behind the AlwyWatch server.
-    if (core.keepActive() && services.leavingSoon) out += Tab(Route.LeavingSoon, "Leaving", Icons.Hourglass)
+    if (core.keepActive() && services.leavingSoon) out += Tab(Route.LeavingSoon, tr("Leaving"), Icons.Hourglass)
     // Watch together goes through the AlwyWatch server.
-    if (core.keepActive()) out += Tab(Route.Together, "Together", Icons.Group)
+    if (core.keepActive()) out += Tab(Route.Together, tr("Together"), Icons.Group)
     // Requests (Seerr), when connected: with the other pages (phones reach it from Settings).
-    if (rail && requestsAvailable(core, services)) out += Tab(Route.Requests, "Requests", Icons.Add)
-    if (rail && !d.isTv) out += Tab(Route.Downloads, "Downloads", Icons.Download)
-    if (rail) out += Tab(Route.Settings, "Settings", Icons.Settings)
+    if (rail && requestsAvailable(core, services)) out += Tab(Route.Requests, tr("Requests"), Icons.Add)
+    if (rail && !d.isTv) out += Tab(Route.Downloads, tr("Downloads"), Icons.Download)
+    if (rail) out += Tab(Route.Settings, tr("Settings"), Icons.Settings)
     return out
 }
 
@@ -472,7 +472,7 @@ private fun TvProfileItem(
             .then(if (open) Modifier.width(160.dp) else Modifier)
             .clip(RoundedCornerShape(50))
             .background(if (focused) Color.White else Color.Transparent)
-            .clickable(interactionSource = interaction, indication = null, onClickLabel = "Switch profile", onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, onClickLabel = tr("Switch profile"), onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -490,7 +490,7 @@ private fun TvProfileItem(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 Text(
-                    "Switch profile",
+                    tr("Switch profile"),
                     // The label style is heavy and tracked: too loud under a name.
                     style =
                         MaterialTheme.typography.labelSmall.copy(

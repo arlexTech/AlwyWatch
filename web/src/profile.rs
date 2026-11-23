@@ -6,6 +6,7 @@
 //! `keep_service::profile`. Custom pictures need the signed-in headers (an `<img src>` can't
 //! send them), so they're fetched once per (user, version) and shown from a blob URL.
 
+use i18n::tr;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
@@ -21,7 +22,11 @@ use wasm_bindgen_futures::JsFuture;
 use crate::state;
 use crate::ui::ErrorText;
 
-const NO_KEEP: &str = "This only works with a login on one of this site's servers. Add one in Settings → Servers → Add a server.";
+fn no_keep() -> String {
+    tr!(
+        "This only works with a login on one of this site's servers. Add one in Settings → Servers → Add a server."
+    )
+}
 
 // ---------------------------------------------------------------------------------------------
 // Drawing
@@ -518,9 +523,9 @@ fn Cropper(
             match out {
                 Some(b) => done(Some(b)),
                 None => {
-                    error.try_set(Some(
-                        "This picture couldn't be prepared. Try another one.".into(),
-                    ));
+                    error.try_set(Some(tr!(
+                        "This picture couldn't be prepared. Try another one."
+                    )));
                 }
             }
         });
@@ -553,7 +558,7 @@ fn Cropper(
     view! {
         <div class="dialog-back" on:keydown=on_key>
             <div class="dialog cropper" role="dialog" aria-modal="true" aria-labelledby="crop-title" tabindex="-1" node_ref=dialog>
-                <h2 id="crop-title">"Move and zoom"</h2>
+                <h2 id="crop-title">{tr!("Move and zoom")}</h2>
                 <div class="crop-stage" node_ref=stage style=format!("width:{STAGE}px;height:{STAGE}px")
                     on:pointerdown=down on:pointermove=moved on:pointerup=up on:pointercancel=up
                     on:wheel=wheel>
@@ -561,7 +566,7 @@ fn Cropper(
                     <div class="crop-ring" style=format!("--r:{}px", FRAME / 2.0) />
                 </div>
                 {(max_zoom > 1.0).then(|| view! {
-                    <input class="crop-zoom" type="range" min="1" max=max_zoom.to_string() step="0.01" aria-label="Zoom"
+                    <input class="crop-zoom" type="range" min="1" max=max_zoom.to_string() step="0.01" aria-label=tr!("Zoom")
                         prop:value=move || crop.get().zoom.to_string()
                         on:input=move |ev| {
                             if let Ok(z) = event_target_value(&ev).parse::<f64>() {
@@ -569,12 +574,13 @@ fn Cropper(
                             }
                         } />
                 })}
-                <p class="muted small">"Drag to move it, scroll or pinch to zoom."</p>
+                <p class="muted small">{tr!("Drag to move it, scroll or pinch to zoom.")}</p>
                 {move || error.get().map(|e| view! { <ErrorText text=e /> })}
                 <div class="actions">
-                    <button on:click=move |_| cancel2(None)>"Cancel"</button>
+                    <button on:click=move |_| cancel2(None)>{tr!("Cancel")}</button>
                     <button class="primary" disabled=move || busy.get() on:click=move |_| save2()>
-                        {move || if busy.get() { "Saving…" } else { "Save" }}
+                        {move || if busy.get() { tr!("Saving…") } else { tr!("Save") }}
+
                     </button>
                 </div>
             </div>
@@ -610,9 +616,9 @@ pub fn PictureUpload(
                     cropping.try_set(Some(size));
                 }
                 None => {
-                    error.try_set(Some(
-                        "This picture can't be read. Try a JPEG or PNG file.".into(),
-                    ));
+                    error.try_set(Some(tr!(
+                        "This picture can't be read. Try a JPEG or PNG file."
+                    )));
                 }
             }
         });
@@ -620,7 +626,7 @@ pub fn PictureUpload(
     view! {
         <input type="file" accept="image/*" class="hidden-file" tabindex="-1" aria-hidden="true" node_ref=input on:change=changed />
         <button type="button" disabled=move || disabled.get()
-            on:click=move |_| if let Some(i) = input.get_untracked() { i.click() }>"Upload a picture"</button>
+            on:click=move |_| if let Some(i) = input.get_untracked() { i.click() }>{tr!("Upload a picture")}</button>
         {move || error.get().map(|e| view! { <span class="error small">{e}</span> })}
         {move || cropping.get().map(|(w, h)| {
             let on_bytes = on_bytes.clone();
@@ -646,8 +652,8 @@ pub fn PictureUpload(
 /// Profile calls in plain words.
 fn plain_profile(e: &Error) -> String {
     match e {
-        Error::Status { status: 413 } => "This picture is too big for the server.".into(),
-        Error::Status { status: 400 } => "The server refused this name or picture.".into(),
+        Error::Status { status: 413 } => tr!("This picture is too big for the server."),
+        Error::Status { status: 400 } => tr!("The server refused this name or picture."),
         other => state::plain_keep(other),
     }
 }
@@ -674,7 +680,7 @@ fn save_me<F, Fut>(
 {
     let c = state::ctx();
     let Some(k) = c.keep_client() else {
-        message.set(Some(NO_KEEP.into()));
+        message.set(Some(no_keep()));
         return;
     };
     busy.set(true);
@@ -714,10 +720,10 @@ fn PresetGrid(
     let presets = kp::avatar_presets();
     let pick_default = on_pick.clone();
     view! {
-        <div class="avatar-grid" role="group" aria-label="Built-in avatars">
+        <div class="avatar-grid" role="group" aria-label=tr!("Built-in avatars")>
             {default_tile.then(|| view! {
                 <button type="button" class="avatar-tile" class:selected=move || selected.get() == "default"
-                    aria-pressed=move || (selected.get() == "default").to_string() aria-label="Default: your initial"
+                    aria-pressed=move || (selected.get() == "default").to_string() aria-label=tr!("Default: your initial")
                     disabled=move || disabled.get() on:click=move |_| pick_default(None)>
                     <span class="avatar" style="width:44px;height:44px" inner_html=move || avatar_svg(&name.get(), None) />
                 </button>
@@ -728,7 +734,7 @@ fn PresetGrid(
                 let pick = on_pick.clone();
                 view! {
                     <button type="button" class="avatar-tile" class:selected=move || selected.get() == i1
-                        aria-pressed=move || (selected.get() == i2).to_string() aria-label=format!("Avatar: {}", p.shape)
+                        aria-pressed=move || (selected.get() == i2).to_string() aria-label=tr!("Avatar: {shape}", shape = p.shape)
                         disabled=move || disabled.get() on:click=move |_| pick(Some(i3.clone()))>
                         <span class="avatar" style="width:44px;height:44px" inner_html=avatar_svg("", Some(&id)) />
                     </button>
@@ -805,31 +811,31 @@ pub fn AccountProfile() -> impl IntoView {
                     <Avatar user_key=m.user_key.clone() name=m.name.clone() avatar=m.avatar.clone() size=64 />
                     <div>
                         <strong class="profile-name">{m.name.clone()}</strong>
-                        {media.then(|| view! { <div class="muted small">{format!("{} on the media server", m.media_name)}</div> })}
-                        {m.is_admin.then(|| view! { <div class="muted small">"Admin"</div> })}
+                        {media.then(|| view! { <div class="muted small">{tr!("{name} on the media server", name = m.media_name)}</div> })}
+                        {m.is_admin.then(|| view! { <div class="muted small">{tr!("Admin")}</div> })}
                     </div>
                 </div>
                 <div class="actions tight">
                     <button class="small" on:click={
                         let n = m.name.clone();
                         move |_| { draft.set(n.clone()); editing.update(|e| *e = !*e); }
-                    }>"Edit name"</button>
+                    }>{tr!("Edit name")}</button>
                     {m.name_is_custom.then(|| view! {
                         <button class="small" disabled=move || busy.get() on:click=move |_| {
                             save_me(busy, message, |k| async move { k.reset_display_name().await }, move |_| editing.set(false));
-                        }>{format!("Reset to {reset_to}")}</button>
+                        }>{tr!("Reset to {name}", name = reset_to)}</button>
                     })}
-                    <button class="small" on:click=move |_| changing.update(|x| *x = !*x)>"Change avatar"</button>
+                    <button class="small" on:click=move |_| changing.update(|x| *x = !*x)>{tr!("Change avatar")}</button>
                 </div>
             }
         })}
         {move || editing.get().then(|| {
             view! {
                 <form class="name-form" on:submit=move |ev| { ev.prevent_default(); save_name(); }>
-                    <input aria-label="Display name" maxlength="64" prop:value=move || draft.get()
+                    <input aria-label=tr!("Display name") maxlength="64" prop:value=move || draft.get()
                         on:input=move |ev| draft.set(event_target_value(&ev)) />
-                    <button class="primary small" type="submit" disabled=move || busy.get() || problem().is_some()>"Save"</button>
-                    <button class="small subtle" type="button" on:click=move |_| editing.set(false)>"Cancel"</button>
+                    <button class="primary small" type="submit" disabled=move || busy.get() || problem().is_some()>{tr!("Save")}</button>
+                    <button class="small subtle" type="button" on:click=move |_| editing.set(false)>{tr!("Cancel")}</button>
                 </form>
                 {move || problem().map(|p| view! { <p class="error small">{p}</p> })}
             }
@@ -841,7 +847,7 @@ pub fn AccountProfile() -> impl IntoView {
                 <div class="actions tight">
                     <PictureUpload on_bytes=upload disabled=busy />
                     {move || has_avatar().then(|| {
-                        view! { <button class="subtle" disabled=move || busy.get() on:click=move |_| pick(None)>"Remove"</button> }
+                        view! { <button class="subtle" disabled=move || busy.get() on:click=move |_| pick(None)>{tr!("Remove")}</button> }
                     })}
                 </div>
             }
@@ -964,8 +970,8 @@ pub fn Welcome() -> impl IntoView {
     view! {
         <div class="dialog-back">
             <div class="dialog welcome" role="dialog" aria-modal="true" aria-labelledby="welcome-title" tabindex="-1" node_ref=dialog>
-                <h2 id="welcome-title">"Welcome! This is how others see you"</h2>
-                <p class="muted small">"In watch together rooms and invitations. You can change it later in Settings."</p>
+                <h2 id="welcome-title">{tr!("Welcome! This is how others see you")}</h2>
+                <p class="muted small">{tr!("In watch together rooms and invitations. You can change it later in Settings.")}</p>
                 <div class="profile-head">
                     {move || match pick.get() {
                         Some(Pick::Picture(_, url)) => view! { <img class="avatar" src=url alt="" style="width:64px;height:64px" /> }.into_any(),
@@ -976,7 +982,7 @@ pub fn Welcome() -> impl IntoView {
                         }.into_any(),
                         None => view! { <span class="avatar" style="width:64px;height:64px" inner_html=avatar_svg(&name.get(), avatar.preset.as_deref()) /> }.into_any(),
                     }}
-                    <label class="welcome-name">"Your name"
+                    <label class="welcome-name">{tr!("Your name")}
                         <input maxlength="64" prop:value=move || name.get() on:input=move |ev| name.set(event_target_value(&ev)) />
                     </label>
                 </div>
@@ -986,8 +992,8 @@ pub fn Welcome() -> impl IntoView {
                     <PictureUpload on_bytes=on_bytes />
                 </div>
                 <div class="actions">
-                    <button class="subtle" on:click=move |_| finish2(false)>"Skip"</button>
-                    <button class="primary" disabled=move || problem().is_some() on:click=move |_| finish(true)>"Continue"</button>
+                    <button class="subtle" on:click=move |_| finish2(false)>{tr!("Skip")}</button>
+                    <button class="primary" disabled=move || problem().is_some() on:click=move |_| finish(true)>{tr!("Continue")}</button>
                 </div>
             </div>
         </div>

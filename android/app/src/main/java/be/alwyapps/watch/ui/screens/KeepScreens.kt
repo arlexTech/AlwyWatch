@@ -72,6 +72,8 @@ import be.alwyapps.watch.ui.UrlImage
 import be.alwyapps.watch.ui.ambientGlow
 import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.rememberSwr
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -85,51 +87,50 @@ fun LeavingItem.paused(now: Long = System.currentTimeMillis() / 1000): Boolean =
 fun LeavingItem.leavesLabel(): String {
     val now = System.currentTimeMillis() / 1000
     return when (protection) {
-        Protection.FOREVER -> "Kept forever"
-        Protection.UNTIL_WATCHED -> "Kept until watched"
+        Protection.FOREVER -> tr("Kept forever")
+        Protection.UNTIL_WATCHED -> tr("Kept until watched")
         else -> {
-            val d = effectiveDeletionDate ?: return "No date"
-            if (paused(now)) return "Not scheduled for deletion"
+            val d = effectiveDeletionDate ?: return tr("No date")
+            if (paused(now)) return tr("Not scheduled for deletion")
             val days = (d - now) / DAY
             val base =
                 when {
-                    days < 0 -> "Any day now"
-                    days == 0L -> "Leaves today"
-                    days == 1L -> "Leaves tomorrow"
-                    else -> "Leaves in $days days"
+                    days < 0 -> tr("Any day now")
+                    days == 0L -> tr("Leaves today")
+                    days == 1L -> tr("Leaves tomorrow")
+                    else -> trn("Leaves in {n} day", "Leaves in {n} days", days)
                 }
-            val extra = if (protection == Protection.EXTENDED) " (extended)" else ""
-            base + extra
+            if (protection == Protection.EXTENDED) tr("{status} (extended)", "status" to base) else base
         }
     }
 }
 
 /** Under the keep buttons: how one person's choice weighs. Same sentence in every app. */
-const val KEEP_HINT = "Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it."
+fun keepHint(): String = tr("Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it.")
 
 /** Short countdown for poster badges: "3 days", "Today", "Overdue", "No date", "Kept". */
 fun LeavingItem.shortLabel(): Pair<String, Boolean> {
     val now = System.currentTimeMillis() / 1000
-    if (protection == Protection.FOREVER || protection == Protection.UNTIL_WATCHED) return "Kept" to false
+    if (protection == Protection.FOREVER || protection == Protection.UNTIL_WATCHED) return tr("Kept") to false
     // Past its date but deletion isn't turned on for its collection: nothing is planned yet.
-    if (paused(now)) return "No date" to false
-    val d = effectiveDeletionDate ?: return "Soon" to false
+    if (paused(now)) return tr("No date") to false
+    val d = effectiveDeletionDate ?: return tr("Soon") to false
     val days = (d - now) / DAY
     return when {
-        days < 0 -> "Any day now" to true
-        days == 0L -> "Today" to true
-        days == 1L -> "1 day" to true
-        else -> "$days days" to (days <= 7)
+        days < 0 -> tr("Any day now") to true
+        days == 0L -> tr("Today") to true
+        days == 1L -> trn("{n} day", "{n} days", 1) to true
+        else -> trn("{n} day", "{n} days", days) to (days <= 7)
     }
 }
 
 fun LeavingItem.voteLabel(): String? =
     myVote?.let {
         when (it.kind) {
-            VoteKind.DONT_CARE -> "You're fine with it going"
-            VoteKind.KEEP_DAYS -> "You keep it a while"
-            VoteKind.KEEP_UNTIL_WATCHED -> "You keep it until you watch it"
-            VoteKind.KEEP_FOREVER -> "You keep it forever" + (it.reason?.let { r -> " ($r)" } ?: "")
+            VoteKind.DONT_CARE -> tr("You're fine with it going")
+            VoteKind.KEEP_DAYS -> tr("You keep it a while")
+            VoteKind.KEEP_UNTIL_WATCHED -> tr("You keep it until you watch it")
+            VoteKind.KEEP_FOREVER -> it.reason?.let { r -> tr("You keep it forever ({reason})", "reason" to r) } ?: tr("You keep it forever")
         }
     }
 
@@ -168,7 +169,7 @@ fun KeepActions(
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 ActionButton(
-                    "Until I watch it",
+                    tr("Until I watch it"),
                     { send(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u)) },
                     (if (focusFirst) Modifier.initialFocus() else Modifier)
                         .then(firstFocus?.let { Modifier.focusRequester(it) } ?: Modifier),
@@ -176,13 +177,13 @@ fun KeepActions(
                     icon = be.alwyapps.watch.ui.Icons.Schedule,
                 )
             }
-            item { ActionButton("Keep 30 days", { send(req(VoteKind.KEEP_DAYS, days = 30u)) }) }
-            item { ActionButton("Keep 7 days", { send(req(VoteKind.KEEP_DAYS, days = 7u)) }) }
-            item { ActionButton("Keep forever", { send(req(VoteKind.KEEP_FOREVER)) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled) }
-            item { ActionButton("Fine to delete", { send(req(VoteKind.DONT_CARE)) }) }
-            if (item.myVote != null) item { ActionButton("Remove my choice", { send(null) }, icon = be.alwyapps.watch.ui.Icons.Close) }
+            item { ActionButton(tr("Keep 30 days"), { send(req(VoteKind.KEEP_DAYS, days = 30u)) }) }
+            item { ActionButton(tr("Keep 7 days"), { send(req(VoteKind.KEEP_DAYS, days = 7u)) }) }
+            item { ActionButton(tr("Keep forever"), { send(req(VoteKind.KEEP_FOREVER)) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled) }
+            item { ActionButton(tr("Fine to delete"), { send(req(VoteKind.DONT_CARE)) }) }
+            if (item.myVote != null) item { ActionButton(tr("Remove my choice"), { send(null) }, icon = be.alwyapps.watch.ui.Icons.Close) }
         }
-        Text(KEEP_HINT, color = Muted, style = MaterialTheme.typography.bodySmall)
+        Text(keepHint(), color = Muted, style = MaterialTheme.typography.bodySmall)
         error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodySmall) }
     }
 }
@@ -216,11 +217,11 @@ fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
     Column(Modifier.padding(top = if (d.isTv) 18.dp else 24.dp)) {
         Row(Modifier.padding(horizontal = d.gutter), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f)) {
-                Text("Leaving soon", style = MaterialTheme.typography.titleMedium)
-                Text("Keep what you still want to watch", style = MaterialTheme.typography.bodySmall, color = Muted)
+                Text(tr("Leaving soon"), style = MaterialTheme.typography.titleMedium)
+                Text(tr("Keep what you still want to watch"), style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             ActionButton(
-                "Go through them one by one",
+                tr("Go through them one by one"),
                 { nav.push(Route.Triage) },
                 Modifier
                     .focusRequester(sort)
@@ -250,7 +251,7 @@ fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
             )
             if (!d.isTv) {
                 be.alwyapps.watch.ui
-                    .IconAction(be.alwyapps.watch.ui.Icons.ChevronRight, "See all", { nav.push(Route.LeavingSoon) })
+                    .IconAction(be.alwyapps.watch.ui.Icons.ChevronRight, tr("See all"), { nav.push(Route.LeavingSoon) })
             }
         }
         // Like the other rows on TV: the focused card at a fixed spot, clear of the side menu.
@@ -333,26 +334,31 @@ fun LeavingSoonScreen() {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(bottom = 6.dp)) {
                 be.alwyapps.watch.ui.PageTitle(
-                    "Leaving soon",
-                    "${"%,d".format(all.size)} titles · ${all.count { it.myVote != null }} with your choice",
+                    tr("Leaving soon"),
+                    listOf(
+                        trn("{count} title", "{count} titles", all.size, "count" to "%,d".format(all.size)),
+                        tr("{count} with your choice", "count" to all.count { it.myVote != null }),
+                    ).joinToString(" · "),
                 )
                 Text(
-                    "What the server will delete, soonest first. Keep what you still want to watch or love.",
+                    tr("What the server will delete, soonest first. Keep what you still want to watch or love."),
                     color = Muted,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ActionButton(
-                        "Go through them one by one",
+                        tr("Go through them one by one"),
                         { nav.push(Route.Triage) },
                         Modifier.initialFocus(),
                         primary = true,
                         icon = be.alwyapps.watch.ui.Icons.Favorite,
                     )
-                    if (core.keepConnection()?.isAdmin == true) ActionButton("Admin", { nav.push(Route.KeepAdmin) }, icon = be.alwyapps.watch.ui.Icons.Settings)
+                    if (core.keepConnection()?.isAdmin == true) {
+                        ActionButton(tr("Admin"), { nav.push(Route.KeepAdmin) }, icon = be.alwyapps.watch.ui.Icons.Settings)
+                    }
                 }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for ((key, label) in listOf("all" to "All", "urgent" to "Within a week", "mine" to "My choices", "kept" to "Kept")) {
+                    for ((key, label) in listOf("all" to tr("All"), "urgent" to tr("Within a week"), "mine" to tr("My choices"), "kept" to tr("Kept"))) {
                         item(key) { ActionButton(label, { filter = key }, selected = filter == key) }
                     }
                 }
@@ -362,8 +368,10 @@ fun LeavingSoonScreen() {
         if (paused > 0) {
             item("paused") {
                 Text(
-                    "${"%,d".format(paused)} of these are not scheduled: their date has passed but the server's owner hasn't " +
-                        "turned deletion on yet. Your choices still count when it is.",
+                    tr(
+                        "{count} of these are not scheduled: their date has passed but the server's owner hasn't turned deletion on yet. Your choices still count when it is.",
+                        "count" to "%,d".format(paused),
+                    ),
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(d.radius))
@@ -377,10 +385,15 @@ fun LeavingSoonScreen() {
         list.error?.let { msg ->
             // Unreachable server: say which, and that the list shown is the last one it sent.
             val text =
-                if (msg.startsWith("Can't reach")) {
+                if (list.failure is CoreException.Network) {
                     val at = runCatching { core.keepConnection()?.baseUrl }.getOrNull()
-                    "Can't reach your AlwyWatch server" + (at?.let { " ($it)" } ?: "") +
-                        (if (all.isNotEmpty()) ". This is the last list it sent." else ".")
+                    when {
+                        at != null && all.isNotEmpty() ->
+                            tr("Can't reach your AlwyWatch server ({address}). This is the last list it sent.", "address" to at)
+                        at != null -> tr("Can't reach your AlwyWatch server ({address}).", "address" to at)
+                        all.isNotEmpty() -> tr("Can't reach your AlwyWatch server. This is the last list it sent.")
+                        else -> tr("Can't reach your AlwyWatch server.")
+                    }
                 } else {
                     msg
                 }
@@ -428,7 +441,7 @@ fun LeavingSoonScreen() {
                                 (c.forever + c.untilWatched + c.days).toInt() - if (item.myVote != null && item.myVote!!.kind != VoteKind.DONT_CARE) 1 else 0
                             listOfNotNull(
                                 item.voteLabel(),
-                                if (others > 0) "$others other${if (others > 1) "s" else ""} keep it" else null,
+                                if (others > 0) trn("{n} other keeps it", "{n} others keep it", others) else null,
                             ).joinToString(" · ").ifEmpty { null }?.let {
                                 Text(it, color = if (item.myVote != null) Accent else Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                             }
@@ -447,7 +460,7 @@ fun LeavingSoonScreen() {
             }
         }
         if (list.value != null && shown.isEmpty()) {
-            item { Text("Nothing here.", Modifier.padding(vertical = 24.dp), color = Muted) }
+            item { Text(tr("Nothing here."), Modifier.padding(vertical = 24.dp), color = Muted) }
         }
     }
 }
@@ -499,7 +512,7 @@ fun TriageScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("One by one", style = MaterialTheme.typography.headlineMedium)
+        Text(tr("One by one"), style = MaterialTheme.typography.headlineMedium)
         if (total > 0) {
             Box(
                 Modifier
@@ -518,17 +531,23 @@ fun TriageScreen() {
         }
         error?.let { Text(it, color = Danger) }
         when {
-            queue == null -> Text("Loading…", color = Muted)
-            item == null -> Text(if (done > 0) "All done, thanks! $done sorted." else "Nothing to sort right now.", color = Muted)
+            queue == null -> Text(tr("Loading…"), color = Muted)
+            item == null -> Text(if (done > 0) tr("All done, thanks! {count} sorted.", "count" to done) else tr("Nothing to sort right now."), color = Muted)
             else -> {
                 Text(
-                    "${queue!!.size} left  ·  " +
-                        if (d.isTv) {
-                            "← fine to delete   → keep until I watch it   ↑ keep forever"
-                        } else {
-                            "Swipe left: fine to delete · right: keep until I watch it · " +
-                                "up: keep forever"
-                        },
+                    if (d.isTv) {
+                        trn(
+                            "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever",
+                            "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever",
+                            queue!!.size,
+                        )
+                    } else {
+                        trn(
+                            "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever",
+                            "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever",
+                            queue!!.size,
+                        )
+                    },
                     color = be.alwyapps.watch.ui.Subtle,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -591,14 +610,14 @@ fun TriageScreen() {
                 }
                 val buttons: @Composable () -> Unit = {
                     ActionButton(
-                        "Until I watch it",
+                        tr("Until I watch it"),
                         { vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u)) },
                         primary = true,
                         icon = be.alwyapps.watch.ui.Icons.Schedule,
                     )
-                    ActionButton("Forever", { vote(req(VoteKind.KEEP_FOREVER)) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled)
-                    ActionButton("Keep 30 days", { vote(req(VoteKind.KEEP_DAYS, days = 30u)) })
-                    ActionButton("Fine to delete", { vote(req(VoteKind.DONT_CARE)) }, icon = be.alwyapps.watch.ui.Icons.Close)
+                    ActionButton(tr("Forever"), { vote(req(VoteKind.KEEP_FOREVER)) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled)
+                    ActionButton(tr("Keep 30 days"), { vote(req(VoteKind.KEEP_DAYS, days = 30u)) })
+                    ActionButton(tr("Fine to delete"), { vote(req(VoteKind.DONT_CARE)) }, icon = be.alwyapps.watch.ui.Icons.Close)
                 }
                 if (d.isTv) {
                     Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -631,7 +650,7 @@ fun KeepAdminScreen() {
     var message by remember { mutableStateOf<String?>(null) }
     var armed by remember { mutableStateOf<Pair<Long, UInt>?>(null) }
     val items = remember { core.cachedLeavingSoon().orEmpty() }
-    val collections = items.mapNotNull { i -> i.collectionId?.let { it to (i.collectionTitle ?: "Collection $it") } }.distinct()
+    val collections = items.mapNotNull { i -> i.collectionId?.let { it to (i.collectionTitle ?: tr("Collection {id}", "id" to it)) } }.distinct()
     // Seerr's users, to link people to the Seerr account they already have.
     var seerrUsers by remember { mutableStateOf<List<be.alwyapps.watch.core.keep.SeerrUser>>(emptyList()) }
     var linking by remember { mutableStateOf<AdminUser?>(null) }
@@ -651,13 +670,13 @@ fun KeepAdminScreen() {
                 be.alwyapps.watch.ui
                     .Avatar(u.avatar, u.name, u.userKey, 48.dp)
             },
-            title = { Text("Requests of ${u.name}") },
+            title = { Text(tr("Requests of {name}", "name" to u.name)) },
             text = {
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
                     item {
                         be.alwyapps.watch.ui.ListRow(
-                            "Automatic",
-                            subtitle = "Their own Seerr account (created if needed)",
+                            tr("Automatic"),
+                            subtitle = tr("Their own Seerr account (created if needed)"),
                             onClick = {
                                 linking = null
                                 scope.launch {
@@ -699,7 +718,7 @@ fun KeepAdminScreen() {
                     }
                 }
             },
-            confirmButton = { ActionButton("Close", { linking = null }) },
+            confirmButton = { ActionButton(tr("Close"), { linking = null }) },
         )
     }
 
@@ -723,13 +742,13 @@ fun KeepAdminScreen() {
     ) {
         item {
             be.alwyapps.watch.ui
-                .PageTitle("Admin", "Leaving soon: countdown and people's rights")
+                .PageTitle(tr("Admin"), tr("Leaving soon: countdown and people's rights"))
         }
         item {
-            be.alwyapps.watch.ui.Group("Kept forever") {
+            be.alwyapps.watch.ui.Group(tr("Kept forever")) {
                 be.alwyapps.watch.ui.ListRow(
-                    "Who keeps what forever",
-                    subtitle = "Per person, and how much of it someone else keeps too",
+                    tr("Who keeps what forever"),
+                    subtitle = tr("Per person, and how much of it someone else keeps too"),
                     icon = be.alwyapps.watch.ui.Icons.FavoriteFilled,
                     onClick = { nav.push(Route.KeepForever) },
                     trailing = {
@@ -743,10 +762,11 @@ fun KeepAdminScreen() {
         message?.let { item { Text(it, color = Accent) } }
         item {
             be.alwyapps.watch.ui.Group(
-                "Start countdown",
+                tr("Start countdown"),
                 footer =
-                    "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people " +
-                        "get the full delay to vote. This changes deletion dates in Maintainerr (press twice to confirm).",
+                    tr(
+                        "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr (press twice to confirm).",
+                    ),
             ) {
                 collections.forEachIndexed { i, (id, title) ->
                     if (i > 0) {
@@ -756,9 +776,9 @@ fun KeepAdminScreen() {
                     be.alwyapps.watch.ui.ListRow(title, icon = be.alwyapps.watch.ui.Icons.Schedule, trailing = {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             for (stagger in listOf(0u, 14u, 30u)) {
-                                val label = if (stagger == 0u) "Restart now" else "Spread over $stagger days"
+                                val label = if (stagger == 0u) tr("Restart now") else trn("Spread over {n} day", "Spread over {n} days", stagger.toLong())
                                 val isArmed = armed == id to stagger
-                                ActionButton(if (isArmed) "Confirm" else label, {
+                                ActionButton(if (isArmed) tr("Confirm") else label, {
                                     if (!isArmed) {
                                         armed = id to stagger
                                     } else {
@@ -767,7 +787,12 @@ fun KeepAdminScreen() {
                                             message =
                                                 try {
                                                     val r = core.keepAdminCountdown(id, stagger)
-                                                    "$title: ${r.reset} restarted, ${r.skipped} skipped"
+                                                    tr(
+                                                        "{collection}: {reset} restarted, {skipped} skipped",
+                                                        "collection" to title,
+                                                        "reset" to r.reset,
+                                                        "skipped" to r.skipped,
+                                                    )
                                                 } catch (e: CoreException) {
                                                     e.message
                                                 }
@@ -782,8 +807,13 @@ fun KeepAdminScreen() {
         }
         item {
             be.alwyapps.watch.ui.Group(
-                "People",
-                footer = "Everyone can keep forever by default. ${if (LocalDimens.current.isTv) "Select" else "Tap"} a value to change it.",
+                tr("People"),
+                footer =
+                    if (LocalDimens.current.isTv) {
+                        tr("Everyone can keep forever by default. Select a value to change it.")
+                    } else {
+                        tr("Everyone can keep forever by default. Tap a value to change it.")
+                    },
             ) {
                 users.orEmpty().forEachIndexed { i, u ->
                     if (i > 0) {
@@ -794,12 +824,12 @@ fun KeepAdminScreen() {
                     Column(Modifier.padding(bottom = 12.dp)) {
                         val sameName = users.orEmpty().count { it.name.equals(u.name, true) } > 1
                         be.alwyapps.watch.ui.ListRow(
-                            u.name + if (u.isAdmin) " · admin" else "",
+                            if (u.isAdmin) tr("{name} · admin", "name" to u.name) else u.name,
                             subtitle =
                                 listOfNotNull(
                                     u.mediaName.takeIf { it.isNotEmpty() && (sameName || !it.equals(u.name, true)) },
                                     if (u.userKey.startsWith("plex:")) "Plex" else "Jellyfin",
-                                    "${u.foreverCount} kept forever",
+                                    tr("{count} kept forever", "count" to u.foreverCount),
                                 ).joinToString(" · "),
                             leading = {
                                 be.alwyapps.watch.ui
@@ -808,12 +838,12 @@ fun KeepAdminScreen() {
                         )
                         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             item {
-                                ActionButton(if (r.canKeepForever) "Forever allowed" else "Forever blocked", {
+                                ActionButton(if (r.canKeepForever) tr("Forever allowed") else tr("Forever blocked"), {
                                     update(u, r.copy(canKeepForever = !r.canKeepForever))
                                 }, primary = !r.canKeepForever)
                             }
                             item {
-                                ActionButton("Max forever: ${r.maxForever ?: "∞"}", {
+                                ActionButton(tr("Max forever: {value}", "value" to (r.maxForever ?: "∞")), {
                                     val next = listOf<UInt?>(null, 5u, 10u, 25u)
                                     update(u, r.copy(maxForever = next[(next.indexOf(r.maxForever) + 1) % next.size]))
                                 })
@@ -821,11 +851,11 @@ fun KeepAdminScreen() {
                             if (seerrUsers.isNotEmpty()) {
                                 item {
                                     val linked = seerrUsers.firstOrNull { it.id == u.seerrUserId }?.name
-                                    ActionButton("Requests as: ${linked ?: "automatic"}", { linking = u })
+                                    ActionButton(tr("Requests as: {name}", "name" to (linked ?: tr("automatic"))), { linking = u })
                                 }
                             }
                             item {
-                                ActionButton("Max days: ${r.maxKeepDays ?: "∞"}", {
+                                ActionButton(tr("Max days: {value}", "value" to (r.maxKeepDays ?: "∞")), {
                                     val next = listOf<UInt?>(null, 7u, 30u, 90u)
                                     update(u, r.copy(maxKeepDays = next[(next.indexOf(r.maxKeepDays) + 1) % next.size]))
                                 })
@@ -849,7 +879,7 @@ private fun TriageInfo(item: LeavingItem) {
     }
     val c = item.counts
     val keepers = c.forever + c.untilWatched + c.days
-    if (keepers > 0u) Text("$keepers ${if (keepers > 1u) "people keep" else "person keeps"} it", color = Muted, style = MaterialTheme.typography.bodySmall)
+    if (keepers > 0u) Text(trn("{n} person keeps it", "{n} people keep it", keepers.toLong()), color = Muted, style = MaterialTheme.typography.bodySmall)
 }
 
 /** Warm glow behind the triage card. */

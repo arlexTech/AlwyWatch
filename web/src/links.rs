@@ -7,6 +7,7 @@
 //! (`Ctx.accounts`). Each other account is asked for its own `Me` with its own token (read
 //! only), to know whether it is on this AlwyWatch server and already the same person.
 
+use i18n::tr;
 use keep_service::identity::{LinkedIdentity, MeWithIdentities};
 use keep_service::{KeepClient, Me, ServerType};
 use leptos::prelude::*;
@@ -126,15 +127,15 @@ pub fn also_signed_in(ids: &[LinkedIdentity], server_id: &str) -> String {
     if others.is_empty() {
         String::new()
     } else {
-        format!("Also signed in as {}", others.join(", "))
+        tr!("Also signed in as {names}", names = others.join(", "))
     }
 }
 
 pub fn unlink_question(i: &LinkedIdentity) -> String {
-    format!(
-        "{} on {} becomes a separate, new AlwyWatch account with no keep choices, name, avatar \
-         or history. Continue?",
-        i.media_name, i.server_name
+    tr!(
+        "{name} on {server} becomes a separate, new AlwyWatch account with no keep choices, name, avatar or history. Continue?",
+        name = i.media_name,
+        server = i.server_name
     )
 }
 
@@ -143,16 +144,20 @@ pub fn unlink_question(i: &LinkedIdentity) -> String {
 pub fn link_error(e: &Error, server: &str, served: Option<bool>) -> String {
     match e {
         Error::Unauthorized if served == Some(false) => {
-            format!("This site doesn't serve {server}, so this sign-in can't be linked.")
-        }
-        Error::Unauthorized => {
-            format!(
-                "Your {server} sign-in has expired: sign in again with that account, then link."
+            tr!(
+                "This site doesn't serve {server}, so this sign-in can't be linked.",
+                server = server
             )
         }
-        Error::Status { status: 409 } => format!(
-            "These are two different people on the same server: your AlwyWatch account already \
-             has another sign-in on {server}."
+        Error::Unauthorized => {
+            tr!(
+                "Your {server} sign-in has expired: sign in again with that account, then link.",
+                server = server
+            )
+        }
+        Error::Status { status: 409 } => tr!(
+            "These are two different people on the same server: your AlwyWatch account already has another sign-in on {server}.",
+            server = server
         ),
         other => common_error(other),
     }
@@ -160,9 +165,9 @@ pub fn link_error(e: &Error, server: &str, served: Option<bool>) -> String {
 
 pub fn unlink_error(e: &Error) -> String {
     match e {
-        Error::Status { status: 409 } => "The main sign-in can't be unlinked.".into(),
+        Error::Status { status: 409 } => tr!("The main sign-in can't be unlinked."),
         Error::Unauthorized => {
-            "The AlwyWatch server refused: sign in again with this account.".into()
+            tr!("The AlwyWatch server refused: sign in again with this account.")
         }
         other => common_error(other),
     }
@@ -170,12 +175,10 @@ pub fn unlink_error(e: &Error) -> String {
 
 fn common_error(e: &Error) -> String {
     match e {
-        Error::Status { status: 429 } => {
-            "Too many tries: wait a few minutes, then try again.".into()
-        }
-        Error::Status { status: 502 } => "The media server is unreachable right now.".into(),
+        Error::Status { status: 429 } => tr!("Too many tries: wait a few minutes, then try again."),
+        Error::Status { status: 502 } => tr!("The media server is unreachable right now."),
         Error::NotFound | Error::Status { status: 405 } => {
-            "Your AlwyWatch server doesn't support this yet: it needs an update.".into()
+            tr!("Your AlwyWatch server doesn't support this yet: it needs an update.")
         }
         other => state::plain_keep(other),
     }
@@ -335,7 +338,7 @@ fn person(s: &Side) -> impl IntoView + use<> {
             <Avatar user_key=s.me.user_key.clone() name=s.me.name.clone() avatar=s.me.avatar.clone() size=44 />
             <div>
                 <strong class="pname">{s.me.name.clone()}</strong>
-                <div class="muted small">{format!("{} on {} ({})", s.me.media_name, s.server_name, kind_name(s.kind))}</div>
+                <div class="muted small">{tr!("{name} on {server} ({kind})", name = s.me.media_name, server = s.server_name, kind = kind_name(s.kind))}</div>
             </div>
         </div>
     }
@@ -389,9 +392,9 @@ pub fn LinkDialog(account: String, prompted: bool) -> impl IntoView {
             c.keep_client(),
             session.as_ref().and_then(|s| c.keep_token(s)),
         ) else {
-            error.set(Some(format!(
-                "Sign in again with your {} account, then link.",
-                b.server_name
+            error.set(Some(tr!(
+                "Sign in again with your {server} account, then link.",
+                server = b.server_name
             )));
             return;
         };
@@ -430,17 +433,17 @@ pub fn LinkDialog(account: String, prompted: bool) -> impl IntoView {
             on:keydown=move |ev| if ev.key() == "Escape" { close2() }>
             <div class="dialog link-dialog" role="alertdialog" aria-modal="true" aria-labelledby="link-title"
                 aria-describedby="link-what" on:click=|ev| ev.stop_propagation()>
-                <h2 id="link-title">"Are these both you?"</h2>
+                <h2 id="link-title">{tr!("Are these both you?")}</h2>
                 <div class="link-pair">{person(&a)}{person(&b)}</div>
-                <p id="link-what">"Use one AlwyWatch account for both: the same name, picture, keep choices and watch-together rooms whichever you sign in with. Only link sign-ins that are really yours."</p>
-                <p class="muted small">"This can't be undone as such: unlinking later gives that sign-in a fresh, empty account."</p>
+                <p id="link-what">{tr!("Use one AlwyWatch account for both: the same name, picture, keep choices and watch-together rooms whichever you sign in with. Only link sign-ins that are really yours.")}</p>
+                <p class="muted small">{tr!("This can't be undone as such: unlinking later gives that sign-in a fresh, empty account.")}</p>
                 {move || error.get().map(|e| view! { <ErrorText text=e /> })}
                 <div class="actions">
                     <button disabled=move || busy.get() on:click=move |_| close3()>
-                        {if prompted { "Not now" } else { "Cancel" }}
+                        {if prompted { tr!("Not now") } else { tr!("Cancel") }}
                     </button>
                     <button class="primary" node_ref=first disabled=move || busy.get() on:click=move |_| link()>
-                        {move || if busy.get() { "Linking…" } else { "Link" }}
+                        {move || if busy.get() { tr!("Linking…") } else { tr!("Link") }}
                     </button>
                 </div>
             </div>
@@ -530,11 +533,11 @@ pub fn LinkedSignins() -> impl IntoView {
     view! {
         <Show when=shown>
             <div class="links">
-                <h3>"Linked sign-ins"</h3>
+                <h3>{tr!("Linked sign-ins")}</h3>
                 <p class="muted small">{move || if ids().len() > 1 {
-                    "These sign-ins are one AlwyWatch account: same name, avatar, keep choices and watch-together rooms."
+                    tr!("These sign-ins are one AlwyWatch account: same name, avatar, keep choices and watch-together rooms.")
                 } else {
-                    "Another account in this browser may be you too. Linking makes them one AlwyWatch account."
+                    tr!("Another account in this browser may be you too. Linking makes them one AlwyWatch account.")
                 }}</p>
                 {move || (ids().len() > 1).then(|| ids().into_iter().map(|i| {
                     let detail = format!("{} · {}", i.server_name, type_name(i.kind));
@@ -544,14 +547,14 @@ pub fn LinkedSignins() -> impl IntoView {
                         <div class="row link-row-item">
                             <div>
                                 <strong>{name}</strong>" "
-                                {main.then(|| view! { <span class="tag main">"Main"</span> })}
-                                {here.then(|| view! { <span class="tag">"This browser"</span> })}
+                                {main.then(|| view! { <span class="tag main">{tr!("Main")}</span> })}
+                                {here.then(|| view! { <span class="tag">{tr!("This browser")}</span> })}
                                 <div class="muted small">{detail}</div>
                             </div>
                             {(!main).then(|| {
                                 let i = i.clone();
                                 view! {
-                                    <button class="small" on:click=move |_| { error.set(None); unlinking.set(Some(i.clone())) }>"Unlink"</button>
+                                    <button class="small" on:click=move |_| { error.set(None); unlinking.set(Some(i.clone())) }>{tr!("Unlink")}</button>
                                 }
                             })}
                         </div>
@@ -560,20 +563,23 @@ pub fn LinkedSignins() -> impl IntoView {
                 {move || {
                     let list = candidates();
                     (!list.is_empty()).then(|| view! {
-                        <h3 class="small-head">"Link another sign-in"</h3>
+                        <h3 class="small-head">{tr!("Link another sign-in")}</h3>
                         {list.into_iter().map(|b| {
                             let acc = b.account.clone();
                             view! {
                                 <div class="row">
-                                    <div><strong>{b.me.media_name.clone()}</strong>" on "{b.server_name.clone()}
+                                    <div>{
+                                        let (before, after) = crate::ui::around(&tr!("{name} on {server}", server = b.server_name.clone()), "{name}");
+                                        view! { {before}<strong>{b.me.media_name.clone()}</strong>{after} }
+                                    }
                                         <span class="muted">{format!(" · {}", kind_name(b.kind))}</span></div>
-                                    <button class="small" on:click=move |_| links.dialog.set(Some((acc.clone(), false)))>"Link…"</button>
+                                    <button class="small" on:click=move |_| links.dialog.set(Some((acc.clone(), false)))>{tr!("Link…")}</button>
                                 </div>
                             }
                         }).collect_view()}
                     })
                 }}
-                <p class="muted small">"Another sign-in of yours isn't listed? Add it in Settings → Servers → Add a server, then link it here."</p>
+                <p class="muted small">{tr!("Another sign-in of yours isn't listed? Add it in Settings → Servers → Add a server, then link it here.")}</p>
             </div>
         </Show>
         {move || unlinking.get().map(|i| {
@@ -583,13 +589,14 @@ pub fn LinkedSignins() -> impl IntoView {
                 <div class="dialog-back" on:click=move |_| close()
                     on:keydown=move |ev| if ev.key() == "Escape" { close() }>
                     <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="unlink-title" on:click=|ev| ev.stop_propagation()>
-                        <h2 id="unlink-title">"Unlink this sign-in?"</h2>
+                        <h2 id="unlink-title">{tr!("Unlink this sign-in?")}</h2>
                         <p>{question}</p>
                         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
                         <div class="actions">
-                            <button node_ref=cancel disabled=move || busy.get() on:click=move |_| close()>"Cancel"</button>
+                            <button node_ref=cancel disabled=move || busy.get() on:click=move |_| close()>{tr!("Cancel")}</button>
                             <button class="danger" disabled=move || busy.get() on:click=move |_| unlink()>
-                                {move || if busy.get() { "Unlinking…" } else { "Unlink" }}
+                                {move || if busy.get() { tr!("Unlinking…") } else { tr!("Unlink") }}
+
                             </button>
                         </div>
                     </div>

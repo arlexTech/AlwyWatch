@@ -42,6 +42,7 @@ import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.dpadEscape
 import be.alwyapps.watch.ui.initialFocus
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -83,14 +84,14 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         be.alwyapps.watch.ui
-            .PageTitle("Requests", "Ask for movies and shows that aren't on the server yet")
+            .PageTitle(tr("Requests"), tr("Ask for movies and shows that aren't on the server yet"))
         val i = info
         if (i == null && core.keepActive()) {
             // Works whatever media server the user signed in with (Seerr itself serves one type).
-            be.alwyapps.watch.ui.Group(null, footer = "No extra sign-in: your AlwyWatch server handles it.") {
+            be.alwyapps.watch.ui.Group(null, footer = tr("No extra sign-in: your AlwyWatch server handles it.")) {
                 be.alwyapps.watch.ui.ListRow(
-                    "Use my AlwyWatch server",
-                    subtitle = "Recommended",
+                    tr("Use my AlwyWatch server"),
+                    subtitle = tr("Recommended"),
                     icon = be.alwyapps.watch.ui.Icons.Hourglass,
                     onClick = {
                         attempt {
@@ -105,7 +106,7 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                     },
                 )
             }
-            Text("Or type the address of the request site (Seerr, Overseerr or Jellyseerr)", style = MaterialTheme.typography.titleSmall, color = Muted)
+            Text(tr("Or type the address of the request site (Seerr, Overseerr or Jellyseerr)"), style = MaterialTheme.typography.titleSmall, color = Muted)
         }
         if (i == null) {
             val submit = { attempt { info = core.seerrInfo(normalizeServerUrl(url)) } }
@@ -119,7 +120,7 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { submit() }),
             )
-            ActionButton("Continue", { submit() }, primary = true)
+            ActionButton(tr("Continue"), { submit() }, primary = true)
         } else {
             Text("${i.title} · ${i.baseUrl}", color = Muted)
             when (method) {
@@ -130,11 +131,12 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                     ) {
                         for (m in i.logins) {
                             when (m) {
-                                SeerrLogin.PLEX -> ActionButton("Sign in with Plex", { method = m }, Modifier.initialFocus(), primary = true)
-                                SeerrLogin.JELLYFIN -> ActionButton("Sign in with Jellyfin", { method = m }, Modifier.initialFocus(), primary = true)
-                                SeerrLogin.EMBY -> ActionButton("Sign in with Emby", { method = m }, primary = true)
-                                SeerrLogin.LOCAL -> ActionButton("An account made on the request site", { method = m })
-                                SeerrLogin.NOT_CONFIGURED -> Text("This request site has no sign-in method enabled. Tell your server's owner.", color = Danger)
+                                SeerrLogin.PLEX -> ActionButton(tr("Sign in with Plex"), { method = m }, Modifier.initialFocus(), primary = true)
+                                SeerrLogin.JELLYFIN -> ActionButton(tr("Sign in with Jellyfin"), { method = m }, Modifier.initialFocus(), primary = true)
+                                SeerrLogin.EMBY -> ActionButton(tr("Sign in with Emby"), { method = m }, primary = true)
+                                SeerrLogin.LOCAL -> ActionButton(tr("An account made on the request site"), { method = m })
+                                SeerrLogin.NOT_CONFIGURED ->
+                                    Text(tr("This request site has no sign-in method enabled. Tell your server's owner."), color = Danger)
                             }
                         }
                     }
@@ -158,7 +160,7 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                             error = e.message
                         }
                     }
-                    Text(if (d.isTv) "Go to plex.tv/link and enter:" else "Finish signing in to Plex in the browser.", color = Muted)
+                    Text(if (d.isTv) tr("Go to plex.tv/link and enter:") else tr("Finish signing in to Plex in the browser."), color = Muted)
                     if (d.isTv) Text(code ?: "…", style = MaterialTheme.typography.displayMedium)
                 }
 
@@ -180,9 +182,9 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                             }
                         }
                         code?.let {
-                            Text("Quick Connect: enter this code in a signed-in Jellyfin app", color = Muted)
+                            Text(tr("Quick Connect: enter this code in a signed-in Jellyfin app"), color = Muted)
                             Text(it, style = MaterialTheme.typography.displayMedium)
-                            Text("or sign in with your password:", color = Muted)
+                            Text(tr("or sign in with your password:"), color = Muted)
                         }
                     }
                     var user by remember { mutableStateOf("") }
@@ -199,20 +201,20 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                         user,
                         { user = it },
                         Modifier.fillMaxWidth().dpadEscape(),
-                        label = { Text(if (local) "Email" else "Username") },
+                        label = { Text(if (local) tr("Email") else tr("Username")) },
                         singleLine = true,
                     )
                     Field(
                         pass,
                         { pass = it },
                         Modifier.fillMaxWidth().dpadEscape(),
-                        label = { Text("Password") },
+                        label = { Text(tr("Password")) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { signIn() }),
                     )
-                    ActionButton("Sign in", { signIn() }, primary = true)
+                    ActionButton(tr("Sign in"), { signIn() }, primary = true)
                 }
 
                 SeerrLogin.NOT_CONFIGURED -> {}

@@ -51,8 +51,8 @@ impl App {
         ui.set_profile_name(sstr(
             list.iter()
                 .find(|p| p.id == current)
-                .map(|p| p.name.as_str())
-                .unwrap_or("Me"),
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|| tr!("Me")),
         ));
         let rows: Vec<ProfileRow> = list.iter().map(|p| profile_row(p, &current)).collect();
         ui.set_profiles(ModelRc::new(VecModel::from(rows)));
@@ -146,8 +146,10 @@ impl App {
             Err(e) => {
                 self.profiles.set_current(&previous);
                 let _ = self.profiles.take_unlocked_once();
-                self.ui()
-                    .set_profile_message(sstr(format!("Couldn't restart AlwyWatch: {e}")));
+                self.ui().set_profile_message(sstr(tr!(
+                    "Couldn't restart AlwyWatch: {error}",
+                    error = e
+                )));
             }
         }
     }
@@ -180,7 +182,7 @@ impl App {
     fn wrong_pin(&self) {
         let ui = self.ui();
         ui.set_profile_input(SharedString::new());
-        ui.set_profile_message("Wrong PIN".into());
+        ui.set_profile_message(sstr(tr!("Wrong PIN")));
     }
 
     pub(super) fn profile_submit(self: &Rc<Self>) {
@@ -202,7 +204,7 @@ impl App {
                     self.profiles.set_pin(&target, Some(&input));
                     self.close_profile_dialog();
                 } else {
-                    ui.set_profile_message("The PIN is 4 digits.".into());
+                    ui.set_profile_message(sstr(tr!("The PIN is 4 digits.")));
                 }
             }
             "switch" => {

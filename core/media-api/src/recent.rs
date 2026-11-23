@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use i18n::{tr, trn};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{ImageKind, ImageRef, Item, ItemKind, ProviderIds};
@@ -137,10 +138,6 @@ fn generic_title(title: &str, number: u32) -> bool {
     t == n || t == format!("episode{n}") || t == format!("épisode{n}") || t == format!("ep{n}")
 }
 
-fn plural(n: usize, one: &str) -> String {
-    format!("{n} {one}{}", if n == 1 { "" } else { "s" })
-}
-
 /// What is new for one show, from its entries in the server's list (at least one).
 fn note(show_id: &str, entries: &[Item]) -> RailNote {
     let to_show = |label: String, season: Option<String>| RailNote {
@@ -218,11 +215,15 @@ fn note(show_id: &str, entries: &[Item]) -> RailNote {
             numbered.len()
         };
         let label = if season_count > 1 {
-            format!("New show · {}", plural(season_count, "season"))
+            trn!(
+                "New show · {n} season",
+                "New show · {n} seasons",
+                season_count
+            )
         } else if count > 1 {
-            format!("New show · {}", plural(count, "episode"))
+            trn!("New show · {n} episode", "New show · {n} episodes", count)
         } else {
-            "New show".to_owned()
+            tr!("New show")
         };
         return to_show(label, first_season);
     }
@@ -231,7 +232,7 @@ fn note(show_id: &str, entries: &[Item]) -> RailNote {
     if let [(Some(s), season_id)] = season_ids.as_slice() {
         let season_id = season_id.clone();
         if !seasons.is_empty() {
-            return to_show(format!("Season {s}"), season_id);
+            return to_show(tr!("Season {number}", number = s), season_id);
         }
         let mut numbers: Vec<u32> = episodes.iter().filter_map(|e| e.episode_number).collect();
         numbers.sort_unstable();
@@ -246,18 +247,23 @@ fn note(show_id: &str, entries: &[Item]) -> RailNote {
                     format!("S{s} · E{a}–E{b}")
                 }
             }
-            _ => format!("S{s} · {}", plural(episodes.len(), "new episode")),
+            _ => trn!(
+                "S{season} · {n} new episode",
+                "S{season} · {n} new episodes",
+                episodes.len(),
+                season = s
+            ),
         };
         return to_show(label, season_id);
     }
 
     // Several seasons, or numbers the server did not give.
     let label = if episodes.is_empty() && numbered.len() > 1 {
-        plural(numbered.len(), "new season")
+        trn!("{n} new season", "{n} new seasons", numbered.len())
     } else if count > 0 {
-        plural(count, "new episode")
+        trn!("{n} new episode", "{n} new episodes", count)
     } else {
-        "New episodes".to_owned()
+        tr!("New episodes")
     };
     to_show(label, first_season)
 }

@@ -95,16 +95,16 @@ fun Item.subtitle(): String =
     when (kind) {
         ItemKind.EPISODE ->
             listOfNotNull(
-                if (seasonNumber != null && episodeNumber != null) "S$seasonNumber · E$episodeNumber" else null,
+                if (seasonNumber != null && episodeNumber != null) tr("S{season} · E{episode}", "season" to seasonNumber, "episode" to episodeNumber) else null,
                 title.takeIf { seriesTitle != null },
             ).joinToString("  ")
-        ItemKind.SERIES -> listOfNotNull(year?.toString(), childCount?.let { "$it season${if (it > 1u) "s" else ""}" }).joinToString(" · ")
+        ItemKind.SERIES -> listOfNotNull(year?.toString(), childCount?.let { trn("{n} season", "{n} seasons", it.toLong()) }).joinToString(" · ")
         else -> listOfNotNull(year?.toString(), runtimeMs?.takeIf { it > 0u }?.let { formatRuntime(it.toLong()) }).joinToString(" · ")
     }
 
 fun formatRuntime(ms: Long): String {
     val min = ms / 60_000
-    return if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"
+    return if (min >= 60) tr("{hours} h {minutes} min", "hours" to min / 60, "minutes" to min % 60) else tr("{minutes} min", "minutes" to min)
 }
 
 /** 0..1 when partly watched, else null. */
@@ -117,7 +117,7 @@ fun Item.progress(): Float? {
 fun Item.remaining(): String? {
     val runtime = runtimeMs?.toLong() ?: return null
     val left = runtime - user.positionMs.toLong()
-    return if (user.positionMs > 0u && left > 0) "${formatRuntime(left)} left" else null
+    return if (user.positionMs > 0u && left > 0) tr("{time} left", "time" to formatRuntime(left)) else null
 }
 
 /** Ambient color of an item's artwork (BlurHash average, no decoding needed). */
@@ -282,8 +282,14 @@ fun ItemMenu(
             val started = item.user.positionMs > 0u
             if (started && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)) {
                 ListRow(
-                    "Play from start",
-                    subtitle = "Instead of resuming at ${be.alwyapps.watch.player.formatTime(item.user.positionMs.toLong())}",
+                    tr("Play from start"),
+                    subtitle =
+                        tr(
+                            "Instead of resuming at {time}",
+                            "time" to
+                                be.alwyapps.watch.player
+                                    .formatTime(item.user.positionMs.toLong()),
+                        ),
                     icon = Icons.Play,
                     onClick = {
                         onDismiss()
@@ -297,7 +303,7 @@ fun ItemMenu(
             if (series) {
                 // Every episode at once (a partly watched show offers both).
                 if (!played) {
-                    ListRow("Mark all episodes watched", icon = Icons.Check, onClick = {
+                    ListRow(tr("Mark all episodes watched"), icon = Icons.Check, onClick = {
                         onDismiss()
                         ctx.services.scope.launch {
                             runCatching { core.setPlayed(account, item.id, true) }
@@ -305,34 +311,34 @@ fun ItemMenu(
                         }
                     })
                 }
-                ListRow("Mark all episodes unwatched", subtitle = "Forgets where you stopped", icon = Icons.Refresh, onClick = {
+                ListRow(tr("Mark all episodes unwatched"), subtitle = tr("Forgets where you stopped"), icon = Icons.Refresh, onClick = {
                     confirmUnwatched = true
                 })
             }
             if (!played && !series) {
-                ListRow("Mark watched", icon = Icons.Check, onClick = { act { core.setPlayed(account, item.id, true) } })
+                ListRow(tr("Mark watched"), icon = Icons.Check, onClick = { act { core.setPlayed(account, item.id, true) } })
             }
             // Watched, or partly watched: back to unwatched (forgets where it stopped).
             if ((played || started) && !series) {
-                ListRow("Mark unwatched", subtitle = if (started && !played) "Forgets where you stopped" else null, icon = Icons.Refresh, onClick = {
+                ListRow(tr("Mark unwatched"), subtitle = if (started && !played) tr("Forgets where you stopped") else null, icon = Icons.Refresh, onClick = {
                     act { core.setPlayed(account, item.id, false) }
                 })
             }
             // Only for what is in that row: started, or shown there (the next episode of a show).
             // (A watched title can sit there too, when it was started again.)
             if ((!played || inContinueWatching) && (started || inContinueWatching) && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)) {
-                ListRow("Remove from Continue watching", icon = Icons.Close, onClick = {
+                ListRow(tr("Remove from Continue watching"), icon = Icons.Close, onClick = {
                     act { core.removeFromContinueWatching(account, item.id) }
                 })
             }
             val sid = item.seriesId
             if (item.kind == ItemKind.EPISODE && sid != null) {
-                ListRow("Go to the show", icon = Icons.Tv, onClick = {
+                ListRow(tr("Go to the show"), icon = Icons.Tv, onClick = {
                     onDismiss()
                     nav.push(Route.Detail(sid, account = account))
                 })
                 item.seasonId?.let { season ->
-                    ListRow("Go to season ${item.seasonNumber ?: ""}".trim(), icon = Icons.Library, onClick = {
+                    ListRow(item.seasonNumber?.let { tr("Go to season {season}", "season" to it) } ?: tr("Go to season"), icon = Icons.Library, onClick = {
                         onDismiss()
                         nav.push(Route.Detail(sid, season, account))
                     })
@@ -342,7 +348,7 @@ fun ItemMenu(
             if (item.kind == ItemKind.MOVIE || series) {
                 val listed = remember(item.id) { runCatching { core.isWatchlisted(account, item.id) }.getOrDefault(false) }
                 ListRow(
-                    if (listed) "Remove from my list" else "Add to my list",
+                    if (listed) tr("Remove from my list") else tr("Add to my list"),
                     icon = if (listed) Icons.BookmarkFilled else Icons.Bookmark,
                     onClick = {
                         onDismiss()
@@ -351,7 +357,7 @@ fun ItemMenu(
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 r.onFailure {
                                     android.widget.Toast
-                                        .makeText(ctx, "My list: ${it.message}", android.widget.Toast.LENGTH_LONG)
+                                        .makeText(ctx, tr("My list: {error}", "error" to it.message), android.widget.Toast.LENGTH_LONG)
                                         .show()
                                 }
                                 ItemsChanged.bump()
@@ -360,12 +366,12 @@ fun ItemMenu(
                     },
                 )
             }
-            ListRow("Details", icon = Icons.Info, onClick = {
+            ListRow(tr("Details"), icon = Icons.Info, onClick = {
                 onDismiss()
                 nav.push(Route.Detail(item.id, account = account))
             })
             if (!d.isTv && (item.kind == ItemKind.MOVIE || item.kind == ItemKind.EPISODE)) {
-                ListRow("Download", icon = Icons.Download, onClick = {
+                ListRow(tr("Download"), icon = Icons.Download, onClick = {
                     act {
                         core.downloadItem(account, item.id, null)
                         be.alwyapps.watch.downloads.DownloadWorker
@@ -446,7 +452,7 @@ fun PosterCard(
                         .size(22.dp)
                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50)),
                     contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Check, "Watched", Modifier.size(15.dp), tint = Accent) }
+                ) { Icon(Icons.Check, tr("Watched"), Modifier.size(15.dp), tint = Accent) }
             }
             badge?.invoke(this)
         }
@@ -462,7 +468,7 @@ fun PosterCard(
                 when {
                     label != null -> label
                     item.kind == ItemKind.EPISODE && item.seasonNumber != null && item.episodeNumber != null ->
-                        "S${item.seasonNumber} · E${item.episodeNumber}"
+                        tr("S{season} · E{episode}", "season" to item.seasonNumber, "episode" to item.episodeNumber)
                     else -> item.subtitle()
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -739,7 +745,7 @@ fun SeeAllTile(
         Box(Modifier.fillMaxSize().background(SurfaceHigh), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.ChevronRight, null, Modifier.size(36.dp))
-                Text("See all", style = MaterialTheme.typography.titleSmall)
+                Text(tr("See all"), style = MaterialTheme.typography.titleSmall)
             }
         }
     }
@@ -827,7 +833,7 @@ fun ErrorBanner(
                 .background(Danger),
         )
         Text(message, Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.bodyMedium, maxLines = 4)
-        ActionButton("Retry", onRetry)
+        ActionButton(tr("Retry"), onRetry)
     }
 }
 
@@ -1255,7 +1261,6 @@ fun MarkAllDialog(
     val account = LocalItemOwners.current[target.id] ?: LocalAccount.current
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var confirm by remember { mutableStateOf(askUnwatchedOnly) }
-    val episodes = if (count != null && count > 0) "all $count episodes" else "all episodes"
     // A season always offers both: its counts can't tell a started episode (unplayed count =
     // episode count while one is half watched) and its played flag can be stale. Only an exact
     // "0 unplayed" with the played flag hides "watched".
@@ -1269,7 +1274,7 @@ fun MarkAllDialog(
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 r.onFailure {
                     android.widget.Toast
-                        .makeText(ctx, "Couldn't change it: ${it.message}", android.widget.Toast.LENGTH_LONG)
+                        .makeText(ctx, tr("Couldn't change it: {error}", "error" to it.message), android.widget.Toast.LENGTH_LONG)
                         .show()
                 }
                 ItemsChanged.bump()
@@ -1281,10 +1286,18 @@ fun MarkAllDialog(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = onDismiss,
             containerColor = Background,
-            title = { Text("Mark $episodes of $label unwatched?") },
-            text = { Text("This forgets where you stopped.", color = Muted) },
-            confirmButton = { ActionButton("Mark unwatched", { apply(false) }, Modifier.ignoreHeldOk()) },
-            dismissButton = { ActionButton("Cancel", onDismiss, Modifier.ignoreHeldOk().focusOnAppear(), primary = true) },
+            title = {
+                Text(
+                    if (count != null && count > 0) {
+                        trn("Mark all {n} episode of {title} unwatched?", "Mark all {n} episodes of {title} unwatched?", count, "title" to label)
+                    } else {
+                        tr("Mark all episodes of {title} unwatched?", "title" to label)
+                    },
+                )
+            },
+            text = { Text(tr("This forgets where you stopped."), color = Muted) },
+            confirmButton = { ActionButton(tr("Mark unwatched"), { apply(false) }, Modifier.ignoreHeldOk()) },
+            dismissButton = { ActionButton(tr("Cancel"), onDismiss, Modifier.ignoreHeldOk().focusOnAppear(), primary = true) },
         )
         return
     }
@@ -1296,21 +1309,29 @@ fun MarkAllDialog(
             Column(Modifier.ignoreHeldOk()) {
                 if (offerWatched) {
                     ListRow(
-                        "Mark $episodes watched",
+                        if (count != null && count > 0) {
+                            trn("Mark all {n} episode watched", "Mark all {n} episodes watched", count)
+                        } else {
+                            tr("Mark all episodes watched")
+                        },
                         Modifier.focusOnAppear(),
                         icon = Icons.Check,
                         onClick = { apply(true) },
                     )
                 }
                 ListRow(
-                    "Mark $episodes unwatched",
+                    if (count != null && count > 0) {
+                        trn("Mark all {n} episode unwatched", "Mark all {n} episodes unwatched", count)
+                    } else {
+                        tr("Mark all episodes unwatched")
+                    },
                     if (!offerWatched) Modifier.focusOnAppear() else Modifier,
-                    subtitle = "Forgets where you stopped",
+                    subtitle = tr("Forgets where you stopped"),
                     icon = Icons.Refresh,
                     onClick = { confirm = true },
                 )
             }
         },
-        confirmButton = { ActionButton("Close", onDismiss) },
+        confirmButton = { ActionButton(tr("Close"), onDismiss) },
     )
 }

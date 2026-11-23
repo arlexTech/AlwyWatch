@@ -241,12 +241,14 @@ fn not_json(
     e: serde_json::Error,
 ) -> Error {
     match (asked, landed) {
-        (Some(a), Some(l)) if a != l => Error::invalid(format!(
-            "{a} redirected to {l}: the server is probably only reachable from its own network (LAN or VPN)"
+        (Some(a), Some(l)) if a != l => Error::invalid(i18n::tr!(
+            "{asked} redirected to {landed}: the server is probably only reachable from its own network (LAN or VPN)",
+            asked = a,
+            landed = l
         )),
-        _ if html => {
-            Error::invalid("got a web page instead of the server's API: check the address")
-        }
+        _ if html => Error::invalid(i18n::tr!(
+            "got a web page instead of the server's API: check the address"
+        )),
         _ => Error::decode(e.to_string()),
     }
 }
@@ -280,7 +282,7 @@ pub fn join(base: &str, path: &str) -> String {
 pub fn normalize_base_url(input: &str) -> Result<String> {
     let s = input.trim();
     if s.is_empty() {
-        return Err(Error::invalid("empty server address"));
+        return Err(Error::invalid(i18n::tr!("empty server address")));
     }
     let with_scheme = if s.contains("://") {
         s.to_owned()
@@ -289,7 +291,9 @@ pub fn normalize_base_url(input: &str) -> Result<String> {
     };
     let url = reqwest::Url::parse(&with_scheme).map_err(|e| Error::invalid(e.to_string()))?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
-        return Err(Error::invalid("server address must be an http(s) URL"));
+        return Err(Error::invalid(i18n::tr!(
+            "server address must be an http(s) URL"
+        )));
     }
     Ok(url.as_str().trim_end_matches('/').to_owned())
 }

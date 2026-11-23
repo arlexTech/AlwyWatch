@@ -63,10 +63,13 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import be.alwyapps.watch.together.people
 import be.alwyapps.watch.ui.Accent
+import be.alwyapps.watch.ui.I18n
 import be.alwyapps.watch.ui.Icons
 import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.Subtle
+import be.alwyapps.watch.ui.tr
+import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.delay
 
 /** Overlay state shared between the activity (keys, player events) and the Compose controls. */
@@ -183,15 +186,15 @@ fun PlayerOverlay(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = onStillWatching,
             containerColor = be.alwyapps.watch.ui.Background,
-            title = { Text("Are you still watching?") },
+            title = { Text(tr("Are you still watching?")) },
             text = { Text(ui.title, color = Muted) },
             confirmButton = {
                 be.alwyapps.watch.ui
-                    .ActionButton("Continue", onStillWatching, primary = true)
+                    .ActionButton(tr("Continue"), onStillWatching, primary = true)
             },
             dismissButton = {
                 be.alwyapps.watch.ui
-                    .ActionButton("Stop", onBack)
+                    .ActionButton(tr("Stop"), onBack)
             },
         )
     }
@@ -201,23 +204,23 @@ fun PlayerOverlay(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { roomDialog = false },
             containerColor = be.alwyapps.watch.ui.Background,
-            title = { Text("Watch together") },
+            title = { Text(tr("Watch together")) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Watching now", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text(tr("Watching now"), color = Muted, style = MaterialTheme.typography.bodySmall)
                     for ((m, devices) in ui.togetherMembers.people()) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             be.alwyapps.watch.ui
                                 .Avatar(m.avatar, m.name, m.userKey, 36.dp)
                             Text(
-                                m.name + if (devices > 1) " · $devices devices" else "",
+                                if (devices > 1) trn("{name} · {n} device", "{name} · {n} devices", devices, "name" to m.name) else m.name,
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                             )
                         }
                     }
                     Text(
-                        "Play, pause and seeking follow everyone. Leaving is for good: you'd need a new invitation to come back.",
+                        tr("Play, pause and seeking follow everyone. Leaving is for good: you'd need a new invitation to come back."),
                         color = Muted,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -225,10 +228,10 @@ fun PlayerOverlay(
             },
             confirmButton = {
                 be.alwyapps.watch.ui
-                    .ActionButton("Close", { roomDialog = false }, primary = true)
+                    .ActionButton(tr("Close"), { roomDialog = false }, primary = true)
             },
             dismissButton = {
-                be.alwyapps.watch.ui.ActionButton("Leave", {
+                be.alwyapps.watch.ui.ActionButton(tr("Leave"), {
                     roomDialog = false
                     onLeaveTogether()
                 })
@@ -304,7 +307,7 @@ fun PlayerOverlay(
     ) {
         tapSeek?.let { (forward, seconds) ->
             Text(
-                if (forward) "+$seconds s" else "−$seconds s",
+                if (forward) tr("+{seconds} s", "seconds" to seconds) else tr("−{seconds} s", "seconds" to seconds),
                 Modifier
                     .align(if (forward) Alignment.CenterEnd else Alignment.CenterStart)
                     .padding(horizontal = 56.dp)
@@ -344,8 +347,8 @@ fun PlayerOverlay(
                             }
                         }
                         if (!tv) {
-                            onPip?.let { RoundButton(Icons.PictureInPicture, "Picture in picture", it, size = 44) }
-                            RoundButton(Icons.Close, "Close", onBack, size = 44)
+                            onPip?.let { RoundButton(Icons.PictureInPicture, tr("Picture in picture"), it, size = 44) }
+                            RoundButton(Icons.Close, tr("Close"), onBack, size = 44)
                         }
                     }
                     Spacer(Modifier.weight(1f))
@@ -358,7 +361,7 @@ fun PlayerOverlay(
                         val small = if (tv) 44 else 52
                         // An empty slot when there is none, so play/pause stays in the middle.
                         if (ui.hasPrevious) {
-                            RoundButton(Icons.SkipPrevious, "Previous episode", onPrevious, size = small)
+                            RoundButton(Icons.SkipPrevious, tr("Previous episode"), onPrevious, size = small)
                         } else {
                             Spacer(Modifier.size(small.dp))
                         }
@@ -366,7 +369,7 @@ fun PlayerOverlay(
                         // right half of the picture does on touch screens.
                         RoundButton(
                             if (ui.playing) Icons.PauseFilled else Icons.Play,
-                            if (ui.playing) "Pause" else "Play",
+                            if (ui.playing) tr("Pause") else tr("Play"),
                             {
                                 player()?.let { if (it.isPlaying) it.pause() else it.play() }
                                 ui.poke()
@@ -377,7 +380,7 @@ fun PlayerOverlay(
                             loading = ui.buffering,
                         )
                         if (ui.hasNext) {
-                            RoundButton(Icons.SkipNext, "Next episode", onNext, size = small)
+                            RoundButton(Icons.SkipNext, tr("Next episode"), onNext, size = small)
                         } else {
                             Spacer(Modifier.size(small.dp))
                         }
@@ -390,7 +393,8 @@ fun PlayerOverlay(
                     if (upNext || skip != null) {
                         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.End) {
                             if (upNext) {
-                                PillButton(Icons.SkipNext, ui.upNextIn?.let { "Next episode in $it s" } ?: "Next episode", onNext)
+                                val text = ui.upNextIn?.let { tr("Next episode in {seconds} s", "seconds" to it) } ?: tr("Next episode")
+                                PillButton(Icons.SkipNext, text, onNext)
                             } else if (skip != null) {
                                 PillButton(Icons.SkipNext, skip, onSkip)
                             }
@@ -410,10 +414,14 @@ fun PlayerOverlay(
                         )
                         if (duration > 0) {
                             Text(
-                                "  ·  ends at " +
-                                    java.text.DateFormat
-                                        .getTimeInstance(java.text.DateFormat.SHORT)
-                                        .format(java.util.Date(System.currentTimeMillis() + duration - position)),
+                                "  ·  " +
+                                    tr(
+                                        "ends at {time}",
+                                        "time" to
+                                            java.text.DateFormat
+                                                .getTimeInstance(java.text.DateFormat.SHORT, java.util.Locale.forLanguageTag(I18n.language))
+                                                .format(java.util.Date(System.currentTimeMillis() + duration - position)),
+                                    ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Subtle,
                             )
@@ -424,7 +432,7 @@ fun PlayerOverlay(
                             val n = ui.togetherMembers.people().size
                             PillButton(
                                 be.alwyapps.watch.ui.Icons.Group,
-                                if (n <= 1) "Only you so far" else "$n watching",
+                                if (n <= 1) tr("Only you so far") else tr("{count} watching", "count" to n),
                                 {
                                     roomDialog = true
                                     ui.poke()
@@ -432,10 +440,10 @@ fun PlayerOverlay(
                             )
                             Spacer(Modifier.width(10.dp))
                         } else if (ui.canWatchTogether) {
-                            PillButton(be.alwyapps.watch.ui.Icons.Group, "Watch together", onStartTogether)
+                            PillButton(be.alwyapps.watch.ui.Icons.Group, tr("Watch together"), onStartTogether)
                             Spacer(Modifier.width(10.dp))
                         }
-                        PillButton(Icons.Subtitles, "Audio & subtitles", {
+                        PillButton(Icons.Subtitles, tr("Audio & subtitles"), {
                             ui.tracksOpen = true
                             ui.poke()
                         })
@@ -447,7 +455,7 @@ fun PlayerOverlay(
         val prompt =
             when {
                 ui.visible || ui.tracksOpen -> null
-                ui.nearEnd -> "Next episode"
+                ui.nearEnd -> tr("Next episode")
                 else -> ui.skipLabel
             }
         AnimatedVisibility(
@@ -460,8 +468,8 @@ fun PlayerOverlay(
             val label = prompt ?: return@AnimatedVisibility
             LaunchedEffect(label) { runCatching { focus.requestFocus() } }
             Box(Modifier.focusRequester(focus)) {
-                if (label == "Next episode") {
-                    PillButton(Icons.SkipNext, ui.upNextIn?.let { "Next episode in $it s" } ?: label, onNext)
+                if (label == tr("Next episode")) {
+                    PillButton(Icons.SkipNext, ui.upNextIn?.let { tr("Next episode in {seconds} s", "seconds" to it) } ?: label, onNext)
                 } else {
                     PillButton(Icons.SkipNext, label, onSkip)
                 }
@@ -790,24 +798,24 @@ private fun TracksPanel(
                         f.label ?: f.language?.let {
                             java.util.Locale
                                 .forLanguageTag(it)
-                                .displayLanguage
+                                .getDisplayLanguage(java.util.Locale.forLanguageTag(I18n.language))
                                 .ifEmpty { it }
                                 .replaceFirstChar { c -> c.uppercase() }
                         },
                         if (type == C.TRACK_TYPE_AUDIO && f.channelCount > 0) {
                             when (f.channelCount) {
-                                1 -> "Mono"
-                                2 -> "Stereo"
+                                1 -> tr("Mono")
+                                2 -> tr("Stereo")
                                 6 -> "5.1"
                                 8 -> "7.1"
-                                else -> "${f.channelCount} ch"
+                                else -> tr("{count} ch", "count" to f.channelCount)
                             }
                         } else {
                             null
                         },
                         // Media3 converts subtitles to "x-media3-cues" while extracting; the original format is in codecs.
                         friendlyFormat(if (f.sampleMimeType == "application/x-media3-cues") f.codecs else f.sampleMimeType ?: f.codecs),
-                    ).joinToString(" · ").ifEmpty { "Track ${i + 1}" }
+                    ).joinToString(" · ").ifEmpty { tr("Track {number}", "number" to i + 1) }
                 out += Option(label, g.isTrackSelected(i)) { select(type, g, i) }
             }
         }
@@ -828,14 +836,14 @@ private fun TracksPanel(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Audio & subtitles", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            RoundButton(Icons.Close, "Close", onClose, size = 36)
+            Text(tr("Audio & subtitles"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            RoundButton(Icons.Close, tr("Close"), onClose, size = 36)
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            item { Section("Audio") }
+            item { Section(tr("Audio")) }
             items(audio.withIndex().toList()) { (i, o) -> TrackRow(o.label, o.selected, o.pick, if (i == 0) Modifier.focusRequester(firstFocus) else Modifier) }
-            item { Section("Subtitles") }
-            item { TrackRow("Off", subsOff, { select(C.TRACK_TYPE_TEXT, null, 0) }) }
+            item { Section(tr("Subtitles")) }
+            item { TrackRow(tr("Off"), subsOff, { select(C.TRACK_TYPE_TEXT, null, 0) }) }
             items(subs) { o -> TrackRow(o.label, o.selected && !subsOff, o.pick) }
         }
     }
@@ -870,12 +878,12 @@ private fun ServerTracksPanel(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Audio & subtitles", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            RoundButton(Icons.Close, "Close", onClose, size = 36)
+            Text(tr("Audio & subtitles"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            RoundButton(Icons.Close, tr("Close"), onClose, size = 36)
         }
-        Text("Converted by the server: changing a track restarts the stream", style = MaterialTheme.typography.labelSmall, color = Subtle)
+        Text(tr("Converted by the server: changing a track restarts the stream"), style = MaterialTheme.typography.labelSmall, color = Subtle)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            item { Section("Audio") }
+            item { Section(tr("Audio")) }
             items(audio.withIndex().toList()) { (i, s) ->
                 TrackRow(
                     label(s),
@@ -884,8 +892,8 @@ private fun ServerTracksPanel(
                     if (i == 0) Modifier.focusRequester(firstFocus) else Modifier,
                 )
             }
-            item { Section("Subtitles") }
-            item { TrackRow("Off", subNow == null, { if (subNow != null) onPicked(be.alwyapps.watch.core.media.StreamKind.SUBTITLE, null) }) }
+            item { Section(tr("Subtitles")) }
+            item { TrackRow(tr("Off"), subNow == null, { if (subNow != null) onPicked(be.alwyapps.watch.core.media.StreamKind.SUBTITLE, null) }) }
             items(subs) { s -> TrackRow(label(s), s.index == subNow, { if (s.index != subNow) onPicked(s.kind, s.index) }) }
         }
     }
@@ -916,7 +924,7 @@ private fun TrackRow(
     ) {
         val fg = if (focused) Color.Black else Color.White
         Text(label, Modifier.weight(1f), color = fg, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (selected) Icon(Icons.Check, "Selected", Modifier.size(18.dp), tint = if (focused) Color.Black else Accent)
+        if (selected) Icon(Icons.Check, tr("Selected"), Modifier.size(18.dp), tint = if (focused) Color.Black else Accent)
     }
 }
 

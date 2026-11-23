@@ -151,17 +151,21 @@ impl Core {
         accounts
             .into_iter()
             .find(|a| a.id == account)
-            .map_or_else(|| "the server".into(), |a| a.server_name)
+            .map_or_else(|| i18n::tr!("the server"), |a| a.server_name)
     }
 
     async fn history_plan(&self, from: &str, to: &str) -> Result<HistoryPlan> {
         if from == to {
             return Err(CoreError::Invalid {
-                detail: "pick two different servers".into(),
+                detail: i18n::tr!("pick two different servers"),
             });
         }
         let from_name = self.server_name(from);
-        self.progress(format!("Reading what you watched on {from_name}"), 0, 0);
+        self.progress(
+            i18n::tr!("Reading what you watched on {server}", server = from_name),
+            0,
+            0,
+        );
         let history = self.server(from)?.watch_history().await?;
         let target_state = self.history_state(to).await?;
         let matched = self.match_on(from, to, &history).await?;
@@ -174,7 +178,11 @@ impl Core {
     /// An account's history by item id (watched or started items only).
     pub(crate) async fn history_state(&self, account: &str) -> Result<HashMap<String, UserData>> {
         let name = self.server_name(account);
-        self.progress(format!("Reading what you watched on {name}"), 0, 0);
+        self.progress(
+            i18n::tr!("Reading what you watched on {server}", server = name),
+            0,
+            0,
+        );
         Ok(self
             .server(account)?
             .watch_history()
@@ -194,7 +202,11 @@ impl Core {
         let (src, dst) = (self.server(from)?, self.server(to)?);
         let to_name = self.server_name(to);
         let src_shows = src.provider_index(ItemKind::Series).await?;
-        self.progress(format!("Listing the movies and shows on {to_name}"), 0, 0);
+        self.progress(
+            i18n::tr!("Listing the movies and shows on {server}", server = to_name),
+            0,
+            0,
+        );
         let dst_movies = dst.provider_index(ItemKind::Movie).await?;
         let dst_shows = dst.provider_index(ItemKind::Series).await?;
         let show_count = history
@@ -203,7 +215,7 @@ impl Core {
             .collect::<std::collections::HashSet<_>>()
             .len() as u32;
         self.progress(
-            format!("Finding your shows' episodes on {to_name}"),
+            i18n::tr!("Finding your shows' episodes on {server}", server = to_name),
             0,
             show_count,
         );
@@ -243,7 +255,7 @@ impl Core {
             }
             show_of.insert(sid.clone(), target);
             self.progress(
-                format!("Finding your shows' episodes on {to_name}"),
+                i18n::tr!("Finding your shows' episodes on {server}", server = to_name),
                 show_of.len() as u32,
                 show_count,
             );
@@ -302,7 +314,8 @@ impl AlwyWatch {
             let srv = c.server(&to_account)?;
             let mut r = HistoryCopyResult::default();
             let total = changes.len() as u32;
-            let step = format!("Copying to {}", c.server_name(&to_account));
+            let step = i18n::tr!("Copying to {server}", server = c.server_name(&to_account));
+
             c.progress(step.clone(), 0, total);
             for ch in changes {
                 let state = WatchState {

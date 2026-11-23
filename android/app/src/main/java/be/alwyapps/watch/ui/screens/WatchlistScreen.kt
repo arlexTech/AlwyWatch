@@ -32,6 +32,7 @@ import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.PageTitle
 import be.alwyapps.watch.ui.PosterCard
 import be.alwyapps.watch.ui.Route
+import be.alwyapps.watch.ui.tr
 
 /**
  * "My list", like Plex's watchlist: what the user saved to watch later, from every server of the
@@ -83,12 +84,12 @@ fun WatchlistScreen() {
         horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { PageTitle("My list") }
+        item(span = { GridItemSpan(maxLineSpan) }) { PageTitle(tr("My list")) }
         error?.let { item(span = { GridItemSpan(maxLineSpan) }) { Text(it, color = Muted) } }
         if (loaded && entries.isEmpty() && error == null) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
-                    "Nothing saved yet. On a movie or show, press the bookmark to keep it here.",
+                    tr("Nothing saved yet. On a movie or show, press the bookmark to keep it here."),
                     color = Muted,
                     style = MaterialTheme.typography.bodyMedium,
                 )

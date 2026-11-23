@@ -356,12 +356,12 @@ component KeepChoices inherits HorizontalLayout {
     callback vote(string, string); // key, choice
     spacing: 6px;
     alignment: start;
-    Button { label: "Until I watch it"; primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.vote(root.key, "watched"); } }
-    Button { label: "Keep 30 days"; clicked => { root.vote(root.key, "days30"); } }
-    Button { label: "Keep 7 days"; clicked => { root.vote(root.key, "days7"); } }
-    Button { label: "Keep forever"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.vote(root.key, "love"); } }
-    Button { label: "Fine to delete"; clicked => { root.vote(root.key, "dontcare"); } }
-    if root.voted : Button { label: "Remove my choice"; clicked => { root.vote(root.key, "remove"); } }
+    Button { label: @tr("Until I watch it"); primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.vote(root.key, "watched"); } }
+    Button { label: @tr("Keep 30 days"); clicked => { root.vote(root.key, "days30"); } }
+    Button { label: @tr("Keep 7 days"); clicked => { root.vote(root.key, "days7"); } }
+    Button { label: @tr("Keep forever"); has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.vote(root.key, "love"); } }
+    Button { label: @tr("Fine to delete"); clicked => { root.vote(root.key, "dontcare"); } }
+    if root.voted : Button { label: @tr("Remove my choice"); clicked => { root.vote(root.key, "remove"); } }
 }
 
 component IconButton inherits Focusable {
@@ -612,7 +612,7 @@ component PlayerOverlay inherits Rectangle {
     }
 
     if root.dur == 0 : Text {
-        text: "Loading…";
+        text: @tr("Loading…");
         color: #ffffffb0;
         font-size: 18px;
     }
@@ -697,16 +697,16 @@ component PlayerOverlay inherits Rectangle {
             vertical-alignment: center;
         }
         if root.ends-at != "" && root.dur > 0 : Text {
-            text: "·  ends at " + root.ends-at;
+            text: @tr("·  ends at {}", root.ends-at);
             color: #ffffff80;
             font-size: 15px;
             vertical-alignment: center;
         }
         Rectangle { horizontal-stretch: 1; }
         if root.room-label != "" : PlayerPill { label: root.room-label; icon: @image-url("icons/group.svg"); clicked => { root.cmd("room", ""); } }
-        if root.room-label == "" && root.can-together : PlayerPill { label: "Watch together"; icon: @image-url("icons/group.svg"); clicked => { root.cmd("together", ""); } }
+        if root.room-label == "" && root.can-together : PlayerPill { label: @tr("Watch together"); icon: @image-url("icons/group.svg"); clicked => { root.cmd("together", ""); } }
         if root.audio.length > 1 || root.subtitles.length > 1 : PlayerPill {
-            label: "Audio & subtitles";
+            label: @tr("Audio & subtitles");
             icon: @image-url("icons/subtitles.svg");
             clicked => { root.tracks-open = true; }
         }
@@ -720,8 +720,8 @@ component PlayerOverlay inherits Rectangle {
         y: root.show ? root.height - 36px - 42px - 12px - 32px - 12px - 42px : root.height - 48px - 42px;
         height: 42px;
         spacing: 10px;
-        if root.countdown > 0 : PlayerPill { label: "Keep watching"; has-icon: false; clicked => { root.cmd("cancel", ""); } }
-        if root.near-end : PlayerPill { primary: !root.show; label: root.countdown > 0 ? "Next episode in " + root.countdown + " s" : "Next episode"; clicked => { root.cmd("next", ""); } }
+        if root.countdown > 0 : PlayerPill { label: @tr("Keep watching"); has-icon: false; clicked => { root.cmd("cancel", ""); } }
+        if root.near-end : PlayerPill { primary: !root.show; label: root.countdown > 0 ? @tr("Next episode in {} s", root.countdown) : @tr("Next episode"); clicked => { root.cmd("next", ""); } }
         if !root.near-end : PlayerPill { primary: !root.show; label: root.skip; clicked => { root.cmd("skip", ""); } }
     }
 
@@ -738,7 +738,7 @@ component PlayerOverlay inherits Rectangle {
             spacing: 6px;
             HorizontalLayout {
                 height: 44px;
-                Text { text: "Audio & subtitles"; color: #ffffff; font-size: 18px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+                Text { text: @tr("Audio & subtitles"); color: #ffffff; font-size: 18px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
                 PlayerButton { size: 40px; icon: @image-url("icons/close.svg"); clicked => { root.tracks-open = false; keys.focus(); } }
             }
             Flickable {
@@ -746,13 +746,13 @@ component PlayerOverlay inherits Rectangle {
                 VerticalLayout {
                     alignment: start;
                     spacing: 4px;
-                    Text { text: "AUDIO"; color: #ffffff80; font-size: 12px; font-weight: 700; height: 36px; vertical-alignment: bottom; }
+                    Text { text: @tr("AUDIO"); color: #ffffff80; font-size: 12px; font-weight: 700; height: 36px; vertical-alignment: bottom; }
                     for t in root.audio : TrackRow {
                         label: t.label;
                         selected: t.selected;
                         clicked => { root.cmd("aid", t.id); }
                     }
-                    Text { text: "SUBTITLES"; color: #ffffff80; font-size: 12px; font-weight: 700; height: 44px; vertical-alignment: bottom; }
+                    Text { text: @tr("SUBTITLES"); color: #ffffff80; font-size: 12px; font-weight: 700; height: 44px; vertical-alignment: bottom; }
                     for t in root.subtitles : TrackRow {
                         label: t.label;
                         selected: t.selected;
@@ -1001,7 +1001,7 @@ component RailView {
                     padding-left: 10px;
                     padding-right: 4px;
                     spacing: 2px;
-                    Text { text: "See all"; color: sa-ta.has-hover || sa-fs.has-focus ? Palette.text : Palette.muted; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+                    Text { text: @tr("See all"); color: sa-ta.has-hover || sa-fs.has-focus ? Palette.text : Palette.muted; font-size: 14px; font-weight: 700; vertical-alignment: center; }
                     Image { source: @image-url("icons/chevron_right.svg"); width: 18px; height: 18px; y: 6px; colorize: sa-ta.has-hover || sa-fs.has-focus ? Palette.text : Palette.muted; }
                 }
                 sa-fs := FocusScope {
@@ -1153,7 +1153,7 @@ component ProfileTile inherits Focusable {
         alignment: center;
         HorizontalLayout { alignment: center; Avatar { initial: root.profile.initial; tone: root.profile.tone; size: 96px; } }
         Text { text: root.profile.name; color: Palette.text; font-size: 16px; font-weight: 700; horizontal-alignment: center; overflow: elide; }
-        Text { text: root.profile.has-pin ? "PIN" : " "; color: Palette.muted; font-size: 11px; font-weight: 800; horizontal-alignment: center; }
+        Text { text: root.profile.has-pin ? @tr("PIN") : " "; color: Palette.muted; font-size: 11px; font-weight: 800; horizontal-alignment: center; }
     }
 }
 
@@ -1592,7 +1592,7 @@ export component AppWindow inherits Window {
     // A row's "See all" (key from Rail.see-all, the row's title).
     callback rail-see-all(string, string);
     // The poster grid page's title when it isn't My list ("Continue watching").
-    in property <string> list-title: "My list";
+    in property <string> list-title: @tr("My list");
 
     // Arrow keys and Escape not consumed by a focused element end up here.
     FocusScope {
@@ -1635,9 +1635,9 @@ export component AppWindow inherits Window {
                     Rectangle { height: 22px; }
                     // Several profiles on this computer: who is watching, one click to switch.
                     if root.profiles.length > 1 : NavItem { label: root.profile-name; icon: @image-url("icons/person.svg"); selected: false; clicked => { root.profile-switcher(); } }
-                    NavItem { label: "Home"; icon: @image-url("icons/home.svg"); selected: root.page == Page.home; clicked => { root.go(Page.home); } }
-                    NavItem { label: "Search"; icon: @image-url("icons/search.svg"); selected: root.page == Page.search; clicked => { root.go(Page.search); } }
-                    NavItem { label: "My list"; icon: @image-url("icons/bookmark.svg"); selected: root.page == Page.mylist && root.list-title == "My list"; clicked => { root.go(Page.mylist); } }
+                    NavItem { label: @tr("Home"); icon: @image-url("icons/home.svg"); selected: root.page == Page.home; clicked => { root.go(Page.home); } }
+                    NavItem { label: @tr("Search"); icon: @image-url("icons/search.svg"); selected: root.page == Page.search; clicked => { root.go(Page.search); } }
+                    NavItem { label: @tr("My list"); icon: @image-url("icons/bookmark.svg"); selected: root.page == Page.mylist && root.list-title == "My list"; clicked => { root.go(Page.mylist); } }
                     for lib in root.libraries : NavItem {
                         label: lib.title;
                         icon: @image-url("icons/movie.svg");
@@ -1645,20 +1645,20 @@ export component AppWindow inherits Window {
                         clicked => { root.open-library(lib.id, lib.title); }
                     }
                     if root.keep-active && root.leaving-available : NavItem {
-                        label: "Leaving soon";
+                        label: @tr("Leaving soon");
                         icon: @image-url("icons/hourglass_bottom.svg");
                         selected: root.page == Page.leaving || root.page == Page.triage || root.page == Page.keepadmin;
                         clicked => { root.go(Page.leaving); }
                     }
                     if root.keep-active : NavItem {
-                        label: "Together";
+                        label: @tr("Together");
                         icon: @image-url("icons/group.svg");
                         selected: root.page == Page.together || root.page == Page.room;
                         clicked => { root.go(Page.together); }
                     }
-                    if root.seerr-active && root.requests-available : NavItem { label: "Requests"; icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
-                    NavItem { label: "Downloads"; icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
-                    NavItem { label: "Settings"; icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings || root.page == Page.profiles || root.page == Page.historycopy; clicked => { root.go(Page.settings); } }
+                    if root.seerr-active && root.requests-available : NavItem { label: @tr("Requests"); icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
+                    NavItem { label: @tr("Downloads"); icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
+                    NavItem { label: @tr("Settings"); icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings || root.page == Page.profiles || root.page == Page.historycopy; clicked => { root.go(Page.settings); } }
                 }
             }
 
@@ -1724,10 +1724,10 @@ export component AppWindow inherits Window {
                             spacing: 8px;
                             alignment: start;
                             for t in [
-                                { id: "recommended", title: "Recommended" },
-                                { id: "browse", title: "Browse" },
-                                { id: "collections", title: "Collections" },
-                                { id: "categories", title: "Categories" },
+                                { id: "recommended", title: @tr("Recommended") },
+                                { id: "browse", title: @tr("Browse") },
+                                { id: "collections", title: @tr("Collections") },
+                                { id: "categories", title: @tr("Categories") },
                             ] : Button {
                                 label: t.title;
                                 primary: root.library-tab == t.id;
@@ -1745,7 +1745,7 @@ export component AppWindow inherits Window {
                                     hovered(id) => { root.prefetch(id); }
                                     see-all(key) => { root.rail-see-all(key, root.grid-title); }
                                 }
-                                if root.lib-rails.length == 0 : Text { text: "Nothing in progress or recently added."; color: Palette.muted; }
+                                if root.lib-rails.length == 0 : Text { text: @tr("Nothing in progress or recently added."); color: Palette.muted; }
                             }
                         }
                         if root.page == Page.library && root.library-tab == "categories" : ScrollView {
@@ -1769,10 +1769,10 @@ export component AppWindow inherits Window {
                             spacing: 14px;
                             // Its own height only: the results grid below takes the rest.
                             vertical-stretch: 0;
-                            PageTitle { title: "Search"; }
+                            PageTitle { title: @tr("Search"); }
                             Field {
                                 autofocus: true;
-                                placeholder: "Movies, shows, episodes…";
+                                placeholder: @tr("Movies, shows, episodes…");
                                 text <=> root.search-text;
                                 edited(t) => { root.search(t); }
                             }
@@ -1833,35 +1833,35 @@ export component AppWindow inherits Window {
                                         spacing: 10px;
                                         alignment: start;
                                         if root.detail.playable : Button {
-                                            label: root.detail.resumable ? "Resume from " + root.detail.resume-at : "Play";
+                                            label: root.detail.resumable ? @tr("Resume from {}", root.detail.resume-at) : @tr("Play");
                                             primary: true;
                                             has-icon: true;
                                             icon: @image-url("icons/play_arrow_fill1.svg");
                                             clicked => { root.play(root.detail.id, false); }
                                         }
                                         if root.detail.resumable : Button {
-                                            label: "From start";
+                                            label: @tr("From start");
                                             clicked => { root.play(root.detail.id, true); }
                                         }
                                         if root.detail.playable && root.keep-active : Button {
-                                            label: root.room-hosting ? "Watch in your room" : "Watch together";
+                                            label: root.room-hosting ? @tr("Watch in your room") : @tr("Watch together");
                                             has-icon: true;
                                             icon: @image-url("icons/group.svg");
                                             clicked => { root.watch-together(root.detail.id); }
                                         }
                                         if root.detail.can-watchlist : IconButton {
                                             icon: root.detail.watchlisted ? @image-url("icons/bookmark_fill1.svg") : @image-url("icons/bookmark.svg");
-                                            tip: root.detail.watchlisted ? "In my list" : "Add to my list";
+                                            tip: root.detail.watchlisted ? @tr("In my list") : @tr("Add to my list");
                                             clicked => { root.toggle-watchlist(root.detail.id); }
                                         }
                                         if root.detail.playable : IconButton {
                                             icon: @image-url("icons/download.svg");
-                                            tip: "Download";
+                                            tip: @tr("Download");
                                             clicked => { root.download(root.detail.id); }
                                         }
                                         IconButton {
                                             icon: @image-url("icons/check.svg");
-                                            tip: "Watched or not";
+                                            tip: @tr("Watched or not");
                                             clicked => { root.toggle-played(root.detail.id); }
                                         }
                                     }
@@ -1879,7 +1879,7 @@ export component AppWindow inherits Window {
                                     spacing: 10px;
                                     alignment: start;
                                     if root.detail.has-trailer : Button {
-                                        label: "Trailer";
+                                        label: @tr("Trailer");
                                         has-icon: true;
                                         icon: @image-url("icons/movie.svg");
                                         clicked => { root.play-trailer(root.detail.id); }
@@ -1904,14 +1904,14 @@ export component AppWindow inherits Window {
                                             Icon { source: @image-url("icons/hourglass_bottom.svg"); tint: root.detail-keep.listed ? Palette.accent : Palette.muted; width: 20px; height: 20px; y: (parent.height - self.height) / 2; }
                                             Text { text: root.detail-keep.title; color: Palette.text; font-size: 16px; font-weight: 700; vertical-alignment: center; }
                                         }
-                                        if !root.detail-keep.listed : Text { text: "The server doesn't plan to delete this. You can still say you want it kept, in case it does later."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                        if !root.detail-keep.listed : Text { text: @tr("The server doesn't plan to delete this. You can still say you want it kept, in case it does later."); color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                                         if root.detail-keep.detail != "" : Text { text: root.detail-keep.detail; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                                         Text { text: root.detail-keep.choice; color: Palette.text; font-size: 14px; wrap: word-wrap; }
                                         if root.detail-keep.key == "" || root.leaving-open != root.detail-keep.key : HorizontalLayout {
                                             alignment: start;
                                             padding-top: 6px;
                                             Button {
-                                                label: root.detail-keep.looking ? "Looking it up…" : root.detail-keep.voted ? "Change my choice" : "Keep it";
+                                                label: root.detail-keep.looking ? @tr("Looking it up…") : root.detail-keep.voted ? @tr("Change my choice") : @tr("Keep it");
                                                 has-icon: true;
                                                 icon: @image-url("icons/schedule.svg");
                                                 // A title in no list: its entry comes from the server first.
@@ -1934,7 +1934,7 @@ export component AppWindow inherits Window {
                                     }
                                 }
                                 if root.detail.crew != "" : Text { text: root.detail.crew; color: Palette.muted; }
-                                if root.detail.is-series : Text { text: "Episodes"; color: Palette.text; font-size: 20px; font-weight: 700; }
+                                if root.detail.is-series : Text { text: @tr("Episodes"); color: Palette.text; font-size: 20px; font-weight: 700; }
                                 if root.detail.is-series : HorizontalLayout {
                                     spacing: 8px;
                                     alignment: start;
@@ -1948,11 +1948,11 @@ export component AppWindow inherits Window {
                                 if root.detail.is-series : HorizontalLayout {
                                     spacing: 8px;
                                     alignment: start;
-                                    Text { text: "Mark as"; color: Palette.subtle; font-size: 13px; vertical-alignment: center; }
-                                    if root.seasons.length > 0 : Button { label: "Season watched"; clicked => { root.mark-many("season", true); } }
-                                    if root.seasons.length > 0 : Button { label: "Season unwatched"; clicked => { root.mark-many("season", false); } }
-                                    Button { label: "All episodes watched"; clicked => { root.mark-many("show", true); } }
-                                    Button { label: "All episodes unwatched"; clicked => { root.mark-many("show", false); } }
+                                    Text { text: @tr("Mark as"); color: Palette.subtle; font-size: 13px; vertical-alignment: center; }
+                                    if root.seasons.length > 0 : Button { label: @tr("Season watched"); clicked => { root.mark-many("season", true); } }
+                                    if root.seasons.length > 0 : Button { label: @tr("Season unwatched"); clicked => { root.mark-many("season", false); } }
+                                    Button { label: @tr("All episodes watched"); clicked => { root.mark-many("show", true); } }
+                                    Button { label: @tr("All episodes unwatched"); clicked => { root.mark-many("show", false); } }
                                 }
                                 for ep in root.episodes : Focusable {
                                     height: 112px;
@@ -1979,7 +1979,7 @@ export component AppWindow inherits Window {
                                         if ep.played : Icon { source: @image-url("icons/check.svg"); tint: Palette.accent; y: (parent.height - self.height) / 2; }
                                     }
                                 }
-                                if root.cast.length > 0 : Text { text: "Cast"; color: Palette.text; font-size: 20px; font-weight: 700; }
+                                if root.cast.length > 0 : Text { text: @tr("Cast"); color: Palette.text; font-size: 20px; font-weight: 700; }
                                 if root.cast.length > 0 : CastRow { people: root.cast; }
                             }
                         }
@@ -1994,8 +1994,8 @@ export component AppWindow inherits Window {
                                 padding-top: 72px;
                                 spacing: 16px;
                                 alignment: start;
-                                if root.add-step == "choose" && root.add-from-keep : Text { text: "Add a server"; color: Palette.text; font-size: 36px; font-weight: 800; }
-                                if root.add-step == "choose" && root.add-from-keep && root.preset-servers.length > 0 : Text { text: "From your AlwyWatch server"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                if root.add-step == "choose" && root.add-from-keep : Text { text: @tr("Add a server"); color: Palette.text; font-size: 36px; font-weight: 800; }
+                                if root.add-step == "choose" && root.add-from-keep && root.preset-servers.length > 0 : Text { text: @tr("From your AlwyWatch server"); color: Palette.text; font-size: 17px; font-weight: 700; }
                                 if root.add-step == "choose" && root.add-from-keep : VerticalLayout {
                                     spacing: 16px;
                                     for s in root.preset-servers : ChoiceCard {
@@ -2005,23 +2005,23 @@ export component AppWindow inherits Window {
                                         clicked => { root.add-keep-pick(s.id); }
                                     }
                                 }
-                                if root.add-step == "choose" && root.add-from-keep && root.preset-servers.length > 0 : Text { text: "Another server"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                if root.add-step == "choose" && root.add-from-keep && root.preset-servers.length > 0 : Text { text: @tr("Another server"); color: Palette.text; font-size: 17px; font-weight: 700; }
                                 if root.add-step == "choose" && root.add-from-keep : ChoiceCard {
                                     title: "Jellyfin";
-                                    subtitle: "Password, or a code from another Jellyfin app";
+                                    subtitle: @tr("Password, or a code from another Jellyfin app");
                                     icon: @image-url("icons/video_library.svg");
                                     clicked => { root.add-choose("jellyfin"); }
                                 }
                                 if root.add-step == "choose" && root.add-from-keep : ChoiceCard {
                                     title: "Plex";
-                                    subtitle: "Sign in on plex.tv";
+                                    subtitle: @tr("Sign in on plex.tv");
                                     icon: @image-url("icons/play_arrow_fill1.svg");
                                     clicked => { root.add-choose("plex"); }
                                 }
                                 if root.add-step == "choose" && !root.add-from-keep : VerticalLayout {
                                     spacing: 4px;
                                     Text { text: "AlwyWatch"; color: Palette.text; font-size: 56px; font-weight: 800; letter-spacing: -1.5px; }
-                                    Text { text: "Your Jellyfin and Plex, fast and beautiful."; color: Palette.muted; font-size: 17px; }
+                                    Text { text: @tr("Your Jellyfin and Plex, fast and beautiful."); color: Palette.muted; font-size: 17px; }
                                     Rectangle { height: 16px; }
                                 }
                                 if root.add-step != "choose" : HorizontalLayout {
@@ -2029,10 +2029,10 @@ export component AppWindow inherits Window {
                                     alignment: start;
                                     IconButton { icon: @image-url("icons/arrow_back.svg"); clicked => { root.add-choose("back"); } }
                                     Text {
-                                        text: root.add-step == "alwywatch" ? "AlwyWatch server"
-                                            : root.add-step == "receive" ? "Sign in with a code"
-                                            : root.add-step == "account" ? "AlwyWatch account"
-                                            : root.add-step == "direct" ? "Sign in"
+                                        text: root.add-step == "alwywatch" ? @tr("AlwyWatch server")
+                                            : root.add-step == "receive" ? @tr("Sign in with a code")
+                                            : root.add-step == "account" ? @tr("AlwyWatch account")
+                                            : root.add-step == "direct" ? @tr("Sign in")
                                             : root.add-step == "plex" || root.add-step == "plex-servers" ? "Plex" : "Jellyfin";
                                         color: Palette.text;
                                         font-size: 28px;
@@ -2042,37 +2042,37 @@ export component AppWindow inherits Window {
                                 }
                                 if root.add-step == "choose" && !root.add-from-keep : Text { text: @tr("Sign in"); color: Palette.text; font-size: 17px; font-weight: 700; }
                                 if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
-                                    title: "I was given an AlwyWatch address";
-                                    subtitle: "Something like watch.example.org, from the person who runs your server. Adds requests, watch together and saving titles from deletion.";
+                                    title: @tr("I was given an AlwyWatch address");
+                                    subtitle: @tr("Something like watch.example.org, from the person who runs your server. Adds requests, watch together and saving titles from deletion.");
                                     icon: @image-url("icons/hourglass_bottom.svg");
                                     clicked => { root.add-choose("alwywatch"); }
                                 }
                                 if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
-                                    title: "I have a Jellyfin or Plex login";
-                                    subtitle: "Sign in directly. You can add an AlwyWatch address later in Settings.";
+                                    title: @tr("I have a Jellyfin or Plex login");
+                                    subtitle: @tr("Sign in directly. You can add an AlwyWatch address later in Settings.");
                                     icon: @image-url("icons/person.svg");
                                     clicked => { root.add-choose("direct"); }
                                 }
                                 if root.add-step == "direct" : ChoiceCard {
                                     title: "Jellyfin";
-                                    subtitle: "Quick Connect or password";
+                                    subtitle: @tr("Quick Connect or password");
                                     icon: @image-url("icons/video_library.svg");
                                     clicked => { root.add-choose("jellyfin"); }
                                 }
                                 if root.add-step == "direct" : ChoiceCard {
                                     title: "Plex";
-                                    subtitle: "Sign in on plex.tv";
+                                    subtitle: @tr("Sign in on plex.tv");
                                     icon: @image-url("icons/play_arrow_fill1.svg");
                                     clicked => { root.add-choose("plex"); }
                                 }
                                 if root.add-step == "alwywatch" : VerticalLayout {
                                     spacing: 12px;
-                                    if root.account-note == "" : Text { text: "Type the AlwyWatch address the person who runs your server gave you. You then sign in with your Jellyfin or Plex login, or with a code from a device where you already use AlwyWatch."; color: Palette.muted; wrap: word-wrap; }
+                                    if root.account-note == "" : Text { text: @tr("Type the AlwyWatch address the person who runs your server gave you. You then sign in with your Jellyfin or Plex login, or with a code from a device where you already use AlwyWatch."); color: Palette.muted; wrap: word-wrap; }
                                     if root.account-note != "" : Text { text: root.account-note; color: Palette.text; font-size: 17px; font-weight: 700; wrap: word-wrap; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         kserver := Field { placeholder: "watch.example.org"; text <=> root.keep-address; accepted(t) => { root.add-keep-servers(t); } }
-                                        Button { label: "Continue"; primary: root.preset-servers.length == 0; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
+                                        Button { label: @tr("Continue"); primary: root.preset-servers.length == 0; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
                                     }
                                     for s in root.preset-servers : ChoiceCard {
                                         title: s.title;
@@ -2081,29 +2081,29 @@ export component AppWindow inherits Window {
                                         clicked => { root.add-keep-pick(s.id); }
                                     }
                                     if root.keep-address != "" && root.account-note == "" : ChoiceCard {
-                                        title: "Sign in with a code";
-                                        subtitle: "Scan a QR code with your phone, or approve on a device where you're signed in.";
+                                        title: @tr("Sign in with a code");
+                                        subtitle: @tr("Scan a QR code with your phone, or approve on a device where you're signed in.");
                                         icon: @image-url("icons/download.svg");
                                         clicked => { root.transfer-receive(root.keep-address); }
                                     }
                                     if root.keep-address != "" && root.account-note == "" : ChoiceCard {
-                                        title: "AlwyWatch account";
-                                        subtitle: "Username and password";
+                                        title: @tr("AlwyWatch account");
+                                        subtitle: @tr("Username and password");
                                         icon: @image-url("icons/person.svg");
                                         clicked => { root.add-choose("account"); }
                                     }
                                 }
                                 if root.add-step == "account" : VerticalLayout {
                                     spacing: 12px;
-                                    Text { text: "Your AlwyWatch account keeps your profile, settings and server list. To watch, you then sign in to your server."; color: Palette.muted; wrap: word-wrap; }
-                                    auser := Field { placeholder: "Username"; }
+                                    Text { text: @tr("Your AlwyWatch account keeps your profile, settings and server list. To watch, you then sign in to your server."); color: Palette.muted; wrap: word-wrap; }
+                                    auser := Field { placeholder: @tr("Username"); }
                                     apass := Field {
-                                        placeholder: "Password";
+                                        placeholder: @tr("Password");
                                         input-type: password;
                                         accepted => { root.account-login(root.keep-address, auser.text, apass.text); }
                                     }
-                                    HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.account-login(root.keep-address, auser.text, apass.text); } } }
-                                    Text { text: "No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                    HorizontalLayout { alignment: start; Button { label: @tr("Sign in"); primary: true; clicked => { root.account-login(root.keep-address, auser.text, apass.text); } } }
+                                    Text { text: @tr("No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone."); color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                                     if root.transfer-status != "" : Text { text: root.transfer-status; color: Palette.danger; wrap: word-wrap; }
                                 }
                                 if root.add-step == "receive" : VerticalLayout {
@@ -2122,21 +2122,21 @@ export component AppWindow inherits Window {
                                             alignment: center;
                                             spacing: 8px;
                                             Text { text: root.transfer-code; color: Palette.text; font-size: 56px; font-weight: 800; letter-spacing: 4px; }
-                                            Text { text: "Scan with your phone, or open"; color: Palette.muted; }
+                                            Text { text: @tr("Scan with your phone, or open"); color: Palette.muted; }
                                             Text { text: root.transfer-url; color: Palette.text; font-size: 17px; font-weight: 700; }
                                         }
                                     }
                                     Text {
-                                        text: "Or on a device where you're signed in: Settings → AlwyWatch & requests → Add a device, and type this code.";
+                                        text: @tr("Or on a device where you're signed in: Settings → AlwyWatch & requests → Add a device, and type this code.");
                                         color: Palette.muted;
                                         wrap: word-wrap;
                                     }
                                     if root.transfer-check != "" : Text {
-                                        text: "Check number: " + root.transfer-check + ". It must match if the other device shows one.";
+                                        text: @tr("Check number: {}. It must match if the other device shows one.", root.transfer-check);
                                         color: Palette.muted;
                                         wrap: word-wrap;
                                     }
-                                    Text { text: "Waiting for the other device…"; color: Palette.muted; font-size: 13px; }
+                                    Text { text: @tr("Waiting for the other device…"); color: Palette.muted; font-size: 13px; }
                                     if root.transfer-status != "" : Text { text: root.transfer-status; color: Palette.danger; wrap: word-wrap; }
                                 }
                                 if root.add-step == "jellyfin-url" : VerticalLayout {
@@ -2145,8 +2145,8 @@ export component AppWindow inherits Window {
                                         placeholder: "jellyfin.example.org";
                                         accepted(t) => { root.jellyfin-url(t); }
                                     }
-                                    Text { text: "Your Jellyfin server's address, as you use it in a browser."; color: Palette.muted; }
-                                    HorizontalLayout { alignment: start; Button { label: "Continue"; primary: true; clicked => { root.jellyfin-url(url.text); } } }
+                                    Text { text: @tr("Your Jellyfin server's address, as you use it in a browser."); color: Palette.muted; }
+                                    HorizontalLayout { alignment: start; Button { label: @tr("Continue"); primary: true; clicked => { root.jellyfin-url(url.text); } } }
                                 }
                                 if root.add-step == "jellyfin" : VerticalLayout {
                                     spacing: 12px;
@@ -2159,19 +2159,19 @@ export component AppWindow inherits Window {
                                         VerticalLayout {
                                             padding: 24px;
                                             spacing: 8px;
-                                            Text { text: "QUICK CONNECT"; color: Palette.accent; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+                                            Text { text: @tr("QUICK CONNECT"); color: Palette.accent; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
                                             Text { text: root.quick-code; color: Palette.text; font-size: 54px; font-weight: 800; letter-spacing: 8px; }
-                                            Text { text: "In a Jellyfin app where you're signed in, open your profile → Quick Connect and enter this code."; color: Palette.muted; wrap: word-wrap; }
+                                            Text { text: @tr("In a Jellyfin app where you're signed in, open your profile → Quick Connect and enter this code."); color: Palette.muted; wrap: word-wrap; }
                                         }
                                     }
-                                    if root.quick-code != "" : Text { text: "Or with your password"; color: Palette.text; font-size: 17px; font-weight: 700; }
-                                    user := Field { placeholder: "Username"; }
+                                    if root.quick-code != "" : Text { text: @tr("Or with your password"); color: Palette.text; font-size: 17px; font-weight: 700; }
+                                    user := Field { placeholder: @tr("Username"); }
                                     pass := Field {
-                                        placeholder: "Password";
+                                        placeholder: @tr("Password");
                                         input-type: password;
                                         accepted => { root.jellyfin-sign-in(user.text, pass.text); }
                                     }
-                                    HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.jellyfin-sign-in(user.text, pass.text); } } }
+                                    HorizontalLayout { alignment: start; Button { label: @tr("Sign in"); primary: true; clicked => { root.jellyfin-sign-in(user.text, pass.text); } } }
                                 }
                                 if root.add-step == "plex" : Rectangle {
                                     height: 170px;
@@ -2182,13 +2182,13 @@ export component AppWindow inherits Window {
                                     VerticalLayout {
                                         padding: 24px;
                                         spacing: 8px;
-                                        Text { text: "Finish signing in to Plex in your browser. You can also go to plex.tv/link and enter:"; color: Palette.muted; wrap: word-wrap; }
+                                        Text { text: @tr("Finish signing in to Plex in your browser. You can also go to plex.tv/link and enter:"); color: Palette.muted; wrap: word-wrap; }
                                         Text { text: root.plex-code; color: Palette.text; font-size: 48px; font-weight: 800; letter-spacing: 6px; }
                                     }
                                 }
                                 if root.add-step == "plex-servers" : VerticalLayout {
                                     spacing: 8px;
-                                    Text { text: "Choose a server"; color: Palette.text; font-size: 18px; font-weight: 700; }
+                                    Text { text: @tr("Choose a server"); color: Palette.text; font-size: 18px; font-weight: 700; }
                                     for s in root.plex-servers : HorizontalLayout {
                                         alignment: start;
                                         Button { label: s.title; clicked => { root.plex-pick(s.id); } }
@@ -2205,8 +2205,8 @@ export component AppWindow inherits Window {
                             padding-top: 28px;
                             spacing: 12px;
                             alignment: start;
-                            PageTitle { title: "Downloads"; subtitle: "Available offline"; }
-                            if root.downloads.length == 0 : Text { text: "Nothing downloaded yet. Use the download button on a movie or an episode."; color: Palette.muted; }
+                            PageTitle { title: @tr("Downloads"); subtitle: @tr("Available offline"); }
+                            if root.downloads.length == 0 : Text { text: @tr("Nothing downloaded yet. Use the download button on a movie or an episode."); color: Palette.muted; }
                             for d in root.downloads : Rectangle {
                                 background: Palette.surface;
                                 border-radius: 18px;
@@ -2222,9 +2222,9 @@ export component AppWindow inherits Window {
                                         if !d.completed : Progress { value: d.progress; }
                                     }
                                     if d.completed : IconButton { y: (parent.height - self.height) / 2; icon: @image-url("icons/play_arrow_fill1.svg"); clicked => { root.play-download(d.account, d.item); } }
-                                    if !d.completed && d.active : Button { y: (parent.height - self.height) / 2; label: "Pause"; clicked => { root.download-action(d.id, "pause"); } }
-                                    if !d.completed && !d.active : Button { y: (parent.height - self.height) / 2; label: "Resume"; primary: true; clicked => { root.download-action(d.id, "resume"); } }
-                                    IconButton { y: (parent.height - self.height) / 2; icon: @image-url("icons/delete.svg"); tip: "Delete download"; clicked => { root.download-action(d.id, "remove"); } }
+                                    if !d.completed && d.active : Button { y: (parent.height - self.height) / 2; label: @tr("Pause"); clicked => { root.download-action(d.id, "pause"); } }
+                                    if !d.completed && !d.active : Button { y: (parent.height - self.height) / 2; label: @tr("Resume"); primary: true; clicked => { root.download-action(d.id, "resume"); } }
+                                    IconButton { y: (parent.height - self.height) / 2; icon: @image-url("icons/delete.svg"); tip: @tr("Delete download"); clicked => { root.download-action(d.id, "remove"); } }
                                 }
                             }
                         }
@@ -2236,9 +2236,9 @@ export component AppWindow inherits Window {
                             padding-top: 28px;
                             spacing: 14px;
                             alignment: start;
-                            PageTitle { title: "Requests"; subtitle: "Ask for a movie or a show; it is added when ready."; }
+                            PageTitle { title: @tr("Requests"); subtitle: @tr("Ask for a movie or a show; it is added when ready."); }
                             Field {
-                                placeholder: "Find a movie or a show…";
+                                placeholder: @tr("Find a movie or a show…");
                                 edited(t) => { root.seerr-search(t); }
                             }
                             if root.seerr-message != "" : Text { text: root.seerr-message; color: Palette.accent; }
@@ -2252,7 +2252,7 @@ export component AppWindow inherits Window {
                                     clicked => { root.seerr-open(c.id); }
                                 }
                             }
-                            if root.seerr-results.length == 0 : Text { text: "My requests"; color: Palette.text; font-size: 20px; font-weight: 700; }
+                            if root.seerr-results.length == 0 : Text { text: @tr("My requests"); color: Palette.text; font-size: 20px; font-weight: 700; }
                             if root.seerr-results.length == 0 : mine := Rectangle {
                                 property <int> cols: max(1, floor((self.width - 10px) / 176px));
                                 height: ceil(root.seerr-mine.length / self.cols) * 312px;
@@ -2306,14 +2306,14 @@ export component AppWindow inherits Window {
                                         spacing: 8px;
                                         alignment: start;
                                         if root.seerr-panel.can-request : Button {
-                                            label: root.seerr-panel.is-tv ? "Request all seasons" : "Request";
+                                            label: root.seerr-panel.is-tv ? @tr("Request all seasons") : @tr("Request");
                                             primary: true;
                                             has-icon: true;
                                             icon: @image-url("icons/add.svg");
                                             clicked => { root.seerr-request(true); }
                                         }
                                         if root.seerr-panel.can-request && root.seerr-panel.is-tv : Button {
-                                            label: "Request selected";
+                                            label: @tr("Request selected");
                                             clicked => { root.seerr-request(false); }
                                         }
                                     }
@@ -2337,12 +2337,12 @@ export component AppWindow inherits Window {
                                 if root.seerr-title.overview != "" : Text { text: root.seerr-title.overview; color: Palette.muted; font-size: 15px; wrap: word-wrap; }
                                 if root.seerr-title.genres != "" : Text { text: root.seerr-title.genres; color: Palette.muted; font-size: 13px; }
                                 if root.seerr-title.saga-id != "" : ChoiceCard {
-                                    title: "PART OF THE SAGA";
+                                    title: @tr("PART OF THE SAGA");
                                     subtitle: root.seerr-title.saga-name;
                                     icon: @image-url("icons/movie.svg");
                                     clicked => { root.seerr-open-saga(); }
                                 }
-                                if root.seerr-cast.length > 0 : Text { text: "Cast"; color: Palette.text; font-size: 20px; font-weight: 700; }
+                                if root.seerr-cast.length > 0 : Text { text: @tr("Cast"); color: Palette.text; font-size: 20px; font-weight: 700; }
                                 if root.seerr-cast.length > 0 : CastRow { people: root.seerr-cast; }
                             }
                         }
@@ -2377,15 +2377,15 @@ export component AppWindow inherits Window {
                         padding-top: 28px;
                         padding-bottom: 0;
                         spacing: 10px;
-                        PageTitle { title: "Leaving soon"; subtitle: "What the server will delete, soonest first. Keep what you want to watch or love. Everyone's choices count and the longest one wins."; }
+                        PageTitle { title: @tr("Leaving soon"); subtitle: @tr("What the server will delete, soonest first. Keep what you want to watch or love. Everyone's choices count and the longest one wins."); }
                         HorizontalLayout {
                             spacing: 10px;
                             alignment: start;
                             padding-bottom: 8px;
-                            Button { label: "Go through them one by one"; primary: true; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.go(Page.triage); } }
-                            if root.keep-admin : Button { label: "Admin"; has-icon: true; icon: @image-url("icons/settings.svg"); clicked => { root.go(Page.keepadmin); } }
+                            Button { label: @tr("Go through them one by one"); primary: true; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.go(Page.triage); } }
+                            if root.keep-admin : Button { label: @tr("Admin"); has-icon: true; icon: @image-url("icons/settings.svg"); clicked => { root.go(Page.keepadmin); } }
                         }
-                        if root.leaving.length == 0 : Text { text: "Nothing is leaving. Nothing to do."; color: Palette.muted; }
+                        if root.leaving.length == 0 : Text { text: @tr("Nothing is leaving. Nothing to do."); color: Palette.muted; }
                         ListView {
                             vertical-stretch: 1;
                             changed content-y => { root.leaving-scrolled(-self.content-y / 118px); }
@@ -2446,12 +2446,12 @@ export component AppWindow inherits Window {
                             padding-top: 28px;
                             spacing: 10px;
                             alignment: start;
-                            PageTitle { title: "Together"; subtitle: "Your rooms and your invitations. Rooms are private: only the people invited see them."; }
+                            PageTitle { title: @tr("Together"); subtitle: @tr("Your rooms and your invitations. Rooms are private: only the people invited see them."); }
                             HorizontalLayout {
                                 spacing: 14px;
                                 alignment: start;
-                                Button { label: "New room"; primary: true; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.together-new(); } }
-                                Text { text: "Invite people first, choose what to watch afterwards."; color: Palette.muted; vertical-alignment: center; }
+                                Button { label: @tr("New room"); primary: true; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.together-new(); } }
+                                Text { text: @tr("Invite people first, choose what to watch afterwards."); color: Palette.muted; vertical-alignment: center; }
                             }
                             if root.together-status != "" : Text { text: root.together-status; color: Palette.muted; font-size: 16px; wrap: word-wrap; }
                             for room in root.together-rooms : Focusable {
@@ -2483,13 +2483,13 @@ export component AppWindow inherits Window {
                                     }
                                     Rectangle { horizontal-stretch: 1; }
                                     Button {
-                                        label: room.invited ? "Join" : "Open";
+                                        label: room.invited ? @tr("Join") : @tr("Open");
                                         primary: true;
                                         y: (parent.height - self.height) / 2;
                                         clicked => { root.together-open(room.code); }
                                     }
                                     if room.invited : Button {
-                                        label: "Not now";
+                                        label: @tr("Not now");
                                         y: (parent.height - self.height) / 2;
                                         clicked => { root.together-decline(room.code); }
                                     }
@@ -2519,7 +2519,7 @@ export component AppWindow inherits Window {
                                 VerticalLayout {
                                     alignment: center;
                                     spacing: 8px;
-                                    Text { text: "WATCH TOGETHER"; color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+                                    Text { text: @tr("WATCH TOGETHER"); color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
                                     Text { text: root.room-title; color: Palette.text; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; wrap: word-wrap; }
                                     Text { text: root.room-status; color: Palette.muted; font-size: 15px; wrap: word-wrap; }
                                     Rectangle { height: 4px; }
@@ -2527,7 +2527,7 @@ export component AppWindow inherits Window {
                                         spacing: 10px;
                                         alignment: start;
                                         if root.room-is-host && !root.room-started && root.room-untitled : Button {
-                                            label: "Choose what to watch";
+                                            label: @tr("Choose what to watch");
                                             primary: true;
                                             autofocus: true;
                                             has-icon: true;
@@ -2535,7 +2535,7 @@ export component AppWindow inherits Window {
                                             clicked => { root.go(Page.home); }
                                         }
                                         if root.room-is-host && !root.room-started && !root.room-untitled : Button {
-                                            label: "Start watching";
+                                            label: @tr("Start watching");
                                             primary: true;
                                             autofocus: true;
                                             has-icon: true;
@@ -2543,22 +2543,22 @@ export component AppWindow inherits Window {
                                             clicked => { root.room-start(); }
                                         }
                                         if root.room-started : Button {
-                                            label: "Back to the video";
+                                            label: @tr("Back to the video");
                                             primary: true;
                                             has-icon: true;
                                             icon: @image-url("icons/play_arrow_fill1.svg");
                                             clicked => { root.room-play(); }
                                         }
                                         if root.room-is-host : Button {
-                                            label: "Invite";
+                                            label: @tr("Invite");
                                             has-icon: true;
                                             icon: @image-url("icons/add.svg");
                                             clicked => { root.room-invite(); }
                                         }
-                                        Button { label: "Leave"; clicked => { root.room-leave(); } }
+                                        Button { label: @tr("Leave"); clicked => { root.room-leave(); } }
                                     }
                                     if !root.room-is-host && !root.room-started && !root.room-untitled : Text {
-                                        text: "Waiting for " + root.room-host-name + " to start";
+                                        text: @tr("Waiting for {} to start", root.room-host-name);
                                         color: Palette.accent;
                                         font-weight: 700;
                                     }
@@ -2566,20 +2566,20 @@ export component AppWindow inherits Window {
                             }
                             if root.room-message != "" : Text { text: root.room-message; color: Palette.danger; wrap: word-wrap; }
                             Group {
-                                title: "IN THE ROOM";
+                                title: @tr("IN THE ROOM");
                                 for m in root.room-members : PersonLine { person: m; }
                             }
                             Group {
-                                title: "INVITED";
+                                title: @tr("INVITED");
                                 if root.room-invited.length == 0 : Text {
-                                    text: root.room-is-host ? "Nobody yet. Invite people: they join directly, no code needed." : "Nobody is waiting to join.";
+                                    text: root.room-is-host ? @tr("Nobody yet. Invite people: they join directly, no code needed.") : @tr("Nobody is waiting to join.");
                                     color: Palette.muted;
                                     wrap: word-wrap;
                                 }
                                 for p in root.room-invited : HorizontalLayout {
                                     spacing: 10px;
                                     PersonLine { person: p; }
-                                    if root.room-is-host : Button { label: "Remove"; y: (parent.height - self.height) / 2; clicked => { root.room-uninvite(p.key); } }
+                                    if root.room-is-host : Button { label: @tr("Remove"); y: (parent.height - self.height) / 2; clicked => { root.room-uninvite(p.key); } }
                                 }
                             }
                         }
@@ -2599,10 +2599,10 @@ export component AppWindow inherits Window {
                                 padding: 32px;
                                 spacing: 14px;
                                 alignment: start;
-                                Text { text: "One by one"; color: Palette.text; font-size: 30px; font-weight: 800; horizontal-alignment: center; }
-                                if root.triage-left == 0 : Text { text: "Nothing left to sort. Thanks!"; color: Palette.muted; horizontal-alignment: center; }
+                                Text { text: @tr("One by one"); color: Palette.text; font-size: 30px; font-weight: 800; horizontal-alignment: center; }
+                                if root.triage-left == 0 : Text { text: @tr("Nothing left to sort. Thanks!"); color: Palette.muted; horizontal-alignment: center; }
                                 if root.triage-left > 0 : Text {
-                                    text: root.triage-left + " left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever";
+                                    text: @tr("{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever" | "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever" % root.triage-left);
                                     color: Palette.subtle;
                                     horizontal-alignment: center;
                                 }
@@ -2624,10 +2624,10 @@ export component AppWindow inherits Window {
                                         Text { text: root.triage-card.title; color: Palette.text; font-size: 28px; font-weight: 800; wrap: word-wrap; }
                                         HorizontalLayout { alignment: start; Badge { label: root.triage-card.when; tone: root.triage-card.urgent ? Palette.danger : Palette.surface-high; } }
                                         Rectangle { height: 6px; }
-                                        HorizontalLayout { alignment: start; Button { label: "Until I watch it"; primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.triage-vote("watched"); } } }
-                                        HorizontalLayout { alignment: start; Button { label: "Forever"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.triage-vote("love"); } } }
-                                        HorizontalLayout { alignment: start; Button { label: "Keep 30 days"; clicked => { root.triage-vote("days30"); } } }
-                                        HorizontalLayout { alignment: start; Button { label: "Fine to delete"; has-icon: true; icon: @image-url("icons/close.svg"); clicked => { root.triage-vote("dontcare"); } } }
+                                        HorizontalLayout { alignment: start; Button { label: @tr("Until I watch it"); primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.triage-vote("watched"); } } }
+                                        HorizontalLayout { alignment: start; Button { label: @tr("Forever"); has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.triage-vote("love"); } } }
+                                        HorizontalLayout { alignment: start; Button { label: @tr("Keep 30 days"); clicked => { root.triage-vote("days30"); } } }
+                                        HorizontalLayout { alignment: start; Button { label: @tr("Fine to delete"); has-icon: true; icon: @image-url("icons/close.svg"); clicked => { root.triage-vote("dontcare"); } } }
                                     }
                                 }
                             }
@@ -2640,11 +2640,11 @@ export component AppWindow inherits Window {
                             padding-top: 28px;
                             spacing: 20px;
                             alignment: start;
-                            PageTitle { title: "Admin"; subtitle: "Leaving soon: countdown and people's rights"; }
+                            PageTitle { title: @tr("Admin"); subtitle: @tr("Leaving soon: countdown and people's rights"); }
                             Group {
-                                title: "START COUNTDOWN";
+                                title: @tr("START COUNTDOWN");
                                 Text {
-                                    text: "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr. Click twice to confirm.";
+                                    text: @tr("Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr. Click twice to confirm.");
                                     color: Palette.muted;
                                     wrap: word-wrap;
                                 }
@@ -2652,13 +2652,13 @@ export component AppWindow inherits Window {
                                     spacing: 8px;
                                     Text { text: c.title; color: Palette.text; font-weight: 700; vertical-alignment: center; min-width: 200px; }
                                     Rectangle { horizontal-stretch: 1; }
-                                    Button { label: "Restart now"; clicked => { root.admin-countdown(c.id, 0); } }
-                                    Button { label: "Spread over 14 days"; clicked => { root.admin-countdown(c.id, 14); } }
-                                    Button { label: "Spread over 30 days"; clicked => { root.admin-countdown(c.id, 30); } }
+                                    Button { label: @tr("Restart now"); clicked => { root.admin-countdown(c.id, 0); } }
+                                    Button { label: @tr("Spread over 14 days"); clicked => { root.admin-countdown(c.id, 14); } }
+                                    Button { label: @tr("Spread over 30 days"); clicked => { root.admin-countdown(c.id, 30); } }
                                 }
                             }
                             Group {
-                                title: "PEOPLE";
+                                title: @tr("PEOPLE");
                                 for u in root.admin-users : VerticalLayout {
                                     spacing: 6px;
                                     HorizontalLayout {
@@ -2676,7 +2676,7 @@ export component AppWindow inherits Window {
                                 }
                             }
                             Group {
-                                title: "KEPT FOREVER";
+                                title: @tr("KEPT FOREVER");
                                 Text { text: root.forever-summary; color: Palette.muted; wrap: word-wrap; }
                                 for p in root.forever-people : VerticalLayout {
                                     spacing: 4px;
@@ -2698,7 +2698,7 @@ export component AppWindow inherits Window {
                                         }
                                     }
                                 }
-                                if root.forever-titles.length > 0 : Text { text: "Titles"; color: Palette.text; font-weight: 700; }
+                                if root.forever-titles.length > 0 : Text { text: @tr("Titles"); color: Palette.text; font-weight: 700; }
                                 for t in root.forever-titles : HorizontalLayout {
                                     spacing: 10px;
                                     Text { text: t.title; color: Palette.text; min-width: 260px; }
@@ -2714,19 +2714,19 @@ export component AppWindow inherits Window {
                             padding-top: 28px;
                             spacing: 18px;
                             alignment: start;
-                            PageTitle { title: "Copy watch history"; }
+                            PageTitle { title: @tr("Copy watch history"); }
                             Text {
-                                text: "Marks what you watched on one server as watched on the other, and copies where you stopped. It only adds: nothing gets unmarked, and a resume point never goes back.";
+                                text: @tr("Marks what you watched on one server as watched on the other, and copies where you stopped. It only adds: nothing gets unmarked, and a resume point never goes back.");
                                 color: Palette.muted;
                                 wrap: word-wrap;
                             }
-                            if root.history-from.length < 2 : Text { text: "Sign in to both servers first: Settings → Servers → Add a server."; color: Palette.muted; }
+                            if root.history-from.length < 2 : Text { text: @tr("Sign in to both servers first: Settings → Servers → Add a server."); color: Palette.muted; }
                             if root.history-from.length >= 2 : Group {
-                                title: "FROM";
+                                title: @tr("FROM");
                                 for c in root.history-from : AccountChoiceRow { choice: c; clicked => { root.history-pick("from", c.id); } }
                             }
                             if root.history-from.length >= 2 : Group {
-                                title: "TO";
+                                title: @tr("TO");
                                 for c in root.history-to : AccountChoiceRow { choice: c; clicked => { root.history-pick("to", c.id); } }
                             }
                             if root.history-state == "running" : VerticalLayout {
@@ -2734,11 +2734,11 @@ export component AppWindow inherits Window {
                                 Text { text: root.history-step; color: Palette.text; font-weight: 700; }
                                 if root.history-progress >= 0 : Progress { value: root.history-progress; }
                                 if root.history-progress < 0 : Progress { value: 0.05; }
-                                Text { text: "You can use the rest of the app meanwhile: this page shows where it is when you come back."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                Text { text: @tr("You can use the rest of the app meanwhile: this page shows where it is when you come back."); color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                             }
                             if root.history-from.length >= 2 && root.history-state == "idle" : HorizontalLayout {
                                 alignment: start;
-                                Button { label: "Check what will change"; primary: true; has-icon: true; icon: @image-url("icons/search.svg"); clicked => { root.history-check(); } }
+                                Button { label: @tr("Check what will change"); primary: true; has-icon: true; icon: @image-url("icons/search.svg"); clicked => { root.history-check(); } }
                             }
                             if root.history-summary != "" : Text { text: root.history-summary; color: Palette.text; font-size: 18px; font-weight: 700; wrap: word-wrap; }
                             if root.history-detail != "" : Text { text: root.history-detail; color: Palette.muted; wrap: word-wrap; }
@@ -2748,11 +2748,11 @@ export component AppWindow inherits Window {
                             }
                             if root.history-state == "done" : HorizontalLayout {
                                 alignment: start;
-                                Button { label: "Check again"; clicked => { root.history-check(); } }
+                                Button { label: @tr("Check again"); clicked => { root.history-check(); } }
                             }
                             if root.history-missing != "" && root.history-state != "running" : HorizontalLayout {
                                 alignment: start;
-                                Button { label: root.history-show-missing ? "Hide missing titles" : "Show missing titles"; clicked => { root.history-toggle-missing(); } }
+                                Button { label: root.history-show-missing ? @tr("Hide missing titles") : @tr("Show missing titles"); clicked => { root.history-toggle-missing(); } }
                             }
                             if root.history-missing != "" && root.history-show-missing && root.history-state != "running" : Text { text: root.history-missing; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                             if root.history-error != "" : Text { text: root.history-error; color: Palette.danger; wrap: word-wrap; }
@@ -2768,14 +2768,14 @@ export component AppWindow inherits Window {
                             padding-right: 0px;
                             spacing: 4px;
                             alignment: start;
-                            PageTitle { title: "Settings"; }
+                            PageTitle { title: @tr("Settings"); }
                             Rectangle { height: 14px; }
-                                    NavItem { label: "Servers"; icon: @image-url("icons/video_library.svg"); selected: root.shown-section == "servers"; clicked => { root.settings-section = "servers"; if (root.page != Page.settings) { root.go(Page.settings); } } }
-                                    NavItem { label: "AlwyWatch & requests"; icon: @image-url("icons/hourglass_bottom.svg"); selected: root.shown-section == "alwywatch"; clicked => { root.settings-section = "alwywatch"; if (root.page != Page.settings) { root.go(Page.settings); } } }
-                                    NavItem { label: "Profiles"; icon: @image-url("icons/person.svg"); selected: root.shown-section == "profiles"; clicked => { root.settings-section = "profiles"; if (root.page != Page.settings) { root.go(Page.settings); } } }
-                                    NavItem { label: "Playback"; icon: @image-url("icons/play_arrow_fill1.svg"); selected: root.shown-section == "playback"; clicked => { root.settings-section = "playback"; if (root.page != Page.settings) { root.go(Page.settings); } } }
-                                    NavItem { label: "Audio & subtitles"; icon: @image-url("icons/subtitles.svg"); selected: root.shown-section == "audio"; clicked => { root.settings-section = "audio"; if (root.page != Page.settings) { root.go(Page.settings); } } }
-                                    NavItem { label: "Language & about"; icon: @image-url("icons/info.svg"); selected: root.shown-section == "about"; clicked => { root.settings-section = "about"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: @tr("Servers"); icon: @image-url("icons/video_library.svg"); selected: root.shown-section == "servers"; clicked => { root.settings-section = "servers"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: @tr("AlwyWatch & requests"); icon: @image-url("icons/hourglass_bottom.svg"); selected: root.shown-section == "alwywatch"; clicked => { root.settings-section = "alwywatch"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: @tr("Profiles"); icon: @image-url("icons/person.svg"); selected: root.shown-section == "profiles"; clicked => { root.settings-section = "profiles"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: @tr("Playback"); icon: @image-url("icons/play_arrow_fill1.svg"); selected: root.shown-section == "playback"; clicked => { root.settings-section = "playback"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: @tr("Audio & subtitles"); icon: @image-url("icons/subtitles.svg"); selected: root.shown-section == "audio"; clicked => { root.settings-section = "audio"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: @tr("Language & about"); icon: @image-url("icons/info.svg"); selected: root.shown-section == "about"; clicked => { root.settings-section = "about"; if (root.page != Page.settings) { root.go(Page.settings); } } }
                         }
                         ScrollView {
                         VerticalLayout {
@@ -2787,7 +2787,7 @@ export component AppWindow inherits Window {
                                 spacing: 22px;
                                 alignment: start;
                             Group {
-                                title: "YOUR JELLYFIN AND PLEX SERVERS";
+                                title: @tr("YOUR JELLYFIN AND PLEX SERVERS");
                                 for a in root.accounts : HorizontalLayout {
                                     spacing: 10px;
                                     VerticalLayout {
@@ -2796,10 +2796,10 @@ export component AppWindow inherits Window {
                                         Text { text: a.detail; color: Palette.muted; font-size: 12px; }
                                     }
                                     Rectangle { horizontal-stretch: 1; }
-                                    if !a.current : Button { label: "Switch to this one"; clicked => { root.use-account(a.id); } }
-                                    if a.current : Text { text: "Showing now"; color: Palette.muted; vertical-alignment: center; }
+                                    if !a.current : Button { label: @tr("Switch to this one"); clicked => { root.use-account(a.id); } }
+                                    if a.current : Text { text: @tr("Showing now"); color: Palette.muted; vertical-alignment: center; }
                                     Button {
-                                        label: root.remove-armed == a.id ? "Click again to sign out" : "Sign out";
+                                        label: root.remove-armed == a.id ? @tr("Click again to sign out") : @tr("Sign out");
                                         clicked => {
                                             if (root.remove-armed == a.id) { root.remove-armed = ""; root.remove-account(a.id); } else { root.remove-armed = a.id; }
                                         }
@@ -2808,8 +2808,8 @@ export component AppWindow inherits Window {
                                 HorizontalLayout {
                                     alignment: start;
                                     spacing: 10px;
-                                    Button { label: "Add a server"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.go(Page.add); } }
-                                    if root.accounts.length >= 2 : Button { label: "Copy watch history"; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.go(Page.historycopy); } }
+                                    Button { label: @tr("Add a server"); has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.go(Page.add); } }
+                                    if root.accounts.length >= 2 : Button { label: @tr("Copy watch history"); has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.go(Page.historycopy); } }
                                 }
                             }
                             }
@@ -2817,7 +2817,7 @@ export component AppWindow inherits Window {
                                 spacing: 22px;
                                 alignment: start;
                             if root.keep-active : Group {
-                                title: "YOU ON ALWYWATCH";
+                                title: @tr("YOU ON ALWYWATCH");
                                 HorizontalLayout {
                                     spacing: 14px;
                                     UserAvatar { avatar: root.me-avatar; size: 56px; y: (parent.height - self.height) / 2; }
@@ -2828,17 +2828,17 @@ export component AppWindow inherits Window {
                                         Text { text: root.me-detail; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                                         if root.me-also != "" : Text { text: root.me-also; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                                     }
-                                    if root.me-loaded : Button { label: "Edit name"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("name"); } }
-                                    if root.me-loaded : Button { label: "Change avatar"; y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("avatar"); } }
+                                    if root.me-loaded : Button { label: @tr("Edit name"); y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("name"); } }
+                                    if root.me-loaded : Button { label: @tr("Change avatar"); y: (parent.height - self.height) / 2; clicked => { root.account-dialog-open("avatar"); } }
                                 }
                                 if root.me-message != "" : Text { text: root.me-message; color: Palette.danger; wrap: word-wrap; }
                                 if root.links.length > 1 || root.link-candidates.length > 0 : VerticalLayout {
                                     spacing: 10px;
                                     Rectangle { height: 1px; background: Palette.outline; }
-                                    Text { text: "Linked sign-ins"; color: Palette.text; font-weight: 700; }
+                                    Text { text: @tr("Linked sign-ins"); color: Palette.text; font-weight: 700; }
                                     Text {
-                                        text: root.links.length > 1 ? "These sign-ins are one AlwyWatch account: same name, avatar, keep choices and watch-together rooms."
-                                            : "Another account on this computer may be you too. Linking makes them one AlwyWatch account.";
+                                        text: root.links.length > 1 ? @tr("These sign-ins are one AlwyWatch account: same name, avatar, keep choices and watch-together rooms.")
+                                            : @tr("Another account on this computer may be you too. Linking makes them one AlwyWatch account.");
                                         color: Palette.muted;
                                         font-size: 12px;
                                         wrap: word-wrap;
@@ -2852,101 +2852,101 @@ export component AppWindow inherits Window {
                                             Text { text: l.title; color: Palette.text; font-weight: 700; overflow: elide; }
                                             Text { text: l.detail; color: Palette.muted; font-size: 12px; overflow: elide; }
                                         }
-                                        if l.main : Badge { label: "MAIN"; tone: Palette.accent; fg: #000; y: (parent.height - self.height) / 2; }
-                                        if l.here : Badge { label: "THIS COMPUTER"; tone: Palette.surface-high; y: (parent.height - self.height) / 2; }
-                                        if !l.main : Button { label: "Unlink"; y: (parent.height - self.height) / 2; clicked => { root.unlink-ask(l.key); } }
+                                        if l.main : Badge { label: @tr("MAIN"); tone: Palette.accent; fg: #000; y: (parent.height - self.height) / 2; }
+                                        if l.here : Badge { label: @tr("THIS COMPUTER"); tone: Palette.surface-high; y: (parent.height - self.height) / 2; }
+                                        if !l.main : Button { label: @tr("Unlink"); y: (parent.height - self.height) / 2; clicked => { root.unlink-ask(l.key); } }
                                     }
-                                    if root.link-candidates.length > 0 : Text { text: "Link another sign-in"; color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+                                    if root.link-candidates.length > 0 : Text { text: @tr("Link another sign-in"); color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
                                     for c in root.link-candidates : HorizontalLayout {
                                         spacing: 10px;
                                         Text { text: c.title; color: Palette.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                                        Button { label: "Link…"; clicked => { root.link-ask(c.id); } }
+                                        Button { label: @tr("Link…"); clicked => { root.link-ask(c.id); } }
                                     }
                                 }
                             }
                             Group {
-                                title: "CONNECTION AND DEVICES";
+                                title: @tr("CONNECTION AND DEVICES");
                                 if root.alwy-account != "" : HorizontalLayout {
                                     spacing: 10px;
                                     VerticalLayout {
                                         alignment: center;
                                         horizontal-stretch: 1;
-                                        Text { text: "Signed in to the account of " + root.alwy-account; color: Palette.text; font-weight: 700; overflow: elide; }
-                                        Text { text: "Password, passkeys, devices and deleting the account: on the AlwyWatch website."; color: Palette.muted; font-size: 12px; }
+                                        Text { text: @tr("Signed in to the account of {}", root.alwy-account); color: Palette.text; font-weight: 700; overflow: elide; }
+                                        Text { text: @tr("Password, passkeys, devices and deleting the account: on the AlwyWatch website."); color: Palette.muted; font-size: 12px; }
                                     }
-                                    Button { label: "Manage or delete…"; clicked => { root.account-manage(); } }
-                                    Button { label: "Sign out"; clicked => { root.account-sign-out(); } }
+                                    Button { label: @tr("Manage or delete…"); clicked => { root.account-manage(); } }
+                                    Button { label: @tr("Sign out"); clicked => { root.account-sign-out(); } }
                                 }
                                 if root.keep-active : HorizontalLayout {
                                     spacing: 10px;
                                     Text { text: root.keep-label; color: Palette.text; vertical-alignment: center; }
                                     Rectangle { horizontal-stretch: 1; }
-                                    if root.keep-can-switch && root.keep-choices.length == 0 : Button { label: "Use another login"; clicked => { root.keep-choose(); } }
-                                    if root.send-step == "" : Button { label: "Add a device"; clicked => { root.send-start(); } }
+                                    if root.keep-can-switch && root.keep-choices.length == 0 : Button { label: @tr("Use another login"); clicked => { root.keep-choose(); } }
+                                    if root.send-step == "" : Button { label: @tr("Add a device"); clicked => { root.send-start(); } }
                                     // This computer forgets the AlwyWatch server (choices stay on the server).
-                                    Button { label: "Disconnect"; clicked => { root.keep-disconnect(); } }
+                                    Button { label: @tr("Disconnect"); clicked => { root.keep-disconnect(); } }
                                 }
                                 if root.keep-active && root.send-step == "code" : VerticalLayout {
                                     spacing: 10px;
-                                    Text { text: "On the new device, choose \"Sign in with a code\" and type its code here."; color: Palette.muted; wrap: word-wrap; }
+                                    Text { text: @tr("On the new device, choose \"Sign in with a code\" and type its code here."); color: Palette.muted; wrap: word-wrap; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         scode := Field { placeholder: "123456"; accepted(t) => { root.send-lookup(t); } }
-                                        Button { label: "Continue"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.send-lookup(scode.text); } }
-                                        Button { label: "Cancel"; y: (parent.height - self.height) / 2; clicked => { root.send-cancel(); } }
+                                        Button { label: @tr("Continue"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.send-lookup(scode.text); } }
+                                        Button { label: @tr("Cancel"); y: (parent.height - self.height) / 2; clicked => { root.send-cancel(); } }
                                     }
                                 }
                                 if root.keep-active && root.send-step == "confirm" : VerticalLayout {
                                     spacing: 8px;
-                                    Text { text: "Send your accounts and settings to “" + root.send-device + "”?"; color: Palette.text; font-weight: 700; wrap: word-wrap; }
-                                    Text { text: "Check number"; color: Palette.muted; font-size: 13px; }
+                                    Text { text: @tr("Send your accounts and settings to “{}”?", root.send-device); color: Palette.text; font-weight: 700; wrap: word-wrap; }
+                                    Text { text: @tr("Check number"); color: Palette.muted; font-size: 13px; }
                                     Text { text: root.send-check; color: Palette.accent; font-size: 40px; font-weight: 800; letter-spacing: 4px; }
-                                    Text { text: "Only send if the new device shows the same number."; color: Palette.muted; font-size: 13px; }
+                                    Text { text: @tr("Only send if the new device shows the same number."); color: Palette.muted; font-size: 13px; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         alignment: start;
-                                        Button { label: "Send"; primary: true; clicked => { root.send-confirm(); } }
-                                        Button { label: "Cancel"; clicked => { root.send-cancel(); } }
+                                        Button { label: @tr("Send"); primary: true; clicked => { root.send-confirm(); } }
+                                        Button { label: @tr("Cancel"); clicked => { root.send-cancel(); } }
                                     }
                                 }
                                 if root.keep-active && root.send-step == "sent" : HorizontalLayout {
                                     spacing: 10px;
-                                    Text { text: "Sent. The other device signs in by itself."; color: Palette.accent; vertical-alignment: center; }
-                                    Button { label: "Done"; clicked => { root.send-cancel(); } }
+                                    Text { text: @tr("Sent. The other device signs in by itself."); color: Palette.accent; vertical-alignment: center; }
+                                    Button { label: @tr("Done"); clicked => { root.send-cancel(); } }
                                 }
                                 if root.keep-active && root.send-error != "" && root.send-step != "" : Text { text: root.send-error; color: Palette.danger; wrap: word-wrap; }
                                 if !root.keep-active : Text {
-                                    text: "Shows what your server will delete and lets you keep it. Your Jellyfin or Plex account is your sign-in there.";
+                                    text: @tr("Shows what your server will delete and lets you keep it. Your Jellyfin or Plex account is your sign-in there.");
                                     color: Palette.muted;
                                     wrap: word-wrap;
                                 }
                                 if !root.keep-active : HorizontalLayout {
                                     spacing: 10px;
-                                    kurl := Field { placeholder: "AlwyWatch server address"; accepted(t) => { root.keep-connect(t); } }
-                                    Button { label: "Connect"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.keep-connect(kurl.text); } }
+                                    kurl := Field { placeholder: @tr("AlwyWatch server address"); accepted(t) => { root.keep-connect(t); } }
+                                    Button { label: @tr("Connect"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.keep-connect(kurl.text); } }
                                 }
-                                if root.keep-choices.length > 0 : Text { text: "Choose the login that identifies you there:"; color: Palette.muted; }
+                                if root.keep-choices.length > 0 : Text { text: @tr("Choose the login that identifies you there:"); color: Palette.muted; }
                                 for c in root.keep-choices : HorizontalLayout {
                                     spacing: 10px;
                                     Text { text: c.title; color: c.selected ? Palette.accent : Palette.text; vertical-alignment: center; }
                                     Rectangle { horizontal-stretch: 1; }
-                                    if c.selected : Text { text: "Used for AlwyWatch"; color: Palette.muted; vertical-alignment: center; }
-                                    if !c.selected : Button { label: "Use this one"; primary: true; clicked => { root.keep-sync(c.id); } }
+                                    if c.selected : Text { text: @tr("Used for AlwyWatch"); color: Palette.muted; vertical-alignment: center; }
+                                    if !c.selected : Button { label: @tr("Use this one"); primary: true; clicked => { root.keep-sync(c.id); } }
                                 }
                             }
                             Group {
-                                title: "REQUESTS";
+                                title: @tr("REQUESTS");
                                 if root.seerr-active : HorizontalLayout {
                                     spacing: 10px;
                                     Text { text: root.seerr-label; color: Palette.text; vertical-alignment: center; }
                                     Rectangle { horizontal-stretch: 1; }
-                                    Button { label: "Disconnect"; clicked => { root.seerr-disconnect(); } }
+                                    Button { label: @tr("Disconnect"); clicked => { root.seerr-disconnect(); } }
                                 }
                                 if !root.seerr-active && root.seerr-step == "url" : HorizontalLayout {
                                     spacing: 10px;
-                                    surl := Field { placeholder: "Request site address (Seerr, Overseerr, Jellyseerr)"; accepted(t) => { root.seerr-url(t); } }
-                                    Button { label: "Connect"; y: (parent.height - self.height) / 2; clicked => { root.seerr-url(surl.text); } }
-                                    if root.keep-active : Button { label: "Use my AlwyWatch server"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.seerr-bridge(); } }
+                                    surl := Field { placeholder: @tr("Request site address (Seerr, Overseerr, Jellyseerr)"); accepted(t) => { root.seerr-url(t); } }
+                                    Button { label: @tr("Connect"); y: (parent.height - self.height) / 2; clicked => { root.seerr-url(surl.text); } }
+                                    if root.keep-active : Button { label: @tr("Use my AlwyWatch server"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.seerr-bridge(); } }
                                 }
                                 if !root.seerr-active && root.seerr-step == "choose" : HorizontalLayout {
                                     spacing: 10px;
@@ -2954,15 +2954,15 @@ export component AppWindow inherits Window {
                                     for l in root.seerr-logins : Button { label: l.title; primary: true; clicked => { root.seerr-login(l.id); } }
                                 }
                                 if !root.seerr-active && root.seerr-step == "plex" : Text {
-                                    text: "Finish signing in to Plex in your browser…";
+                                    text: @tr("Finish signing in to Plex in your browser…");
                                     color: Palette.muted;
                                 }
                                 if !root.seerr-active && (root.seerr-step == "jellyfin" || root.seerr-step == "local") : VerticalLayout {
                                     spacing: 8px;
-                                    if root.seerr-code != "" : Text { text: "Quick Connect code: " + root.seerr-code; color: Palette.text; font-size: 20px; font-weight: 800; }
-                                    su := Field { placeholder: root.seerr-step == "local" ? "Email" : "Username"; }
-                                    sp := Field { placeholder: "Password"; input-type: password; accepted => { root.seerr-password(su.text, sp.text); } }
-                                    HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.seerr-password(su.text, sp.text); } } }
+                                    if root.seerr-code != "" : Text { text: @tr("Quick Connect code: {}", root.seerr-code); color: Palette.text; font-size: 20px; font-weight: 800; }
+                                    su := Field { placeholder: root.seerr-step == "local" ? @tr("Email") : @tr("Username"); }
+                                    sp := Field { placeholder: @tr("Password"); input-type: password; accepted => { root.seerr-password(su.text, sp.text); } }
+                                    HorizontalLayout { alignment: start; Button { label: @tr("Sign in"); primary: true; clicked => { root.seerr-password(su.text, sp.text); } } }
                                 }
                                 if root.seerr-message != "" && root.page == Page.settings : Text { text: root.seerr-message; color: Palette.danger; }
                             }
@@ -2971,7 +2971,7 @@ export component AppWindow inherits Window {
                                 spacing: 22px;
                                 alignment: start;
                             Text {
-                                text: "Several people on this computer: each profile has its own servers, history and settings. Downloads are shared.";
+                                text: @tr("Several people on this computer: each profile has its own servers, history and settings. Downloads are shared.");
                                 color: Palette.muted;
                                 wrap: word-wrap;
                             }
@@ -2982,21 +2982,21 @@ export component AppWindow inherits Window {
                                     VerticalLayout {
                                         alignment: center;
                                         Text { text: p.name; color: Palette.text; font-weight: 700; }
-                                        if p.has-pin : Text { text: "Protected by a PIN"; color: Palette.muted; font-size: 12px; }
+                                        if p.has-pin : Text { text: @tr("Protected by a PIN"); color: Palette.muted; font-size: 12px; }
                                     }
                                     Rectangle { horizontal-stretch: 1; }
-                                    if p.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
-                                    if p.current : Button { label: "Rename"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("rename", p.id); } }
-                                    if p.current : Button { label: p.has-pin ? "Change PIN" : "Set a PIN"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("pin", p.id); } }
-                                    if !p.current : Button { label: "Switch"; y: (parent.height - self.height) / 2; clicked => { root.profile-open(p.id); } }
-                                    if p.removable : IconButton { icon: @image-url("icons/delete.svg"); tip: "Remove profile"; clicked => { root.profile-dialog-open("remove", p.id); } }
+                                    if p.current : Text { text: @tr("In use"); color: Palette.muted; vertical-alignment: center; }
+                                    if p.current : Button { label: @tr("Rename"); y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("rename", p.id); } }
+                                    if p.current : Button { label: p.has-pin ? @tr("Change PIN") : @tr("Set a PIN"); y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("pin", p.id); } }
+                                    if !p.current : Button { label: @tr("Switch"); y: (parent.height - self.height) / 2; clicked => { root.profile-open(p.id); } }
+                                    if p.removable : IconButton { icon: @image-url("icons/delete.svg"); tip: @tr("Remove profile"); clicked => { root.profile-dialog-open("remove", p.id); } }
                                 }
-                                HorizontalLayout { alignment: start; Button { label: "Add a profile"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.profile-dialog-open("add", ""); } } }
+                                HorizontalLayout { alignment: start; Button { label: @tr("Add a profile"); has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.profile-dialog-open("add", ""); } } }
                             }
                             if root.profiles.length > 1 : Group {
                                 SettingToggle {
-                                    title: "Skip “Who's watching?” at startup";
-                                    subtitle: "Open the last profile used instead of asking who's watching (a PIN is still asked)";
+                                    title: @tr("Skip “Who's watching?” at startup");
+                                    subtitle: @tr("Open the last profile used instead of asking who's watching (a PIN is still asked)");
                                     on: root.profile-auto;
                                     clicked => { root.profile-auto-toggle(); }
                                 }
@@ -3006,48 +3006,48 @@ export component AppWindow inherits Window {
                                 spacing: 22px;
                                 alignment: start;
                             Group {
-                                title: "PLAYBACK";
+                                title: @tr("PLAYBACK");
                                 SettingToggle {
-                                    title: "Audio passthrough";
-                                    subtitle: "Send Dolby/DTS untouched to an HDMI or S/PDIF receiver.";
+                                    title: @tr("Audio passthrough");
+                                    subtitle: @tr("Send Dolby/DTS untouched to an HDMI or S/PDIF receiver.");
                                     on: root.spdif;
                                     clicked => { root.toggle-spdif(); }
                                 }
                                 SettingToggle {
-                                    title: "Skip intros automatically";
-                                    subtitle: "Otherwise a Skip intro button appears.";
+                                    title: @tr("Skip intros automatically");
+                                    subtitle: @tr("Otherwise a Skip intro button appears.");
                                     on: root.auto-skip-intro;
                                     clicked => { root.toggle-setting("player.auto_skip_intro"); }
                                 }
                                 SettingToggle {
-                                    title: "Play the next episode automatically";
-                                    subtitle: "A 10 second countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode.";
+                                    title: @tr("Play the next episode automatically");
+                                    subtitle: @tr("A 10 second countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode.");
                                     on: root.auto-next;
                                     clicked => { root.toggle-setting("player.auto_next"); }
                                 }
                             }
                             if root.keep-active : Group {
-                                title: "WATCH TOGETHER";
+                                title: @tr("WATCH TOGETHER");
                                 Text {
-                                    text: "In rooms you create, what the others may do. You can always do everything.";
+                                    text: @tr("In rooms you create, what the others may do. You can always do everything.");
                                     color: Palette.muted;
                                     font-size: 12px;
                                     wrap: word-wrap;
                                 }
                                 SettingToggle {
-                                    title: "Others can change what's playing";
-                                    subtitle: "Next episode, another title.";
+                                    title: @tr("Others can change what's playing");
+                                    subtitle: @tr("Next episode, another title.");
                                     on: root.together-title;
                                     clicked => { root.toggle-setting("together.others_title"); }
                                 }
                                 SettingToggle {
-                                    title: "Others can pause and play";
+                                    title: @tr("Others can pause and play");
                                     subtitle: "";
                                     on: root.together-play;
                                     clicked => { root.toggle-setting("together.others_play"); }
                                 }
                                 SettingToggle {
-                                    title: "Others can move forward or back";
+                                    title: @tr("Others can move forward or back");
                                     subtitle: "";
                                     on: root.together-seek;
                                     clicked => { root.toggle-setting("together.others_seek"); }
@@ -3058,33 +3058,33 @@ export component AppWindow inherits Window {
                                 spacing: 22px;
                                 alignment: start;
                             Group {
-                                title: "LANGUAGES";
-                                SettingChoice { title: "Audio language"; subtitle: ""; value: root.audio-lang-label; clicked => { root.cycle-setting("player.audio_lang"); } }
-                                SettingChoice { title: "Subtitles"; subtitle: "Automatic: when the audio is not in your subtitle language."; value: root.sub-mode-label; clicked => { root.cycle-setting("player.sub_mode"); } }
-                                SettingChoice { title: "Subtitle language"; subtitle: ""; value: root.sub-lang-label; clicked => { root.cycle-setting("player.sub_lang"); } }
-                                Text { text: "A movie or show remembers the tracks picked for it while watching, and its next episodes follow."; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                title: @tr("LANGUAGES");
+                                SettingChoice { title: @tr("Audio language"); subtitle: ""; value: root.audio-lang-label; clicked => { root.cycle-setting("player.audio_lang"); } }
+                                SettingChoice { title: @tr("Subtitles"); subtitle: @tr("Automatic: when the audio is not in your subtitle language."); value: root.sub-mode-label; clicked => { root.cycle-setting("player.sub_mode"); } }
+                                SettingChoice { title: @tr("Subtitle language"); subtitle: ""; value: root.sub-lang-label; clicked => { root.cycle-setting("player.sub_lang"); } }
+                                Text { text: @tr("A movie or show remembers the tracks picked for it while watching, and its next episodes follow."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                             }
                             }
                             if root.shown-section == "about" : VerticalLayout {
                                 spacing: 22px;
                                 alignment: start;
                             Group {
-                                title: "LANGUAGE";
-                                SettingChoice { title: "Language"; subtitle: ""; value: root.language-label; clicked => { root.cycle-language(); } }
+                                title: @tr("LANGUAGE");
+                                SettingChoice { title: @tr("Language"); subtitle: ""; value: root.language-label; clicked => { root.cycle-language(); } }
                             }
                             Group {
-                                title: "ABOUT";
+                                title: @tr("ABOUT");
                                 Text { text: root.about; color: Palette.text; }
-                                Text { text: "Free software under the GNU AGPL v3 or later."; color: Palette.muted; font-size: 12px; }
+                                Text { text: @tr("Free software under the GNU AGPL v3 or later."); color: Palette.muted; font-size: 12px; }
                             }
                             Group {
-                                title: "STORAGE";
+                                title: @tr("STORAGE");
                                 HorizontalLayout {
                                     spacing: 10px;
-                                    Text { text: "Image cache"; color: Palette.text; font-weight: 700; vertical-alignment: center; }
+                                    Text { text: @tr("Image cache"); color: Palette.text; font-weight: 700; vertical-alignment: center; }
                                     Rectangle { horizontal-stretch: 1; }
                                     Text { text: root.cache-size; color: Palette.muted; vertical-alignment: center; }
-                                    Button { label: "Clear"; clicked => { root.clear-cache(); } }
+                                    Button { label: @tr("Clear"); clicked => { root.clear-cache(); } }
                                 }
                             }
                             }
@@ -3124,17 +3124,17 @@ export component AppWindow inherits Window {
                     padding: 28px;
                     spacing: 14px;
                     Text {
-                        text: root.account-dialog == "welcome" ? "Welcome! This is how others see you"
-                            : root.account-dialog == "name" ? "Your name" : "Your avatar";
+                        text: root.account-dialog == "welcome" ? @tr("Welcome! This is how others see you")
+                            : root.account-dialog == "name" ? @tr("Your name") : @tr("Your avatar");
                         color: Palette.text;
                         font-size: 22px;
                         font-weight: 800;
                         wrap: word-wrap;
                     }
                     Text {
-                        text: root.account-dialog == "welcome" ? "People you watch with see this name and avatar. You can change them later in Settings."
-                            : root.account-dialog == "name" ? "Shown to the people you watch with, instead of your name on " + root.me-media-name + "."
-                            : "Pick one, or use a picture of your own.";
+                        text: root.account-dialog == "welcome" ? @tr("People you watch with see this name and avatar. You can change them later in Settings.")
+                            : root.account-dialog == "name" ? @tr("Shown to the people you watch with, instead of your name on {}.", root.me-media-name)
+                            : @tr("Pick one, or use a picture of your own.");
                         color: Palette.muted;
                         wrap: word-wrap;
                     }
@@ -3145,7 +3145,7 @@ export component AppWindow inherits Window {
                             y: (parent.height - self.height) / 2;
                             text <=> root.account-name-input;
                             autofocus: true;
-                            placeholder: "Your name";
+                            placeholder: @tr("Your name");
                             edited(t) => { root.account-name-edited(t); }
                             accepted => { root.welcome-continue(); }
                         }
@@ -3153,7 +3153,7 @@ export component AppWindow inherits Window {
                     if root.account-dialog == "name" : Field {
                         text <=> root.account-name-input;
                         autofocus: true;
-                        placeholder: "Your name";
+                        placeholder: @tr("Your name");
                         edited(t) => { root.account-name-edited(t); }
                         accepted => { root.account-name-save(); }
                     }
@@ -3165,19 +3165,19 @@ export component AppWindow inherits Window {
                     if root.account-dialog != "name" : HorizontalLayout {
                         alignment: start;
                         spacing: 10px;
-                        Button { label: "Upload a picture"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.account-upload(); } }
-                        if root.account-dialog == "avatar" && root.me-has-avatar : Button { label: "Remove"; clicked => { root.account-remove-avatar(); } }
+                        Button { label: @tr("Upload a picture"); has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.account-upload(); } }
+                        if root.account-dialog == "avatar" && root.me-has-avatar : Button { label: @tr("Remove"); clicked => { root.account-remove-avatar(); } }
                     }
                     if root.account-message != "" : Text { text: root.account-message; color: Palette.danger; wrap: word-wrap; }
                     HorizontalLayout {
                         alignment: end;
                         spacing: 10px;
-                        if root.account-dialog == "name" && root.me-name-custom : Button { label: "Reset to " + root.me-media-name; clicked => { root.account-name-reset(); } }
-                        if root.account-dialog == "name" : Button { label: "Cancel"; clicked => { root.account-dialog-close(); } }
-                        if root.account-dialog == "name" : Button { label: root.account-busy ? "Saving…" : "Save"; primary: true; clicked => { root.account-name-save(); } }
-                        if root.account-dialog == "avatar" : Button { label: "Done"; primary: true; clicked => { root.account-dialog-close(); } }
-                        if root.account-dialog == "welcome" : Button { label: "Skip"; clicked => { root.welcome-skip(); } }
-                        if root.account-dialog == "welcome" : Button { label: root.account-busy ? "Saving…" : "Continue"; primary: true; clicked => { root.welcome-continue(); } }
+                        if root.account-dialog == "name" && root.me-name-custom : Button { label: @tr("Reset to {}", root.me-media-name); clicked => { root.account-name-reset(); } }
+                        if root.account-dialog == "name" : Button { label: @tr("Cancel"); clicked => { root.account-dialog-close(); } }
+                        if root.account-dialog == "name" : Button { label: root.account-busy ? @tr("Saving…") : @tr("Save"); primary: true; clicked => { root.account-name-save(); } }
+                        if root.account-dialog == "avatar" : Button { label: @tr("Done"); primary: true; clicked => { root.account-dialog-close(); } }
+                        if root.account-dialog == "welcome" : Button { label: @tr("Skip"); clicked => { root.welcome-skip(); } }
+                        if root.account-dialog == "welcome" : Button { label: root.account-busy ? @tr("Saving…") : @tr("Continue"); primary: true; clicked => { root.welcome-continue(); } }
                     }
                 }
             }
@@ -3207,7 +3207,7 @@ export component AppWindow inherits Window {
                     padding: 28px;
                     spacing: 14px;
                     Text {
-                        text: root.link-dialog == "ask" ? "Are these both you?" : "Unlink this sign-in?";
+                        text: root.link-dialog == "ask" ? @tr("Are these both you?") : @tr("Unlink this sign-in?");
                         color: Palette.text;
                         font-size: 22px;
                         font-weight: 800;
@@ -3224,12 +3224,12 @@ export component AppWindow inherits Window {
                         }
                     }
                     if root.link-dialog == "ask" : Text {
-                        text: "Use one AlwyWatch account for both: the same name, picture, keep choices and watch-together rooms everywhere you sign in with either. Only link sign-ins that are really yours.";
+                        text: @tr("Use one AlwyWatch account for both: the same name, picture, keep choices and watch-together rooms everywhere you sign in with either. Only link sign-ins that are really yours.");
                         color: Palette.muted;
                         wrap: word-wrap;
                     }
                     if root.link-dialog == "ask" : Text {
-                        text: "This can't be undone as such: unlinking later gives that sign-in a fresh, empty account.";
+                        text: @tr("This can't be undone as such: unlinking later gives that sign-in a fresh, empty account.");
                         color: Palette.muted;
                         font-size: 13px;
                         wrap: word-wrap;
@@ -3239,10 +3239,10 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         alignment: end;
                         spacing: 10px;
-                        if root.link-dialog == "ask" : Button { label: root.link-prompted ? "Not now" : "Cancel"; clicked => { root.link-dialog-close(); } }
-                        if root.link-dialog == "ask" : Button { label: root.link-busy ? "Linking…" : "Link"; primary: true; autofocus: true; clicked => { root.link-confirm(); } }
-                        if root.link-dialog == "unlink" : Button { label: "Cancel"; autofocus: true; clicked => { root.link-dialog-close(); } }
-                        if root.link-dialog == "unlink" : Button { label: root.link-busy ? "Unlinking…" : "Unlink"; clicked => { root.unlink-confirm(); } }
+                        if root.link-dialog == "ask" : Button { label: root.link-prompted ? @tr("Not now") : @tr("Cancel"); clicked => { root.link-dialog-close(); } }
+                        if root.link-dialog == "ask" : Button { label: root.link-busy ? @tr("Linking…") : @tr("Link"); primary: true; autofocus: true; clicked => { root.link-confirm(); } }
+                        if root.link-dialog == "unlink" : Button { label: @tr("Cancel"); autofocus: true; clicked => { root.link-dialog-close(); } }
+                        if root.link-dialog == "unlink" : Button { label: root.link-busy ? @tr("Unlinking…") : @tr("Unlink"); clicked => { root.unlink-confirm(); } }
                     }
                 }
             }
@@ -3277,7 +3277,7 @@ export component AppWindow inherits Window {
                 cd := VerticalLayout {
                     padding: 28px;
                     spacing: 14px;
-                    Text { text: "Move and zoom"; color: Palette.text; font-size: 22px; font-weight: 800; }
+                    Text { text: @tr("Move and zoom"); color: Palette.text; font-size: 22px; font-weight: 800; }
                     HorizontalLayout {
                         alignment: center;
                         Rectangle {
@@ -3323,7 +3323,7 @@ export component AppWindow inherits Window {
                     }
                     HorizontalLayout {
                         spacing: 12px;
-                        Text { text: "Zoom"; color: Palette.muted; vertical-alignment: center; }
+                        Text { text: @tr("Zoom"); color: Palette.muted; vertical-alignment: center; }
                         Slider {
                             horizontal-stretch: 1;
                             minimum: 1;
@@ -3332,13 +3332,13 @@ export component AppWindow inherits Window {
                             changed(v) => { root.crop-set-zoom(v); }
                         }
                     }
-                    Text { text: "Drag or use the arrow keys to move · wheel, slider or + and − to zoom"; color: Palette.subtle; font-size: 12px; wrap: word-wrap; }
+                    Text { text: @tr("Drag or use the arrow keys to move · wheel, slider or + and − to zoom"); color: Palette.subtle; font-size: 12px; wrap: word-wrap; }
                     if root.crop-message != "" : Text { text: root.crop-message; color: Palette.danger; wrap: word-wrap; }
                     HorizontalLayout {
                         alignment: end;
                         spacing: 10px;
-                        Button { label: "Cancel"; clicked => { root.crop-cancel(); } }
-                        Button { label: root.crop-busy ? "Saving…" : "Save"; primary: true; clicked => { root.crop-save(); } }
+                        Button { label: @tr("Cancel"); clicked => { root.crop-cancel(); } }
+                        Button { label: root.crop-busy ? @tr("Saving…") : @tr("Save"); primary: true; clicked => { root.crop-save(); } }
                     }
                 }
             }
@@ -3361,8 +3361,8 @@ export component AppWindow inherits Window {
             spacing: 12px;
             UserAvatar { avatar: root.invite-avatar; size: 44px; y: (parent.height - self.height) / 2; }
             Text { text: root.invite-text; color: Palette.text; font-weight: 700; vertical-alignment: center; wrap: word-wrap; horizontal-stretch: 1; overflow: elide; }
-            Button { label: "Join"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.invite-join(); } }
-            Button { label: "Not now"; y: (parent.height - self.height) / 2; clicked => { root.invite-decline(); } }
+            Button { label: @tr("Join"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.invite-join(); } }
+            Button { label: @tr("Not now"); y: (parent.height - self.height) / 2; clicked => { root.invite-decline(); } }
             IconButton { icon: @image-url("icons/close.svg"); y: (parent.height - self.height) / 2; clicked => { root.invite-dismiss(); } }
         }
     }
@@ -3393,8 +3393,8 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         alignment: end;
                         spacing: 10px;
-                        Button { label: "Cancel"; autofocus: true; clicked => { root.mark-confirm-cancel(); } }
-                        Button { label: "Mark unwatched"; clicked => { root.mark-confirm-ok(); } }
+                        Button { label: @tr("Cancel"); autofocus: true; clicked => { root.mark-confirm-cancel(); } }
+                        Button { label: @tr("Mark unwatched"); clicked => { root.mark-confirm-ok(); } }
                     }
                 }
             }
@@ -3424,21 +3424,21 @@ export component AppWindow inherits Window {
                     padding: 28px;
                     spacing: 14px;
                     Text {
-                        text: root.profile-dialog == "add" ? "New profile"
-                            : root.profile-dialog == "rename" ? "Rename"
-                            : root.profile-dialog == "pin" ? (root.profile-target.has-pin ? "PIN for " + root.profile-target.name : "Protect " + root.profile-target.name + " with a PIN")
-                            : root.profile-dialog == "switch" ? "Switch to " + root.profile-target.name
-                            : "Remove " + root.profile-target.name + "?";
+                        text: root.profile-dialog == "add" ? @tr("New profile")
+                            : root.profile-dialog == "rename" ? @tr("Rename")
+                            : root.profile-dialog == "pin" ? (root.profile-target.has-pin ? @tr("PIN for {}", root.profile-target.name) : @tr("Protect {} with a PIN", root.profile-target.name))
+                            : root.profile-dialog == "switch" ? @tr("Switch to {}", root.profile-target.name)
+                            : @tr("Remove {}?", root.profile-target.name);
                         color: Palette.text;
                         font-size: 22px;
                         font-weight: 800;
                         wrap: word-wrap;
                     }
                     Text {
-                        text: root.profile-dialog == "add" ? "A new profile starts empty: you sign in to your servers in it."
-                            : root.profile-dialog == "pin" ? "Asked when opening this profile."
-                            : root.profile-dialog == "switch" ? "PIN for " + root.profile-target.name
-                            : root.profile-dialog == "remove" ? "Their servers, history and settings on this computer are deleted. Downloads only they wanted are deleted too."
+                        text: root.profile-dialog == "add" ? @tr("A new profile starts empty: you sign in to your servers in it.")
+                            : root.profile-dialog == "pin" ? @tr("Asked when opening this profile.")
+                            : root.profile-dialog == "switch" ? @tr("PIN for {}", root.profile-target.name)
+                            : root.profile-dialog == "remove" ? @tr("Their servers, history and settings on this computer are deleted. Downloads only they wanted are deleted too.")
                             : "";
                         color: Palette.muted;
                         wrap: word-wrap;
@@ -3446,8 +3446,8 @@ export component AppWindow inherits Window {
                     if root.profile-dialog != "remove" : Field {
                         text <=> root.profile-input;
                         autofocus: true;
-                        placeholder: root.profile-dialog == "add" || root.profile-dialog == "rename" ? "Name"
-                            : root.profile-dialog == "pin" ? (root.profile-target.has-pin ? "New 4-digit PIN" : "4-digit PIN")
+                        placeholder: root.profile-dialog == "add" || root.profile-dialog == "rename" ? @tr("Name")
+                            : root.profile-dialog == "pin" ? (root.profile-target.has-pin ? @tr("New 4-digit PIN") : @tr("4-digit PIN"))
                             : "••••";
                         input-type: root.profile-dialog == "add" || root.profile-dialog == "rename" ? InputType.text : InputType.password;
                         accepted => { root.profile-submit(); }
@@ -3457,13 +3457,13 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         alignment: end;
                         spacing: 10px;
-                        if root.profile-dialog == "pin" && root.profile-target.has-pin : Button { label: "Remove PIN"; clicked => { root.profile-pin-remove(); } }
-                        Button { label: "Cancel"; clicked => { root.profile-cancel(); } }
+                        if root.profile-dialog == "pin" && root.profile-target.has-pin : Button { label: @tr("Remove PIN"); clicked => { root.profile-pin-remove(); } }
+                        Button { label: @tr("Cancel"); clicked => { root.profile-cancel(); } }
                         Button {
-                            label: root.profile-dialog == "add" ? "Create and switch"
-                                : root.profile-dialog == "switch" ? "Switch"
-                                : root.profile-dialog == "remove" ? "Remove"
-                                : "Save";
+                            label: root.profile-dialog == "add" ? @tr("Create and switch")
+                                : root.profile-dialog == "switch" ? @tr("Switch")
+                                : root.profile-dialog == "remove" ? @tr("Remove")
+                                : @tr("Save");
                             primary: true;
                             clicked => { root.profile-submit(); }
                         }
@@ -3493,17 +3493,17 @@ export component AppWindow inherits Window {
                 if root.profile-target.id == "" && root.profile-gate-menu : HorizontalLayout {
                     alignment: center;
                     spacing: 10px;
-                    Button { label: "Manage profiles"; clicked => { root.profile-cancel(); root.go(Page.profiles); } }
-                    Button { label: "Close"; clicked => { root.profile-cancel(); } }
+                    Button { label: @tr("Manage profiles"); clicked => { root.profile-cancel(); root.go(Page.profiles); } }
+                    Button { label: @tr("Close"); clicked => { root.profile-cancel(); } }
                 }
-                if root.profile-target.id == "" : Text { text: "Who's watching?"; color: Palette.text; font-size: 40px; font-weight: 800; letter-spacing: -0.5px; horizontal-alignment: center; }
+                if root.profile-target.id == "" : Text { text: @tr("Who's watching?"); color: Palette.text; font-size: 40px; font-weight: 800; letter-spacing: -0.5px; horizontal-alignment: center; }
                 if root.profile-target.id == "" : HorizontalLayout {
                     alignment: center;
                     spacing: 20px;
                     for p[i] in root.profiles : ProfileTile { profile: p; autofocus: i == 0; clicked => { root.profile-open(p.id); } }
                 }
                 if root.profile-target.id != "" : HorizontalLayout { alignment: center; Avatar { initial: root.profile-target.initial; tone: root.profile-target.tone; size: 96px; } }
-                if root.profile-target.id != "" : Text { text: "PIN for " + root.profile-target.name; color: Palette.text; font-size: 24px; font-weight: 700; horizontal-alignment: center; }
+                if root.profile-target.id != "" : Text { text: @tr("PIN for {}", root.profile-target.name); color: Palette.text; font-size: 24px; font-weight: 700; horizontal-alignment: center; }
                 if root.profile-target.id != "" : HorizontalLayout {
                     alignment: center;
                     Field {
@@ -3517,7 +3517,7 @@ export component AppWindow inherits Window {
                     }
                 }
                 if root.profile-target.id != "" && root.profile-message != "" : Text { text: root.profile-message; color: Palette.danger; horizontal-alignment: center; }
-                if root.profile-target.id != "" && root.profile-gate-back : HorizontalLayout { alignment: center; Button { label: "Back"; clicked => { root.profile-cancel(); } } }
+                if root.profile-target.id != "" && root.profile-gate-back : HorizontalLayout { alignment: center; Button { label: @tr("Back"); clicked => { root.profile-cancel(); } } }
             }
         }
     }
@@ -3563,10 +3563,10 @@ export component AppWindow inherits Window {
                 card := VerticalLayout {
                     padding: 24px;
                     spacing: 14px;
-                    Text { text: "WATCH TOGETHER"; color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
-                    Text { text: root.room-title == "" ? "Opening a room…" : root.room-title; color: Palette.text; font-size: 24px; font-weight: 800; wrap: word-wrap; }
+                    Text { text: @tr("WATCH TOGETHER"); color: Palette.subtle; font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+                    Text { text: root.room-title == "" ? @tr("Opening a room…") : root.room-title; color: Palette.text; font-size: 24px; font-weight: 800; wrap: word-wrap; }
                     Text {
-                        text: "Paused for now. Invite people, then start: everyone starts at " + root.player-room-at + " at the same moment, once all of them have loaded it.";
+                        text: @tr("Paused for now. Invite people, then start: everyone starts at {} at the same moment, once all of them have loaded it.", root.player-room-at);
                         color: Palette.muted;
                         wrap: word-wrap;
                     }
@@ -3577,7 +3577,7 @@ export component AppWindow inherits Window {
                         spacing: 10px;
                         alignment: start;
                         Button {
-                            label: "Invite people";
+                            label: @tr("Invite people");
                             autofocus: true;
                             primary: root.room-invited.length == 0 && root.room-members.length < 2;
                             has-icon: true;
@@ -3585,13 +3585,13 @@ export component AppWindow inherits Window {
                             clicked => { root.room-invite(); }
                         }
                         Button {
-                            label: "Start at " + root.player-room-at;
+                            label: @tr("Start at {}", root.player-room-at);
                             primary: root.room-invited.length > 0 || root.room-members.length > 1;
                             has-icon: true;
                             icon: @image-url("icons/play_arrow_fill1.svg");
                             clicked => { root.player-room-start(); }
                         }
-                        Button { label: "Cancel"; clicked => { root.player-room-cancel(); } }
+                        Button { label: @tr("Cancel"); clicked => { root.player-room-cancel(); } }
                     }
                 }
             }
@@ -3619,12 +3619,12 @@ export component AppWindow inherits Window {
                 VerticalLayout {
                     padding: 24px;
                     spacing: 12px;
-                    Text { text: "Invite people"; color: Palette.text; font-size: 22px; font-weight: 800; }
-                    Text { text: "They get an invitation and join directly."; color: Palette.muted; wrap: word-wrap; }
+                    Text { text: @tr("Invite people"); color: Palette.text; font-size: 22px; font-weight: 800; }
+                    Text { text: @tr("They get an invitation and join directly."); color: Palette.muted; wrap: word-wrap; }
                     Field {
                         text <=> root.picker-filter-text;
                         autofocus: true;
-                        placeholder: "Search by name";
+                        placeholder: @tr("Search by name");
                         edited(t) => { root.picker-filter(t); }
                     }
                     if root.picker-message != "" : Text { text: root.picker-message; color: Palette.muted; wrap: word-wrap; }
@@ -3667,9 +3667,9 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         alignment: end;
                         spacing: 10px;
-                        Button { label: "Cancel"; clicked => { root.picker-cancel(); } }
+                        Button { label: @tr("Cancel"); clicked => { root.picker-cancel(); } }
                         Button {
-                            label: root.picker-count == 0 ? "Send invitations" : root.picker-count == 1 ? "Send 1 invitation" : "Send " + root.picker-count + " invitations";
+                            label: root.picker-count == 0 ? @tr("Send invitations") : @tr("Send {n} invitation" | "Send {n} invitations" % root.picker-count);
                             primary: root.picker-count > 0;
                             clicked => { root.picker-send(); }
                         }

@@ -84,7 +84,7 @@ fn mono_ms() -> i64 {
 /// "Silo S2 · E7" or the movie title.
 pub(super) fn media_title(m: &TogetherMedia) -> String {
     if m.title.trim().is_empty() {
-        return "Nothing chosen yet".into();
+        return tr!("Nothing chosen yet");
     }
     match (&m.series_title, m.season, m.episode) {
         (Some(s), Some(se), Some(ep)) => format!("{s} S{se} · E{ep}"),
@@ -141,13 +141,13 @@ pub(super) fn group_members(s: &TogetherState, my_member: &str) -> Vec<Seat> {
 fn seat_detail(p: &Seat) -> String {
     let mut parts = Vec::new();
     if p.host {
-        parts.push("Host".to_owned());
+        parts.push(tr!("Host"));
     }
     if p.me {
-        parts.push("You".to_owned());
+        parts.push(tr!("You"));
     }
     if p.devices > 1 {
-        parts.push(format!("{} devices", p.devices));
+        parts.push(trn!("{n} device", "{n} devices", p.devices));
     }
     parts.join(" · ")
 }
@@ -227,24 +227,29 @@ pub(super) fn people_rows(
 fn watching_note(s: &TogetherState) -> String {
     let people = group_members(s, "");
     let names: Vec<&str> = people.iter().map(|p| p.name.as_str()).collect();
-    format!("{} watching: {}", people.len(), names.join(", "))
+    trn!(
+        "{n} watching: {names}",
+        "{n} watching: {names}",
+        people.len(),
+        names = names.join(", ")
+    )
 }
 
 /// A failed room call in plain words.
 pub(super) fn room_error(e: &CoreError) -> String {
     match e {
-        CoreError::Server { status: 409 } => "The room is full (20 people at most).".into(),
+        CoreError::Server { status: 409 } => tr!("The room is full (20 people at most)."),
         CoreError::Server { status: 429 } => {
-            "Too many rooms or invitations at once: try again in a few minutes.".into()
+            tr!("Too many rooms or invitations at once: try again in a few minutes.")
         }
-        CoreError::Server { status: 403 } => "Only the room's host can do that.".into(),
+        CoreError::Server { status: 403 } => tr!("Only the room's host can do that."),
         CoreError::Server { status: 503 } => {
-            "Your AlwyWatch server has too many rooms open right now.".into()
+            tr!("Your AlwyWatch server has too many rooms open right now.")
         }
-        CoreError::NotFound => "This room is gone.".into(),
-        CoreError::Network { .. } => "Can't reach your AlwyWatch server right now.".into(),
+        CoreError::NotFound => tr!("This room is gone."),
+        CoreError::Network { .. } => tr!("Can't reach your AlwyWatch server right now."),
         CoreError::Invalid { .. } => {
-            "Your AlwyWatch server answered something unexpected: it may need an update.".into()
+            tr!("Your AlwyWatch server answered something unexpected: it may need an update.")
         }
         e => e.to_string(),
     }
@@ -273,9 +278,9 @@ impl App {
                 Ok(rooms) => t.set_rooms(rooms),
                 Err(e) => {
                     if t.state.borrow().lists.rooms.is_none() {
-                        t.ui().set_together_status(sstr(format!(
-                            "Can't load your rooms: {}",
-                            room_error(&e)
+                        t.ui().set_together_status(sstr(tr!(
+                            "Can't load your rooms: {error}",
+                            error = room_error(&e)
                         )));
                     }
                 }
@@ -374,10 +379,10 @@ impl App {
             fresh
         };
         if let Some(r) = fresh {
-            self.notify_player(format!(
-                "{} invites you to watch {} · answer in AlwyWatch",
-                r.host,
-                media_title(&r.media)
+            self.notify_player(tr!(
+                "{host} invites you to watch {title} · answer in AlwyWatch",
+                host = r.host,
+                title = media_title(&r.media)
             ));
         }
         self.render_banner();
@@ -402,10 +407,11 @@ impl App {
             }
         };
         ui.set_together_status(sstr(if rooms.is_empty() {
-            "No rooms yet. Start one here, or open a movie or an episode and choose Watch \
-             together."
+            tr!(
+                "No rooms yet. Start one here, or open a movie or an episode and choose Watch together."
+            )
         } else {
-            ""
+            String::new()
         }));
         let here = self
             .state
@@ -429,25 +435,35 @@ impl App {
                     code: sstr(&r.code),
                     title: sstr(media_title(&r.media)),
                     people: sstr(if r.invited {
-                        format!("{} invites you", r.host)
+                        tr!("{host} invites you", host = r.host)
                     } else {
                         match others {
                             0 => r.host.clone(),
-                            1 => format!("{} and 1 other", r.host),
-                            n => format!("{} and {n} others", r.host),
+                            n => trn!(
+                                "{host} and {n} other",
+                                "{host} and {n} others",
+                                n,
+                                host = r.host
+                            ),
                         }
                     }),
-                    status: sstr(
-                        match (r.started, r.playing) {
-                            (false, _) => "Waiting room: not started yet".to_owned(),
-                            (true, true) => format!("Watching · {}", clock(room_position(r))),
-                            (true, false) => format!("Paused at {}", clock(room_position(r))),
-                        } + if !r.invited && here.as_deref() != Some(r.code.as_str()) {
-                            " · open on another device"
+                    status: sstr({
+                        let status = match (r.started, r.playing) {
+                            (false, _) => tr!("Waiting room: not started yet"),
+                            (true, true) => {
+                                tr!("Watching · {time}", time = clock(room_position(r)))
+                            }
+                            (true, false) => {
+                                tr!("Paused at {time}", time = clock(room_position(r)))
+                            }
+                        };
+                        if !r.invited && here.as_deref() != Some(r.code.as_str()) {
+                            tr!("{status} · open on another device", status = status)
                         } else {
-                            ""
-                        },
-                    ),
+                            status
+                        }
+                    }),
+
                     poster,
                     mine: r.mine,
                     invited: r.invited,
@@ -522,10 +538,10 @@ impl App {
         };
         match room {
             Some(r) => {
-                ui.set_invite_text(sstr(format!(
-                    "{} invites you to watch {}",
-                    r.host,
-                    media_title(&r.media)
+                ui.set_invite_text(sstr(tr!(
+                    "{host} invites you to watch {title}",
+                    host = r.host,
+                    title = media_title(&r.media)
                 )));
                 ui.set_invite_avatar(self.person_avatar(&r.host_user_key, &r.host, &r.host_avatar));
                 ui.set_invite_code(sstr(&r.code));
@@ -568,8 +584,10 @@ impl App {
             if let (Err(e), Some(t)) = (r, this.upgrade())
                 && e != CoreError::NotFound
             {
-                t.ui()
-                    .set_error(sstr(format!("Couldn't decline: {}", room_error(&e))));
+                t.ui().set_error(sstr(tr!(
+                    "Couldn't decline: {error}",
+                    error = room_error(&e)
+                )));
             }
         })
         .ok();
@@ -588,9 +606,9 @@ impl App {
             Some(c) if c == code => self.navigate(Route::Room),
             Some(_) => {
                 self.navigate(Route::Room);
-                self.ui().set_room_message(
-                    "You're in this room. Leave it first to join another one.".into(),
-                );
+                self.ui().set_room_message(sstr(tr!(
+                    "You're in this room. Leave it first to join another one."
+                )));
             }
             None => self.join_room(code),
         }
@@ -611,7 +629,7 @@ impl App {
                 }
                 Err(e) => t
                     .ui()
-                    .set_error(sstr(format!("Couldn't join: {}", room_error(&e)))),
+                    .set_error(sstr(tr!("Couldn't join: {error}", error = room_error(&e)))),
             }
         })
         .ok();
@@ -659,9 +677,9 @@ impl App {
             }
             Some(_) => {
                 self.navigate(Route::Room);
-                self.ui().set_room_message(
-                    "You're already in a room. Leave it first to start another one.".into(),
-                );
+                self.ui().set_room_message(sstr(tr!(
+                    "You're already in a room. Leave it first to start another one."
+                )));
             }
             None => {
                 slint::spawn_local(async move {
@@ -672,9 +690,9 @@ impl App {
                             t.enter_room(j);
                             t.navigate(Route::Room);
                         }
-                        Err(e) => t.ui().set_error(sstr(format!(
-                            "Watch together unavailable: {}",
-                            room_error(&e)
+                        Err(e) => t.ui().set_error(sstr(tr!(
+                            "Watch together unavailable: {error}",
+                            error = room_error(&e)
                         ))),
                     }
                 })
@@ -688,9 +706,9 @@ impl App {
     pub(super) fn together_new(self: &Rc<Self>) {
         if self.in_room() {
             self.navigate(Route::Room);
-            self.ui().set_room_message(
-                "You're already in a room. Leave it first to start another one.".into(),
-            );
+            self.ui().set_room_message(sstr(tr!(
+                "You're already in a room. Leave it first to start another one."
+            )));
             return;
         }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
@@ -702,9 +720,9 @@ impl App {
                     t.enter_room(j);
                     t.navigate(Route::Room);
                 }
-                Err(e) => t.ui().set_error(sstr(format!(
-                    "Watch together unavailable: {}",
-                    room_error(&e)
+                Err(e) => t.ui().set_error(sstr(tr!(
+                    "Watch together unavailable: {error}",
+                    error = room_error(&e)
                 ))),
             }
         })
@@ -760,29 +778,36 @@ impl App {
             .iter()
             .find(|m| m.id == s.host)
             .map(|m| m.name.clone())
-            .unwrap_or_else(|| "the host".into());
+            .unwrap_or_else(|| tr!("the host"));
         let now = self.core.together_now_ms();
         let untitled = s.media.title.trim().is_empty();
         ui.set_room_untitled(untitled);
         ui.set_room_title(sstr(media_title(&s.media)));
         ui.set_room_status(sstr(match (s.started, s.playing) {
-            (false, _) if untitled && host => "Open a movie or an episode and choose Watch in \
-                 your room. The people you invite can join in the meantime."
-                .to_owned(),
-            (false, _) if untitled => format!("{host_name} is choosing what to watch."),
-            (false, _) if host && s.round > 0 => "Back in the waiting room: start again, or open \
-                 another title and choose Watch together. Everyone stays here."
-                .to_owned(),
-            (false, _) if host => {
-                "Waiting room: invite people, then start when everyone is here.".to_owned()
+            (false, _) if untitled && host => tr!(
+                "Open a movie or an episode and choose Watch in your room. The people you invite can join in the meantime."
+            ),
+            (false, _) if untitled => {
+                tr!("{host} is choosing what to watch.", host = host_name)
             }
-            (false, _) if s.round > 0 => format!("{host_name} is picking what to watch next."),
-            (false, _) => "Waiting room: nothing plays until the host starts.".to_owned(),
-            (true, _) if !s.loading.is_empty() => "Starting: loading for everyone…".to_owned(),
-            (true, playing) => format!(
-                "{} {}",
-                if playing { "Watching ·" } else { "Paused at" },
-                clock(together_position_at(s.clone(), now))
+            (false, _) if host && s.round > 0 => tr!(
+                "Back in the waiting room: start again, or open another title and choose Watch together. Everyone stays here."
+            ),
+            (false, _) if host => {
+                tr!("Waiting room: invite people, then start when everyone is here.")
+            }
+            (false, _) if s.round > 0 => {
+                tr!("{host} is picking what to watch next.", host = host_name)
+            }
+            (false, _) => tr!("Waiting room: nothing plays until the host starts."),
+            (true, _) if !s.loading.is_empty() => tr!("Starting: loading for everyone…"),
+            (true, true) => tr!(
+                "Watching · {time}",
+                time = clock(together_position_at(s.clone(), now))
+            ),
+            (true, false) => tr!(
+                "Paused at {time}",
+                time = clock(together_position_at(s.clone(), now))
             ),
         }));
         ui.set_room_is_host(host);
@@ -805,7 +830,8 @@ impl App {
             .map(|p| PersonRow {
                 key: sstr(&p.user_key),
                 name: sstr(&p.name),
-                detail: "Invited".into(),
+                detail: sstr(tr!("Invited")),
+
                 avatar: self.person_avatar(&p.user_key, &p.name, &p.avatar),
                 header: SharedString::new(),
                 selected: false,
@@ -910,9 +936,9 @@ impl App {
                         TogetherPlay::Room { announce: false },
                     );
                 }
-                Ok(None) => t.ui().set_room_message(sstr(format!(
-                    "{} isn't on your servers, so it can't play here.",
-                    media_title(&s.media)
+                Ok(None) => t.ui().set_room_message(sstr(tr!(
+                    "{title} isn't on your servers, so it can't play here.",
+                    title = media_title(&s.media)
                 ))),
                 Err(e) => t.ui().set_room_message(sstr(e.to_string())),
             }
@@ -941,13 +967,13 @@ impl App {
 
     /// The room is gone (closed on the server): said once, then back to where it makes sense.
     fn room_closed(self: &Rc<Self>) {
-        self.leave_room(Some("The watch together room closed"), false);
+        self.leave_room(Some(&tr!("The watch together room closed")), false);
         if self.ui().get_page() == Page::Room {
             self.drop_room_route();
             self.navigate(Route::Together);
         }
         self.ui()
-            .set_error("The watch together room closed.".into());
+            .set_error(sstr(tr!("The watch together room closed.")));
     }
 
     /// The room's player is closed (another may follow at once: next episode, new title).
@@ -961,8 +987,8 @@ impl App {
             return String::new();
         };
         match group_members(s, "").len() {
-            0 | 1 => "Only you so far".into(),
-            n => format!("{n} watching"),
+            0 | 1 => tr!("Only you so far"),
+            n => trn!("{n} watching", "{n} watching", n),
         }
     }
 
@@ -1028,7 +1054,7 @@ impl App {
         ui.set_picker_filter_text(SharedString::new());
         let empty = self.state.borrow().lists.people.is_empty();
         ui.set_picker_message(if empty {
-            "Loading…".into()
+            sstr(tr!("Loading…"))
         } else {
             SharedString::new()
         });
@@ -1044,9 +1070,10 @@ impl App {
                     t.ui().set_picker_message(SharedString::new());
                     t.render_picker();
                 }
-                Err(e) => t
-                    .ui()
-                    .set_picker_message(sstr(format!("Can't load the people: {}", room_error(&e)))),
+                Err(e) => t.ui().set_picker_message(sstr(tr!(
+                    "Can't load the people: {error}",
+                    error = room_error(&e)
+                ))),
             }
         })
         .ok();
@@ -1073,9 +1100,9 @@ impl App {
         let loaded = !self.state.borrow().lists.people.is_empty();
         if loaded && rows.is_empty() {
             ui.set_picker_message(if self.state.borrow().lists.filter.is_empty() {
-                "Everyone is already in the room or invited.".into()
+                sstr(tr!("Everyone is already in the room or invited."))
             } else {
-                "Nobody by that name.".into()
+                sstr(tr!("Nobody by that name."))
             });
         } else if loaded {
             ui.set_picker_message(SharedString::new());
@@ -1118,17 +1145,18 @@ impl App {
         let keys = self.state.borrow().lists.picked.clone();
         let ui = self.ui();
         if keys.is_empty() {
-            ui.set_picker_message("Choose people first.".into());
+            ui.set_picker_message(sstr(tr!("Choose people first.")));
             return;
         }
         if keys.len() > 20 {
-            ui.set_picker_message("20 people at most at once.".into());
+            ui.set_picker_message(sstr(tr!("20 people at most at once.")));
             return;
         }
         let Some((code, member)) = self.room_seat() else {
             return;
         };
-        ui.set_picker_message("Sending…".into());
+        ui.set_picker_message(sstr(tr!("Sending…")));
+
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             let r = core.together_invite(code, member, keys).await;
@@ -1242,7 +1270,10 @@ impl App {
                 }
                 Err(e) => {
                     t.ui().set_player_room(false);
-                    t.notify_player(format!("Watch together unavailable: {}", room_error(&e)));
+                    t.notify_player(tr!(
+                        "Watch together unavailable: {error}",
+                        error = room_error(&e)
+                    ));
                 }
             }
         })
@@ -1384,11 +1415,11 @@ impl App {
             .into_iter()
             .collect();
         let waiting = if starts_in.is_some() || (hold && others.is_empty() && !load) {
-            Some("Starting…".to_owned())
+            Some(tr!("Starting…"))
         } else if load && ready_round != s.round {
-            Some("Loading for everyone…".to_owned())
+            Some(tr!("Loading for everyone…"))
         } else if hold {
-            Some(format!("Waiting for {}…", others.join(", ")))
+            Some(tr!("Waiting for {names}…", names = others.join(", ")))
         } else {
             None
         };
@@ -1543,10 +1574,12 @@ impl App {
                     .members
                     .iter()
                     .find(|m| m.id == s.host)
-                    .map_or("The host".to_owned(), |m| m.name.clone());
+                    .map_or_else(|| tr!("The host"), |m| m.name.clone());
                 self.to_player(ToPlayer::Quit);
-                self.ui()
-                    .set_room_message(sstr(format!("{host} went back to the waiting room.")));
+                self.ui().set_room_message(sstr(tr!(
+                    "{host} went back to the waiting room.",
+                    host = host
+                )));
             }
             return;
         }
@@ -1576,11 +1609,15 @@ impl App {
             };
             let note = if let Some(who) = name(&s.by) {
                 Some(if b.playing && !s.playing {
-                    format!("{who} paused")
+                    tr!("{name} paused", name = who)
                 } else if !b.playing && s.playing {
-                    format!("{who} resumed")
+                    tr!("{name} resumed", name = who)
                 } else {
-                    format!("{who} moved to {}", clock(s.position_ms))
+                    tr!(
+                        "{name} moved to {time}",
+                        name = who,
+                        time = clock(s.position_ms)
+                    )
                 })
             } else {
                 let joined: Vec<&str> = s
@@ -1596,13 +1633,17 @@ impl App {
                     .map(|m| m.name.as_str())
                     .collect();
                 if !joined.is_empty() {
-                    Some(format!(
-                        "{} joined · {}",
-                        joined.join(", "),
-                        watching_note(&s)
+                    Some(tr!(
+                        "{names} joined · {watching}",
+                        names = joined.join(", "),
+                        watching = watching_note(&s)
                     ))
                 } else if !left.is_empty() {
-                    Some(format!("{} left · {}", left.join(", "), watching_note(&s)))
+                    Some(tr!(
+                        "{names} left · {watching}",
+                        names = left.join(", "),
+                        watching = watching_note(&s)
+                    ))
                 } else {
                     None
                 }
@@ -1629,9 +1670,9 @@ impl App {
                     t.to_player(ToPlayer::Quit);
                 }
                 _ => {
-                    t.to_player(ToPlayer::Note(format!(
-                        "{} isn't on your servers",
-                        media_title(&s.media)
+                    t.to_player(ToPlayer::Note(tr!(
+                        "{title} isn't on your servers",
+                        title = media_title(&s.media)
                     )));
                     t.to_player(ToPlayer::Sync {
                         playing: false,
@@ -1708,16 +1749,19 @@ impl App {
                 // The host doesn't allow it: say so and go back to what the room plays.
                 Err(CoreError::Server { status: 423 }) => {
                     let Some(s) = t.room_state() else { return };
-                    let what = if new_title {
-                        "change what's playing"
+                    let note = if new_title {
+                        tr!("Only the host can change what's playing in this room")
                     } else if s.playing != playing {
-                        if playing { "play" } else { "pause" }
+                        if playing {
+                            tr!("Only the host can play in this room")
+                        } else {
+                            tr!("Only the host can pause in this room")
+                        }
                     } else {
-                        "move forward or back"
+                        tr!("Only the host can move forward or back in this room")
                     };
-                    t.to_player(ToPlayer::Note(format!(
-                        "Only the host can {what} in this room"
-                    )));
+                    t.to_player(ToPlayer::Note(note));
+
                     if new_title {
                         t.follow_title(s);
                     } else {

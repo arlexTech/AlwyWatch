@@ -9,6 +9,7 @@
 #[cfg(feature = "uniffi")]
 uniffi::setup_scaffolding!();
 
+use i18n::tr;
 use net::reqwest::{Client, Method, RequestBuilder, Response, header};
 use net::{Error, Result};
 use serde::{Deserialize, Serialize};
@@ -341,7 +342,7 @@ impl From<UserDto> for SeerrUser {
         .into_iter()
         .flatten()
         .find(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("user {}", u.id));
+        .unwrap_or_else(|| tr!("user {id}", id = u.id));
         SeerrUser {
             id: u.id,
             display_name: name,
@@ -392,7 +393,7 @@ impl SeerrAuth {
         }
         let p: Public = net::send_json(self.req(Method::GET, base_url, "/settings/public")).await?;
         if !p.initialized {
-            return Err(Error::invalid("this Seerr instance is not set up yet"));
+            return Err(Error::invalid(tr!("this Seerr instance is not set up yet")));
         }
         let mut logins = Vec::new();
         if p.media_server_login.unwrap_or(true) {
@@ -747,7 +748,7 @@ impl SeerrClient {
                 name: s
                     .name
                     .clone()
-                    .unwrap_or_else(|| format!("Season {}", s.season_number)),
+                    .unwrap_or_else(|| tr!("Season {number}", number = s.season_number)),
                 availability: availability(status(s.season_number)),
             })
             .collect())
@@ -810,9 +811,9 @@ impl SeerrClient {
                     number: n,
                     name: s.name.clone().filter(|x| !x.is_empty()).unwrap_or_else(|| {
                         if n == 0 {
-                            "Specials".to_owned()
+                            tr!("Specials")
                         } else {
-                            format!("Season {n}")
+                            tr!("Season {number}", number = n)
                         }
                     }),
                     episodes: s.episode_count.unwrap_or(0),
@@ -1101,14 +1102,14 @@ impl SeerrClient {
 // Choosing seasons to request (shared by the apps: same rules, same words).
 
 /// A season's state in plain words.
-pub fn season_state_label(state: SeasonState) -> &'static str {
+pub fn season_state_label(state: SeasonState) -> String {
     match state {
-        SeasonState::OnServer => "On your server",
-        SeasonState::PartlyOnServer => "Partly on your server",
-        SeasonState::Requested => "Requested",
-        SeasonState::Downloading => "Being downloaded",
-        SeasonState::Requestable => "Not on your server",
-        SeasonState::Blocked => "Can't be requested",
+        SeasonState::OnServer => tr!("On your server"),
+        SeasonState::PartlyOnServer => tr!("Partly on your server"),
+        SeasonState::Requested => tr!("Requested"),
+        SeasonState::Downloading => tr!("Being downloaded"),
+        SeasonState::Requestable => tr!("Not on your server"),
+        SeasonState::Blocked => tr!("Can't be requested"),
     }
 }
 
@@ -1139,7 +1140,7 @@ pub fn season_plan(seasons: &[SeerrSeasonInfo], have: &[u32]) -> SeasonPlan {
                 number: s.number,
                 name: s.name.clone(),
                 state,
-                label: season_state_label(state).to_owned(),
+                label: season_state_label(state),
             }
         })
         .collect();
@@ -1156,38 +1157,36 @@ pub fn season_plan(seasons: &[SeerrSeasonInfo], have: &[u32]) -> SeasonPlan {
     }
 }
 
-/// "season 2", "seasons 2, 3 and 5", "the specials".
-fn seasons_words(numbers: &[u32]) -> String {
-    let names: Vec<String> = numbers
-        .iter()
-        .filter(|n| **n > 0)
-        .map(u32::to_string)
-        .collect();
-    let mut words = match names.as_slice() {
-        [] => String::new(),
-        [one] => format!("season {one}"),
-        many => format!("seasons {}", many.join(", ")),
-    };
-    if numbers.contains(&0) {
-        if words.is_empty() {
-            words = "the specials".to_owned();
-        } else {
-            words.push_str(" and the specials");
-        }
-    }
-    words
-}
-
-/// The confirmation once seasons are requested.
+/// The confirmation once seasons are requested: "Requested: season 2.", "Requested: seasons
+/// 2, 3, 5 and the specials." (whole sentences, for translation).
 pub fn seasons_requested_message(numbers: &[u32]) -> String {
     let mut sorted = numbers.to_vec();
     sorted.sort_unstable();
     sorted.dedup();
-    let words = seasons_words(&sorted);
-    if sorted.len() == 1 && sorted[0] > 0 {
-        format!("Requested: {words}. It'll appear here when it's ready.")
-    } else {
-        format!("Requested: {words}. They'll appear here when they're ready.")
+    let names: Vec<String> = sorted
+        .iter()
+        .filter(|n| **n > 0)
+        .map(u32::to_string)
+        .collect();
+    let specials = sorted.contains(&0);
+    match (names.as_slice(), specials) {
+        ([one], false) => tr!(
+            "Requested: season {number}. It'll appear here when it's ready.",
+            number = one
+        ),
+        ([one], true) => tr!(
+            "Requested: season {number} and the specials. They'll appear here when they're ready.",
+            number = one
+        ),
+        ([], _) => tr!("Requested: the specials. They'll appear here when they're ready."),
+        (many, false) => tr!(
+            "Requested: seasons {numbers}. They'll appear here when they're ready.",
+            numbers = many.join(", ")
+        ),
+        (many, true) => tr!(
+            "Requested: seasons {numbers} and the specials. They'll appear here when they're ready.",
+            numbers = many.join(", ")
+        ),
     }
 }
 

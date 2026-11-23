@@ -222,6 +222,34 @@ record! {
     }
 }
 
+record! {
+    /// Admins: what the AlwyWatch server is connected to (`GET /v1/admin/status`). Read only:
+    /// these are set in the server's config.toml and .env (docs/deploy.md).
+    pub struct ServerStatus {
+        /// alwywatch-server's version.
+        pub version: String,
+        /// "off" (not configured), "starting" (first reading not done), "ok", "unreachable".
+        pub maintainerr: String,
+        pub maintainerr_version: Option<String>,
+        /// Unix seconds of the last successful reading of Maintainerr.
+        pub last_sync: Option<i64>,
+        /// Titles in Maintainerr's lists at that reading.
+        pub leaving_items: u32,
+        /// Requests through this server.
+        pub seerr_bridge: bool,
+        /// "Keep until watched" ends by itself for Plex users / Jellyfin users.
+        pub tautulli: bool,
+        pub jellyfin_key: bool,
+        pub webhooks: bool,
+        pub passkeys: bool,
+        pub pocketid: bool,
+        /// Who may create an account: "invite", "open", "closed".
+        pub registration: String,
+        /// Nothing is written to Maintainerr or Seerr.
+        pub dry_run: bool,
+    }
+}
+
 impl Default for Services {
     fn default() -> Self {
         Self {
@@ -1041,6 +1069,11 @@ impl KeepClient {
     /// Seerr's users (admins), to link AlwyWatch users to them.
     pub async fn admin_seerr_users(&self) -> Result<Vec<SeerrUser>> {
         net::send_json(self.req(Method::GET, "/admin/seerr-users")).await
+    }
+
+    /// Admins: what the server is connected to.
+    pub async fn admin_status(&self) -> Result<ServerStatus> {
+        net::send_json(self.req(Method::GET, "/admin/status")).await
     }
 
     /// Admins: keep-forever counts per person and their overlaps.

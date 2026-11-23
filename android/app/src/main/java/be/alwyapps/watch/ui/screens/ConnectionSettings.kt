@@ -47,6 +47,7 @@ import be.alwyapps.watch.ui.OnSurface
 import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.Value
 import be.alwyapps.watch.ui.dpadEscape
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.launch
 
 /** The token the AlwyWatch server accepts for an account: Jellyfin's, or Plex's plex.tv one. */
@@ -71,7 +72,7 @@ suspend fun connectSeerrThroughKeep(
     core: AlwyWatch,
     ctx: Context,
 ): be.alwyapps.watch.core.SeerrConnection {
-    val keep = core.keepConnection() ?: throw CoreException.NotFound("no AlwyWatch server")
+    val keep = core.keepConnection() ?: throw CoreException.NotFound(tr("no AlwyWatch server"))
     val served = runCatching { core.keepServers(keep.baseUrl).map { it.id }.toSet() }.getOrNull()
     val candidates =
         core
@@ -87,7 +88,7 @@ suspend fun connectSeerrThroughKeep(
             last = e
         }
     }
-    throw last ?: CoreException.NotFound("no account to use")
+    throw last ?: CoreException.NotFound(tr("no account to use"))
 }
 
 /** Connects (or switches) the AlwyWatch server as [account], then Seerr through it if unset. */
@@ -97,7 +98,7 @@ private suspend fun connectKeep(
     url: String,
     account: Account,
 ): KeepConnection {
-    val token = keepToken(ctx, account) ?: throw CoreException.Invalid("Sign in to ${account.serverName} again first.")
+    val token = keepToken(ctx, account) ?: throw CoreException.Invalid(tr("Sign in to {server} again first.", "server" to account.serverName))
     val conn = core.keepConnect(url, account.id, token)
     if (core.seerrConnection() == null) runCatching { connectSeerrThroughKeep(core, ctx) }
     // A new account there: the welcome step (name and picture) if it was never done.
@@ -171,9 +172,12 @@ fun AlwyWatchServerGroup(
         val usable = accounts.filter { it.serverId in ids }
         Text(
             if (usable.isEmpty()) {
-                "This needs a login on ${list.joinToString(" or ") { it.name }}. Add one first: Settings → Servers → Add a server."
+                tr(
+                    "This needs a login on {servers}. Add one first: Settings → Servers → Add a server.",
+                    "servers" to list.joinToString(tr(" or ")) { it.name },
+                )
             } else {
-                "Choose the login that identifies you there."
+                tr("Choose the login that identifies you there.")
             },
             Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             style = MaterialTheme.typography.bodySmall,
@@ -187,18 +191,18 @@ fun AlwyWatchServerGroup(
                 icon = Icons.Person,
                 iconTint = if (a.id == current) Accent else OnSurface,
                 onClick = if (a.id == current) null else ({ attempt { connectKeep(core, ctx, base, a).also { onChanged() } } }),
-                trailing = { if (a.id == current) Value("Used for AlwyWatch") else Chevron() },
+                trailing = { if (a.id == current) Value(tr("Used for AlwyWatch")) else Chevron() },
             )
         }
         if (usable.isEmpty()) {
             Divider()
-            ListRow("Add a server", icon = Icons.Add, onClick = { nav.push(Route.AddServer) }, trailing = { Chevron() })
+            ListRow(tr("Add a server"), icon = Icons.Add, onClick = { nav.push(Route.AddServer) }, trailing = { Chevron() })
         }
     }
 
     Group(
-        "AlwyWatch server",
-        footer = "Shows what your server will delete and lets you keep it. Your Jellyfin or Plex account is your sign-in there.",
+        tr("AlwyWatch server"),
+        footer = tr("Shows what your server will delete and lets you keep it. Your Jellyfin or Plex account is your sign-in there."),
     ) {
         if (keep == null) {
             val list = served
@@ -221,7 +225,7 @@ fun AlwyWatchServerGroup(
                     }
                 }
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Not connected. Got an address from your server's owner?", style = MaterialTheme.typography.bodyMedium, color = Muted)
+                    Text(tr("Not connected. Got an address from your server's owner?"), style = MaterialTheme.typography.bodyMedium, color = Muted)
                     Field(
                         url,
                         { url = it },
@@ -231,7 +235,7 @@ fun AlwyWatchServerGroup(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
                         keyboardActions = KeyboardActions(onGo = { find() }),
                     )
-                    ActionButton(if (busy) "Connecting…" else "Connect", { find() }, primary = true)
+                    ActionButton(if (busy) tr("Connecting…") else tr("Connect"), { find() }, primary = true)
                 }
             } else {
                 AccountChoices(url, list, null)
@@ -246,13 +250,17 @@ fun AlwyWatchServerGroup(
                         core.keepMe()
                         null
                     } catch (e: CoreException.Unauthorized) {
-                        "Your account isn't accepted there any more: choose it again below"
+                        tr("Your account isn't accepted there any more: choose it again below")
                     } catch (e: CoreException) {
-                        "Can't reach ${keep.baseUrl}"
+                        tr("Can't reach {address}", "address" to keep.baseUrl)
                     }
             }
             ListRow(
-                "Signed in to AlwyWatch as ${keep.userName}" + if (keep.isAdmin) " · admin" else "",
+                if (keep.isAdmin) {
+                    tr("Signed in to AlwyWatch as {name} · admin", "name" to keep.userName)
+                } else {
+                    tr("Signed in to AlwyWatch as {name}", "name" to keep.userName)
+                },
                 modifier = if (choosing) Modifier else first,
                 subtitle = problem ?: listOfNotNull(syncing?.serverName, keep.baseUrl).joinToString(" · "),
                 icon = Icons.Hourglass,
@@ -262,7 +270,7 @@ fun AlwyWatchServerGroup(
             )
             if (problem != null) {
                 Divider()
-                ListRow("Use another address", subtitle = "Your keep choices stay on the server", icon = Icons.Refresh, onClick = {
+                ListRow(tr("Use another address"), subtitle = tr("Your keep choices stay on the server"), icon = Icons.Refresh, onClick = {
                     core.keepDisconnect()
                     MyAccount.me = null
                     onChanged()
@@ -270,7 +278,7 @@ fun AlwyWatchServerGroup(
             }
             if (keep.isAdmin) {
                 Divider()
-                ListRow("Admin", subtitle = "Rights and countdown", icon = Icons.Settings, onClick = { nav.push(Route.KeepAdmin) }, trailing = {
+                ListRow(tr("Admin"), subtitle = tr("Rights and countdown"), icon = Icons.Settings, onClick = { nav.push(Route.KeepAdmin) }, trailing = {
                     Chevron()
                 })
             }
@@ -289,16 +297,22 @@ fun AlwyWatchServerGroup(
                 }
             } else if (accounts.size > 1) {
                 Divider()
-                ListRow("Use another login for AlwyWatch", subtitle = "Pick which of your sign-ins identifies you there", icon = Icons.Person, onClick = {
-                    choosing = true
-                }, trailing = { Chevron() })
+                ListRow(
+                    tr("Use another login for AlwyWatch"),
+                    subtitle = tr("Pick which of your sign-ins identifies you there"),
+                    icon = Icons.Person,
+                    onClick = {
+                        choosing = true
+                    },
+                    trailing = { Chevron() },
+                )
             }
             Divider()
             var adding by remember { mutableStateOf(false) }
             if (adding) SendToDeviceDialog { adding = false }
             ListRow(
-                "Add a device",
-                subtitle = "Copy your accounts and settings to a new phone, tablet or TV",
+                tr("Add a device"),
+                subtitle = tr("Copy your accounts and settings to a new phone, tablet or TV"),
                 icon = Icons.Add,
                 onClick = { adding = true },
                 trailing = { Chevron() },
@@ -307,10 +321,11 @@ fun AlwyWatchServerGroup(
             var stopping by remember { mutableStateOf(false) }
             if (stopping) {
                 ConfirmDialog(
-                    "Disconnect this device?",
-                    "Leaving soon, keep choices and watch together disappear from this device until you connect again. " +
-                        "Your choices stay on the server.",
-                    confirm = "Disconnect",
+                    tr("Disconnect this device?"),
+                    tr(
+                        "Leaving soon, keep choices and watch together disappear from this device until you connect again. Your choices stay on the server.",
+                    ),
+                    confirm = tr("Disconnect"),
                     onConfirm = {
                         core.keepDisconnect()
                         MyAccount.me = null
@@ -320,8 +335,8 @@ fun AlwyWatchServerGroup(
                 )
             }
             ListRow(
-                "Disconnect this device from AlwyWatch",
-                subtitle = "Leaving soon, keep choices and watch together disappear from this device",
+                tr("Disconnect this device from AlwyWatch"),
+                subtitle = tr("Leaving soon, keep choices and watch together disappear from this device"),
                 icon = Icons.Close,
                 iconTint = Danger,
                 onClick = { stopping = true },
@@ -335,9 +350,9 @@ fun AlwyWatchServerGroup(
             var leaving by remember { mutableStateOf(false) }
             if (leaving) {
                 ConfirmDialog(
-                    "Sign out of your AlwyWatch account?",
-                    "This device is signed out of the account of ${account.name}. Your Jellyfin and Plex sign-ins stay.",
-                    confirm = "Sign out",
+                    tr("Sign out of your AlwyWatch account?"),
+                    tr("This device is signed out of the account of {name}. Your Jellyfin and Plex sign-ins stay.", "name" to account.name),
+                    confirm = tr("Sign out"),
                     onConfirm = {
                         leaving = false
                         scope.launch {
@@ -350,8 +365,8 @@ fun AlwyWatchServerGroup(
                 )
             }
             ListRow(
-                "Sign out of your AlwyWatch account (${account.name})",
-                subtitle = "Only this device is signed out",
+                tr("Sign out of your AlwyWatch account ({name})", "name" to account.name),
+                subtitle = tr("Only this device is signed out"),
                 icon = Icons.Person,
                 onClick = { leaving = true },
             )
@@ -359,12 +374,12 @@ fun AlwyWatchServerGroup(
             val page = account.baseUrl.trimEnd('/') + "/account"
             val isTv = be.alwyapps.watch.ui.LocalDimens.current.isTv
             ListRow(
-                "Manage or delete the account",
+                tr("Manage or delete the account"),
                 subtitle =
                     if (isTv) {
-                        "On a phone or computer, open ${page.removePrefix("https://")}"
+                        tr("On a phone or computer, open {address}", "address" to page.removePrefix("https://"))
                     } else {
-                        "Password, passkeys, devices and deleting the account: opens ${page.removePrefix("https://")}"
+                        tr("Password, passkeys, devices and deleting the account: opens {address}", "address" to page.removePrefix("https://"))
                     },
                 icon = Icons.Settings,
                 onClick = { if (!isTv) openInBrowser(ctx, page) },
@@ -388,14 +403,17 @@ fun RequestsGroup(
     var error by remember(version) { mutableStateOf<String?>(null) }
 
     Group(
-        "Requests",
-        footer = "Ask for movies and shows that aren't on the server yet. It uses a request site (Seerr, Overseerr or Jellyseerr) run by your server's owner.",
+        tr("Requests"),
+        footer =
+            tr(
+                "Ask for movies and shows that aren't on the server yet. It uses a request site (Seerr, Overseerr or Jellyseerr) run by your server's owner.",
+            ),
     ) {
         if (seerr == null) {
             if (keep != null) {
                 ListRow(
-                    "Use your AlwyWatch server",
-                    subtitle = "Nothing to sign in to: it's your ${keep.userName} account",
+                    tr("Use your AlwyWatch server"),
+                    subtitle = tr("Nothing to sign in to: it's your {name} account", "name" to keep.userName),
                     icon = Icons.Hourglass,
                     onClick = {
                         scope.launch {
@@ -403,7 +421,7 @@ fun RequestsGroup(
                                 connectSeerrThroughKeep(core, ctx)
                                 onChanged()
                             } catch (e: CoreException) {
-                                error = "Your AlwyWatch server doesn't offer requests (${e.message})."
+                                error = tr("Your AlwyWatch server doesn't offer requests ({reason}).", "reason" to e.message)
                             }
                         }
                     },
@@ -412,23 +430,28 @@ fun RequestsGroup(
                 Divider()
             }
             ListRow(
-                if (keep != null) "Use a request site directly" else "Turn on requests",
-                subtitle = "With its address and your account there",
+                if (keep != null) tr("Use a request site directly") else tr("Turn on requests"),
+                subtitle = tr("With its address and your account there"),
                 icon = Icons.Add,
                 onClick = { nav.push(Route.SeerrConnect) },
                 trailing = { Chevron() },
             )
         } else {
             ListRow(
-                "Requests",
-                subtitle = "Yours and everyone's · as ${seerr.userName}" + if (seerr.viaKeep) ", through your AlwyWatch server" else "",
+                tr("Requests"),
+                subtitle =
+                    if (seerr.viaKeep) {
+                        tr("Yours and everyone's · as {name}, through your AlwyWatch server", "name" to seerr.userName)
+                    } else {
+                        tr("Yours and everyone's · as {name}", "name" to seerr.userName)
+                    },
                 icon = Icons.Add,
                 iconTint = Accent,
                 onClick = { nav.push(Route.Requests) },
                 trailing = { Chevron() },
             )
             Divider()
-            ListRow("Turn off requests", icon = Icons.Close, iconTint = Danger, onClick = {
+            ListRow(tr("Turn off requests"), icon = Icons.Close, iconTint = Danger, onClick = {
                 core.seerrSignOut()
                 core.setSetting(be.alwyapps.watch.SEERR_OFF, "1")
                 ctx.services.tokens.remove("seerr")

@@ -12,7 +12,11 @@ publish.workspace = true
 uniffi = ["dep:uniffi"]
 
 [dependencies]
+# The client's error sentences (account::explain) in the app's language; the server sends no
+# translated text.
+i18n = { workspace = true }
 net = { workspace = true }
+
 # Device-to-device transfer (X25519 + HKDF + ChaCha20-Poly1305). Already in the tree through
 # rustls, so no size cost; avoids pulling separate crypto crates.
 ring = "0.17"

@@ -2,6 +2,7 @@
 //! Home, libraries, title pages and search. Pages show the last copy kept in the browser at
 //! once, then refresh it (never a blank page for data we already had).
 
+use i18n::tr;
 use std::collections::HashSet;
 
 use leptos::prelude::*;
@@ -97,7 +98,7 @@ async fn load_server(c: &state::Ctx, acc: String, srv: AnyServer) -> ServerHome 
             .filter_map(|(lib, l)| {
                 let r = media_api::recently_added(l.ok()?, LATEST_CARDS as usize);
                 Some((
-                    format!("Recently added · {}", lib.title),
+                    tr!("Recently added · {library}", library = lib.title),
                     tag(r.items),
                     false,
                     r.notes,
@@ -152,7 +153,7 @@ async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
         !started.contains(&i.id) && i.series_id.as_ref().is_none_or(|s| !started.contains(s))
     }));
     let mut rails: Rails = vec![(
-        "Continue watching".into(),
+        tr!("Continue watching"),
         watching,
         true,
         vec![],
@@ -197,12 +198,12 @@ pub fn Home() -> impl IntoView {
             }).collect_view()}
         </div>
         {move || offline.get().then(|| view! {
-            <ErrorText text="Can't reach your servers right now. Showing what was here last time.".to_string() />
+            <ErrorText text=tr!("Can't reach your servers right now. Showing what was here last time.") />
         })}
         {move || match rails.get() {
             None => view! { <Loading /> }.into_any(),
             Some(r) if r.iter().all(|(_, items, _, _, _)| items.is_empty()) && !offline.get() => view! {
-                <p class="muted">"Nothing here yet. Your libraries are above."</p>
+                <p class="muted">{tr!("Nothing here yet. Your libraries are above.")}</p>
             }.into_any(),
             Some(r) => r.into_iter().map(|(t, items, wide, notes, link)| view! { <Rail title=t items=items wide=wide notes=notes see_all=link /> }).collect_view().into_any(),
         }}
@@ -254,7 +255,7 @@ pub fn Library() -> impl IntoView {
         spawn_local(async move {
             let Some(srv) = c.server(&acc) else {
                 total.try_set(Some(0));
-                return error.set(Some("This account isn't signed in any more.".into()));
+                return error.set(Some(tr!("This account isn't signed in any more.")));
             };
             let res = srv.items(&q).await;
             if seq.try_get_value() != Some(mine) {
@@ -286,32 +287,32 @@ pub fn Library() -> impl IntoView {
     });
     view! {
         <div class="chips">
-            <select class="chip" aria-label="Sort by" prop:value=move || sort.get() on:change=move |ev| {
+            <select class="chip" aria-label=tr!("Sort by") prop:value=move || sort.get() on:change=move |ev| {
                 let v = event_target_value(&ev);
                 state::save("aw.lib.sort", &v);
                 sort.set(v);
             }>
-                <option value="title">"A to Z"</option>
-                <option value="added">"Recently added"</option>
-                <option value="released">"Newest releases"</option>
-                <option value="rating">"Best rated"</option>
-                <option value="random">"Random"</option>
+                <option value="title">{tr!("A to Z")}</option>
+                <option value="added">{tr!("Recently added")}</option>
+                <option value="released">{tr!("Newest releases")}</option>
+                <option value="rating">{tr!("Best rated")}</option>
+                <option value="random">{tr!("Random")}</option>
             </select>
-            <select class="chip" aria-label="Genre" prop:value=move || genre.get() on:change=move |ev| genre.set(event_target_value(&ev))>
-                <option value="">"All genres"</option>
+            <select class="chip" aria-label=tr!("Genre") prop:value=move || genre.get() on:change=move |ev| genre.set(event_target_value(&ev))>
+                <option value="">{tr!("All genres")}</option>
                 {move || genres.get().flatten().unwrap_or_default().into_iter().map(|g| view! {
                     <option value=g.id>{g.name}</option>
                 }).collect_view()}
             </select>
-            <button class="chip" class:selected=move || unwatched.get() on:click=move |_| unwatched.update(|u| *u = !*u)>"Not watched"</button>
+            <button class="chip" class:selected=move || unwatched.get() on:click=move |_| unwatched.update(|u| *u = !*u)>{tr!("Not watched")}</button>
         </div>
         {move || total.get().is_none().then(|| view! { <Loading /> })}
-        {move || (total.get() == Some(0) && error.with(Option::is_none)).then(|| view! { <p class="muted">"Nothing matches."</p> })}
+        {move || (total.get() == Some(0) && error.with(Option::is_none)).then(|| view! { <p class="muted">{tr!("Nothing matches.")}</p> })}
         {move || view! { <Grid items=items.get() /> }}
         {move || {
             let n = items.with(|v| v.len() as u32);
             total.get().filter(|&t| t > n).map(|_| view! {
-                <button class="more" on:click=move |_| load(n)>"More"</button>
+                <button class="more" on:click=move |_| load(n)>{tr!("More")}</button>
             })
         }}
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
@@ -331,7 +332,7 @@ pub fn Detail() -> impl IntoView {
             let c = state::ctx();
             let srv = c
                 .server(&acc)
-                .ok_or("This account isn't signed in any more.")?;
+                .ok_or_else(|| tr!("This account isn't signed in any more."))?;
             match srv.item(&id).await {
                 Ok(i) => Ok((srv, i)),
                 Err(e) => {
@@ -351,7 +352,7 @@ pub fn Detail() -> impl IntoView {
                 let poster = state::image(&srv, &i, &[ImageKind::Primary, ImageKind::SeriesPrimary], 240);
                 let meta = [
                     i.year.map(|y| y.to_string()),
-                    i.runtime_ms.map(|r| format!("{} min", r / 60_000)),
+                    i.runtime_ms.map(|r| tr!("{minutes} min", minutes = r / 60_000)),
                     i.official_rating.clone(),
                     i.community_rating.map(|r| format!("★ {r:.1}")),
                     (!i.genres.is_empty()).then(|| i.genres.join(", ")),
@@ -360,8 +361,8 @@ pub fn Detail() -> impl IntoView {
                 let pos = i.user.position_ms;
                 let base = format!("/play/{acc}/{}", i.id);
                 let heading = match i.kind {
-                    ItemKind::Episode => format!("{} · S{} E{}", i.series_title.clone().unwrap_or_default(),
-                        i.season_number.unwrap_or(0), i.episode_number.unwrap_or(0)),
+                    ItemKind::Episode => tr!("{series} · S{season} E{episode}", series = i.series_title.clone().unwrap_or_default(),
+                        season = i.season_number.unwrap_or(0), episode = i.episode_number.unwrap_or(0)),
                     _ => String::new(),
                 };
                 view! {
@@ -376,11 +377,11 @@ pub fn Detail() -> impl IntoView {
                                     <div class="actions">
                                         {if pos > 0 {
                                             view! {
-                                                <A href=format!("{base}?t={pos}") attr:class="button primary">{format!("Resume from {}", fmt_time(pos))}</A>
-                                                <A href=format!("{base}?t=0") attr:class="button">"From start"</A>
+                                                <A href=format!("{base}?t={pos}") attr:class="button primary">{tr!("Resume from {time}", time = fmt_time(pos))}</A>
+                                                <A href=format!("{base}?t=0") attr:class="button">{tr!("From start")}</A>
                                             }.into_any()
                                         } else {
-                                            view! { <A href=format!("{base}?t=0") attr:class="button primary">"Play"</A> }.into_any()
+                                            view! { <A href=format!("{base}?t=0") attr:class="button primary">{tr!("Play")}</A> }.into_any()
                                         }}
                                         {state::ctx().keep.get_untracked().is_some().then(|| view! {
                                             <crate::together::TogetherButton srv=srv.clone() item=i.clone() />
@@ -392,7 +393,7 @@ pub fn Detail() -> impl IntoView {
                                 })}
                                 {(i.kind == ItemKind::Season).then(|| view! {
                                     <crate::extra::MarkAll acc=acc.clone() id=i.id.clone() noun="season"
-                                        what=format!("{} of {}", i.title, i.series_title.clone().unwrap_or_default()) watched=i.user.played />
+                                        what=tr!("{season} of {show}", season = i.title, show = i.series_title.clone().unwrap_or_default()) watched=i.user.played />
                                 })}
                                 <p class="overview">{i.overview.clone().unwrap_or_default()}</p>
                                 {(i.kind == ItemKind::Movie).then(|| view! {
@@ -463,7 +464,7 @@ fn Seasons(acc: String, series: String, show: String, tmdb: Option<i64>) -> impl
     let more_show = show.clone();
     view! {
         {move || matches!(seasons.get(), Some(None)).then(|| view! {
-            <ErrorText text="Couldn't load the seasons.".to_string() />
+            <ErrorText text=tr!("Couldn't load the seasons.") />
         })}
         <div class="season-row">
         {move || seasons.get().flatten().map(|list| {
@@ -493,7 +494,7 @@ fn Seasons(acc: String, series: String, show: String, tmdb: Option<i64>) -> impl
                 let s = seasons.get().flatten()?.into_iter().find(|s| s.id == id)?;
                 Some(view! {
                     <crate::extra::MarkAll acc=acc.clone() id=s.id.clone() noun="season"
-                        what=format!("{} of {}", s.title, show) watched=s.user.played />
+                        what=tr!("{season} of {show}", season = s.title, show = show) watched=s.user.played />
                 })
             }
         }
@@ -518,7 +519,7 @@ fn Episodes(acc: String, series: String, season: String) -> impl IntoView {
     view! {
         {move || match eps.get() {
             None => view! { <Loading /> }.into_any(),
-            Some(None) => view! { <ErrorText text="Couldn't load the episodes.".to_string() /> }.into_any(),
+            Some(None) => view! { <ErrorText text=tr!("Couldn't load the episodes.") /> }.into_any(),
             Some(Some(list)) => view! {
                 <div class="episodes">
                     {list.into_iter().map(|e| view! { <Card acc=acc.clone() item=e wide=true /> }).collect_view()}
@@ -602,15 +603,15 @@ pub fn Search() -> impl IntoView {
         });
     });
     view! {
-        <input class="search" type="search" placeholder="Movies, shows, episodes…" aria-label="Search" node_ref=input
+        <input class="search" type="search" placeholder=tr!("Movies, shows, episodes…") aria-label=tr!("Search") node_ref=input
             prop:value=move || text.get() on:input=move |ev| text.set(event_target_value(&ev)) />
         {move || found.get().map(|f| if f.is_empty() && others.with(|o| o.is_empty()) {
-            view! { <p class="muted">"Nothing found."</p> }.into_any()
+            view! { <p class="muted">{tr!("Nothing found.")}</p> }.into_any()
         } else {
-            view! { {(!f.is_empty()).then(|| view! { <h2>"On your servers"</h2> })}<Grid items=f /> }.into_any()
+            view! { {(!f.is_empty()).then(|| view! { <h2>{tr!("On your servers")}</h2> })}<Grid items=f /> }.into_any()
         })}
         {move || (!others.with(|o| o.is_empty())).then(|| view! {
-            <h2>"Not on your servers"</h2>
+            <h2>{tr!("Not on your servers")}</h2>
             <div class="grid">
                 {others.get().into_iter().map(|r| view! { <Requestable r=r /> }).collect_view()}
             </div>
@@ -624,15 +625,16 @@ pub fn Requestable(r: SeerrResult) -> impl IntoView {
     let label = crate::request::availability_label(r.availability, r.download_progress);
     let show = r.media_type == SeerrMediaType::Tv;
     view! {
-        <A href=crate::request::title_href(r.media_type, r.tmdb_id) attr:class="card">
-            <div class="art">
-                {r.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
-                {label.map(|l| view! { <span class="state on-art">{l}</span> })}
-            </div>
-            <div class="title">{r.title.clone()}</div>
-            <div class="sub">{r.year.clone().unwrap_or_default()}{if show { " · show" } else { "" }}</div>
-        </A>
-    }
+            <A href=crate::request::title_href(r.media_type, r.tmdb_id) attr:class="card">
+                <div class="art">
+                    {r.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
+                    {label.map(|l| view! { <span class="state on-art">{l}</span> })}
+                </div>
+                <div class="title">{r.title.clone()}</div>
+                <div class="sub">{r.year.clone().unwrap_or_default()}{if show { format!(" · {}", tr!("show")) } else { String::new() }}
+    </div>
+            </A>
+        }
 }
 
 /// Everything in Continue watching (its row's "See all"), from the home's last copy.
@@ -643,9 +645,9 @@ pub fn ContinueWatching() -> impl IntoView {
         .map(|(_, items, _, _, _)| items)
         .unwrap_or_default();
     view! {
-        <h1>"Continue watching"</h1>
+        <h1>{tr!("Continue watching")}</h1>
         {if items.is_empty() {
-            view! { <p class="muted">"Nothing in progress."</p> }.into_any()
+            view! { <p class="muted">{tr!("Nothing in progress.")}</p> }.into_any()
         } else {
             view! { <Grid items=items /> }.into_any()
         }}

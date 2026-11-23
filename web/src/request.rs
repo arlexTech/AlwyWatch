@@ -2,6 +2,7 @@
 //! Titles that are not (or not fully) on the servers, through Seerr: their page with the
 //! request button (all or some seasons of a show), and the Requests page (mine, everyone's).
 
+use i18n::{tr, trn};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
@@ -15,8 +16,9 @@ use seerr::{
 use crate::state;
 use crate::ui::{ErrorText, Loading};
 
-const NO_SEERR: &str =
-    "Requests need an account on this AlwyWatch server: sign in with one in Settings.";
+fn no_seerr() -> String {
+    tr!("Requests need an account on this AlwyWatch server: sign in with one in Settings.")
+}
 
 /// Where a title's page is.
 pub fn title_href(kind: SeerrMediaType, tmdb_id: i64) -> String {
@@ -38,7 +40,7 @@ pub fn saga_label(name: &str) -> String {
     if lower.contains("saga") || lower.contains("collection") {
         name.to_owned()
     } else {
-        format!("Saga · {name}")
+        tr!("Saga · {name}", name = name)
     }
 }
 
@@ -56,7 +58,7 @@ pub fn Saga() -> impl IntoView {
     let saga = LocalResource::new(move || {
         let id = id.get();
         async move {
-            let s = state::ctx().seerr().ok_or(NO_SEERR.to_string())?;
+            let s = state::ctx().seerr().ok_or_else(no_seerr)?;
             s.collection(id).await.map_err(|e| plain_error(&e))
         }
     });
@@ -66,7 +68,7 @@ pub fn Saga() -> impl IntoView {
             Some(Err(e)) => view! { <ErrorText text=e /> }.into_any(),
             Some(Ok(c)) => view! {
                 <h1>{c.name.clone()}</h1>
-                <p class="muted">{format!("{} films", c.parts.len())}</p>
+                <p class="muted">{trn!("{n} film", "{n} films", c.parts.len())}</p>
                 {c.overview.clone().map(|o| view! { <p class="overview">{o}</p> })}
                 <div class="grid">
                     {c.parts.into_iter().map(|r| view! { <crate::browse::Requestable r=r /> }).collect_view()}
@@ -79,15 +81,15 @@ pub fn Saga() -> impl IntoView {
 /// The state of a title as one label, like the apps ("Requested", "Downloading 42%"…).
 pub fn availability_label(a: Availability, progress: Option<f32>) -> Option<String> {
     if let Some(p) = progress {
-        return Some(format!("Downloading {}%", (p * 100.0) as u32));
+        return Some(tr!("Downloading {percent}%", percent = (p * 100.0) as u32));
     }
     match a {
-        Availability::Available => Some("Available".into()),
-        Availability::PartiallyAvailable => Some("Partly available".into()),
+        Availability::Available => Some(tr!("Available")),
+        Availability::PartiallyAvailable => Some(tr!("Partly available")),
         // Seerr's "processing": approved, not on the server yet.
-        Availability::Processing => Some("Requested".into()),
-        Availability::Pending => Some("Waiting for approval".into()),
-        Availability::Blocklisted => Some("Blocked".into()),
+        Availability::Processing => Some(tr!("Requested")),
+        Availability::Pending => Some(tr!("Waiting for approval")),
+        Availability::Blocklisted => Some(tr!("Blocked")),
         Availability::Deleted | Availability::Unknown => None,
     }
 }
@@ -101,14 +103,16 @@ pub fn requestable(a: Availability) -> bool {
 pub fn plain_error(e: &Error) -> String {
     match e {
         Error::Unauthorized => {
-            "Your AlwyWatch session has expired or you're not allowed to do this. Sign in again in Settings.".into()
+            tr!(
+                "Your AlwyWatch session has expired or you're not allowed to do this. Sign in again in Settings."
+            )
         }
-        Error::NotFound => "Seerr doesn't know this title.".into(),
-        Error::Network { .. } => "Can't reach your AlwyWatch server right now.".into(),
-        Error::Status { status: 403 } => "Seerr doesn't allow you to do this.".into(),
-        Error::Status { status: 409 } => "It has already been requested.".into(),
+        Error::NotFound => tr!("Seerr doesn't know this title."),
+        Error::Network { .. } => tr!("Can't reach your AlwyWatch server right now."),
+        Error::Status { status: 403 } => tr!("Seerr doesn't allow you to do this."),
+        Error::Status { status: 409 } => tr!("It has already been requested."),
         Error::Status { status } if *status >= 500 => {
-            "Seerr had a problem. Try again in a moment.".into()
+            tr!("Seerr had a problem. Try again in a moment.")
         }
         other => other.to_string(),
     }
@@ -119,7 +123,9 @@ pub fn plain_error(e: &Error) -> String {
 pub fn request_error(e: &Error) -> String {
     match e {
         Error::Unauthorized | Error::Status { status: 403 } => {
-            "Seerr refused: you may have no requests left, or not be allowed to request. If it keeps happening, sign in again in Settings.".into()
+            tr!(
+                "Seerr refused: you may have no requests left, or not be allowed to request. If it keeps happening, sign in again in Settings."
+            )
         }
         other => plain_error(other),
     }
@@ -133,9 +139,13 @@ fn forget_requests() {
 
 fn runtime(min: u32) -> String {
     if min >= 60 {
-        format!("{} h {} min", min / 60, min % 60)
+        tr!(
+            "{hours} h {minutes} min",
+            hours = min / 60,
+            minutes = min % 60
+        )
     } else {
-        format!("{min} min")
+        tr!("{minutes} min", minutes = min)
     }
 }
 
@@ -143,10 +153,9 @@ fn runtime(min: u32) -> String {
 /// missing ones (every season when nothing of the show is there or asked for yet).
 pub fn seasons_button(chosen: usize, has_some: bool) -> String {
     match chosen {
-        0 if has_some => "Request the missing seasons".into(),
-        0 => "Request all seasons".into(),
-        1 => "Request 1 season".into(),
-        n => format!("Request {n} seasons"),
+        0 if has_some => tr!("Request the missing seasons"),
+        0 => tr!("Request all seasons"),
+        n => trn!("Request {n} season", "Request {n} seasons", n),
     }
 }
 
@@ -171,7 +180,7 @@ pub fn SeerrTitle() -> impl IntoView {
         reload.track();
         let (kind, tmdb) = (kind.get(), tmdb.get());
         async move {
-            let s = state::ctx().seerr().ok_or(NO_SEERR.to_string())?;
+            let s = state::ctx().seerr().ok_or_else(no_seerr)?;
             s.title(kind, tmdb).await.map_err(|e| plain_error(&e))
         }
     });
@@ -194,9 +203,8 @@ fn TitleView(
     let meta = [
         t.year.clone(),
         show.then(|| match t.seasons {
-            Some(1) => "1 season".to_string(),
-            Some(n) => format!("{n} seasons"),
-            None => "Show".to_string(),
+            Some(n) => trn!("{n} season", "{n} seasons", n),
+            None => tr!("Show"),
         }),
         t.runtime_min.map(runtime),
         t.rating.map(|r| format!("★ {r:.1}")),
@@ -229,9 +237,10 @@ fn TitleView(
                 {t.poster_url.clone().map(|p| view! { <img class="hero-poster" src=p alt="" /> })}
                 <div>
                     <p class="muted">{match (show, t.availability) {
-                        (true, Availability::PartiallyAvailable) => "Show · partly on your servers",
-                        (true, _) => "Show · not on your servers",
-                        _ => "Movie · not on your servers",
+                        (true, Availability::PartiallyAvailable) => tr!("Show · partly on your servers"),
+                        (true, _) => tr!("Show · not on your servers"),
+                        _ => tr!("Movie · not on your servers"),
+
                     }}</p>
                     <h1>{t.title.clone()}</h1>
                     <p class="muted">{meta}</p>
@@ -244,7 +253,7 @@ fn TitleView(
             </div>
         </div>
         {(!cast.is_empty()).then(|| view! {
-            <h2>"Cast"</h2>
+            <h2>{tr!("Cast")}</h2>
             <div class="rail-row">
                 {cast.into_iter().map(|p| view! {
                     <div class="person-card">
@@ -273,7 +282,7 @@ fn RequestPanel(
     if kind == SeerrMediaType::Tv {
         spawn_local(async move {
             let Some(s) = state::ctx().seerr() else {
-                return seasons.set(Some(Err(NO_SEERR.into())));
+                return seasons.set(Some(Err(no_seerr())));
             };
             seasons.try_set(Some(s.season_info(id).await.map_err(|e| plain_error(&e))));
         });
@@ -289,7 +298,7 @@ fn RequestPanel(
             return;
         }
         let Some(s) = state::ctx().seerr() else {
-            return message.set(Some(NO_SEERR.into()));
+            return message.set(Some(no_seerr()));
         };
         busy.set(true);
         let mut numbers = chosen.get_untracked();
@@ -306,12 +315,16 @@ fn RequestPanel(
                 Ok(_) => {
                     forget_requests();
                     if numbers.is_empty() {
-                        format!("Requested: {name}")
+                        tr!("Requested: {title}", title = name)
                     } else {
                         seasons_requested_message(&numbers)
                     }
                 }
-                Err(e) => format!("Couldn't request {name}: {}", request_error(&e)),
+                Err(e) => tr!(
+                    "Couldn't request {title}: {error}",
+                    title = name,
+                    error = request_error(&e)
+                ),
             }));
             busy.set(false);
             reload.update(|r| *r += 1);
@@ -322,14 +335,14 @@ fn RequestPanel(
             view! {
                 <div class="actions">
                     <button class="primary" disabled=move || busy.get() on:click=move |_| send()>
-                        {move || if busy.get() { "Requesting…" } else { "Request" }}
+                        {move || if busy.get() { tr!("Requesting…") } else { tr!("Request") }}
                     </button>
                 </div>
             }.into_any()
         } else {
             view! {
                 {move || match (seasons.get(), plan.get()) {
-                    (None, _) => view! { <p class="muted">"Loading seasons…"</p> }.into_any(),
+                    (None, _) => view! { <p class="muted">{tr!("Loading seasons…")}</p> }.into_any(),
                     (Some(Err(e)), _) => view! { <ErrorText text=e /> }.into_any(),
                     (_, None) => ().into_any(),
                     (Some(Ok(_)), Some(plan)) => {
@@ -338,12 +351,12 @@ fn RequestPanel(
                         let nothing = plan.missing.is_empty();
                         view! {
                             {if nothing {
-                                view! { <p class="muted">"Every season is on your servers or already requested."</p> }.into_any()
+                                view! { <p class="muted">{tr!("Every season is on your servers or already requested.")}</p> }.into_any()
                             } else {
                                 view! {
                                     <div class="actions">
                                         <button class="primary" disabled=move || busy.get() on:click=move |_| send()>
-                                            {move || if busy.get() { "Requesting…".to_string() } else { seasons_button(chosen.with(Vec::len), has_some) }}
+                                            {move || if busy.get() { tr!("Requesting…") } else { seasons_button(chosen.with(Vec::len), has_some) }}
                                         </button>
                                     </div>
                                 }.into_any()
@@ -367,9 +380,9 @@ fn RequestPanel(
                             </div>
                             {(!nothing).then(|| view! {
                                 <p class="muted small">{if has_some {
-                                    "Pick seasons to request only those, or none for all the missing ones."
+                                    tr!("Pick seasons to request only those, or none for all the missing ones.")
                                 } else {
-                                    "Pick seasons to request only those, or none for all of them."
+                                    tr!("Pick seasons to request only those, or none for all of them.")
                                 }}</p>
                             })}
                         }.into_any()
@@ -407,7 +420,7 @@ pub fn MoreSeasons(tmdb: i64, show: String, have: Signal<Vec<u32>>) -> impl Into
     view! {
         {move || plan.with(|p| p.as_ref().is_some_and(|p| !p.missing.is_empty())).then(|| view! {
             <button class="small subtle more-seasons" node_ref=button on:click=move |_| open.set(true)>
-                "+ More seasons"
+                {tr!("+ More seasons")}
             </button>
         })}
         {move || open.get().then(|| view! {
@@ -436,7 +449,7 @@ fn SeasonsDialog(
             return;
         }
         let Some(s) = state::ctx().seerr() else {
-            return error.set(Some(NO_SEERR.into()));
+            return error.set(Some(no_seerr()));
         };
         numbers.sort_unstable();
         busy.set(true);
@@ -453,9 +466,9 @@ fn SeasonsDialog(
                     }
                 }
                 Err(e) => {
-                    error.try_set(Some(format!(
-                        "Couldn't request them: {}",
-                        request_error(&e)
+                    error.try_set(Some(tr!(
+                        "Couldn't request them: {error}",
+                        error = request_error(&e)
                     )));
                 }
             }
@@ -475,7 +488,7 @@ fn SeasonsDialog(
             on:keydown=move |ev| if ev.key() == "Escape" { close2() }>
             <div class="dialog seasons" role="dialog" aria-modal="true" aria-labelledby="more-seasons-title"
                 on:click=|ev| ev.stop_propagation()>
-                <h2 id="more-seasons-title">"Request more seasons"</h2>
+                <h2 id="more-seasons-title">{tr!("Request more seasons")}</h2>
                 <p class="muted">{show}</p>
                 {move || plan.get().map(|p| {
                     let first_open = p.missing.first().copied();
@@ -525,21 +538,20 @@ fn SeasonsDialog(
                         <div class="actions">
                             {(missing.len() > 1).then(|| {
                                 let all = missing.clone();
-                                view! { <button on:click=move |_| chosen.set(all.clone())>"Select all missing"</button> }
+                                view! { <button on:click=move |_| chosen.set(all.clone())>{tr!("Select all missing")}</button> }
                             })}
                             {(!missing.is_empty()).then(|| view! {
                                 <button class="primary" disabled=move || busy.get() || n() == 0 on:click=move |_| send()>
                                     {move || match (busy.get(), n()) {
-                                        (true, _) => "Requesting…".to_string(),
-                                        (_, 1) => "Request 1 season".to_string(),
-                                        (_, k) => format!("Request {k} seasons"),
+                                        (true, _) => tr!("Requesting…"),
+                                        (_, k) => trn!("Request {n} season", "Request {n} seasons", k),
                                     }}
                                 </button>
                             })}
                             <button on:click={
                                 let c = close3.clone();
                                 move |_| c()
-                            }>"Close"</button>
+                            }>{tr!("Close")}</button>
                         </div>
                     }
                 })}
@@ -548,15 +560,15 @@ fn SeasonsDialog(
     }
 }
 
-fn request_state(r: &SeerrRequest) -> &'static str {
+fn request_state(r: &SeerrRequest) -> String {
     match (r.status, r.availability) {
-        (_, Availability::Available) | (RequestStatus::Completed, _) => "Available",
-        (_, Availability::PartiallyAvailable) => "Partly available",
-        (RequestStatus::Declined, _) => "Declined",
-        (RequestStatus::Failed, _) => "Failed",
-        (RequestStatus::Pending, _) => "Waiting for approval",
-        (_, Availability::Processing) => "Downloading",
-        _ => "Approved",
+        (_, Availability::Available) | (RequestStatus::Completed, _) => tr!("Available"),
+        (_, Availability::PartiallyAvailable) => tr!("Partly available"),
+        (RequestStatus::Declined, _) => tr!("Declined"),
+        (RequestStatus::Failed, _) => tr!("Failed"),
+        (RequestStatus::Pending, _) => tr!("Waiting for approval"),
+        (_, Availability::Processing) => tr!("Downloading"),
+        _ => tr!("Approved"),
     }
 }
 
@@ -602,7 +614,7 @@ pub fn Requests() -> impl IntoView {
         list.set(state::load::<Vec<SeerrRequest>>(cache(all)).map(Ok));
         spawn_local(async move {
             let Some(s) = state::ctx().seerr() else {
-                return list.set(Some(Err(NO_SEERR.to_string())));
+                return list.set(Some(Err(no_seerr())));
             };
             let res = s.requests(50, all).await;
             if seq.try_get_value() != Some(mine) {
@@ -616,12 +628,12 @@ pub fn Requests() -> impl IntoView {
                 Err(Error::Unauthorized | Error::Status { status: 403 }) if all => {
                     state::save(EVERYONE, &false);
                     everyone_ok.set(false);
-                    Err("Only Seerr managers can see everyone's requests.".to_string())
+                    Err(tr!("Only Seerr managers can see everyone's requests."))
                 }
                 // Offline: what was shown stays.
                 Err(_) if list.with_untracked(|l| matches!(l, Some(Ok(_)))) => return,
                 Err(Error::NotFound) => {
-                    Err("Requests aren't available on this AlwyWatch server.".to_string())
+                    Err(tr!("Requests aren't available on this AlwyWatch server."))
                 }
                 Err(e) => Err(plain_error(&e)),
             };
@@ -629,19 +641,19 @@ pub fn Requests() -> impl IntoView {
         });
     });
     view! {
-        <h1>"Requests"</h1>
-        <p class="muted">"To ask for something new, search for it."</p>
+        <h1>{tr!("Requests")}</h1>
+        <p class="muted">{tr!("To ask for something new, search for it.")}</p>
         <Show when=move || everyone_ok.get()>
             <div class="chips">
-                <button class="chip" class:selected=move || !all.get() on:click=move |_| all.set(false)>"Mine"</button>
-                <button class="chip" class:selected=move || all.get() on:click=move |_| all.set(true)>"Everyone"</button>
+                <button class="chip" class:selected=move || !all.get() on:click=move |_| all.set(false)>{tr!("Mine")}</button>
+                <button class="chip" class:selected=move || all.get() on:click=move |_| all.set(true)>{tr!("Everyone")}</button>
             </div>
         </Show>
         {move || match list.get() {
             None => view! { <Loading /> }.into_any(),
             Some(Err(e)) => view! { <ErrorText text=e /> }.into_any(),
             Some(Ok(l)) if l.is_empty() => view! {
-                <p class="muted">{if all.get_untracked() { "No requests." } else { "You haven't requested anything yet." }}</p>
+                <p class="muted">{if all.get_untracked() { tr!("No requests.") } else { tr!("You haven't requested anything yet.") }}</p>
             }.into_any(),
             Some(Ok(l)) => {
                 let who = all.get_untracked();
@@ -649,15 +661,22 @@ pub fn Requests() -> impl IntoView {
                     <div class="leaving">
                         {l.into_iter().map(|r| {
                             let state = request_state(&r);
-                            let kind = if r.media_type == SeerrMediaType::Tv { "Show" } else { "Movie" };
+                            let show = r.media_type == SeerrMediaType::Tv;
                             let day = r.created_at.chars().take(10).collect::<String>();
-                            let by = (who && !r.requested_by.is_empty()).then(|| format!(" by {}", r.requested_by));
+                            let by = who && !r.requested_by.is_empty();
+                            let line = match (show, by) {
+                                (true, true) => tr!("Show · requested {date} by {name}", date = day, name = r.requested_by),
+                                (true, false) => tr!("Show · requested {date}", date = day),
+                                (false, true) => tr!("Movie · requested {date} by {name}", date = day, name = r.requested_by),
+                                (false, false) => tr!("Movie · requested {date}", date = day),
+                            };
                             view! {
                                 <A href=title_href(r.media_type, r.tmdb_id) attr:class="leaving-row">
                                     {r.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
                                     <div class="leaving-info">
                                         <strong>{r.title.clone().unwrap_or_else(|| format!("TMDB {}", r.tmdb_id))}</strong>
-                                        <span class="muted">{kind}" · requested "{day}{by}</span>
+                                        <span class="muted">{line}</span>
+
                                         <span class="accent small">{state}</span>
                                     </div>
                                 </A>

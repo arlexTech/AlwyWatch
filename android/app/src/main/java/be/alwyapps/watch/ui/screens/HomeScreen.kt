@@ -72,6 +72,7 @@ import be.alwyapps.watch.ui.fadeEdges
 import be.alwyapps.watch.ui.logo
 import be.alwyapps.watch.ui.rememberSwr
 import be.alwyapps.watch.ui.subtitle
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -211,7 +212,7 @@ private fun Rails(
     // posters with progress (an episode shows its show's poster), on TV too.
     val account = LocalAccount.current
     Rail(
-        "Continue watching",
+        tr("Continue watching"),
         h.continueWatching,
         open,
         onFocus,
@@ -249,7 +250,7 @@ private fun Rails(
             }
         }
         Rail(
-            if (d.isTv) "New in ${rail.library.title}" else "Recently added in ${rail.library.title}",
+            if (d.isTv) tr("New in {library}", "library" to rail.library.title) else tr("Recently added in {library}", "library" to rail.library.title),
             rail.items,
             openNoted,
             onFocus,
@@ -324,7 +325,8 @@ private fun PhoneHome(
                 if (offline && active > 0) {
                     item(key = "active") {
                         ActionButton(
-                            "Downloading $active" + (runningPct?.let { " · $it%" } ?: "") + " · manage",
+                            runningPct?.let { tr("Downloading {count} · {percent}% · manage", "count" to active, "percent" to it) }
+                                ?: tr("Downloading {count} · manage", "count" to active),
                             { nav.push(Route.ManageDownloads) },
                             Modifier.padding(horizontal = d.gutter, vertical = 8.dp),
                             icon = Icons.Download,
@@ -366,7 +368,7 @@ private fun PhoneHome(
                     if (h.continueWatching.isEmpty() && h.latest.all { it.items.isEmpty() }) {
                         item {
                             Text(
-                                if (offline) "Nothing downloaded yet. Download from a movie or show page." else "Nothing here yet.",
+                                if (offline) tr("Nothing downloaded yet. Download from a movie or show page.") else tr("Nothing here yet."),
                                 Modifier.padding(d.gutter),
                                 color = Muted,
                             )
@@ -455,9 +457,9 @@ private fun HomeTopBar(
                             .FontWeight(800),
                 ),
         )
-        TopIcon(Icons.Bookmark, "My list") { nav.push(Route.Watchlist) }
-        TopIcon(Icons.Search, "Search") { nav.push(Route.Search) }
-        TopIcon(Icons.Download, if (offline) "Leave downloads" else "Downloads", active = offline, onClick = onToggleDownloads)
+        TopIcon(Icons.Bookmark, tr("My list")) { nav.push(Route.Watchlist) }
+        TopIcon(Icons.Search, tr("Search")) { nav.push(Route.Search) }
+        TopIcon(Icons.Download, if (offline) tr("Leave downloads") else tr("Downloads"), active = offline, onClick = onToggleDownloads)
         // You: with several profiles on the device, who's watching (one tap to switch, and the
         // settings); else straight to the settings.
         val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -482,7 +484,7 @@ private fun HomeTopBar(
                 .clip(androidx.compose.foundation.shape.CircleShape)
                 .background(Brush.linearGradient(listOf(be.alwyapps.watch.ui.Accent, Color(0xFFFF6A3D))))
                 .clickable(
-                    onClickLabel = if (profile != null) "Switch profile, settings" else "Settings",
+                    onClickLabel = if (profile != null) tr("Switch profile, settings") else tr("Settings"),
                     role = androidx.compose.ui.semantics.Role.Button,
                 ) { if (profile != null) switching = true else nav.push(Route.Settings) },
             contentAlignment = Alignment.Center,
@@ -538,7 +540,7 @@ private fun ServerStatus(
     val nav = LocalNavigator.current
     val ctx = LocalContext.current
     val d = LocalDimens.current
-    val server = remember(account) { runCatching { core.accounts() }.getOrNull()?.firstOrNull { it.id == account }?.serverName ?: "your server" }
+    val server = remember(account) { runCatching { core.accounts() }.getOrNull()?.firstOrNull { it.id == account }?.serverName ?: tr("your server") }
     var state by remember(account) { mutableStateOf<Reach>(Reach.Checking) }
     var attempt by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     // Short checks stay invisible: the card shows only after a moment without an answer.
@@ -560,7 +562,7 @@ private fun ServerStatus(
         val online =
             cm?.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
         if (!online) {
-            state = Reach.Failed("You're offline.")
+            state = Reach.Failed(tr("You're offline."))
             onReachable(false)
             return@LaunchedEffect
         }
@@ -574,7 +576,7 @@ private fun ServerStatus(
                 core.ping(account)
                 Reach.Ok
             } catch (e: be.alwyapps.watch.core.CoreException) {
-                Reach.Failed(e.message ?: "Unknown error")
+                Reach.Failed(e.message ?: tr("Unknown error"))
             }
         reveal.cancel()
         onReachable(state == Reach.Ok)
@@ -603,11 +605,11 @@ private fun ServerStatus(
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (s is Reach.Failed) "Can't reach $server" else "Looking for $server…",
+                    if (s is Reach.Failed) tr("Can't reach {server}", "server" to server) else tr("Looking for {server}…", "server" to server),
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    if (s is Reach.Failed) s.message else "Your downloads are ready if you don't want to wait.",
+                    if (s is Reach.Failed) s.message else tr("Your downloads are ready if you don't want to wait."),
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                     maxLines = 3,
@@ -616,8 +618,8 @@ private fun ServerStatus(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionButton("Go to downloads", onDownloads, primary = true, icon = Icons.Download)
-            if (s is Reach.Failed) ActionButton("Retry", { attempt++ })
+            ActionButton(tr("Go to downloads"), onDownloads, primary = true, icon = Icons.Download)
+            if (s is Reach.Failed) ActionButton(tr("Retry"), { attempt++ })
         }
     }
 }
@@ -664,7 +666,11 @@ fun HeroMeta(
                 label
             } else if (item.kind == ItemKind.EPISODE) {
                 listOfNotNull(
-                    if (item.seasonNumber != null && item.episodeNumber != null) "S${item.seasonNumber} · E${item.episodeNumber}" else null,
+                    if (item.seasonNumber != null && item.episodeNumber != null) {
+                        tr("S{season} · E{episode}", "season" to item.seasonNumber, "episode" to item.episodeNumber)
+                    } else {
+                        null
+                    },
                     item.runtimeMs?.let {
                         be.alwyapps.watch.ui
                             .formatRuntime(it.toLong())
@@ -837,7 +843,7 @@ private fun HeroText(
                     Text(
                         listOfNotNull(
                             gone.year?.toString(),
-                            if (gone.kind == "show") "Show" else "Movie",
+                            if (gone.kind == "show") tr("Show") else tr("Movie"),
                             gone.leavesLabel(),
                         ).joinToString("  ·  "),
                         style = MaterialTheme.typography.bodyMedium,

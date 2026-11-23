@@ -40,6 +40,7 @@ import be.alwyapps.watch.ui.Field
 import be.alwyapps.watch.ui.LocalCore
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.Subtle
+import be.alwyapps.watch.ui.tr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -160,7 +161,7 @@ fun ReceiveFromDevice(
                         runCatching { core.syncSettings() }
                         onAccount()
                     } else {
-                        error = "Nothing to copy: that device has no accounts."
+                        error = tr("Nothing to copy: that device has no accounts.")
                     }
                     return@LaunchedEffect
                 }
@@ -177,7 +178,7 @@ fun ReceiveFromDevice(
                 .quickConnectUrl(url, it.code)
         }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("SIGN IN WITH A CODE", style = MaterialTheme.typography.labelSmall, color = Accent)
+        Text(tr("SIGN IN WITH A CODE"), style = MaterialTheme.typography.labelSmall, color = Accent)
         androidx.compose.foundation.layout.Row(
             horizontalArrangement = Arrangement.spacedBy(24.dp),
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
@@ -185,17 +186,17 @@ fun ReceiveFromDevice(
             page?.let { QrImage(it) }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(code?.code?.chunked(3)?.joinToString(" ") ?: "…", style = MaterialTheme.typography.displayLarge)
-                Text("Scan with your phone, or open", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                Text(tr("Scan with your phone, or open"), color = Muted, style = MaterialTheme.typography.bodyMedium)
                 page?.let { Text(it.removePrefix("https://"), style = MaterialTheme.typography.titleMedium) }
             }
         }
         Text(
-            "Or on a device where you're signed in: Settings → AlwyWatch & requests → Add a device, and type this code.",
+            tr("Or on a device where you're signed in: Settings → AlwyWatch & requests → Add a device, and type this code."),
             color = Muted,
             style = MaterialTheme.typography.bodyMedium,
         )
-        code?.let { Text("Check number: ${it.check}. It must match if the other device shows one.", color = Subtle) }
-        Text("Waiting for the other device…", style = MaterialTheme.typography.bodySmall, color = Subtle)
+        code?.let { Text(tr("Check number: {number}. It must match if the other device shows one.", "number" to it.check), color = Subtle) }
+        Text(tr("Waiting for the other device…"), style = MaterialTheme.typography.bodySmall, color = Subtle)
         error?.let { Text(it, color = Danger) }
     }
 }
@@ -223,7 +224,7 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
                 request = core.transferPeer(code)
                 error = null
             } catch (e: CoreException) {
-                error = if (e is CoreException.NotFound) "Unknown or expired code." else e.message
+                error = if (e is CoreException.NotFound) tr("Unknown or expired code.") else e.message
             } finally {
                 busy = false
             }
@@ -232,16 +233,16 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Background,
-        title = { Text(if (sent) "Sent" else "Add a device") },
+        title = { Text(if (sent) tr("Sent") else tr("Add a device")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 be.alwyapps.watch.ui
                     .NoAutofill()
                 val r = request
                 when {
-                    sent -> Text("Your accounts and settings are on their way. The other device signs in by itself.", color = Muted)
+                    sent -> Text(tr("Your accounts and settings are on their way. The other device signs in by itself."), color = Muted)
                     r == null -> {
-                        Text("On the new device, choose “Sign in with a code”, then type the code it shows here.", color = Muted)
+                        Text(tr("On the new device, choose “Sign in with a code”, then type the code it shows here."), color = Muted)
                         Field(
                             code,
                             { code = it.filter(Char::isDigit).take(6) },
@@ -259,10 +260,10 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
                         )
                     }
                     else -> {
-                        Text("Send your accounts and settings to “${r.device}”?", style = MaterialTheme.typography.titleSmall)
-                        Text("Check number", color = Muted, style = MaterialTheme.typography.bodySmall)
+                        Text(tr("Send your accounts and settings to “{device}”?", "device" to r.device), style = MaterialTheme.typography.titleSmall)
+                        Text(tr("Check number"), color = Muted, style = MaterialTheme.typography.bodySmall)
                         Text(r.check, style = MaterialTheme.typography.displaySmall, color = Accent)
-                        Text("Only send if the new device shows the same number.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                        Text(tr("Only send if the new device shows the same number."), color = Muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodySmall) }
@@ -271,10 +272,10 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
         confirmButton = {
             val r = request
             when {
-                sent -> ActionButton("Done", onDismiss, primary = true)
-                r == null -> ActionButton(if (busy) "Checking…" else "Continue", { lookUp() }, primary = true)
+                sent -> ActionButton(tr("Done"), onDismiss, primary = true)
+                r == null -> ActionButton(if (busy) tr("Checking…") else tr("Continue"), { lookUp() }, primary = true)
                 else ->
-                    ActionButton(if (busy) "Sending…" else "Send", {
+                    ActionButton(if (busy) tr("Sending…") else tr("Send"), {
                         if (busy) return@ActionButton
                         busy = true
                         scope.launch {
@@ -290,6 +291,6 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
                     }, primary = true)
             }
         },
-        dismissButton = { if (!sent) ActionButton("Cancel", onDismiss) },
+        dismissButton = { if (!sent) ActionButton(tr("Cancel"), onDismiss) },
     )
 }
