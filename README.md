@@ -28,9 +28,12 @@ Platforms: Android phones and tablets, Android TV, Linux and Windows desktop, an
 * **Windows**: `scripts/package.sh windows` builds an installer in `dist/`.
 * **Web**: nothing to install; it is served by `alwywatch-server` at its address.
 
-First launch: choose "I was given an AlwyWatch address" if the person who runs your server
-gave you one, otherwise "I have a Jellyfin or Plex login". A TV or second device can be signed
-in with a code from a device that already is.
+First launch: "Sign in to AlwyWatch" with the address the person who runs your server gave
+you, "Create an AlwyWatch account" with an invitation, or "Jellyfin or Plex only". A TV or
+second device can be signed in with a code from a device that already is.
+
+The server (`alwywatch-server`, one small container) is set up in its web app, like the *arr
+apps: [docs/deploy.md](docs/deploy.md).
 
 ## Features
 

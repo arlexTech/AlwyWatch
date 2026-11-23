@@ -18,7 +18,7 @@ X-AlwyWatch-Server: <allow-listed server id>
 * Plex: the user's **plex.tv account token**. The server calls plex.tv `/api/v2/user` and
   `/api/v2/resources`; the user must have access to the allow-listed Plex server; its owner is admin.
 
-The server id must be in the allow-list (`[[servers]]` in `config.toml`, the same list
+The server id must be in the allow-list (the media servers in Server settings, the same list
 `/v1/servers` returns). An [AlwyWatch account](#alwywatch-accounts) session is the other way
 in (`Bearer aws_…`, no `X-AlwyWatch-Server`), for the account itself, the profile, settings and
 Quick Connect only. Media-server results are cached 10

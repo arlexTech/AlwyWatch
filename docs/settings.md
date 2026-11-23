@@ -92,21 +92,24 @@ The list of requests is a page of the menu (phone: the bottom bar), not part of 
 * **Invitations**: a new invitation (how many days, how many people) shows its code and link
   (`account_invite(days, uses)`; web: `KeepClient`). Phones can share it; TV shows the code and
   the link to type elsewhere.
+* **Server settings** (web app; native apps open it in the browser, TV shows its address):
+  media servers, keys, Maintainerr, Seerr, Tautulli, email, sign-up, Pocket ID, webhooks, test
+  mode; a Test button per section (docs/deploy.md).
 * **Server status** (read only, `GET /v1/admin/status`: core `keep_admin_status()`, web
   `KeepClient::admin_status()`), each line with what to change:
 
 | Line | Shown |
 |---|---|
-| Test mode (`dry_run`) | "Test mode: nothing is changed in Maintainerr or Seerr. Remove ALWYWATCH_DRY_RUN from .env and restart." |
-| Maintainerr `off` | "Off. Add a [maintainerr] block (url, server) to config.toml and restart." |
+| Test mode (`dry_run`) | "Test mode: nothing is changed in Maintainerr or Seerr. Turn it off in Server settings." |
+| Maintainerr `off` | "Off. Add Maintainerr in Server settings." |
 | Maintainerr `starting` | "Reading Maintainerr for the first time…" |
-| Maintainerr `unreachable` | "Can't reach Maintainerr. Check [maintainerr] url, the Docker network, and MAINTAINERR_API_KEY if it uses one." |
+| Maintainerr `unreachable` | "Can't reach Maintainerr. Check its address and API key in Server settings (Test)." |
 | Maintainerr `ok` | "Maintainerr *version* · read *time* ago · *n* titles leaving" |
-| Requests on / off | "On: every app requests as each person's Seerr user." / "Off: only direct request-site logins work. Turn on with [seerr] in config.toml and SEERR_API_KEY in .env." |
-| No Jellyfin key | "Jellyfin keeps don't end by themselves. Set JELLYFIN_API_KEY." |
-| No Tautulli | "Plex keeps don't end by themselves. Add [tautulli] and TAUTULLI_API_KEY." |
-| No webhooks | "Optional: watched titles are noticed within 15 min. For instant, set WEBHOOK_SECRET." |
-| Passkeys off | "Off: set ALWYWATCH_PUBLIC_URL (https)" |
+| Requests on / off | "On: every app requests as each person's Seerr user." / "Off: only direct request-site logins work. Add Seerr in Server settings." |
+| No Jellyfin key | "Jellyfin keeps don't end by themselves. Add the Jellyfin server again in Server settings (it makes its key)." |
+| No Tautulli | "Plex keeps don't end by themselves. Add Tautulli in Server settings." |
+| No webhooks | "Optional: watched titles are noticed within 15 min. For instant, paste the webhook addresses from Server settings." |
+| Passkeys off | "Off: set this site's address in Server settings" |
 | Pocket ID, new accounts | On/off; who may create an account (an invitation, anyone, closed) |
 
 ## Add a profile (and first launch)

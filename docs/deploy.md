@@ -3,7 +3,7 @@
 `alwywatch-server` is the optional server side of AlwyWatch: one small Docker container. It
 can run anywhere that can reach your services over the network: on the same machine as
 Jellyfin/Plex and Maintainerr, or on another one (a VPS, for instance), with their addresses
-in its config. Nothing else has to be installed next to it.
+in its settings. Nothing else has to be installed next to it.
 
 It also works on its own for the web app, accounts, watch together and device sign-in: the
 only thing it always needs is at least one Jellyfin or Plex server for people to sign in to.
@@ -26,7 +26,7 @@ Maintainerr (Leaving soon), Tautulli and Seerr are optional additions.
   keep ends, and can restart deletion countdowns when an admin asks. It never activates or
   deletes a collection, and never deletes media.
 * **Seerr** (only with the Seerr bridge): it creates requests on behalf of users, and may
-  create local Seerr users (see `[seerr]` in the config example).
+  create local Seerr users (an option in Server settings → Seerr).
 * **Jellyfin, Plex, Tautulli**: read only.
 
 It never stores Jellyfin/Plex passwords or tokens. AlwyWatch account passwords are stored as
@@ -34,91 +34,49 @@ Argon2id hashes.
 
 ## Quick start
 
+Everything is set up in the web app, like the *arr apps: the compose file only says where the
+data folder is. Media servers, API keys, Maintainerr, Tautulli, Seerr, email and who may sign
+up are in **Settings → Admin → Server settings**, each with a **Test** button.
+
 ### Before you start
 
-* Docker with Compose, on any machine that can reach the services below.
-* For Leaving soon: **Maintainerr 3.x**, already set up with at least one collection. The
-  server refuses to start against another major version (it will not write to an API it
-  wasn't built for). Without Maintainerr, delete the `[maintainerr]` block from the config.
+* Docker with Compose, on any machine that can reach your services.
 * Jellyfin and/or Plex, reachable by your users over https.
-* A hostname with TLS on your reverse proxy (for example `watch.example.org`). The apps and the
-  web app talk to it from outside; passkeys need https. Maintainerr, Tautulli and Seerr can
-  stay LAN-only.
+* A hostname with TLS on your reverse proxy (for example `watch.example.org`). Passkeys and
+  invitation links need https. Maintainerr, Tautulli and Seerr can stay LAN-only.
+* Optional: **Maintainerr 3.x** (Leaving soon), Tautulli, Seerr, an SMTP account to email
+  invitations (the one Vaultwarden or another service uses is fine).
 
 ### 1. Build the image
 
-There is no prebuilt image yet. On the server (needs only Docker; the first build compiles
-everything and takes several minutes):
+There is no prebuilt image yet. From the repository root:
 
 ```sh
-git clone https://github.com/arlexTech/alwywatch && cd alwywatch
 docker build -f server/Dockerfile -t alwywatch-server .
 ```
 
-You can also build on another machine and send it over:
-`docker save alwywatch-server | ssh <server> docker load`.
-
-### 2. Create its folder
+### 2. Start it
 
 ```sh
-mkdir -p ~/alwywatch/data && cd ~/alwywatch          # any directory
+mkdir -p ~/docker/alwywatch/data && cd ~/docker/alwywatch
 cp <repo>/server/deploy/docker-compose.yml .
-cp <repo>/server/deploy/.env.example .env && chmod 600 .env
-cp <repo>/server/deploy/config.example.toml data/config.toml
-sudo chown -R 65534:65534 data                       # the container runs as this user
+sudo chown -R 65534:65534 data      # the container runs as an unprivileged user
 ```
 
-### 3. Fill in `data/config.toml`
-
-The minimum is one `[[servers]]` entry; add `[maintainerr]` for Leaving soon:
-
-* **Server id**: open `https://<your jellyfin>/System/Info/Public` in a browser and copy `Id`.
-  For Plex, open `https://<your plex>/identity` and copy `machineIdentifier`. A wrong id shows
-  up later as "this server is not served here" when signing in.
-* **`public_url`**: the address your users' devices use for that media server.
-* **`internal_url`** (Jellyfin only, optional): how the container reaches Jellyfin. Plex users
-  are checked at plex.tv, so Plex needs nothing here.
-* **`[maintainerr] url`**: how the container reaches Maintainerr; **`server`**: the id of the
-  media server Maintainerr is set up for.
-
-Leave `.env` as it is for now: every line in it is optional.
-
-### 4. Put it on the right Docker network
-
-In `docker-compose.yml`, replace `CHANGE_ME_default` with the network your Maintainerr and
-Jellyfin containers are on (`docker network ls`; usually `<folder>_default`). Your reverse
-proxy must be on that network too, or add its network the same way.
-
-On a machine of its own, there is no network to share: delete the `networks` parts of the
-compose file and use addresses reachable from there in `config.toml` (public https addresses,
-or a VPN). Maintainerr is made for a private network: reach it over a VPN rather than
-exposing it.
-
-### 5. First start, changing nothing
+In `docker-compose.yml`, replace `CHANGE_ME_default` with the Docker network your Jellyfin,
+Maintainerr and reverse proxy are on (`docker network ls`). On a machine of its own, delete the
+`networks` parts and use addresses reachable from there.
 
 ```sh
-echo ALWYWATCH_DRY_RUN=1 >> .env
-docker compose up -d && docker logs -f alwywatch-server
+docker compose up -d && docker logs alwywatch-server
 ```
 
-You should see a line listing what is on and off, then `Maintainerr 3.x.y` and
-`listening on 0.0.0.0:8080`. In dry run the server reads everything and writes nothing; the
-log says `[dry-run] would …` for each change it would have made. The first reading of
-Maintainerr takes about a minute per thousand items.
+The log shows a **setup code**: `[setup] No media server yet. Open this site and enter the
+setup code 123456`. Only someone who can read the log can set the server up.
 
-If it stops instead, the last log line says why and what to change. The common ones:
+### 3. Reverse proxy
 
-| Log | Cause |
-|---|---|
-| `/data/config.toml: No such file…` | step 2 or 3 was skipped, or `data/` isn't mounted |
-| `cannot open /data/keep.sqlite…` | `data/` isn't owned by uid 65534 |
-| `[maintainerr] server = … must be the id of one [[servers]] entry` | the two ids differ |
-| `Maintainerr not reachable yet` (keeps running) | wrong `[maintainerr] url`, or not on the same network |
-| `Maintainerr … is not supported` | Maintainerr isn't 3.x |
-
-### 6. Reverse proxy
-
-The proxy must pass `X-Forwarded-For` (Caddy, Traefik and the nginx line below do) and be the
+The proxy must pass `X-Forwarded-For` (Caddy, Traefik and the nginx lines below do) and be the
 only way to reach port 8080: the sign-in rate limit counts per client address. Requests can
 last 40 seconds (watch together), which default timeouts allow.
 
@@ -140,96 +98,77 @@ location / {
 Behind a second proxy or CDN (Cloudflare…), every visitor shares one rate limit, because the
 server only sees the CDN's address.
 
-Check: `curl https://watch.example.org/healthz` answers `ok`, and
-`https://watch.example.org/v1/servers` lists your media servers.
+### 4. Set it up in the browser
 
-### 7. Sign in: you are the admin
+Open `https://watch.example.org`. The setup page asks for the code, then your first media
+server:
 
-Open `https://watch.example.org` and sign in with your **Jellyfin administrator** account (or
-the **Plex account that owns the server**). That is what makes you an admin; there is no
-separate setting. "Leaving soon" and "Admin" appear in the menu.
+* **Jellyfin**: its address and a Jellyfin **administrator's** username and password. They are
+  used once, to make AlwyWatch's own API key in Jellyfin; they are not kept.
+* **Plex**: its address, then sign in with the **Plex account that owns the server**.
 
-### 8. Go live
+Within the same Docker network, also give the server's internal address under "Advanced"
+(`http://jellyfin:8096`): the container reaches it there faster than through the internet.
 
-Remove the `ALWYWATCH_DRY_RUN` line from `.env`, then `docker compose up -d`. Choices made
-during the dry run were kept in a separate database and are not carried over. Read
-[Before activating a Maintainerr collection](#before-activating-a-maintainerr-collection)
-before you let Maintainerr delete anything.
+Then sign in with that same Jellyfin administrator or Plex owner: that is what makes you an
+admin of AlwyWatch (every Jellyfin administrator is one). Open **Settings → Admin → Server
+settings** and add what you use:
 
-### 9. Give it to your people
+| Section | What it gives | Where to find what it asks |
+|---|---|---|
+| This site's address | email links, passkeys, Pocket ID | `https://watch.example.org` |
+| Maintainerr | Leaving soon and keep choices | its address (`http://maintainerr:6246`), the media server it manages, its API key if you set one |
+| Seerr | requests for everyone, whatever Seerr is set up for | Seerr → Settings → General → API Key |
+| Tautulli | "keep until watched" ends by itself for Plex users | Tautulli → Settings → Web Interface → API key |
+| Email | invitations sent by email | your SMTP server: host, port, security, login, sender address |
+| Sign-up | who may create an AlwyWatch account | invitation only (default), anyone, nobody |
+| Pocket ID | single sign-on | an OIDC client in Pocket ID with the callback shown there |
 
-* **Web**: `https://watch.example.org`, signing in with their Jellyfin or Plex login.
-* **Apps**: at first launch, "I was given an AlwyWatch address" → `watch.example.org` → their
-  server → their Jellyfin or Plex login.
-* **A TV or a second device**: "Sign in with a code" on the new device, then scan its QR code
-  with a phone, or type the code in Settings → AlwyWatch & requests → Add a device on a device
-  that is already signed in.
+"Keep until watched" ends by itself for Jellyfin users as soon as the Jellyfin server is added
+(AlwyWatch has its own key). Saving restarts the server in a second with the new settings.
 
-## Optional extras
+**Leaving soon, the first time**: turn on **Test mode** before adding Maintainerr. The server
+then reads everything and writes nothing (the log says `[dry-run] would …` for each change);
+choices made in test mode are kept apart and dropped when you turn it off. Read [Before
+activating a Maintainerr collection](#before-activating-a-maintainerr-collection) before you
+let Maintainerr delete anything.
 
-Each one is a line in `.env` (and sometimes a block in `config.toml`), then
-`docker compose up -d`. The startup log line shows which are on.
+### 5. Invite your people
 
-| Setting | What it adds |
-|---|---|
-| `ALWYWATCH_PUBLIC_URL=https://watch.example.org` | Passkeys, invitation links instead of bare codes; required for Pocket ID. Scheme and host only, no path |
-| `JELLYFIN_API_KEY` | "Keep until I have watched it" ends by itself for Jellyfin users. Without it, those keeps stay until the person removes them. `JELLYFIN_API_KEY_<server id>` gives one key per Jellyfin server (the id as in `config.toml`) |
-| `[tautulli]` + `TAUTULLI_API_KEY` | The same for Plex users (no Plex Pass needed) |
-| `WEBHOOK_SECRET` + [webhooks](#webhooks) | That release happens at once instead of within 15 minutes |
-| `[seerr]` + `SEERR_API_KEY` | Requests in the web app, and for users of the media server type your Seerr isn't set up for. Both are needed; with only one the bridge is off |
-| `MAINTAINERR_API_KEY` | Only if you turned on an API key in Maintainerr's settings |
-| `ALWYWATCH_REGISTRATION` | Who may create an AlwyWatch account without a Jellyfin/Plex login: `invite` (default), `open`, `closed` |
-| `ALWYWATCH_POCKETID_*` | Single sign-on, see below |
-| `sync_minutes` in `config.toml` | How often Maintainerr is read again (default 10) |
+**Settings → Admin → Invitations**: type a friend's email, keep "Also make a Jellyfin login"
+checked and pick whose access they get (libraries, ratings). They receive an email from you
+with a link: one username and password, and they have an AlwyWatch account and a Jellyfin
+login at once. Without an email, "Create link" gives a link and a code to send yourself.
 
-Other environment variables: `ALWYWATCH_CONFIG` (default `/data/config.toml`),
-`ALWYWATCH_DATA` (`/data`), `ALWYWATCH_LISTEN` (`0.0.0.0:8080`), `ALWYWATCH_WEB` (`/web`, where
-the image keeps the web app). The environment wins over `config.toml`; the image sets the
-listen address and data directory, so change those through the environment.
+People who already have a Jellyfin or Plex login just sign in with it, on the web or in the
+apps ("Sign in to AlwyWatch" → `watch.example.org`). A TV or another device: "Sign in with a
+code" there, then Settings → This device → Sign in another device on a device already signed
+in (or scan the QR code).
 
-### AlwyWatch accounts
+### Moving from config.toml and .env
 
-Accounts are optional: a Jellyfin or Plex login is enough for everything. An account adds a
-way to sign in that doesn't depend on the media server (password, passkey, Pocket ID), and lets
-someone with no Jellyfin/Plex login have a profile. An account alone can't vote on Leaving soon
-or request; that needs a media-server login linked to it.
-
-* **A user with a Jellyfin/Plex login** gives themselves a username and password on the web
-  app's Account page.
-* **Someone without one** needs an invitation (unless registration is `open`): as an admin,
-  signed in with your Jellyfin/Plex admin login, open Account → Invitations → New invitation.
-  It works once, for 7 days.
-* **Deleting an account**: the person does it on the Account page ("Delete account").
-* **Forgotten password**: there is no reset by email. The person signs in with their linked
-  Jellyfin/Plex login or a passkey and sets a new password on the Account page.
-* There is no list of accounts or invitations in the admin pages yet.
-
-**Pocket ID**: in Pocket ID, create an OIDC client whose callback is
-`https://watch.example.org/v1/account/oidc/callback`, then set `ALWYWATCH_POCKETID_ISSUER`
-(Pocket ID's address, e.g. `https://id.example.org`), `ALWYWATCH_POCKETID_CLIENT_ID` and
-`ALWYWATCH_POCKETID_CLIENT_SECRET`. Anyone who can sign in to your Pocket ID gets an account on
-first sign-in, whatever `ALWYWATCH_REGISTRATION` says.
+A server set up with `data/config.toml` and `.env` (before settings moved into the app) imports
+them into `data/settings.json` at its first start with this version, and says so in the log.
+From then on the app is where settings change: the old variables are ignored (the log lists any
+still set) and can be removed from the compose file and `.env`.
 
 ### Webhooks
 
-Without them, "watched" is checked every 15 minutes. With `WEBHOOK_SECRET` set (generate one
-with `openssl rand -hex 32`):
+Without them, "watched" is checked every 15 minutes. **Server settings → Webhooks** shows the
+addresses to paste (they contain a secret made by the server):
 
-* **Tautulli** → Settings → Notification Agents → Webhook: URL
-  `http://alwywatch-server:8080/v1/hooks/tautulli/<WEBHOOK_SECRET>`, method POST, trigger
-  "Watched". The body doesn't matter. Tautulli must be on the same Docker network (or use the
-  public address).
-* **Jellyfin** with the Webhook plugin: a Generic destination to
-  `http://alwywatch-server:8080/v1/hooks/jellyfin/<WEBHOOK_SECRET>`, notification type
+* **Tautulli** → Settings → Notification Agents → Webhook: method POST, trigger "Watched".
+* **Jellyfin** with the Webhook plugin: a Generic destination, notification type
   "Playback Stop".
 
-A 404 answer means the secret is unset or wrong.
+A 404 answer means the address is wrong.
 
 ## Administration
 
 An admin is a **Jellyfin administrator** or the **owner of the Plex server**, signed in with
-that login. The admin pages are in the web app's menu ("Admin", "Kept forever") and in the
-apps under Leaving soon → Admin.
+that login. Everything is in **Settings → Admin** on every app: people's rights, the Leaving
+soon countdown, kept forever, invitations, server status, and (in the web app) server
+settings.
 
 * **Rights per person**: whether they may keep forever, how many titles forever, and the
   longest "keep N days". By default everyone may keep forever, without limits.
@@ -244,15 +183,15 @@ What the server wrote to Maintainerr is recorded in the database:
 
 If a Maintainerr collection is inactive and its items are already past their delete date,
 activating it deletes them at the next rule run, before anyone could ask to keep them. First
-use Admin → **Start countdown** for that collection: it restarts each item's delay (the
+use Admin → **Leaving soon countdown** for that collection: it restarts each item's delay (the
 collection's "delete after days"), all at once or spread over 14 or 30 days. Then activate the
 collection in Maintainerr.
 
 ## Backup, upgrade, removal
 
 * **Backup**: the database holds the keep choices, accounts (password hashes, passkeys),
-  rights and synced settings. Stop the container, copy the whole `data/` folder and `.env`,
-  start it again. Without stopping: `sqlite3 data/keep.sqlite ".backup backup.sqlite"` (a plain
+  rights and synced settings. Stop the container, copy the whole `data/` folder (it holds `settings.json`
+  with your API keys and email password: keep the copy private), start it again. Without stopping: `sqlite3 data/keep.sqlite ".backup backup.sqlite"` (a plain
   file copy of a running database can miss recent changes).
 * **Restore**: put the files back, `chown -R 65534:65534 data`, start.
 * **Upgrade**: back up, `git pull`, rebuild the image (step 1), `docker compose up -d`. The
@@ -264,13 +203,16 @@ collection in Maintainerr.
 
 | Symptom | Look at |
 |---|---|
-| Apps say "this server is not served here" | the `id` in `[[servers]]` doesn't match the media server |
-| Jellyfin sign-in fails with "media server unreachable" | `internal_url` (or `public_url`) isn't reachable from the container |
-| No "Leaving soon" for someone | they aren't signed in with a login on one of the `[[servers]]` |
-| "Leaving soon" is empty or stale | log: `Maintainerr not reachable yet` or `sync failed` (URL, network, API key) |
-| No passkey button, invitations are bare codes | `ALWYWATCH_PUBLIC_URL` is unset |
-| "Keep until watched" never ends | `JELLYFIN_API_KEY` / `[tautulli]` + `TAUTULLI_API_KEY` missing |
+| The setup page says the code is wrong | the newest `[setup]` line of `docker logs alwywatch-server` (a new code at each start) |
+| `cannot open /data/keep.sqlite…` in the log | `data/` isn't owned by uid 65534 |
+| Apps say "this server is not served here" | that media server isn't in Server settings |
+| Jellyfin sign-in fails with "media server unreachable" | the server's address (or internal address) isn't reachable from the container: Test it |
+| No "Leaving soon" for someone | they aren't signed in with a login on one of your servers |
+| "Leaving soon" is empty or stale | Settings → Admin → Server status, then Test in Server settings → Maintainerr |
+| No passkey button, invitations are bare codes | Server settings: this site's address is empty |
+| "Keep until watched" never ends | Jellyfin: add the server again (it makes its key); Plex: Tautulli |
+| An invitation email isn't sent | Server settings → Email → Test, with "send a test email to" |
 | Everyone gets "too many attempts" together | the proxy doesn't send `X-Forwarded-For`, or there is a second proxy in front |
-| The web app can't sign in to Jellyfin | Jellyfin's `public_url` must be https when the site is https |
+| The web app can't sign in to Jellyfin | the Jellyfin address must be https when the site is https |
 
 The protocol between apps and server is in [keep-protocol.md](keep-protocol.md).

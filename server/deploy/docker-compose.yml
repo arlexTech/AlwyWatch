@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# alwywatch-server next to your Maintainerr / Jellyfin / Plex. Step by step: docs/deploy.md.
+# alwywatch-server. Step by step: docs/deploy.md. Everything else (media servers, API keys,
+# Maintainerr, Seerr, Tautulli, email, sign-up) is set up in the web app: Settings → Admin →
+# Server settings. A new server prints a setup code in its log: docker logs alwywatch-server
 # There is no prebuilt image yet; build it once from the repository root:
 #   docker build -f server/Dockerfile -t alwywatch-server .
 name: alwywatch
@@ -15,22 +17,8 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
-    # Everything here is optional and read from the .env file next to this one
-    # (see .env.example; chmod 600 .env).
-    environment:
-      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
-      TAUTULLI_API_KEY: ${TAUTULLI_API_KEY:-}
-      MAINTAINERR_API_KEY: ${MAINTAINERR_API_KEY:-}
-      SEERR_API_KEY: ${SEERR_API_KEY:-}
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
-      ALWYWATCH_PUBLIC_URL: ${ALWYWATCH_PUBLIC_URL:-}
-      ALWYWATCH_REGISTRATION: ${ALWYWATCH_REGISTRATION:-invite}
-      ALWYWATCH_POCKETID_ISSUER: ${ALWYWATCH_POCKETID_ISSUER:-}
-      ALWYWATCH_POCKETID_CLIENT_ID: ${ALWYWATCH_POCKETID_CLIENT_ID:-}
-      ALWYWATCH_POCKETID_CLIENT_SECRET: ${ALWYWATCH_POCKETID_CLIENT_SECRET:-}
-      ALWYWATCH_DRY_RUN: ${ALWYWATCH_DRY_RUN:-}
     volumes:
-      - ./data:/data            # config.toml + the database (owned by uid 65534)
+      - ./data:/data            # settings and database (owned by uid 65534; keep it private)
     networks:
       - media
     # No published port: your reverse proxy reaches alwywatch-server:8080 on the shared
@@ -40,9 +28,9 @@ services:
       - "8080"
 
 networks:
-  # The Docker network your Maintainerr and Jellyfin containers (and your reverse proxy) are
-  # on: `docker network ls`. Containers on several networks: list each one here and above.
-  # Not using Docker networks: delete this, and put LAN addresses in config.toml.
+  # The Docker network your Jellyfin, Maintainerr and reverse proxy are on: `docker network
+  # ls`. Containers on several networks: list each one here and above. On a machine of its
+  # own: delete this, and use addresses reachable from there in Server settings.
   media:
     external: true
     name: CHANGE_ME_default
