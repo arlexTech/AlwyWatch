@@ -125,6 +125,25 @@ impl Core {
     }
 }
 
+/// What an AlwyWatch server offers (`account_options`).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct AccountOptions {
+    /// Who may create an account: "invite", "open" or "closed".
+    pub registration: String,
+    pub passkeys: bool,
+    pub pocketid: bool,
+}
+
+/// An invitation to create an account (`account_invite`).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct AccountInvite {
+    pub code: String,
+    /// The web page that signs up with it, when the server knows its public address.
+    pub url: Option<String>,
+    pub expires_in_days: i64,
+    pub uses: i64,
+}
+
 #[uniffi::export]
 impl AlwyWatch {
     /// Signs in to an AlwyWatch account with username and password.
@@ -152,6 +171,75 @@ impl AlwyWatch {
             Ok(AccountSignedIn {
                 account,
                 token: s.token,
+            })
+        })
+        .await
+    }
+
+    /// Creates an AlwyWatch account (with an invitation code when the server asks for one) and
+    /// signs this device in to it.
+    pub async fn account_register(
+        &self,
+        url: String,
+        username: String,
+        password: String,
+        invite: Option<String>,
+        device: String,
+    ) -> Result<AccountSignedIn> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            let s = KeepClient::account_register(
+                &c.http,
+                &base,
+                &account::RegisterRequest {
+                    username: username.trim().to_owned(),
+                    password,
+                    invite: invite
+                        .map(|i| i.trim().to_owned())
+                        .filter(|i| !i.is_empty()),
+                    device,
+                },
+            )
+            .await
+            .map_err(|e| explain(e, true))?;
+            let account = c.save_account(&base, &s.token, &s.account)?;
+            Ok(AccountSignedIn {
+                account,
+                token: s.token,
+            })
+        })
+        .await
+    }
+
+    /// What an AlwyWatch server offers for sign-in and sign-up (no sign-in needed).
+    pub async fn account_options(&self, url: String) -> Result<AccountOptions> {
+        self.run(|c| async move {
+            let base = net::normalize_base_url(&url)?;
+            let o = KeepClient::account_options(&c.http, &base)
+                .await
+                .map_err(|e| explain(e, false))?;
+            Ok(AccountOptions {
+                registration: o.registration,
+                passkeys: o.passkeys,
+                pocketid: o.pocketid,
+            })
+        })
+        .await
+    }
+
+    /// Admins: an invitation to create an account, valid `days` days for `uses` sign-ups.
+    pub async fn account_invite(&self, days: i64, uses: i64) -> Result<AccountInvite> {
+        let client = self.core.account_client().ok_or(CoreError::NotFound)?;
+        self.run(|_| async move {
+            let i = client
+                .account_invite(days, uses)
+                .await
+                .map_err(|e| explain(e, false))?;
+            Ok(AccountInvite {
+                code: i.code,
+                url: i.url,
+                expires_in_days: i.expires_in_days,
+                uses: i.uses,
             })
         })
         .await

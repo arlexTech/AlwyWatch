@@ -3015,6 +3015,12 @@ impl AlwyWatch {
             .await
     }
 
+    /// Admins: what the AlwyWatch server is connected to (Maintainerr, Seerr, Tautulli…).
+    pub async fn keep_admin_status(&self) -> Result<keep_service::ServerStatus> {
+        self.run(|c| async move { Ok(c.keep()?.admin_status().await?) })
+            .await
+    }
+
     /// Seerr's users, to link AlwyWatch users to (admins; empty when Seerr is not offered).
     pub async fn keep_admin_seerr_users(&self) -> Result<Vec<keep_service::SeerrUser>> {
         self.run(|c| async move { Ok(c.keep()?.admin_seerr_users().await?) })
