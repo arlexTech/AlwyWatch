@@ -215,6 +215,16 @@ export struct AdminRow {
 }
 
 /// Settings → Admin → Server status: one line and what to do about it.
+/// An invitation in Settings → Admin.
+export struct InviteRow {
+    id: string,
+    /// The email it was sent to, or "Link".
+    title: string,
+    detail: string,
+    /// Still works (can be ended).
+    active: bool,
+}
+
 export struct StatusRow {
     title: string,
     text: string,
@@ -1506,6 +1516,31 @@ export component AppWindow inherits Window {
     in property <string> invite-made-code;
     in property <string> invite-made-link;
     in property <string> invite-made-message;
+    in property <string> invite-made-hint;
+    in-out property <bool> invite-copied;
+    // Invite someone: emails can be sent; the Jellyfin server a login can be made on ("" none),
+    // more than one; whose access it copies.
+    in property <bool> invite-mail;
+    in property <string> invite-server;
+    in property <bool> invite-server-many;
+    in property <string> invite-like;
+    in-out property <string> invite-email;
+    in-out property <string> invite-note;
+    in-out property <bool> invite-jellyfin: true;
+    in-out property <int> invite-days: 7;
+    in-out property <int> invite-uses: 1;
+    in property <bool> invite-busy;
+    in property <string> invite-sent-to;
+    property <bool> invite-emailing: root.invite-mail && root.invite-email != "";
+    in property <[InviteRow]> invites;
+    in property <bool> invites-loaded;
+    in property <string> invites-message;
+    // The invitation whose "End" waits for its confirmation.
+    in-out property <string> invite-ending;
+    callback invite-next-server();
+    callback invite-next-like();
+    callback invite-end(string); // id
+    callback open-server-settings();
     /// Admin → People: Seerr users to request as ("" = automatic), and the row picking one.
     in property <[NamedId]> admin-seerr-users;
     property <string> admin-seerr-open;
@@ -1513,6 +1548,14 @@ export component AppWindow inherits Window {
     // Add a profile → Create an AlwyWatch account: the address step leads to the form.
     in-out property <bool> add-create;
     in property <bool> create-invite-needed;
+    // Create an account: the invitation code typed, who invited, what it gives (or why it
+    // doesn't work), the username (prefilled from the invitation).
+    in-out property <string> create-invite;
+    in property <string> create-invite-from;
+    in property <string> create-invite-note;
+    in property <bool> create-invite-bad;
+    in-out property <string> create-username;
+    callback create-invite-edited(string, string); // address, code
     callback create-check(string); // AlwyWatch server address
     callback account-create(string, string, string, string, string); // address, invitation, username, password, again
     callback account-manage();
@@ -2126,8 +2169,14 @@ export component AppWindow inherits Window {
                                 if root.add-step == "create" : VerticalLayout {
                                     spacing: 12px;
                                     Text { text: @tr("An account keeps your profile, settings and server list, and signs your devices in. To watch, add your Jellyfin or Plex server afterwards."); color: Palette.muted; wrap: word-wrap; }
-                                    cinvite := Field { placeholder: root.create-invite-needed ? @tr("Invitation code") : @tr("Invitation code (not needed)"); }
-                                    cuser := Field { placeholder: @tr("Username"); }
+                                    cinvite := Field {
+                                        placeholder: root.create-invite-needed ? @tr("Invitation code") : @tr("Invitation code (not needed)");
+                                        text <=> root.create-invite;
+                                        edited(t) => { root.create-invite-edited(root.keep-address, t); }
+                                    }
+                                    if root.create-invite-from != "" : Text { text: root.create-invite-from; color: Palette.text; font-size: 17px; font-weight: 700; wrap: word-wrap; }
+                                    if root.create-invite-note != "" : Text { text: root.create-invite-note; color: root.create-invite-bad ? Palette.danger : Palette.muted; wrap: word-wrap; }
+                                    cuser := Field { placeholder: @tr("Username"); text <=> root.create-username; }
                                     cpass := Field { placeholder: @tr("Password"); input-type: password; }
                                     cpass2 := Field {
                                         placeholder: @tr("Password again");
@@ -3258,27 +3307,155 @@ export component AppWindow inherits Window {
                                 }
                             }
                             Group {
-                                title: @tr("INVITATIONS");
-                                Text { text: @tr("Someone without Jellyfin or Plex can create an AlwyWatch account with an invitation (works once, for 7 days)."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
-                                HorizontalLayout { alignment: start; Button { label: @tr("New invitation"); has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.admin-invite(); } } }
+                                title: @tr("ALWYWATCH SERVER");
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text { text: @tr("Server settings"); color: Palette.text; font-weight: 700; }
+                                        Text { text: @tr("Media servers, Seerr, Maintainerr, Tautulli, email and sign-up are set up in the web app."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                    }
+                                    Button { label: @tr("Open"); y: (parent.height - self.height) / 2; clicked => { root.open-server-settings(); } }
+                                }
+                            }
+                            Group {
+                                title: @tr("INVITE SOMEONE");
+                                Text { text: @tr("A new person gets an AlwyWatch account, and a Jellyfin login if you like."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                if root.invite-mail : VerticalLayout {
+                                    spacing: 4px;
+                                    Field { placeholder: @tr("Email (optional)"); text <=> root.invite-email; }
+                                    Text {
+                                        text: root.invite-email == "" ? @tr("Empty: you get a link and a code to send them yourself.") : @tr("AlwyWatch emails them a link that works once.");
+                                        color: Palette.muted;
+                                        font-size: 12px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+                                if !root.invite-mail && root.invites-loaded : HorizontalLayout {
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text { text: @tr("Set up email in Server settings to send invitations by email"); color: Palette.text; font-weight: 700; wrap: word-wrap; }
+                                        Text { text: @tr("For now, you get a link and a code to send them yourself."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                    }
+                                    Button { label: @tr("Server settings"); y: (parent.height - self.height) / 2; clicked => { root.open-server-settings(); } }
+                                }
+                                if root.invite-server != "" : SettingToggle {
+                                    title: @tr("Also make a Jellyfin login on {}", root.invite-server);
+                                    subtitle: @tr("Same username and password as their AlwyWatch account");
+                                    on: root.invite-jellyfin;
+                                    clicked => { root.invite-jellyfin = !root.invite-jellyfin; }
+                                }
+                                if root.invite-server != "" && root.invite-jellyfin && root.invite-server-many : SettingChoice {
+                                    title: @tr("Jellyfin server");
+                                    subtitle: "";
+                                    value: root.invite-server;
+                                    clicked => { root.invite-next-server(); }
+                                }
+                                if root.invite-server != "" && root.invite-jellyfin : SettingChoice {
+                                    title: @tr("With the same access as");
+                                    subtitle: @tr("Libraries, parental rating and permissions are copied from this user");
+                                    value: root.invite-like;
+                                    clicked => { root.invite-next-like(); }
+                                }
+                                if root.invite-emailing : Field { placeholder: @tr("Personal note (optional): a few words in the email"); text <=> root.invite-note; }
+                                SettingChoice {
+                                    title: @tr("Valid for");
+                                    subtitle: "";
+                                    value: @tr("{n} day" | "{n} days" % root.invite-days);
+                                    clicked => { root.invite-days = root.invite-days == 1 ? 7 : root.invite-days == 7 ? 30 : 1; }
+                                }
+                                if !root.invite-emailing : SettingChoice {
+                                    title: @tr("How many people");
+                                    subtitle: "";
+                                    value: @tr("{n} person" | "{n} people" % root.invite-uses);
+                                    clicked => { root.invite-uses = root.invite-uses == 1 ? 5 : root.invite-uses == 5 ? 10 : 1; }
+                                }
+                                HorizontalLayout {
+                                    alignment: start;
+                                    Button {
+                                        label: root.invite-busy ? (root.invite-emailing ? @tr("Sending…") : @tr("Creating…")) : (root.invite-emailing ? @tr("Send invitation") : @tr("Create link"));
+                                        primary: true;
+                                        clicked => { if (!root.invite-busy) { root.admin-invite(); } }
+                                    }
+                                }
+                                if root.invite-sent-to != "" : Text { text: @tr("Sent to {}", root.invite-sent-to); color: Palette.accent; font-size: 17px; font-weight: 700; wrap: word-wrap; }
                                 if root.invite-made-code != "" : VerticalLayout {
                                     spacing: 6px;
                                     Text { text: @tr("Invitation code"); color: Palette.muted; font-size: 13px; }
                                     Text { text: root.invite-made-code; color: Palette.accent; font-size: 28px; font-weight: 800; letter-spacing: 2px; }
-                                    if root.invite-made-link != "" : Text { text: @tr("Or send this link: {}", root.invite-made-link); color: Palette.text; wrap: word-wrap; }
+                                    if root.invite-made-link != "" : Text { text: @tr("Or the link"); color: Palette.muted; font-size: 13px; }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        Rectangle {
+                                            horizontal-stretch: 1;
+                                            height: 40px;
+                                            clip: true;
+                                            copied := TextInput {
+                                                width: parent.width;
+                                                height: parent.height;
+                                                text: root.invite-made-link != "" ? root.invite-made-link : root.invite-made-code;
+                                                read-only: true;
+                                                single-line: true;
+                                                color: Palette.text;
+                                                font-size: 15px;
+                                                vertical-alignment: center;
+                                                selection-background-color: #ffb22466;
+                                            }
+                                        }
+                                        Button {
+                                            label: root.invite-copied ? @tr("Copied") : @tr("Copy");
+                                            clicked => {
+                                                copied.select-all();
+                                                copied.copy();
+                                                copied.clear-selection();
+                                                root.invite-copied = true;
+                                            }
+                                        }
+                                    }
+                                    if root.invite-made-hint != "" : Text { text: root.invite-made-hint; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                                 }
                                 if root.invite-made-message != "" : Text { text: root.invite-made-message; color: Palette.danger; wrap: word-wrap; }
                             }
                             Group {
+                                title: @tr("INVITATIONS");
+                                if root.invites.length == 0 && root.invites-message == "" : Text {
+                                    text: root.invites-loaded ? @tr("None yet.") : @tr("Loading…");
+                                    color: Palette.subtle;
+                                }
+                                for i in root.invites : VerticalLayout {
+                                    spacing: 6px;
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        VerticalLayout {
+                                            alignment: center;
+                                            horizontal-stretch: 1;
+                                            Text { text: i.title; color: i.active ? Palette.text : Palette.muted; font-weight: 700; overflow: elide; }
+                                            Text { text: i.detail; color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                        }
+                                        if i.active && root.invite-ending != i.id : Button { label: @tr("End"); y: (parent.height - self.height) / 2; clicked => { root.invite-ending = i.id; } }
+                                    }
+                                    if root.invite-ending == i.id : HorizontalLayout {
+                                        spacing: 10px;
+                                        Text { text: @tr("Its code and link stop working. Accounts already made with it stay."); color: Palette.muted; font-size: 13px; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; }
+                                        Button { label: @tr("End"); primary: true; y: (parent.height - self.height) / 2; clicked => { root.invite-end(i.id); root.invite-ending = ""; } }
+                                        Button { label: @tr("Cancel"); y: (parent.height - self.height) / 2; clicked => { root.invite-ending = ""; } }
+                                    }
+                                }
+                                if root.invites-message != "" : Text { text: root.invites-message; color: Palette.danger; wrap: word-wrap; }
+                            }
+                            Group {
                                 title: @tr("SERVER STATUS");
-                                if root.admin-dry-run : Text { text: @tr("Test mode: nothing is changed in Maintainerr or Seerr. Remove ALWYWATCH_DRY_RUN from .env and restart."); color: Palette.accent; font-weight: 700; wrap: word-wrap; }
+                                if root.admin-dry-run : Text { text: @tr("Test mode: nothing is changed in Maintainerr or Seerr. Turn it off in Server settings (web app)."); color: Palette.accent; font-weight: 700; wrap: word-wrap; }
                                 for s in root.admin-status : VerticalLayout {
                                     spacing: 2px;
                                     Text { text: s.title; color: Palette.text; font-weight: 700; }
                                     Text { text: s.text; color: s.ok ? Palette.muted : Palette.danger; font-size: 13px; wrap: word-wrap; }
                                 }
                                 if root.admin-status-message != "" : Text { text: root.admin-status-message; color: Palette.danger; wrap: word-wrap; }
-                                Text { text: @tr("Read only: these are set in the server's config.toml and .env."); color: Palette.subtle; font-size: 12px; wrap: word-wrap; }
+                                Text { text: @tr("Read only: change these in Server settings (web app)."); color: Palette.subtle; font-size: 12px; wrap: word-wrap; }
                                 HorizontalLayout { alignment: start; Button { label: @tr("Check again"); clicked => { root.admin-open(); } } }
                             }
                             }

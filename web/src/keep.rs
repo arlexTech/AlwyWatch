@@ -942,12 +942,15 @@ fn ago(seconds: i64) -> String {
     }
 }
 
-/// One line of the server status: what, and its state or what to do.
-fn status_line(what: String, state: String, ok: bool) -> impl IntoView {
+/// One line of the server status: what, and its state or what to do; `fix`: the Server
+/// settings section that changes it, linked when it is off.
+fn status_line(what: String, state: String, ok: bool, fix: &'static str) -> impl IntoView {
+    let href = format!("/settings/admin/server#{fix}");
     view! {
         <div class="row">
             <div><strong>{what}</strong>
                 <div class="small" class:muted=ok class:accent=!ok>{state}</div></div>
+            {(!fix.is_empty()).then(|| view! { <A href=href attr:class="button small subtle">{tr!("Server settings")}</A> })}
         </div>
     }
 }
@@ -955,10 +958,7 @@ fn status_line(what: String, state: String, ok: bool) -> impl IntoView {
 /// The Maintainerr line of the server status.
 fn maintainerr_line(st: &ServerStatus, now: i64) -> (String, bool) {
     match st.maintainerr.as_str() {
-        "off" => (
-            tr!("Off. Add a [maintainerr] block (url, server) to config.toml and restart."),
-            false,
-        ),
+        "off" => (tr!("Off. Set up Maintainerr in Server settings."), false),
         "starting" => (tr!("Reading Maintainerr for the first time…"), true),
         "ok" => (
             trn!(
@@ -972,15 +972,15 @@ fn maintainerr_line(st: &ServerStatus, now: i64) -> (String, bool) {
         ),
         _ => (
             tr!(
-                "Can't reach Maintainerr. Check [maintainerr] url, the Docker network, and MAINTAINERR_API_KEY if it uses one."
+                "Can't reach Maintainerr. Check its address and API key in Server settings (Test tells why)."
             ),
             false,
         ),
     }
 }
 
-/// Settings → Admin → Server status: what the AlwyWatch server is connected to, read only
-/// (set in its config.toml and .env), each line with what to do when it's off.
+/// Settings → Admin → Server status: what the AlwyWatch server is connected to, each line
+/// with what to do when it's off and a link to that part of Server settings.
 #[component]
 pub fn ServerStatusView() -> impl IntoView {
     let status = RwSignal::new(None::<Result<ServerStatus, String>>);
@@ -1002,45 +1002,48 @@ pub fn ServerStatusView() -> impl IntoView {
                     let on = || tr!("On");
                     view! {
                         {st.dry_run.then(|| view! {
-                            <p class="banner" role="status">{tr!("Test mode: nothing is changed in Maintainerr or Seerr. Remove ALWYWATCH_DRY_RUN from .env and restart.")}</p>
+                            <p class="banner" role="status">{tr!("Test mode: nothing is changed in Maintainerr or Seerr. Turn it off in Server settings.")}" "<A href="/settings/admin/server#testmode" attr:class="button small">{tr!("Server settings")}</A></p>
                         })}
-                        {status_line(tr!("AlwyWatch server"), st.version.clone(), true)}
-                        {status_line(tr!("Leaving soon"), maintainerr, maintainerr_ok)}
+                        {status_line(tr!("AlwyWatch server"), st.version.clone(), true, "")}
+                        {status_line(tr!("Leaving soon"), maintainerr, maintainerr_ok, if maintainerr_ok { "" } else { "maintainerr" })}
                         {status_line(tr!("Requests"), if st.seerr_bridge {
                             tr!("On: every app requests as each person's Seerr user.")
                         } else {
-                            tr!("Off: only direct request-site logins work. Turn on with [seerr] in config.toml and SEERR_API_KEY in .env.")
-                        }, st.seerr_bridge)}
+                            tr!("Off: only direct request-site logins work. Turn it on in Server settings → Seerr.")
+                        }, st.seerr_bridge, if st.seerr_bridge { "" } else { "seerr" })}
                         {status_line(tr!("Keep until watched (Jellyfin)"), if st.jellyfin_key {
                             on()
                         } else {
-                            tr!("Jellyfin keeps don't end by themselves. Set JELLYFIN_API_KEY.")
-                        }, st.jellyfin_key)}
+                            tr!("Jellyfin keeps don't end by themselves: AlwyWatch has no API key on Jellyfin. Renew it in Server settings → Media servers.")
+                        }, st.jellyfin_key, if st.jellyfin_key { "" } else { "servers" })}
                         {status_line(tr!("Keep until watched (Plex)"), if st.tautulli {
                             on()
                         } else {
-                            tr!("Plex keeps don't end by themselves. Add [tautulli] and TAUTULLI_API_KEY.")
-                        }, st.tautulli)}
+                            tr!("Plex keeps don't end by themselves. Set up Tautulli in Server settings.")
+                        }, st.tautulli, if st.tautulli { "" } else { "tautulli" })}
                         {status_line(tr!("Webhooks"), if st.webhooks {
                             tr!("On: watched titles are noticed at once.")
                         } else {
-                            tr!("Optional: watched titles are noticed within 15 min. For instant, set WEBHOOK_SECRET.")
-                        }, true)}
+                            tr!("Optional: watched titles are noticed within 15 min. For instant, paste the webhook addresses from Server settings.")
+                        }, true, if st.webhooks { "" } else { "webhooks" })}
                         {status_line(tr!("Passkeys"), if st.passkeys {
                             on()
                         } else {
-                            tr!("Off: set ALWYWATCH_PUBLIC_URL (https).")
-                        }, st.passkeys)}
-                        {status_line("Pocket ID".to_owned(), if st.pocketid { on() } else { tr!("Off") }, true)}
+                            tr!("Off: set this site's address (https) in Server settings.")
+                        }, st.passkeys, if st.passkeys { "" } else { "signup" })}
+                        {status_line("Pocket ID".to_owned(), if st.pocketid { on() } else { tr!("Off") }, true, if st.pocketid { "" } else { "pocketid" })}
                         {status_line(tr!("New accounts"), match st.registration.as_str() {
                             "open" => tr!("Anyone can create one"),
                             "invite" => tr!("With an invitation"),
                             _ => tr!("Closed"),
-                        }, true)}
+                        }, true, "")}
                     }.into_any()
                 }
             }}
-            <p class="muted small">{tr!("Read only: these are set in the server's config.toml and .env.")}</p>
+            <p class="muted small">{
+                let (before, after) = crate::ui::around(&tr!("Change these in {page}."), "{page}");
+                view! { {before}<A href="/settings/admin/server" attr:class="accent">{tr!("Server settings")}</A>{after} }
+            }</p>
         </section>
     }
 }

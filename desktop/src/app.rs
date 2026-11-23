@@ -19,6 +19,7 @@ use crate::platform::{self, Tokens};
 use crate::profiles::ProfileStore;
 mod account;
 mod history;
+mod invites;
 mod links;
 mod playback;
 mod profiles;
@@ -157,6 +158,8 @@ struct State {
     saga_for: Option<String>,
     /// Copy watch history: kept while away from its page.
     history: history::HistoryJob,
+    /// Settings → Admin → Invitations, and the sign-up step's invitation check.
+    invites: invites::InviteState,
     /// "Recently added" show cards: what is new and what opening them shows, by card id.
     notes: HashMap<String, RailNote>,
     /// The season a show's page opens on (a card's note): (show, season).
@@ -306,6 +309,7 @@ impl App {
                 trailer: None,
                 saga_for: None,
                 history: Default::default(),
+                invites: Default::default(),
                 notes: HashMap::new(),
                 pending_season: None,
             }),
@@ -4585,6 +4589,12 @@ impl App {
                 ))),
                 Ok(o) => {
                     ui.set_create_invite_needed(o.registration == "invite");
+                    t.create_invite_reset();
+                    // A code typed earlier: what it gives, for this server.
+                    let typed = ui.get_create_invite().to_string();
+                    if !typed.trim().is_empty() {
+                        t.create_invite_edited(ui.get_keep_address().to_string(), typed);
+                    }
                     ui.set_transfer_status(SharedString::new());
                     ui.set_add_step("create".into());
                 }
@@ -4616,7 +4626,7 @@ impl App {
                 Ok(u) => u,
                 Err(e) => return report(&this, e),
             };
-            let invite = Some(invite).filter(|i| !i.trim().is_empty());
+            let invite = Some(invites::invite_code(&invite)).filter(|i| !i.is_empty());
             let r = core
                 .account_register(url.clone(), user, pass, invite, crate::hostname())
                 .await;
@@ -4629,7 +4639,23 @@ impl App {
                             error = e
                         )));
                     }
-                    t.account_ready(url, s.account.name);
+                    match s.jellyfin {
+                        // The invitation made a Jellyfin login too, already signed in: straight
+                        // to the library, like after a Jellyfin sign-in from this server.
+                        Some(j) => {
+                            t.ui().set_keep_address(sstr(&url));
+                            t.profiles.set_last_address(&url);
+                            let _ = t.core.keep_set_preset(url);
+                            t.refresh_account_settings();
+                            let core = t.core.clone();
+                            slint::spawn_local(async move {
+                                let _ = core.sync_settings().await;
+                            })
+                            .ok();
+                            t.signed_in(j);
+                        }
+                        None => t.account_ready(url, s.account.name),
+                    }
                 }
                 Err(e) => t.ui().set_transfer_status(sstr(e.to_string())),
             }
@@ -4639,6 +4665,7 @@ impl App {
 
     /// Settings → Admin: what the AlwyWatch server is connected to, with what to do about it.
     fn admin_open(self: &Rc<Self>) {
+        self.invites_load();
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             let r = core.keep_admin_status().await;
@@ -4659,33 +4686,6 @@ impl App {
                     ui.set_admin_status_message(SharedString::new());
                 }
                 Err(e) => ui.set_admin_status_message(sstr(e.to_string())),
-            }
-        })
-        .ok();
-    }
-
-    /// Settings → Admin → Invitations: a new one (works once, for 7 days). Without an AlwyWatch
-    /// account on this computer, the website makes it.
-    fn admin_invite(self: &Rc<Self>) {
-        let ui = self.ui();
-        ui.set_invite_made_message(SharedString::new());
-        if self.core.account().is_none() {
-            if let Some(k) = self.core.keep_connection() {
-                platform::open_url(&format!("{}/account", k.base_url.trim_end_matches('/')));
-            }
-            return;
-        }
-        let (core, this) = (self.core.clone(), Rc::downgrade(self));
-        slint::spawn_local(async move {
-            let r = core.account_invite(7, 1).await;
-            let Some(t) = this.upgrade() else { return };
-            let ui = t.ui();
-            match r {
-                Ok(i) => {
-                    ui.set_invite_made_code(sstr(&i.code));
-                    ui.set_invite_made_link(sstr(i.url.unwrap_or_default()));
-                }
-                Err(e) => ui.set_invite_made_message(sstr(e.to_string())),
             }
         })
         .ok();
@@ -5262,6 +5262,12 @@ impl App {
             ));
         on!(on_admin_open, |a| a.admin_open());
         on!(on_admin_invite, |a| a.admin_invite());
+        on!(on_invite_next_server, |a| a.invite_next_server());
+        on!(on_invite_next_like, |a| a.invite_next_like());
+        on!(on_invite_end, |a, id| a.invite_end(id.into()));
+        on!(on_open_server_settings, |a| a.open_server_settings());
+        on!(on_create_invite_edited, |a, url, code| a
+            .create_invite_edited(url.into(), code.into()));
         on!(on_admin_seerr, |a, user, id| a
             .admin_seerr(user.into(), id.into()));
         on!(on_keep_vote, |a, key, choice| a
@@ -5689,11 +5695,11 @@ fn elapsed(secs: i64) -> String {
 }
 
 /// Settings → Admin → Server status: (what, its state and what to do, fine). Read only: all of
-/// it is set in the AlwyWatch server's config.toml and .env (docs/deploy.md).
+/// it is set in Server settings (the web app).
 fn status_lines(s: &keep_service::ServerStatus, now: i64) -> Vec<(String, String, bool)> {
     let maintainerr = match s.maintainerr.as_str() {
         "off" => (
-            tr!("Off. Add a [maintainerr] block (url, server) to config.toml and restart."),
+            tr!("Off. Set up Maintainerr in Server settings (web app)."),
             true,
         ),
         "starting" => (tr!("Reading Maintainerr for the first time…"), true),
@@ -5709,7 +5715,7 @@ fn status_lines(s: &keep_service::ServerStatus, now: i64) -> Vec<(String, String
         ),
         _ => (
             tr!(
-                "Can't reach Maintainerr. Check [maintainerr] url, the Docker network, and MAINTAINERR_API_KEY if it uses one."
+                "Can't reach Maintainerr. Check its address and API key in Server settings (web app)."
             ),
             false,
         ),
@@ -5717,19 +5723,17 @@ fn status_lines(s: &keep_service::ServerStatus, now: i64) -> Vec<(String, String
     let requests = if s.seerr_bridge {
         tr!("On: every app requests as each person's Seerr user.")
     } else {
-        tr!(
-            "Off: only direct request-site logins work. Turn on with [seerr] in config.toml and SEERR_API_KEY in .env."
-        )
+        tr!("Off: only direct request-site logins work. Set up Seerr in Server settings (web app).")
     };
     let mut watched = vec![];
     if !s.jellyfin_key {
         watched.push(tr!(
-            "Jellyfin keeps don't end by themselves. Set JELLYFIN_API_KEY."
+            "Jellyfin keeps don't end by themselves. Add the Jellyfin server's key in Server settings (web app)."
         ));
     }
     if !s.tautulli {
         watched.push(tr!(
-            "Plex keeps don't end by themselves. Add [tautulli] and TAUTULLI_API_KEY."
+            "Plex keeps don't end by themselves. Set up Tautulli in Server settings (web app)."
         ));
     }
     let watched_ok = watched.is_empty();
@@ -5739,7 +5743,9 @@ fn status_lines(s: &keep_service::ServerStatus, now: i64) -> Vec<(String, String
     watched.push(if s.webhooks {
         tr!("Webhooks on: watched titles are noticed at once.")
     } else {
-        tr!("Optional: watched titles are noticed within 15 min. For instant, set WEBHOOK_SECRET.")
+        tr!(
+            "Optional: watched titles are noticed within 15 min. For instant, add the webhooks shown in Server settings (web app)."
+        )
     });
     let accounts = match s.registration.as_str() {
         "open" => tr!("Anyone can create an account."),
@@ -5765,7 +5771,7 @@ fn status_lines(s: &keep_service::ServerStatus, now: i64) -> Vec<(String, String
             if s.passkeys {
                 tr!("On.")
             } else {
-                tr!("Off: set ALWYWATCH_PUBLIC_URL (https).")
+                tr!("Off: set this site's address (https) in Server settings (web app).")
             },
             true,
         ),
@@ -5807,7 +5813,11 @@ mod status_tests {
             "Maintainerr 3.32 · read 5 minutes ago · 12 titles leaving"
         );
         assert!(lines.iter().all(|l| l.2));
-        assert!(lines[3].1.contains("WEBHOOK_SECRET"));
+        assert!(
+            lines[3]
+                .1
+                .contains("add the webhooks shown in Server settings")
+        );
 
         let mut s = status();
         s.maintainerr = "unreachable".into();

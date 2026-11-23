@@ -145,6 +145,150 @@ pub struct AccountInvite {
     pub url: Option<String>,
     pub expires_in_days: i64,
     pub uses: i64,
+    /// Where it was emailed (`account_invite_send` with an email).
+    pub sent_to: Option<String>,
+}
+
+/// What an admin's invitation can do on this AlwyWatch server, and its invitations
+/// (`account_invitations`).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Invitations {
+    /// Emails can be sent (Server settings → Email).
+    pub mail: bool,
+    /// This site's address is set (needed for the links).
+    pub public_url: bool,
+    /// Jellyfin servers where an invitation can also make a login.
+    pub jellyfin: Vec<JellyfinTarget>,
+    /// Newest first, as the server lists them.
+    pub invites: Vec<InviteItem>,
+}
+
+/// A Jellyfin server an invitation can make a login on.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct JellyfinTarget {
+    pub server_id: String,
+    pub name: String,
+    /// Users whose access (libraries, ratings…) a new login can copy.
+    pub users: Vec<JellyfinUser>,
+    /// The user copied last time, to offer first.
+    pub last_like: Option<String>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct JellyfinUser {
+    pub id: String,
+    pub name: String,
+}
+
+/// An invitation in the admin's list.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct InviteItem {
+    pub id: i64,
+    /// Who made it.
+    pub created_by: String,
+    /// Unix seconds.
+    pub created: i64,
+    /// Unix seconds.
+    pub expires: i64,
+    pub uses_left: i64,
+    /// Where it was emailed; none for a link.
+    pub email: Option<String>,
+    /// The Jellyfin server name, when it also makes a login there.
+    pub jellyfin: Option<String>,
+    /// Usernames of the accounts made with it.
+    pub used_by: Vec<String>,
+}
+
+/// What an invitation gives, for the sign-up screen (`account_invite_info`).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct InviteInfo {
+    /// Who invited.
+    pub inviter: String,
+    /// The Jellyfin server the account also gets a login on (its name).
+    pub jellyfin: Option<String>,
+    pub email: Option<String>,
+    /// A username to offer, free on AlwyWatch and Jellyfin.
+    pub suggested_username: Option<String>,
+    /// Unix seconds.
+    pub expires: i64,
+}
+
+impl From<account::Invite> for AccountInvite {
+    fn from(i: account::Invite) -> Self {
+        Self {
+            code: i.code,
+            url: i.url,
+            expires_in_days: i.expires_in_days,
+            uses: i.uses,
+            sent_to: i.sent_to,
+        }
+    }
+}
+
+impl From<account::Invitations> for Invitations {
+    fn from(v: account::Invitations) -> Self {
+        Self {
+            mail: v.mail,
+            public_url: v.public_url,
+            jellyfin: v
+                .jellyfin
+                .into_iter()
+                .map(|t| JellyfinTarget {
+                    server_id: t.server_id,
+                    name: t.name,
+                    users: t
+                        .users
+                        .into_iter()
+                        .map(|u| JellyfinUser {
+                            id: u.id,
+                            name: u.name,
+                        })
+                        .collect(),
+                    last_like: t.last_like,
+                })
+                .collect(),
+            invites: v
+                .invites
+                .into_iter()
+                .map(|i| InviteItem {
+                    id: i.id,
+                    created_by: i.created_by,
+                    created: i.created,
+                    expires: i.expires,
+                    uses_left: i.uses_left,
+                    email: i.email,
+                    jellyfin: i.jellyfin,
+                    used_by: i.used_by,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Trimmed, `None` when empty.
+fn given(s: Option<String>) -> Option<String> {
+    s.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty())
+}
+
+impl AlwyWatch {
+    /// Runs an admin call as the AlwyWatch account's session, else the Jellyfin/Plex login used
+    /// for AlwyWatch (the server accepts any admin). `NotFound` when there is neither.
+    async fn admin_call<T, F, Fut>(&self, f: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: FnOnce(KeepClient) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<T>> + Send + 'static,
+    {
+        let account = self.core.account_client();
+        self.run(|c| async move {
+            let client = match account {
+                Some(a) => a,
+                None => c.keep()?,
+            };
+            f(client).await
+        })
+        .await
+    }
 }
 
 #[uniffi::export]
@@ -244,23 +388,90 @@ impl AlwyWatch {
 
     /// Admins: an invitation to create an account, valid `days` days for `uses` sign-ups.
     pub async fn account_invite(&self, days: i64, uses: i64) -> Result<AccountInvite> {
-        // The AlwyWatch account's session, else the Jellyfin/Plex login used for AlwyWatch (the
-        // server accepts any admin).
-        let account = self.core.account_client();
+        self.account_invite_send(None, None, None, None, days, uses)
+            .await
+    }
+
+    /// Admins: an invitation, emailed to `email` (one use, in this app's language) or a link
+    /// for `uses` people, valid `days` days. With `jellyfin` (a server id from
+    /// `account_invitations`) it also makes a Jellyfin login there, with the access of the
+    /// Jellyfin user `like` (Jellyfin's defaults when none). `note`: a few words in the email.
+    pub async fn account_invite_send(
+        &self,
+        email: Option<String>,
+        jellyfin: Option<String>,
+        like: Option<String>,
+        note: Option<String>,
+        days: i64,
+        uses: i64,
+    ) -> Result<AccountInvite> {
+        let request = account::InviteRequest {
+            days,
+            uses,
+            email: given(email),
+            jellyfin: given(jellyfin),
+            like: given(like),
+            note: given(note),
+            lang: Some(i18n::language().to_owned()),
+        };
+        let emailing = request.email.is_some();
+        self.admin_call(move |k| async move {
+            k.account_invite_with(&request)
+                .await
+                .map(AccountInvite::from)
+                .map_err(|e| match e {
+                    net::Error::Status { status: 501 } if emailing => CoreError::Invalid {
+                        detail: i18n::tr!(
+                            "Set up email and this site's address in Server settings (web app) first."
+                        ),
+                    },
+                    net::Error::Status { status: 502 } if emailing => CoreError::Invalid {
+                        detail: i18n::tr!(
+                            "The email could not be sent. Check the email settings in Server settings (web app)."
+                        ),
+                    },
+                    e => explain(e, false),
+                })
+        })
+        .await
+    }
+
+    /// Admins: what an invitation can do here (email, Jellyfin logins) and the invitations.
+    pub async fn account_invitations(&self) -> Result<Invitations> {
+        self.admin_call(|k| async move {
+            k.account_invites()
+                .await
+                .map(Invitations::from)
+                .map_err(|e| explain(e, false))
+        })
+        .await
+    }
+
+    /// Admins: ends an invitation (`InviteItem::id`); it no longer works.
+    pub async fn account_revoke_invite(&self, id: i64) -> Result<()> {
+        self.admin_call(move |k| async move {
+            k.account_revoke_invite(id)
+                .await
+                .map_err(|e| explain(e, false))
+        })
+        .await
+    }
+
+    /// Before signing up with an invitation `code` on the AlwyWatch server at `url` (no
+    /// sign-in): who invited, and whether it also makes a Jellyfin login. An `Invalid` error
+    /// saying so when the code is unknown, used or expired.
+    pub async fn account_invite_info(&self, url: String, code: String) -> Result<InviteInfo> {
         self.run(|c| async move {
-            let client = match account {
-                Some(a) => a,
-                None => c.keep()?,
-            };
-            let i = client
-                .account_invite(days, uses)
+            let base = net::normalize_base_url(&url)?;
+            let i = KeepClient::account_invite_info(&c.http, &base, &code)
                 .await
                 .map_err(|e| explain(e, false))?;
-            Ok(AccountInvite {
-                code: i.code,
-                url: i.url,
-                expires_in_days: i.expires_in_days,
-                uses: i.uses,
+            Ok(InviteInfo {
+                inviter: i.inviter,
+                jellyfin: i.jellyfin,
+                email: i.email,
+                suggested_username: i.suggested_username,
+                expires: i.expires,
             })
         })
         .await

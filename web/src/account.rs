@@ -11,6 +11,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
+use media_api::jellyfin::JellyfinAuth;
 use serde::{Deserialize, Serialize};
 
 use crate::state::{self, Ctx};
@@ -229,89 +230,186 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
     }
 }
 
-/// `/join` and `/join/:code`: a new AlwyWatch account (username + password).
+/// `/join` and `/join/:code`: a new AlwyWatch account (username + password). With an
+/// invitation's code in the address: who invited, and the Jellyfin login it makes too.
 #[component]
 pub fn Join() -> impl IntoView {
     let c = state::ctx();
+    let code = use_params_map()
+        .with_untracked(|p| p.get("code"))
+        .map(|c| c.trim().to_owned())
+        .filter(|c| !c.is_empty());
+    match code {
+        Some(code) => {
+            let http = c.http.clone();
+            let check = code.clone();
+            let info = LocalResource::new(move || {
+                let (http, check) = (http.clone(), check.clone());
+                async move { KeepClient::account_invite_info(&http, &Ctx::origin(), &check).await }
+            });
+            view! {
+                {move || match info.get() {
+                    None => view! { <crate::ui::Loading /> }.into_any(),
+                    Some(Ok(i)) => view! { <JoinForm invite=Some((code.clone(), i)) /> }.into_any(),
+                    Some(Err(net::Error::NotFound)) => view! {
+                        <h1>{tr!("This invitation can't be used")}</h1>
+                        <p class="muted">{tr!("It was already used, ended or expired. Ask the person who invited you for a new one.")}</p>
+                    }.into_any(),
+                    Some(Err(e)) => view! {
+                        <h1>{tr!("Create an AlwyWatch account")}</h1>
+                        <ErrorText text=account::explain(&e, false) />
+                    }.into_any(),
+                }}
+            }
+            .into_any()
+        }
+        None => view! { <JoinForm invite=None /> }.into_any(),
+    }
+}
+
+#[component]
+fn JoinForm(invite: Option<(String, account::InviteInfo)>) -> impl IntoView {
+    let c = state::ctx();
     let options = options_resource(&c);
-    let params = use_params_map();
-    let invite = RwSignal::new(params.with_untracked(|p| p.get("code")).unwrap_or_default());
-    let user = RwSignal::new(String::new());
+    let from_link = invite.is_some();
+    let info = invite.as_ref().map(|(_, i)| i.clone());
+    let jellyfin = info.as_ref().and_then(|i| i.jellyfin.clone());
+    let inviter = info.as_ref().map(|i| i.inviter.clone());
+    let code = RwSignal::new(invite.as_ref().map(|(c, _)| c.clone()).unwrap_or_default());
+    let user = RwSignal::new(
+        info.as_ref()
+            .and_then(|i| i.suggested_username.clone())
+            .unwrap_or_default(),
+    );
     let pass = RwSignal::new(String::new());
     let pass2 = RwSignal::new(String::new());
     let error = RwSignal::new(None::<String>);
     let busy = RwSignal::new(false);
     let navigate = use_navigate();
-    let c1 = c.clone();
+    let (c1, jf1, inviter1) = (c.clone(), jellyfin.clone(), inviter.clone());
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         if pass.get_untracked() != pass2.get_untracked() {
             return error.set(Some(tr!("The two passwords differ.")));
         }
-        let (c, navigate) = (c1.clone(), navigate.clone());
+        let (c, navigate, jf, inviter) =
+            (c1.clone(), navigate.clone(), jf1.clone(), inviter1.clone());
         busy.set(true);
         error.set(None);
         spawn_local(async move {
-            let code = invite.get_untracked().trim().to_owned();
+            let invite = code.get_untracked().trim().to_owned();
+            let password = pass.get_untracked();
             let r = KeepClient::account_register(
                 &c.http,
                 &Ctx::origin(),
                 &RegisterRequest {
                     username: user.get_untracked().trim().to_owned(),
-                    password: pass.get_untracked(),
-                    invite: (!code.is_empty()).then_some(code),
+                    password: password.clone(),
+                    invite: (!invite.is_empty()).then_some(invite),
                     device: DEVICE.into(),
                 },
             )
             .await;
-            busy.set(false);
             match r {
                 Ok(s) => {
                     c.set_account(&s.token, &s.account);
+                    // The invitation made a Jellyfin login too: signed in to it here, so the
+                    // library is ready.
+                    if let Some(j) = s.jellyfin
+                        && let Ok(session) = JellyfinAuth::new(c.http.clone(), c.client.clone())
+                            .sign_in(&j.url, &j.username, &password)
+                            .await
+                    {
+                        let served = KeepClient::servers(&c.http, &Ctx::origin())
+                            .await
+                            .unwrap_or_default();
+                        crate::signin::finish(&c, session, &served).await;
+                        busy.try_set(false);
+                        return navigate("/", Default::default());
+                    }
+                    busy.try_set(false);
                     // Next: a Jellyfin or Plex login to watch with.
                     navigate("/signin", Default::default());
                 }
-                Err(net::Error::Unauthorized) => error.set(Some(tr!(
-                    "This invitation is unknown, used up or expired. Ask for a new one."
-                ))),
-                Err(e) => error.set(Some(account::explain(&e, false))),
+                Err(e) => {
+                    busy.set(false);
+                    error.set(Some(match e {
+                        net::Error::Unauthorized => match &inviter {
+                            Some(name) => tr!(
+                                "This invitation can't be used any more. Ask {name} for a new one.",
+                                name = name.clone()
+                            ),
+                            None => tr!(
+                                "This invitation is unknown, used up or expired. Ask for a new one."
+                            ),
+                        },
+                        net::Error::Status { status: 409 } => match &jf {
+                            Some(server) => tr!(
+                                "This username is taken, here or on {server}: choose another.",
+                                server = server.clone()
+                            ),
+                            None => account::explain(&e, false),
+                        },
+                        e => account::explain(&e, false),
+                    }));
+                }
             }
         });
     };
-    view! {
-        <h1>{tr!("Create an AlwyWatch account")}</h1>
-        <p class="muted">{tr!("An account keeps your profile, settings and server list, and signs your devices in. To watch, add your Jellyfin or Plex server afterwards.")}</p>
-        {move || options.get().flatten().map(|o| {
-            let pocket = o.pocketid;
-            let closed = o.registration == "closed";
-            let invite_needed = o.registration == "invite";
-            view! {
-                {pocket.then(|| view! {
-                    <p><button class="primary" on:click=move |_| go("/v1/account/oidc/start?next=/signin")>{tr!("Continue with Pocket ID")}</button>
-                        " "<span class="muted small">{tr!("No invitation needed.")}</span></p>
+    let form = move |invite_needed: bool| {
+        let submit = submit.clone();
+        let jellyfin = jellyfin.clone();
+        view! {
+            <form class="form" on:submit=submit>
+                {(invite_needed && !from_link).then(|| view! {
+                    <label>{tr!("Invitation code")}<input autocapitalize="off" spellcheck="false" prop:value=move || code.get()
+                        on:input=move |ev| code.set(event_target_value(&ev)) /></label>
                 })}
-                {closed.then(|| view! { <p class="muted">{tr!("This server doesn't accept new accounts without an invitation. Ask its owner for one, or sign in with your Jellyfin or Plex login.")}</p> })}
-                {(!closed).then(|| view! {
-                    <form class="form" on:submit=submit.clone()>
-                        {invite_needed.then(|| view! {
-                            <label>{tr!("Invitation code")}<input autocapitalize="off" spellcheck="false" prop:value=move || invite.get()
-                                on:input=move |ev| invite.set(event_target_value(&ev)) /></label>
-                        })}
-                        <label>{tr!("Username")}<input autocomplete="username" autocapitalize="off" spellcheck="false" minlength="3" maxlength="32"
-                            prop:value=move || user.get() on:input=move |ev| user.set(event_target_value(&ev)) /></label>
-                        <label>{tr!("Password")}<input type="password" autocomplete="new-password" minlength="8"
-                            prop:value=move || pass.get() on:input=move |ev| pass.set(event_target_value(&ev)) /></label>
-                        <label>{tr!("Password again")}<input type="password" autocomplete="new-password" minlength="8"
-                            prop:value=move || pass2.get() on:input=move |ev| pass2.set(event_target_value(&ev)) /></label>
-                        <div class="actions">
-                            <button class="primary" type="submit" disabled=move || busy.get()>{tr!("Create the account")}</button>
-                        </div>
-                        <p class="muted small">{tr!("You can add a passkey once signed in.")}</p>
-                        {move || error.get().map(|e| view! { <ErrorText text=e /> })}
-                    </form>
+                <label>{tr!("Username")}<input autocomplete="username" autocapitalize="off" spellcheck="false" minlength="3" maxlength="32"
+                    prop:value=move || user.get() on:input=move |ev| user.set(event_target_value(&ev)) /></label>
+                <label>{tr!("Password")}<input type="password" autocomplete="new-password" minlength="8"
+                    prop:value=move || pass.get() on:input=move |ev| pass.set(event_target_value(&ev)) /></label>
+                <label>{tr!("Password again")}<input type="password" autocomplete="new-password" minlength="8"
+                    prop:value=move || pass2.get() on:input=move |ev| pass2.set(event_target_value(&ev)) /></label>
+                {jellyfin.map(|server| view! {
+                    <p class="muted small">{tr!("This username and password will also be your {server} (Jellyfin) login.", server = server)}</p>
                 })}
-            }
-        })}
+                <div class="actions">
+                    <button class="primary" type="submit" disabled=move || busy.get()>{tr!("Create the account")}</button>
+                </div>
+                <p class="muted small">{tr!("You can add a passkey once signed in.")}</p>
+                {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+            </form>
+        }
+    };
+    match info {
+        Some(i) => view! {
+            <h1>{tr!("{name} invited you", name = i.inviter.clone())}</h1>
+            <p class="muted">{match i.jellyfin.clone() {
+                Some(server) => tr!("Create your AlwyWatch account: it comes with a login on {server}, to watch right away.", server = server),
+                None => tr!("Create your AlwyWatch account. It keeps your profile, settings and server list, and signs your devices in."),
+            }}</p>
+            {form(true)}
+        }
+        .into_any(),
+        None => view! {
+            <h1>{tr!("Create an AlwyWatch account")}</h1>
+            <p class="muted">{tr!("An account keeps your profile, settings and server list, and signs your devices in. To watch, add your Jellyfin or Plex server afterwards.")}</p>
+            {move || options.get().flatten().map(|o| {
+                let pocket = o.pocketid;
+                let closed = o.registration == "closed";
+                let invite_needed = o.registration == "invite";
+                view! {
+                    {pocket.then(|| view! {
+                        <p><button class="primary" on:click=move |_| go("/v1/account/oidc/start?next=/signin")>{tr!("Continue with Pocket ID")}</button>
+                            " "<span class="muted small">{tr!("No invitation needed.")}</span></p>
+                    })}
+                    {closed.then(|| view! { <p class="muted">{tr!("This server doesn't accept new accounts without an invitation. Ask its owner for one, or sign in with your Jellyfin or Plex login.")}</p> })}
+                    {(!closed).then(|| form(invite_needed))}
+                }
+            })}
+        }
+        .into_any(),
     }
 }
 
@@ -875,47 +973,6 @@ fn MediaSignIn(info: AccountView, page: Page) -> impl IntoView {
         </section>
     }
     .into_any()
-}
-
-/// Settings → Admin → Invitations: a code (and its link) to create an account.
-#[component]
-pub fn Invitations() -> impl IntoView {
-    let c = state::ctx();
-    let keep = c.keep;
-    let made = RwSignal::new(None::<account::Invite>);
-    let error = RwSignal::new(None::<String>);
-    let make = move |_| {
-        let c = c.clone();
-        spawn_local(async move {
-            let Some(k) = c.keep_client() else { return };
-            match k.account_invite(7, 1).await {
-                Ok(i) => made.set(Some(i)),
-                Err(e) => error.set(Some(account::explain(&e, false))),
-            }
-        });
-    };
-    view! {
-        <Show when=move || keep.get().is_some_and(|k| k.is_admin)>
-            <section class="group">
-                <h2>{tr!("Invitations")}</h2>
-                <p class="muted small">{tr!("Someone without Jellyfin or Plex can create an AlwyWatch account with an invitation (works once, for 7 days).")}</p>
-                <button on:click=make.clone()>{tr!("New invitation")}</button>
-                {move || made.get().map(|i| view! {
-                    <p>{
-                        let (before, after) = crate::ui::around(&tr!("Invitation code: {code}"), "{code}");
-                        view! { {before}<strong class="code">{i.code.clone()}</strong>{after} }
-                    }</p>
-                    {i.url.clone().map(|url| view! {
-                        <p>{
-                            let (before, after) = crate::ui::around(&tr!("Or send this link: {link}"), "{link}");
-                            view! { {before}<a class="accent" href=url.clone()>{url.clone()}</a>{after} }
-                        }</p>
-                    })}
-                })}
-                {move || error.get().map(|e| view! { <ErrorText text=e /> })}
-            </section>
-        </Show>
-    }
 }
 
 /// Settings → Account. With AlwyWatch: how others see you, the AlwyWatch server, password &

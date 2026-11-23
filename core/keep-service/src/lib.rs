@@ -12,6 +12,7 @@ uniffi::setup_scaffolding!();
 pub mod account;
 pub mod identity;
 pub mod profile;
+pub mod settings;
 pub mod together;
 pub mod transfer;
 
@@ -436,6 +437,101 @@ impl KeepClient {
             format!("{}/v1{path}", base_url.trim_end_matches('/')),
         )
         .header("Accept", "application/json")
+    }
+
+    /// Like [`net::send_json`], but a refusal that explains itself (`{"error": "…"}` with 400,
+    /// 409, 501 or 502) comes back as [`net::Error::Invalid`] with that message, for the
+    /// settings pages to show as it is.
+    async fn send_said<T: serde::de::DeserializeOwned>(req: RequestBuilder) -> Result<T> {
+        let res = req.send().await?;
+        let status = res.status();
+        if status.is_success() {
+            let bytes = res.bytes().await?;
+            return serde_json::from_slice(&bytes).map_err(|e| net::Error::decode(e.to_string()));
+        }
+        if matches!(status.as_u16(), 400 | 409 | 501 | 502)
+            && let Ok(bytes) = res.bytes().await
+            && let Ok(e) = serde_json::from_slice::<ApiError>(&bytes)
+            && !e.error.trim().is_empty()
+        {
+            return Err(net::Error::invalid(e.error));
+        }
+        Err(net::status_error(status))
+    }
+
+    // ----- Server setup and settings (alwywatch-server: server_settings.rs) ----------------
+
+    /// Public: whether the server still needs its first media server (the setup page).
+    pub async fn setup_state(http: &Client, base_url: &str) -> Result<settings::SetupState> {
+        net::send_json(Self::public(http, Method::GET, base_url, "/setup")).await
+    }
+
+    /// Public: the first server, a Jellyfin one, with the setup code from the server's log and
+    /// an administrator's login. The server starts again with it about a second later.
+    pub async fn setup_jellyfin(
+        http: &Client,
+        base_url: &str,
+        code: &str,
+        r: &settings::AddJellyfin,
+    ) -> Result<()> {
+        let mut body = serde_json::to_value(r).map_err(|e| net::Error::invalid(e.to_string()))?;
+        body["code"] = code.trim().into();
+        Self::send_said::<serde_json::Value>(
+            Self::public(http, Method::POST, base_url, "/setup/jellyfin").json(&body),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Public: the first server, a Plex one, with the setup code and its owner's plex.tv
+    /// sign-in.
+    pub async fn setup_plex(
+        http: &Client,
+        base_url: &str,
+        code: &str,
+        r: &settings::AddPlex,
+    ) -> Result<()> {
+        let mut body = serde_json::to_value(r).map_err(|e| net::Error::invalid(e.to_string()))?;
+        body["code"] = code.trim().into();
+        Self::send_said::<serde_json::Value>(
+            Self::public(http, Method::POST, base_url, "/setup/plex").json(&body),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Admins: the server's settings (secrets as [`settings::KEPT`]) and its webhook addresses.
+    pub async fn admin_settings(&self) -> Result<settings::SettingsView> {
+        net::send_json(self.req(Method::GET, "/admin/settings")).await
+    }
+
+    /// Admins: saves the whole settings; the server starts again with them about a second
+    /// later. An invalid setting comes back as [`net::Error::Invalid`] saying why.
+    pub async fn put_admin_settings(&self, s: &settings::ServerSettings) -> Result<()> {
+        Self::send_said::<serde_json::Value>(self.req(Method::PUT, "/admin/settings").json(s))
+            .await
+            .map(|_| ())
+    }
+
+    /// Admins: tries one connection with the settings being edited (not saved).
+    pub async fn admin_settings_test(
+        &self,
+        t: &settings::SettingsTest,
+    ) -> Result<settings::TestResult> {
+        Self::send_said(self.req(Method::POST, "/admin/settings/test").json(t)).await
+    }
+
+    /// Admins: adds a Jellyfin server (or renews AlwyWatch's key there). Restarts the server.
+    pub async fn admin_add_jellyfin(
+        &self,
+        r: &settings::AddJellyfin,
+    ) -> Result<settings::AddedServer> {
+        Self::send_said(self.req(Method::POST, "/admin/settings/jellyfin").json(r)).await
+    }
+
+    /// Admins: adds a Plex server the plex.tv sign-in owns. Restarts the server.
+    pub async fn admin_add_plex(&self, r: &settings::AddPlex) -> Result<settings::AddedServer> {
+        Self::send_said(self.req(Method::POST, "/admin/settings/plex").json(r)).await
     }
 
     // ----- AlwyWatch accounts (docs/keep-protocol.md "AlwyWatch accounts") ----------------

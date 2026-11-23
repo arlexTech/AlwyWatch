@@ -353,6 +353,9 @@ private fun Root(core: AlwyWatch) {
                                 Route.Triage -> TriageScreen()
                                 Route.KeepAdmin -> KeepAdminScreen()
                                 Route.AdminPeople -> KeepAdminScreen(people = true, countdown = false)
+                                Route.AdminInvites ->
+                                    be.alwyapps.watch.ui.screens
+                                        .InvitationsScreen()
                                 Route.AdminCountdown -> KeepAdminScreen(people = false, countdown = true)
                                 Route.KeepForever -> KeepForeverScreen()
                                 Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })

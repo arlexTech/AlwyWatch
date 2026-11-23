@@ -35,6 +35,9 @@ sealed interface Route {
     /** Settings → Admin → People: rights and whose Seerr user requests go as. */
     data object AdminPeople : Route
 
+    /** Settings → Admin → Invitations: invite someone (by email or a link), and the list. */
+    data object AdminInvites : Route
+
     /** Settings → Admin → Leaving soon countdown. */
     data object AdminCountdown : Route
 
@@ -127,6 +130,7 @@ sealed interface Route {
             Triage -> "triage"
             KeepAdmin -> "keep-admin"
             AdminPeople -> "admin-people"
+            AdminInvites -> "admin-invites"
             AdminCountdown -> "admin-countdown"
             KeepForever -> "keep-forever"
             Together -> "together"
@@ -162,6 +166,7 @@ sealed interface Route {
                 "triage" -> Triage
                 "keep-admin" -> KeepAdmin
                 "admin-people" -> AdminPeople
+                "admin-invites" -> AdminInvites
                 "admin-countdown" -> AdminCountdown
                 "keep-forever" -> KeepForever
                 "together" -> Together

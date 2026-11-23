@@ -347,7 +347,13 @@ fun AddServerScreen(
                     onCreate = { url -> go(Step.Register(url)) },
                 )
 
-            is Step.Register -> RegisterStep(s.url, busy, ::attempt) { history = history.dropLast(1) + Step.Known(s.url) }
+            is Step.Register ->
+                RegisterStep(s.url, busy, ::attempt, onJellyfin = { signedIn ->
+                    // The invitation made a Jellyfin login, already signed in: on to the home,
+                    // with Leaving soon through this AlwyWatch server.
+                    core.keepSetPreset(s.url)
+                    finish(signedIn)
+                }) { history = history.dropLast(1) + Step.Known(s.url) }
 
             is Step.Receive ->
                 ReceiveFromDevice(s.url, onDone = onSignedIn, onAccount = {
@@ -717,13 +723,16 @@ private fun AlwyWatchServerPicker(
 
 /**
  * Creating an AlwyWatch account: what the server allows (an invitation, open, closed), then
- * the invitation code, username and password. [onDone] goes on to "Your servers".
+ * the invitation code (checked as typed: who invited, and whether it also makes a Jellyfin
+ * login), username and password. [onJellyfin] gets the Jellyfin login the invitation made
+ * (signed in already); otherwise [onDone] goes on to "Your servers".
  */
 @Composable
 private fun RegisterStep(
     url: String,
     busy: Boolean,
     attempt: (suspend () -> Unit) -> Unit,
+    onJellyfin: (SignedIn) -> Unit,
     onDone: () -> Unit,
 ) {
     val core = LocalCore.current
@@ -740,6 +749,26 @@ private fun RegisterStep(
     var invite by remember { mutableStateOf("") }
     var user by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
+    // What the typed invitation gives (null: not checked yet), or why it doesn't work.
+    var info by remember { mutableStateOf<be.alwyapps.watch.core.InviteInfo?>(null) }
+    var inviteProblem by remember { mutableStateOf<String?>(null) }
+    // A pasted link works too: its last part is the code.
+    val code = invite.trim().trimEnd('/').substringAfterLast('/')
+    LaunchedEffect(code, options?.registration) {
+        info = null
+        inviteProblem = null
+        if (options?.registration != "invite" || code.length < 6) return@LaunchedEffect
+        delay(400)
+        try {
+            val i = core.accountInviteInfo(url, code)
+            info = i
+            if (user.isEmpty()) i.suggestedUsername?.let { user = it }
+        } catch (e: CoreException.Network) {
+            // Offline for a moment: the sign-up itself will say.
+        } catch (e: CoreException) {
+            inviteProblem = e.message
+        }
+    }
     val o = options
     when {
         failed != null -> Text(failed!!, color = Danger)
@@ -754,17 +783,25 @@ private fun RegisterStep(
                             url,
                             user,
                             pass,
-                            invite.takeIf { o.registration == "invite" },
+                            code.takeIf { o.registration == "invite" },
                             android.os.Build.MODEL ?: "Android",
                         )
                     ctx.services.tokens.put(ACCOUNT_TOKEN, r.token)
                     ctx.services.profiles.lastAlwyWatchUrl = r.account.baseUrl
                     runCatching { core.syncSettings() }
-                    onDone()
+                    // The invitation's Jellyfin login: stored like any Jellyfin sign-in, and no
+                    // need to pick a server.
+                    val jellyfin = r.jellyfin
+                    if (jellyfin != null) onJellyfin(jellyfin) else onDone()
                 }
             }
+            val i = info
+            if (i != null) {
+                Text(tr("{name} invited you", "name" to i.inviter), style = MaterialTheme.typography.titleMedium)
+            }
             Text(
-                tr("Your AlwyWatch account keeps your name, settings and server list. To watch, you then add your Jellyfin or Plex login."),
+                i?.jellyfin?.let { tr("This username and password will also be your {server} (Jellyfin) login.", "server" to it) }
+                    ?: tr("Your AlwyWatch account keeps your name, settings and server list. To watch, you then add your Jellyfin or Plex login."),
                 color = Muted,
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -776,6 +813,13 @@ private fun RegisterStep(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
                 )
+                inviteProblem?.let {
+                    Text(
+                        tr("{problem} Ask the person who invited you for a new one.", "problem" to it),
+                        color = Danger,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
             Field(
                 user,

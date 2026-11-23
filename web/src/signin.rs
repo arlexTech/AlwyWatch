@@ -17,7 +17,7 @@ use crate::ui::ErrorText;
 
 /// After any sign-in: keep the account, and link it to the AlwyWatch server when that server
 /// serves its media server (keep, requests and watch together then work).
-async fn finish(c: &Ctx, s: Session, served: &[ServerEntry]) {
+pub async fn finish(c: &Ctx, s: Session, served: &[ServerEntry]) {
     c.add_account(s.clone());
     if c.expired.get_untracked().as_deref() == Some(state::account_key(&s).as_str()) {
         c.expired.set(None);
@@ -366,62 +366,19 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
             (c.clone(), served.clone(), navigate.clone(), entry.clone());
         error.set(None);
         waiting.set(true);
-        // Opened right away (inside the click) so pop-up blockers allow it; filled once the
-        // PIN exists.
-        let win = web_sys::window().and_then(|w| {
-            w.open_with_url_and_target("about:blank", "_blank")
-                .ok()
-                .flatten()
-        });
+        let win = open_plex_tab();
         spawn_local(async move {
-            let auth = PlexAuth::new(c.http.clone(), c.client.clone());
-            let plain = |e: Error| sign_in_error(&e, "");
             let result: Result<Option<(Session, String)>, String> = async {
-                let Some(w) = &win else {
-                    return Err(tr!("Allow pop-ups for this site, then try again."));
+                let Some(token) =
+                    plex_tv_token(&c, win.as_ref(), || waiting.try_get_untracked().is_some())
+                        .await?
+                else {
+                    return Ok(None);
                 };
-                let pin = auth.create_pin(true).await.map_err(plain)?;
-                let _ = w.location().set_href(&pin.auth_url);
-                let mut token = None;
-                // Once the Plex tab is closed, one last look (it may close right after
-                // saying yes), then stop. Leaving this page stops too.
-                let mut closed = false;
-                for _ in 0..150 {
-                    state::sleep(2000).await;
-                    if waiting.try_get_untracked().is_none() {
-                        return Ok(None);
-                    }
-                    match auth.check_pin(pin.id).await {
-                        Ok(t) => {
-                            token = Some(t);
-                            break;
-                        }
-                        Err(Error::Pending) if closed => {
-                            return Err(tr!("The Plex tab was closed before signing in."));
-                        }
-                        Err(Error::Pending) => closed = w.closed().unwrap_or(false),
-                        Err(e) => return Err(plain(e)),
-                    }
-                }
-                let token = token.ok_or_else(|| tr!("The Plex sign-in timed out."))?;
-                let user = auth.user(&token).await.map_err(plain)?;
-                let servers = auth.servers(&token).await.map_err(plain)?;
-                let server = servers
-                    .iter()
-                    .find(|s| s.machine_id == entry.id)
-                    .or_else(|| servers.first())
-                    .ok_or_else(|| tr!("Your Plex account has no server."))?;
-                let preferred = (!entry.url.is_empty()).then_some(entry.url.as_str());
-                let s = auth
-                    .connect(server, &user, preferred)
-                    .await
-                    .map_err(plain)?;
+                let s = plex_session(&c, &token, &entry.id, &entry.url).await?;
                 Ok(Some((s, token)))
             }
             .await;
-            if let Some(w) = win {
-                let _ = w.close();
-            }
             match result {
                 // This page is gone: nothing to show it on.
                 Ok(None) => return,
@@ -448,6 +405,73 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
             {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         </div>
     }
+}
+
+/// The Plex login on the server `id` (else the account's first one) for a plex.tv token,
+/// reached at `url` when given.
+pub async fn plex_session(c: &Ctx, token: &str, id: &str, url: &str) -> Result<Session, String> {
+    let auth = PlexAuth::new(c.http.clone(), c.client.clone());
+    let plain = |e: Error| sign_in_error(&e, "");
+    let user = auth.user(token).await.map_err(plain)?;
+    let servers = auth.servers(token).await.map_err(plain)?;
+    let server = servers
+        .iter()
+        .find(|s| s.machine_id == id)
+        .or_else(|| servers.first())
+        .ok_or_else(|| tr!("Your Plex account has no server."))?;
+    let preferred = (!url.is_empty()).then_some(url);
+    auth.connect(server, &user, preferred).await.map_err(plain)
+}
+
+/// A tab for plex.tv's sign-in, opened right away (inside the click) so pop-up blockers allow
+/// it; [`plex_tv_token`] fills it once the PIN exists.
+pub fn open_plex_tab() -> Option<web_sys::Window> {
+    web_sys::window().and_then(|w| {
+        w.open_with_url_and_target("about:blank", "_blank")
+            .ok()
+            .flatten()
+    })
+}
+
+/// Signs in to plex.tv in `win` (from [`open_plex_tab`]) with a PIN: the account's token, or
+/// None when `alive` says the page asking is gone. The tab is closed at the end.
+pub async fn plex_tv_token(
+    c: &Ctx,
+    win: Option<&web_sys::Window>,
+    alive: impl Fn() -> bool,
+) -> Result<Option<String>, String> {
+    let auth = PlexAuth::new(c.http.clone(), c.client.clone());
+    let plain = |e: Error| sign_in_error(&e, "");
+    let result = async {
+        let Some(w) = win else {
+            return Err(tr!("Allow pop-ups for this site, then try again."));
+        };
+        let pin = auth.create_pin(true).await.map_err(plain)?;
+        let _ = w.location().set_href(&pin.auth_url);
+        // Once the Plex tab is closed, one last look (it may close right after saying yes),
+        // then stop. Leaving the page stops too.
+        let mut closed = false;
+        for _ in 0..150 {
+            state::sleep(2000).await;
+            if !alive() {
+                return Ok(None);
+            }
+            match auth.check_pin(pin.id).await {
+                Ok(t) => return Ok(Some(t)),
+                Err(Error::Pending) if closed => {
+                    return Err(tr!("The Plex tab was closed before signing in."));
+                }
+                Err(Error::Pending) => closed = w.closed().unwrap_or(false),
+                Err(e) => return Err(plain(e)),
+            }
+        }
+        Err(tr!("The Plex sign-in timed out."))
+    }
+    .await;
+    if let Some(w) = win {
+        let _ = w.close();
+    }
+    result
 }
 
 /// `base`: the server's address, when known (to explain a blocked http one).
@@ -557,9 +581,17 @@ pub fn Settings() -> impl IntoView {
                     ("requests", _) => view! { <crate::request::RequestsSettings /> }.into_any(),
                     ("playback", _) => view! { <crate::prefs::PlaybackSettings /> }.into_any(),
                     ("audio", _) => view! { <crate::prefs::AudioSettings /> }.into_any(),
+                    ("admin", Some("server")) => view! { <crate::admin::ServerSettingsPage /> }.into_any(),
                     ("admin", _) => view! {
+                        <section class="group">
+                            <leptos_router::components::A href="/settings/admin/server" attr:class="row link-row">
+                                <div><strong>{tr!("Server settings")}</strong>
+                                    <div class="muted small">{tr!("Media servers, Maintainerr, Seerr, Tautulli, email, sign-up")}</div></div>
+                                <span>"›"</span>
+                            </leptos_router::components::A>
+                        </section>
                         <crate::keep::Admin />
-                        <crate::account::Invitations />
+                        <crate::admin::Invitations />
                         <crate::keep::ServerStatusView />
                     }.into_any(),
                     _ => view! {

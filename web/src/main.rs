@@ -3,6 +3,7 @@
 //! to wasm32), a Leptos UI, and the browser's own video player. Served by alwywatch-server.
 
 mod account;
+mod admin;
 mod browse;
 mod extra;
 mod keep;
@@ -14,6 +15,7 @@ mod prefs;
 mod profile;
 mod profiles;
 mod request;
+mod setup;
 mod signin;
 mod state;
 mod together;
@@ -107,7 +109,10 @@ fn App() -> impl IntoView {
             }
         });
     });
+    // A server without a media server yet: its setup page, whatever the address.
+    let setup = setup::needed();
     view! {
+        <Show when=move || !setup.get() fallback=|| view! { <setup::Setup /> }>
         <Router>
             <Routes fallback=|| view! { <main class="page"><h1>{tr!("Not found")}</h1></main> }>
                 <Route path=path!("/play/:acc/:id") view=player::Player />
@@ -139,6 +144,7 @@ fn App() -> impl IntoView {
                 <Route path=path!("/q/:code") view=|| view! { <Shell><account::Approve /></Shell> } />
             </Routes>
         </Router>
+        </Show>
     }
 }
 
