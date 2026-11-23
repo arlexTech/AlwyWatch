@@ -1,7 +1,13 @@
 # Setting up alwywatch-server
 
-`alwywatch-server` is the optional server side of AlwyWatch: one small Docker container next to
-your Maintainerr.
+`alwywatch-server` is the optional server side of AlwyWatch: one small Docker container. It
+can run anywhere that can reach your services over the network: on the same machine as
+Jellyfin/Plex and Maintainerr, or on another one (a VPS, for instance), with their addresses
+in its config. Nothing else has to be installed next to it.
+
+It also works on its own for the web app, accounts, watch together and device sign-in: the
+only thing it always needs is at least one Jellyfin or Plex server for people to sign in to.
+Maintainerr (Leaving soon), Tautulli and Seerr are optional additions.
 
 **Do you need it?** Without it, the apps are plain Jellyfin/Plex clients with downloads and
 (directly) Seerr requests. With it you also get:
@@ -30,9 +36,10 @@ Argon2id hashes.
 
 ### Before you start
 
-* Docker with Compose on the machine that runs Maintainerr.
-* **Maintainerr 3.x**, already set up with at least one collection. The server refuses to start
-  against another major version (it will not write to an API it wasn't built for).
+* Docker with Compose, on any machine that can reach the services below.
+* For Leaving soon: **Maintainerr 3.x**, already set up with at least one collection. The
+  server refuses to start against another major version (it will not write to an API it
+  wasn't built for). Without Maintainerr, delete the `[maintainerr]` block from the config.
 * Jellyfin and/or Plex, reachable by your users over https.
 * A hostname with TLS on your reverse proxy (for example `watch.example.org`). The apps and the
   web app talk to it from outside; passkeys need https. Maintainerr, Tautulli and Seerr can
@@ -63,7 +70,7 @@ sudo chown -R 65534:65534 data                       # the container runs as thi
 
 ### 3. Fill in `data/config.toml`
 
-The minimum is one `[[servers]]` entry and `[maintainerr]`:
+The minimum is one `[[servers]]` entry; add `[maintainerr]` for Leaving soon:
 
 * **Server id**: open `https://<your jellyfin>/System/Info/Public` in a browser and copy `Id`.
   For Plex, open `https://<your plex>/identity` and copy `machineIdentifier`. A wrong id shows
@@ -81,6 +88,11 @@ Leave `.env` as it is for now: every line in it is optional.
 In `docker-compose.yml`, replace `CHANGE_ME_default` with the network your Maintainerr and
 Jellyfin containers are on (`docker network ls`; usually `<folder>_default`). Your reverse
 proxy must be on that network too, or add its network the same way.
+
+On a machine of its own, there is no network to share: delete the `networks` parts of the
+compose file and use addresses reachable from there in `config.toml` (public https addresses,
+or a VPN). Maintainerr is made for a private network: reach it over a VPN rather than
+exposing it.
 
 ### 5. First start, changing nothing
 

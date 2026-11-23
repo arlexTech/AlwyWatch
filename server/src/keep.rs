@@ -943,6 +943,13 @@ fn lookup(m: &ProviderIndex, row: &ItemRow) -> Option<String> {
 /// Background jobs: periodic sync, reconciler (on demand + every 5 min), watched checks
 /// (every 15 min + on webhooks).
 pub fn spawn_jobs(state: Shared) {
+    if !state.config.keep_on() {
+        // No Maintainerr: nothing to read, apply or release. The apps hide Leaving soon.
+        state
+            .maintainerr_state
+            .store(2, std::sync::atomic::Ordering::Relaxed);
+        return;
+    }
     let s = state.clone();
     tokio::spawn(async move {
         loop {

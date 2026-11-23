@@ -53,7 +53,7 @@ impl ServerConf {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct MaintainerrConf {
     pub url: String,
     /// Allow-listed server id whose item ids Maintainerr uses.
@@ -86,6 +86,9 @@ pub struct Config {
     pub data_dir: PathBuf,
     #[serde(default)]
     pub servers: Vec<ServerConf>,
+    /// Absent: no Leaving soon and no keep choices; accounts, the web app, watch together,
+    /// device sign-in and the Seerr bridge work on their own (see [`Config::keep_on`]).
+    #[serde(default)]
     pub maintainerr: MaintainerrConf,
     pub tautulli: Option<TautulliConf>,
     pub seerr: Option<SeerrConf>,
@@ -211,7 +214,7 @@ fn default_sync() -> u64 {
 impl Config {
     pub fn parse(toml_text: &str) -> Result<Self, String> {
         let mut c: Config = toml::from_str(toml_text).map_err(|e| e.to_string())?;
-        if !c.servers.iter().any(|s| s.id == c.maintainerr.server) {
+        if c.keep_on() && !c.servers.iter().any(|s| s.id == c.maintainerr.server) {
             return Err(format!(
                 "[maintainerr] server = '{}' must be the id of one [[servers]] entry (the media \
                  server Maintainerr is set up for); ids in this file: {}",
@@ -251,14 +254,20 @@ impl Config {
         Ok(c)
     }
 
+    /// Whether Maintainerr is configured (Leaving soon and keep choices).
+    pub fn keep_on(&self) -> bool {
+        !self.maintainerr.url.trim().is_empty()
+    }
+
     /// One line at startup: what is on and what is off, so a forgotten variable shows.
     pub fn summary(&self) -> String {
         let on = |b: bool| if b { "on" } else { "off" };
         let a = &self.accounts;
         format!(
-            "{} media server(s); accounts: sign-up={}, passkeys={}, Pocket ID={}; \
+            "{} media server(s); Leaving soon (Maintainerr)={}; accounts: sign-up={}, passkeys={}, Pocket ID={}; \
              Seerr bridge={}; Tautulli={}; Jellyfin key={}; webhooks={}",
             self.servers.len(),
+            on(self.keep_on()),
             match a.registration {
                 Registration::Invite => "invite",
                 Registration::Open => "open",
@@ -311,5 +320,35 @@ impl Secrets {
             jellyfin_keys: vec![],
             jellyfin_default: Some(jellyfin.into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SERVER: &str = r#"
+[[servers]]
+id = "abc"
+kind = "jellyfin"
+name = "HomeJelly"
+public_url = "https://jellyfin.example.org"
+"#;
+
+    #[test]
+    fn maintainerr_is_optional() {
+        // On its own: the web app, accounts, rooms and device sign-in, no Leaving soon.
+        let c = Config::parse(SERVER).unwrap();
+        assert!(!c.keep_on());
+        assert!(c.summary().contains("Leaving soon (Maintainerr)=off"));
+        let with = format!("{SERVER}\n[maintainerr]\nurl = \"http://m:6246\"\nserver = \"abc\"\n");
+        assert!(Config::parse(&with).unwrap().keep_on());
+    }
+
+    #[test]
+    fn a_maintainerr_for_an_unknown_server_says_which_ids_exist() {
+        let bad = format!("{SERVER}\n[maintainerr]\nurl = \"http://m:6246\"\nserver = \"nope\"\n");
+        let e = Config::parse(&bad).unwrap_err();
+        assert!(e.contains("'nope'") && e.contains("abc"), "{e}");
     }
 }

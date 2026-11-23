@@ -66,16 +66,18 @@ async fn run(config: config::Config) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let listen = config.listen;
     let state = Arc::new(keep::State::new(config, db, http, "https://plex.tv"));
-    match state.maintainerr.version().await {
-        Ok(v) if !v.starts_with("3.") => {
-            return Err(format!(
-                "Maintainerr {v} is not supported: this build works with Maintainerr 3.x and \
-                 will not write to another major version. Use Maintainerr 3.x, or a newer \
-                 alwywatch-server"
-            ));
+    if state.config.keep_on() {
+        match state.maintainerr.version().await {
+            Ok(v) if !v.starts_with("3.") => {
+                return Err(format!(
+                    "Maintainerr {v} is not supported: this build works with Maintainerr 3.x and \
+                     will not write to another major version. Use Maintainerr 3.x, or a newer \
+                     alwywatch-server"
+                ));
+            }
+            Ok(v) => eprintln!("[keep] Maintainerr {v}"),
+            Err(e) => eprintln!("[keep] Maintainerr not reachable yet ({e}); will retry"),
         }
-        Ok(v) => eprintln!("[keep] Maintainerr {v}"),
-        Err(e) => eprintln!("[keep] Maintainerr not reachable yet ({e}); will retry"),
     }
     keep::spawn_jobs(state.clone());
     let listener = tokio::net::TcpListener::bind(listen)

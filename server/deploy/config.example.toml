@@ -1,5 +1,6 @@
 # alwywatch-server configuration: copy to ./data/config.toml and fill in.
-# Minimum: one [[servers]] entry and [maintainerr]. Everything else is optional.
+# Minimum: one [[servers]] entry. Everything else is optional; without [maintainerr] there is
+# no Leaving soon, the rest (web app, accounts, watch together, device sign-in) works.
 
 # Minutes between two readings of Maintainerr.
 sync_minutes = 10
@@ -25,6 +26,7 @@ internal_url = "http://jellyfin:8096"
 # name = "HomePlex"
 # public_url = "https://plex.example.org"
 
+# Leaving soon and keep choices. Delete this block if you don't use Maintainerr.
 [maintainerr]
 url = "http://maintainerr:6246"
 # The id (from [[servers]] above) of the media server Maintainerr is set up for.
