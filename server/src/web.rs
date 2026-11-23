@@ -29,6 +29,16 @@ fn mime(p: &Path) -> &'static str {
     }
 }
 
+/// What the page may load, so that injected markup could neither run a script nor send the
+/// sign-ins kept in the browser anywhere through one: scripts and styles only from this site
+/// (the app is WebAssembly, hence `wasm-unsafe-eval`; Leptos sets `style` attributes, hence
+/// inline styles), no plugins, frames or `<base>`. Pictures, video and API calls go to the
+/// media servers each user added, which are not known here, so those stay open.
+const CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; \
+    style-src 'self' 'unsafe-inline'; img-src * data: blob:; media-src * blob:; \
+    connect-src *; font-src 'self'; manifest-src 'self'; worker-src 'self'; \
+    base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
 fn not_found() -> Response {
     (StatusCode::NOT_FOUND, "not found").into_response()
 }
@@ -92,6 +102,18 @@ async fn serve_from(dir: &Path, uri: &Uri, headers: &HeaderMap) -> Response {
     );
     out.insert("referrer-policy", HeaderValue::from_static("same-origin"));
     out.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    out.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP),
+    );
+    out.insert(
+        "permissions-policy",
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
+    );
+    out.insert(
+        "cross-origin-opener-policy",
+        HeaderValue::from_static("same-origin"),
+    );
     if let Ok(v) = HeaderValue::from_str(&etag) {
         out.insert(header::ETAG, v);
     }
@@ -157,6 +179,15 @@ mod tests {
             StatusCode::NOT_FOUND
         );
         assert_eq!(get(p, "/.env", false).await.0, StatusCode::NOT_FOUND);
+        let r = serve_from(p, &"/".parse().unwrap(), &HeaderMap::new()).await;
+        let csp = r.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap();
+        assert!(
+            csp.contains("script-src 'self' 'wasm-unsafe-eval';"),
+            "{csp}"
+        );
+        assert!(!csp.contains("  "), "one line, single spaces: {csp}");
         assert_eq!(
             get(p, "/v1/nothing", false).await.0,
             StatusCode::NOT_FOUND,

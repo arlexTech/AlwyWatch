@@ -11,24 +11,12 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="modulepreload" href="/alwywatch_web.js">
   <link rel="preload" href="/alwywatch_web_bg.wasm" as="fetch" type="application/wasm" crossorigin>
-  <script type="module">
-    import init from '/alwywatch_web.js';
-    init({ module_or_path: '/alwywatch_web_bg.wasm' }).catch((e) => {
-      console.error(e);
-      const b = document.getElementById('boot');
-      if (b) b.innerHTML = '<p>AlwyWatch couldn\'t start. Check your connection, then <a class="button primary" href="">reload</a>.</p>' +
-        '<p class="muted small">If it keeps happening, this browser may be too old.</p>';
-    });
-  </script>
+  <!-- Scripts are files, never inline: the server's Content-Security-Policy refuses inline ones. -->
+  <script type="module" src="/boot.js"></script>
 </head>
 <body>
   <div id="boot" role="status"><div class="spinner"></div><p class="muted">Loading AlwyWatch…</p></div>
   <noscript><p>AlwyWatch needs JavaScript.</p></noscript>
-  <script>
-    // An old browser can't even load the module: say so instead of spinning forever.
-    if (!('noModule' in HTMLScriptElement.prototype) || typeof WebAssembly !== 'object') {
-      document.getElementById('boot').innerHTML = '<p>This browser is too old for AlwyWatch. Use a recent Firefox, Chrome, Edge or Safari.</p>';
-    }
-  </script>
+  <script src="/compat.js"></script>
 </body>
 </html>
