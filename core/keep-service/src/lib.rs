@@ -574,6 +574,14 @@ impl KeepClient {
         Ok(t.ticket)
     }
 
+    /// Account session: whether Jellyfin/Plex sign-ins of the person may act on the account.
+    /// Turning it off needs a password, passkey or Pocket ID (409 otherwise).
+    pub async fn account_media_sign_in(&self, allowed: bool) -> Result<()> {
+        let body = serde_json::json!({ "allowed": allowed });
+        net::send(self.req(Method::PUT, "/account/media-sign-in").json(&body)).await?;
+        Ok(())
+    }
+
     /// Account session: confirms the Pocket ID the browser came back with
     /// (`/account?link=<id>`); only then is it linked.
     pub async fn oidc_link(&self, id: &str) -> Result<()> {

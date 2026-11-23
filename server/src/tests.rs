@@ -3570,3 +3570,134 @@ async fn pocket_id_creates_the_account_then_signs_it_in() {
             .starts_with("/account?error=")
     );
 }
+
+#[tokio::test]
+async fn media_sign_ins_can_be_turned_off_for_an_account() {
+    let e = env().await;
+    let switch = |token: String, allowed: bool| {
+        let e = &e;
+        async move {
+            e.anon(
+                "PUT",
+                "/v1/account/media-sign-in",
+                Some(&token),
+                Some(json!({"allowed": allowed})),
+            )
+            .await
+            .0
+        }
+    };
+    let claim = |password: &'static str| {
+        let e = &e;
+        async move {
+            e.call(
+                "POST",
+                "/v1/account/claim",
+                "jfsrv",
+                "jf-bob",
+                Some(json!({"username": "bob", "password": password})),
+            )
+            .await
+        }
+    };
+    // Bob's Jellyfin sign-in gives his person an account with a password.
+    let (st, view) = claim("password1").await;
+    assert_eq!(st, StatusCode::OK, "{view}");
+    assert_eq!(view["media_sign_in"], true, "on unless turned off");
+    let (st, _, r) = e
+        .anon(
+            "POST",
+            "/v1/account/login",
+            None,
+            Some(json!({"username": "bob", "password": "password1"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    let session = r["token"].as_str().unwrap().to_owned();
+
+    // Only the account itself turns it off; a media sign-in is no account session.
+    let (st, _) = e
+        .call(
+            "PUT",
+            "/v1/account/media-sign-in",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"allowed": false})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    assert_eq!(switch(session.clone(), false).await, StatusCode::NO_CONTENT);
+    let (_, _, me) = e.anon("GET", "/v1/account", Some(&session), None).await;
+    assert_eq!(me["media_sign_in"], false);
+
+    // Off: the Jellyfin sign-in no longer sets the password nor signs a device in to the
+    // account, but everything else it does goes on.
+    let (st, body) = claim("stolen-token-pw").await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "{body}");
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/login",
+            None,
+            Some(json!({"username": "bob", "password": "password1"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "the password is unchanged");
+    let start = json!({"public_key": "ab".repeat(32), "device": "TV"});
+    let (_, _, t) = e
+        .anon("POST", "/v1/transfer", None, Some(start.clone()))
+        .await;
+    let code = t["code"].as_str().unwrap().to_owned();
+    let (st, _) = e
+        .call(
+            "PUT",
+            &format!("/v1/transfer/{code}/approve"),
+            "jfsrv",
+            "jf-bob",
+            None,
+        )
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, _) = e
+        .call("GET", "/v1/leaving-soon", "jfsrv", "jf-bob", None)
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    // The account's own session still approves.
+    let (st, _, _) = e
+        .anon(
+            "PUT",
+            &format!("/v1/transfer/{code}/approve"),
+            Some(&session),
+            None,
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+
+    // Back on: the Jellyfin sign-in sets the password again.
+    assert_eq!(switch(session.clone(), true).await, StatusCode::NO_CONTENT);
+    assert_eq!(claim("password2").await.0, StatusCode::OK);
+
+    // Without a way of its own to sign in, an account cannot turn it off.
+    let (_, _, t) = e.anon("POST", "/v1/transfer", None, Some(start)).await;
+    let code = t["code"].as_str().unwrap().to_owned();
+    let (st, _) = e
+        .call(
+            "PUT",
+            &format!("/v1/transfer/{code}/approve"),
+            "jfsrv",
+            "jf-alice",
+            None,
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    let (_, _, got) = e
+        .anon(
+            "GET",
+            &format!("/v1/transfer/poll/{}", t["handle"].as_str().unwrap()),
+            None,
+            None,
+        )
+        .await;
+    let alice = got["account_token"].as_str().unwrap().to_owned();
+    assert_eq!(switch(alice, false).await, StatusCode::CONFLICT);
+}

@@ -549,6 +549,7 @@ pub fn AccountPage() -> impl IntoView {
             let o = options.get().flatten();
             view! {
                 <Password info=i.clone() page=page />
+                <MediaSignIn info=i.clone() page=page />
                 <section class="group">
                     <h2>"Passkeys"</h2>
                     {i.passkeys.iter().map(|p| {
@@ -744,6 +745,76 @@ fn Password(info: AccountView, page: Page) -> impl IntoView {
             }}
         </section>
     }
+}
+
+/// Kept once the proposal to turn media sign-ins off was answered with "keep it on".
+const MEDIA_SIGN_IN_ASKED: &str = "aw.account.media-asked";
+
+/// Plex/Jellyfin sign-ins acting on the account: proposed to be turned off once the account
+/// has a way of its own to sign in (a password, a passkey, Pocket ID), never forced.
+#[component]
+fn MediaSignIn(info: AccountView, page: Page) -> impl IntoView {
+    let own_way = info.has_password || !info.passkeys.is_empty() || info.pocketid;
+    let allowed = info.media_sign_in;
+    // Nothing to offer before the account can be signed in to on its own.
+    if !own_way && allowed {
+        return ().into_any();
+    }
+    let asked = RwSignal::new(state::load::<bool>(MEDIA_SIGN_IN_ASKED).unwrap_or(false));
+    let set = move |to: bool| {
+        let c = state::ctx();
+        page.run(
+            Box::pin(async move {
+                let k = c.account_client().ok_or("Signed out.")?;
+                k.account_media_sign_in(to).await.map_err(|e| match e {
+                    net::Error::Status { status: 409 } => {
+                        "Add a password, passkey or Pocket ID first: it would be your only way in."
+                            .into()
+                    }
+                    e => account::explain(&e, false),
+                })
+            }),
+            if to {
+                "Plex and Jellyfin sign-ins can change this account again."
+            } else {
+                "Done. Only this account's own sign-in changes it now."
+            },
+        );
+    };
+    let keep_on = move |_| {
+        state::save(MEDIA_SIGN_IN_ASKED, &true);
+        asked.set(true);
+    };
+    view! {
+        <section class="group">
+            <h2>"Plex and Jellyfin sign-ins"</h2>
+            {move || if !allowed {
+                view! {
+                    <div class="row">
+                        <div class="muted">"Turned off: a Plex or Jellyfin sign-in can't set this account's password or sign a new device in to it. You still watch, vote and join rooms with them."</div>
+                        <button on:click=move |_| set(true)>"Turn back on"</button>
+                    </div>
+                }.into_any()
+            } else if asked.get() {
+                view! {
+                    <div class="row">
+                        <div class="muted">"On: whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it."</div>
+                        <button on:click=move |_| set(false)>"Turn off"</button>
+                    </div>
+                }.into_any()
+            } else {
+                view! {
+                    <p>"This account has its own way to sign in now. Do you want to stop Plex and Jellyfin sign-ins from changing it?"</p>
+                    <p class="muted small">"Today, whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it. Turned off, only this account's own sign-in can. Watching, votes and rooms keep working with Plex and Jellyfin either way, and you can turn it back on here."</p>
+                    <div class="actions">
+                        <button class="primary" on:click=move |_| set(false)>"Turn off"</button>
+                        <button on:click=keep_on>"Keep it on"</button>
+                    </div>
+                }.into_any()
+            }}
+        </section>
+    }
+    .into_any()
 }
 
 /// Admins: invitations to create an account.

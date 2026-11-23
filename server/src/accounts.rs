@@ -126,6 +126,10 @@ pub struct AccountRow {
     pub username: Option<String>,
     pub has_password: bool,
     pub created: i64,
+    /// The owner turned media sign-ins off for this account: a Jellyfin/Plex sign-in of the
+    /// person still watches, votes and joins rooms, but no longer sets the account's
+    /// username or password nor signs new devices in to it.
+    pub media_locked: bool,
 }
 
 fn row_account(r: &rusqlite::Row<'_>) -> rusqlite::Result<AccountRow> {
@@ -135,10 +139,11 @@ fn row_account(r: &rusqlite::Row<'_>) -> rusqlite::Result<AccountRow> {
         username: r.get(2)?,
         has_password: r.get::<_, Option<String>>(3)?.is_some(),
         created: r.get(4)?,
+        media_locked: r.get::<_, i64>(5)? != 0,
     })
 }
 
-const ACCOUNT_COLS: &str = "id, person, username, password, created";
+const ACCOUNT_COLS: &str = "id, person, username, password, created, media_locked";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionRow {
@@ -209,6 +214,7 @@ impl Db {
             username: username.map(str::to_owned),
             has_password: password_hash.is_some(),
             created: now,
+            media_locked: false,
         })
     }
 
@@ -265,6 +271,14 @@ impl Db {
         self.c().execute(
             "UPDATE accounts SET password = ?2 WHERE id = ?1",
             params![account, hash],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_media_locked(&self, account: &str, locked: bool) -> rusqlite::Result<()> {
+        self.c().execute(
+            "UPDATE accounts SET media_locked = ?2 WHERE id = ?1",
+            params![account, locked],
         )?;
         Ok(())
     }

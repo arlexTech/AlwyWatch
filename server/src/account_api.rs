@@ -181,6 +181,7 @@ fn view(s: &Shared, a: &AccountRow, current: Option<&str>) -> Result<AccountView
                 name: i.media_name,
             })
             .collect(),
+        media_sign_in: !a.media_locked,
     })
 }
 
@@ -323,6 +324,7 @@ pub async fn claim(
     accounts::check_username(username).map_err(account_err)?;
     let hash = accounts::hash_password(&r.password).map_err(account_err)?;
     let a = match s.db.account_of_person(&id.user_key).map_err(internal)? {
+        Some(a) if a.media_locked => return Err(media_locked()),
         Some(a) => {
             s.db.set_username(&a.id, username).map_err(account_err)?;
             s.db.set_password(&a.id, Some(&hash)).map_err(internal)?;
@@ -336,6 +338,47 @@ pub async fn claim(
         }
     };
     Ok(Json(view(&s, &a, None)?))
+}
+
+/// The account's owner turned media sign-ins off for it.
+fn media_locked() -> Error {
+    Error(
+        StatusCode::FORBIDDEN,
+        "Plex and Jellyfin sign-ins are turned off for this AlwyWatch account: sign in to the account itself".into(),
+    )
+}
+
+#[derive(Deserialize)]
+pub struct MediaSignIn {
+    allowed: bool,
+}
+
+/// `PUT /v1/account/media-sign-in`: whether a Jellyfin/Plex sign-in of the person may act on
+/// the account (set its username and password, sign new devices in to it). Never forced:
+/// the owner's choice, offered once the account has a way of its own to sign in.
+pub async fn set_media_sign_in(
+    State(s): State<Shared>,
+    session: Session,
+    Json(r): Json<MediaSignIn>,
+) -> Result<StatusCode, Error> {
+    let a = &session.account;
+    if !r.allowed && s.db.sign_in_methods(&a.id).map_err(internal)? == 0 {
+        return Err(Error(
+            StatusCode::CONFLICT,
+            "add a password, passkey or Pocket ID first: it would be your only way in".into(),
+        ));
+    }
+    s.db.set_media_locked(&a.id, !r.allowed).map_err(internal)?;
+    s.db.log(
+        &a.person,
+        "account",
+        if r.allowed {
+            "media sign-ins turned on"
+        } else {
+            "media sign-ins turned off"
+        },
+    );
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -691,7 +734,8 @@ pub async fn passkey_rename(
 /// Refuses to remove the last way into an account that has no media sign-in either.
 fn keep_one_way_in(s: &Shared, a: &AccountRow) -> Result<(), Error> {
     let methods = s.db.sign_in_methods(&a.id).map_err(internal)?;
-    let media = !s.db.identities_of(&a.person).map_err(internal)?.is_empty();
+    // A media sign-in is a way back in (it can set a password), unless that was turned off.
+    let media = !a.media_locked && !s.db.identities_of(&a.person).map_err(internal)?.is_empty();
     if methods <= 1 && !media {
         return Err(Error(
             StatusCode::CONFLICT,
@@ -965,6 +1009,9 @@ pub async fn quick_approve(
     person: Person,
     Path(code): Path<String>,
 ) -> Result<Json<Approved>, Error> {
+    if person.media.is_some() && person.account.as_ref().is_some_and(|a| a.media_locked) {
+        return Err(media_locked());
+    }
     if !s.limits.transfer_codes.allow(&person.user_key) {
         return Err(too_many());
     }

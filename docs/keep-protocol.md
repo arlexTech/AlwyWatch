@@ -499,6 +499,7 @@ Server environment: `ALWYWATCH_PUBLIC_URL` (needed for passkeys and Pocket ID),
 | POST | `/v1/account/oidc/ticket` | session | → `{ticket}`; `start?ticket=` links Pocket ID to that account |
 | POST | `/v1/account/oidc/link` | session | `{id}` from `/account?link=<id>` (where the callback lands when linking): the account confirms, only then is Pocket ID linked. 403 from another account, 400 expired |
 | DELETE | `/v1/account/oidc` | session | unlinks Pocket ID |
+| PUT | `/v1/account/media-sign-in` | session | `{allowed}`: whether a Jellyfin/Plex sign-in of the person may act on the account. Off: `claim` and Quick Connect approval by a media sign-in answer 403, and a device transfer moves the media sign-ins without an account session. Everything else a media sign-in does is unchanged. Turning it off needs a password, passkey or Pocket ID (409). Shown as `media_sign_in` in the account view; the web app proposes it once the account has its own way in, never forces it |
 
 * Usernames: 3–32 of `A-Z a-z 0-9 . _ -`, unique ignoring case. Passwords: 8–256
   characters, Argon2id. Session tokens (`aws_` + 64 hex) and invitation codes are stored as

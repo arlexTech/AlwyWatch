@@ -42,6 +42,15 @@ pub struct AccountView {
     /// Media-server sign-ins linked to this person.
     #[serde(default)]
     pub linked: Vec<LinkedView>,
+    /// Whether a Jellyfin/Plex sign-in of the person may act on the account (set its
+    /// username and password, sign new devices in to it). The owner's choice
+    /// (`PUT /v1/account/media-sign-in`); on unless turned off.
+    #[serde(default = "yes")]
+    pub media_sign_in: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

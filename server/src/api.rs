@@ -83,6 +83,10 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/account/password", put(account_api::set_password))
         .route("/v1/account/username", put(account_api::set_username))
         .route(
+            "/v1/account/media-sign-in",
+            put(account_api::set_media_sign_in),
+        )
+        .route(
             "/v1/account/sessions/{id}",
             delete(account_api::end_session),
         )
@@ -585,9 +589,14 @@ async fn transfer_send(
         user_key: id.user_key.clone(),
         media: None,
     };
-    let grant = crate::account_api::grant_for(&s, &person, &peer.device)?;
+    // Unless they turned that off: then the media sign-ins move, the account does not.
+    let grant = if person.account.as_ref().is_some_and(|a| a.media_locked) {
+        None
+    } else {
+        Some(crate::account_api::grant_for(&s, &person, &peer.device)?)
+    };
     s.transfers
-        .send(code.trim(), Some(sealed.sealed), Some(grant))
+        .send(code.trim(), Some(sealed.sealed), grant)
         .map_err(transfer_error)?;
     eprintln!("[transfer] {} sent a device transfer", id.user_key);
     Ok(StatusCode::NO_CONTENT)
