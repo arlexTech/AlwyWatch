@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# alwywatch-server next to Maintainerr/Seerr/Plex/Jellyfin/Tautulli. Not deployed automatically:
-# see docs/deploy.md. Build the image first:  docker build -f server/Dockerfile -t alwywatch-server .
+# alwywatch-server next to your Maintainerr / Jellyfin / Plex. Step by step: docs/deploy.md.
+# There is no prebuilt image yet; build it once from the repository root:
+#   docker build -f server/Dockerfile -t alwywatch-server .
 name: alwywatch
 
 services:
@@ -14,39 +15,34 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
+    # Everything here is optional and read from the .env file next to this one
+    # (see .env.example; chmod 600 .env).
     environment:
-      TZ: Europe/Brussels
-      # Secrets (put them in an .env file next to this compose file, chmod 600).
-      TAUTULLI_API_KEY: ${TAUTULLI_API_KEY}
-      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY}
-      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
-      SEERR_API_KEY: ${SEERR_API_KEY:-}   # Seerr bridge (Seerr → Settings → General → API key)
-      # MAINTAINERR_API_KEY: ${MAINTAINERR_API_KEY}   # only if you enable Maintainerr's API key
-      # AlwyWatch accounts (docs/keep-protocol.md "AlwyWatch accounts"): this site's address
-      # (passkeys and Pocket ID need it), who may sign up, and Pocket ID (optional; callback
-      # <public URL>/v1/account/oidc/callback).
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
+      TAUTULLI_API_KEY: ${TAUTULLI_API_KEY:-}
+      MAINTAINERR_API_KEY: ${MAINTAINERR_API_KEY:-}
+      SEERR_API_KEY: ${SEERR_API_KEY:-}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
       ALWYWATCH_PUBLIC_URL: ${ALWYWATCH_PUBLIC_URL:-}
       ALWYWATCH_REGISTRATION: ${ALWYWATCH_REGISTRATION:-invite}
       ALWYWATCH_POCKETID_ISSUER: ${ALWYWATCH_POCKETID_ISSUER:-}
       ALWYWATCH_POCKETID_CLIENT_ID: ${ALWYWATCH_POCKETID_CLIENT_ID:-}
       ALWYWATCH_POCKETID_CLIENT_SECRET: ${ALWYWATCH_POCKETID_CLIENT_SECRET:-}
+      ALWYWATCH_DRY_RUN: ${ALWYWATCH_DRY_RUN:-}
     volumes:
-      - ./data:/data            # config.toml + keep.sqlite (owned by uid 65534)
+      - ./data:/data            # config.toml + the database (owned by uid 65534)
     networks:
-      - vod_default             # maintainerr (and seerr)
-      - plex_default
-      - jellyfin_default
-      - tautulli_default
-    # No published port: Caddy reaches it on the shared network (add caddy to "alwywatch").
+      - media
+    # No published port: your reverse proxy reaches alwywatch-server:8080 on the shared
+    # network. Publishing the port would let clients skip the proxy and forge the address the
+    # sign-in rate limit goes by. For a quick LAN trial only: ports: ["8080:8080"].
     expose:
       - "8080"
 
 networks:
-  vod_default:
+  # The Docker network your Maintainerr and Jellyfin containers (and your reverse proxy) are
+  # on: `docker network ls`. Containers on several networks: list each one here and above.
+  # Not using Docker networks: delete this, and put LAN addresses in config.toml.
+  media:
     external: true
-  plex_default:
-    external: true
-  jellyfin_default:
-    external: true
-  tautulli_default:
-    external: true
+    name: CHANGE_ME_default

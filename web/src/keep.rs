@@ -824,7 +824,7 @@ pub fn Admin() -> impl IntoView {
                         <div class="actions tight">
                             {[0u32, 14, 30].map(|stagger| {
                                 let title = title.clone();
-                                let label = if stagger == 0 { "Today".to_string() } else { format!("Over {stagger} days") };
+                                let label = if stagger == 0 { "Restart now".to_string() } else { format!("Spread over {stagger} days") };
                                 view! { <button class="small" on:click=move |_| armed.set(Some((id, title.clone(), stagger)))>{label}</button> }
                             }).collect_view()}
                         </div>

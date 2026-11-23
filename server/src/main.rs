@@ -53,7 +53,15 @@ async fn run(config: config::Config) -> Result<(), String> {
     } else {
         "keep.sqlite"
     };
-    let db = db::Db::open(&config.data_dir.join(db_file)).map_err(|e| e.to_string())?;
+    let db_path = config.data_dir.join(db_file);
+    let db = db::Db::open(&db_path).map_err(|e| {
+        format!(
+            "cannot open {}: {e}. The data directory must exist and be writable by the \
+             container's user (uid 65534): chown -R 65534:65534 data",
+            db_path.display()
+        )
+    })?;
+    eprintln!("[keep] {}", config.summary());
     let http = net::api_client(concat!("AlwyWatch-Server/", env!("CARGO_PKG_VERSION")))
         .map_err(|e| e.to_string())?;
     let listen = config.listen;
@@ -61,7 +69,9 @@ async fn run(config: config::Config) -> Result<(), String> {
     match state.maintainerr.version().await {
         Ok(v) if !v.starts_with("3.") => {
             return Err(format!(
-                "Maintainerr {v} is not supported (built against 3.x); refusing to write to it"
+                "Maintainerr {v} is not supported: this build works with Maintainerr 3.x and \
+                 will not write to another major version. Use Maintainerr 3.x, or a newer \
+                 alwywatch-server"
             ));
         }
         Ok(v) => eprintln!("[keep] Maintainerr {v}"),
@@ -73,11 +83,26 @@ async fn run(config: config::Config) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     eprintln!("[keep] listening on {listen}");
     axum::serve(listener, api::router(state))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .with_graceful_shutdown(stop_signal())
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Ctrl-C, or the SIGTERM of `docker stop` (unhandled, the container was killed after its
+/// 10 s grace period at every restart).
+async fn stop_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        if let Ok(mut term) = signal(SignalKind::terminate()) {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = term.recv() => {}
+            }
+            return;
+        }
+    }
+    let _ = tokio::signal::ctrl_c().await;
 }
 
 #[cfg(test)]

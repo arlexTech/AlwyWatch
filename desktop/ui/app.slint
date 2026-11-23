@@ -2650,9 +2650,9 @@ export component AppWindow inherits Window {
                                     spacing: 8px;
                                     Text { text: c.title; color: Palette.text; font-weight: 700; vertical-alignment: center; min-width: 200px; }
                                     Rectangle { horizontal-stretch: 1; }
-                                    Button { label: "Today"; clicked => { root.admin-countdown(c.id, 0); } }
-                                    Button { label: "Over 14 days"; clicked => { root.admin-countdown(c.id, 14); } }
-                                    Button { label: "Over 30 days"; clicked => { root.admin-countdown(c.id, 30); } }
+                                    Button { label: "Restart now"; clicked => { root.admin-countdown(c.id, 0); } }
+                                    Button { label: "Spread over 14 days"; clicked => { root.admin-countdown(c.id, 14); } }
+                                    Button { label: "Spread over 30 days"; clicked => { root.admin-countdown(c.id, 30); } }
                                 }
                             }
                             Group {

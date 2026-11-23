@@ -42,7 +42,7 @@ Lightweight, fast, open source media client for **Jellyfin and Plex**, with **Se
 - Seerr supports **one** media server type at a time (verified in code); the owner plans to move from Plex to Jellyfin (open source), at which point Seerr and Maintainerr switch to Jellyfin mode. Design everything server-agnostic.
 - Every connection (Plex, Jellyfin, Seerr, AlwyWatch backend) is optional and can be combined freely; the backend's server list is only a convenience preset.
 - All Maintainerr collections are inactive on purpose and all their items are already past their nominal deletion date: never activate a collection or reset dates without the owner.
-- Repo is hosted on GitHub (`arlexTech/alwywatch`, public); the CI workflow is written for Forgejo Actions.
+- Repo is hosted on GitHub (`arlexTech/alwywatch`, public). CI: `.github/workflows/ci.yml` on GitHub's runners, `.forgejo/workflows/ci.yml` on the owner's runner; both call `scripts/ci.sh`.
 - Do not commit server identifiers (machine IDs, usernames, internal subnets) to this public repo.
 
 ## "Keep" feature (core differentiator)

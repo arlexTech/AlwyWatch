@@ -6,17 +6,37 @@ A lightweight, open source media client for **Jellyfin** and **Plex**, with **Se
 and a **"keep"** system on top of **Maintainerr**: see what is about to be deleted from the
 server and ask to keep it for N days, until you have watched it, or forever.
 
-Platforms: Android phones and tablets, Android TV, Linux and Windows desktop, and a web app
-served by the optional AlwyWatch server. Every connection is optional: without the server it is
-a plain Jellyfin/Plex client.
+Platforms: Android phones and tablets, Android TV, Linux and Windows desktop, and a web app.
 
-> Status: 0.1.0, not yet released. See [the plan](docs/plan.md).
+* **Without `alwywatch-server`**: a plain Jellyfin/Plex client with downloads, and Seerr
+  requests if you give it your Seerr address.
+* **With it** (one Docker container next to Maintainerr, [set up in a few steps](docs/deploy.md)):
+  Leaving soon and keep choices, watch together, the web app, settings that follow you across
+  devices, signing a new device in with a code, optional AlwyWatch accounts, and Seerr for
+  both Jellyfin and Plex users.
+
+> Status: 0.1.0, not yet released: there are no downloads yet, the apps are built from source.
+
+## Install
+
+* **Android phone, tablet, TV**: `cd android && ./gradlew assembleDebug`, then install
+  `android/app/build/outputs/apk/debug/app-universal-debug.apk` (`adb install`; on a TV, turn
+  on developer options and `adb connect <its address>` first). Requirements:
+  [docs/build.md](docs/build.md).
+* **Linux**: `desktop/packaging/install.sh` (needs `mpv`/libmpv from your distribution), or
+  `scripts/package.sh linux` for an AppImage in `dist/`.
+* **Windows**: `scripts/package.sh windows` builds an installer in `dist/`.
+* **Web**: nothing to install; it is served by `alwywatch-server` at its address.
+
+First launch: choose "I was given an AlwyWatch address" if the person who runs your server
+gave you one, otherwise "I have a Jellyfin or Plex login". A TV or second device can be signed
+in with a code from a device that already is.
 
 ## Features
 
 | | Android phone/tablet | Android TV | Desktop (Linux, Windows) | Web |
 |---|---|---|---|---|
-| Jellyfin (password, Quick Connect) and Plex (PIN) accounts, several at once | yes | yes | yes | yes |
+| Jellyfin (password, Quick Connect) and Plex (plex.tv sign-in) accounts, several at once | yes | yes | yes | yes |
 | Plex Home user switch | yes | yes | no | no |
 | Home rails, libraries (genres, collections), title pages, search | yes | yes | yes | yes |
 | Renders from a local cache first | SQLite | SQLite | SQLite | `localStorage` copies of a few pages |
@@ -27,7 +47,7 @@ a plain Jellyfin/Plex client.
 | Resumable downloads | yes | no | yes | no |
 | My list (Jellyfin favorites, Plex watchlist), trailers, cast | yes | yes | yes | My list and cast |
 | Seerr search and requests (direct or through the server) | yes | yes | yes | through the server only |
-| Leaving soon, keep votes, swipe sorting, reminders | yes | yes | yes | yes, no reminders |
+| Leaving soon, keep choices, one-by-one sorting, reminders | yes | yes | yes | yes, no reminders |
 | Admin: rights, countdown, kept-forever stats | yes | yes | yes | yes |
 | Admin: link users to existing Seerr users | yes | yes | no | yes |
 | Watch together | yes | yes | yes | yes |
@@ -35,7 +55,7 @@ a plain Jellyfin/Plex client.
 | Copy watch history between servers | yes | yes | yes | no |
 | Keep two servers' watch state in sync | yes | yes | no | no |
 | Settings follow the user across devices | yes | yes | yes | no |
-| Move sign-ins to a new device (end-to-end encrypted) | yes | yes | yes | no |
+| Sign a new device in with a code (end-to-end encrypted) | yes | yes | yes | no |
 | Voice search | yes | yes | no | no |
 
 TV is D-pad first (leanback launcher, focus restored where it was). Phones use a bottom bar,
@@ -53,7 +73,7 @@ tablets and TV a side rail, desktop a sidebar. Web limitations are listed in
 | `server/` | `alwywatch-server`: keep votes, Seerr bridge, watch together, device transfer, web app |
 | `tools/uniffi-bindgen` | Kotlin bindings generator used by Gradle |
 | `scripts/`, `packaging/` | CI, dev loop and packaging scripts |
-| `docs/` | Plan, build, decisions, APIs, performance |
+| `docs/` | Server setup, build, decisions, APIs, performance |
 
 ## Build
 
@@ -72,7 +92,7 @@ docker build -f server/Dockerfile -t alwywatch-server .   # server image, web ap
 ## Docs
 
 * [Building](docs/build.md) and packaging
-* [Deploying the server](docs/deploy.md)
+* [Setting up the server](docs/deploy.md): quick start, options, administration, backup
 * [Core API](docs/core-api.md), [keep-service protocol](docs/keep-protocol.md), [web app](docs/web.md)
 * [Decisions and dependencies](docs/decisions.md)
 * [Performance](docs/perf.md)

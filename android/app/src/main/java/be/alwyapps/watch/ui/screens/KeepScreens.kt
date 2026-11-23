@@ -756,7 +756,7 @@ fun KeepAdminScreen() {
                     be.alwyapps.watch.ui.ListRow(title, icon = be.alwyapps.watch.ui.Icons.Schedule, trailing = {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             for (stagger in listOf(0u, 14u, 30u)) {
-                                val label = if (stagger == 0u) "Today" else "Over $stagger days"
+                                val label = if (stagger == 0u) "Restart now" else "Spread over $stagger days"
                                 val isArmed = armed == id to stagger
                                 ActionButton(if (isArmed) "Confirm" else label, {
                                     if (!isArmed) {

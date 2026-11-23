@@ -124,25 +124,55 @@ pub struct AccountsConf {
 }
 
 impl AccountsConf {
-    pub fn from_env() -> Self {
-        let get = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
-        let url = get("ALWYWATCH_PUBLIC_URL");
-        let rp = url
-            .as_deref()
-            .and_then(crate::passkey::RelyingParty::from_url);
+    /// A value that is set but wrong is an error, not a silent fallback: passkeys quietly off
+    /// or sign-up quietly on "invite" is found out much later, by someone else.
+    pub fn from_env() -> Result<Self, String> {
+        let get = |k: &str| {
+            std::env::var(k)
+                .ok()
+                .map(|v| v.trim().to_owned())
+                .filter(|v| !v.is_empty())
+        };
+        let rp = match get("ALWYWATCH_PUBLIC_URL") {
+            None => None,
+            Some(url) => Some(crate::passkey::RelyingParty::from_url(&url).ok_or(format!(
+                "ALWYWATCH_PUBLIC_URL must be this site's address like https://watch.example.org \
+                 (https://, the host, no path), got '{url}'"
+            ))?),
+        };
         let pocketid = rp
             .as_ref()
             .and_then(|r| crate::oidc::PocketId::from_env(&r.origin));
-        let registration = match get("ALWYWATCH_REGISTRATION").as_deref().map(str::trim) {
+        const POCKETID: [&str; 3] = [
+            "ALWYWATCH_POCKETID_ISSUER",
+            "ALWYWATCH_POCKETID_CLIENT_ID",
+            "ALWYWATCH_POCKETID_CLIENT_SECRET",
+        ];
+        let set = POCKETID.iter().filter(|k| get(k).is_some()).count();
+        if set > 0 && pocketid.is_none() {
+            return Err(if rp.is_none() {
+                "ALWYWATCH_POCKETID_* is set but ALWYWATCH_PUBLIC_URL is not: Pocket ID needs \
+                 this site's address"
+                    .to_owned()
+            } else {
+                format!("Pocket ID needs all three of {}", POCKETID.join(", "))
+            });
+        }
+        let registration = match get("ALWYWATCH_REGISTRATION").as_deref() {
+            None | Some("invite") => Registration::Invite,
             Some("open") => Registration::Open,
             Some("closed") => Registration::Closed,
-            _ => Registration::Invite,
+            Some(v) => {
+                return Err(format!(
+                    "ALWYWATCH_REGISTRATION must be invite, open or closed, got '{v}'"
+                ));
+            }
         };
-        Self {
+        Ok(Self {
             rp,
             pocketid,
             registration,
-        }
+        })
     }
 }
 
@@ -183,23 +213,34 @@ impl Config {
         let mut c: Config = toml::from_str(toml_text).map_err(|e| e.to_string())?;
         if !c.servers.iter().any(|s| s.id == c.maintainerr.server) {
             return Err(format!(
-                "maintainerr.server '{}' is not in [[servers]]",
-                c.maintainerr.server
+                "[maintainerr] server = '{}' must be the id of one [[servers]] entry (the media \
+                 server Maintainerr is set up for); ids in this file: {}",
+                c.maintainerr.server,
+                c.servers
+                    .iter()
+                    .map(|s| s.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
         }
         c.secrets = Secrets::from_env();
-        c.accounts = AccountsConf::from_env();
+        c.accounts = AccountsConf::from_env()?;
         Ok(c)
     }
 
     pub fn load() -> Result<Self, String> {
         let path = std::env::var("ALWYWATCH_CONFIG").unwrap_or_else(|_| "/data/config.toml".into());
-        let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
-        let mut c = Self::parse(&text)?;
-        if let Ok(l) = std::env::var("ALWYWATCH_LISTEN")
-            && let Ok(a) = l.parse()
-        {
-            c.listen = a;
+        let text = std::fs::read_to_string(&path).map_err(|e| {
+            format!(
+                "{path}: {e}. Copy server/deploy/config.example.toml there and fill it in \
+                 (docs/deploy.md)"
+            )
+        })?;
+        let mut c = Self::parse(&text).map_err(|e| format!("{path}: {e}"))?;
+        if let Ok(l) = std::env::var("ALWYWATCH_LISTEN") {
+            c.listen = l.parse().map_err(|_| {
+                format!("ALWYWATCH_LISTEN must be an address like 0.0.0.0:8080, got '{l}'")
+            })?;
         }
         if let Ok(d) = std::env::var("ALWYWATCH_DATA") {
             c.data_dir = d.into();
@@ -208,6 +249,31 @@ impl Config {
             c.dry_run = true;
         }
         Ok(c)
+    }
+
+    /// One line at startup: what is on and what is off, so a forgotten variable shows.
+    pub fn summary(&self) -> String {
+        let on = |b: bool| if b { "on" } else { "off" };
+        let a = &self.accounts;
+        format!(
+            "{} media server(s); accounts: sign-up={}, passkeys={}, Pocket ID={}; \
+             Seerr bridge={}; Tautulli={}; Jellyfin key={}; webhooks={}",
+            self.servers.len(),
+            match a.registration {
+                Registration::Invite => "invite",
+                Registration::Open => "open",
+                Registration::Closed => "closed",
+            },
+            on(a.rp.is_some()),
+            on(a.pocketid.is_some()),
+            on(self.seerr.is_some() && self.secrets.seerr_api_key.is_some()),
+            on(self.tautulli.is_some() && self.secrets.tautulli_api_key.is_some()),
+            on(self
+                .servers
+                .iter()
+                .any(|s| self.secrets.jellyfin_key(&s.id).is_some())),
+            on(self.secrets.webhook_secret.is_some()),
+        )
     }
 
     pub fn server(&self, id: &str) -> Option<&ServerConf> {
@@ -221,6 +287,7 @@ impl Secrets {
         let jellyfin_keys = std::env::vars()
             .filter_map(|(k, v)| {
                 k.strip_prefix("JELLYFIN_API_KEY_")
+                    .filter(|_| !v.trim().is_empty())
                     .map(|id| (id.to_owned(), v))
             })
             .collect();
