@@ -4593,19 +4593,19 @@ msgstr ""
 msgid "New episodes"
 msgstr ""
 
-#: core/net/src/lib.rs:244
+#: core/net/src/lib.rs:301
 msgid "{asked} redirected to {landed}: the server is probably only reachable from its own network (LAN or VPN)"
 msgstr ""
 
-#: core/net/src/lib.rs:249
+#: core/net/src/lib.rs:306
 msgid "got a web page instead of the server's API: check the address"
 msgstr ""
 
-#: core/net/src/lib.rs:285
+#: core/net/src/lib.rs:342
 msgid "empty server address"
 msgstr ""
 
-#: core/net/src/lib.rs:294
+#: core/net/src/lib.rs:351
 msgid "server address must be an http(s) URL"
 msgstr ""
 
@@ -7832,44 +7832,44 @@ msgstr ""
 msgid "They get an invitation and join directly."
 msgstr ""
 
-#: server/src/invites.rs:216
+#: server/src/invites.rs:243
 msgid "This invitation works once and expires in {n} day."
 msgid_plural "This invitation works once and expires in {n} days."
 msgstr[0] ""
 msgstr[1] ""
 
-#: server/src/invites.rs:141
+#: server/src/invites.rs:166
 msgid "{name} via AlwyWatch"
 msgstr ""
 
-#: server/src/invites.rs:183
+#: server/src/invites.rs:210
 msgid "{name} invites you to watch on {server}"
 msgstr ""
 
-#: server/src/invites.rs:189
+#: server/src/invites.rs:216
 msgid "{name} invites you to AlwyWatch"
 msgstr ""
 
-#: server/src/invites.rs:192
+#: server/src/invites.rs:219
 msgid "{name} invites you to {server}, with AlwyWatch to watch it on your phone, TV, computer or browser."
 msgstr ""
 
-#: server/src/invites.rs:198
+#: server/src/invites.rs:225
 msgid "{name} invites you to AlwyWatch, to watch on your phone, TV, computer or browser."
 msgstr ""
 
-#: server/src/invites.rs:205
+#: server/src/invites.rs:232
 msgid "Choose a username and a password: they work in AlwyWatch and in every Jellyfin app on {server}."
 msgstr ""
 
-#: server/src/invites.rs:210
+#: server/src/invites.rs:237
 msgid "Choose a username and a password to create your account."
 msgstr ""
 
-#: server/src/invites.rs:215
+#: server/src/invites.rs:242
 msgid "Create my account"
 msgstr ""
 
-#: server/src/invites.rs:222
+#: server/src/invites.rs:249
 msgid "Not expecting this? You can ignore this email."
 msgstr ""

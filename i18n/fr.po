@@ -1077,13 +1077,13 @@ msgstr "Ce serveur AlwyWatch n'accepte pas de nouveaux comptes. Demandez à la p
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:800
 #: web/src/account.rs:387
 msgid "{name} invited you"
-msgstr ""
+msgstr "{name} vous invite"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:803
 #: desktop/src/app/invites.rs:342
 #: web/src/account.rs:375
 msgid "This username and password will also be your {server} (Jellyfin) login."
-msgstr ""
+msgstr "Ce nom d'utilisateur et ce mot de passe serviront aussi à vous connecter à {server} (Jellyfin)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:804
 msgid "Your AlwyWatch account keeps your name, settings and server list. To watch, you then add your Jellyfin or Plex login."
@@ -1097,7 +1097,7 @@ msgstr "Code d'invitation"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:818
 msgid "{problem} Ask the person who invited you for a new one."
-msgstr ""
+msgstr "{problem} Demandez-en une nouvelle à la personne qui vous a invité."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:841
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:474
@@ -1271,7 +1271,7 @@ msgstr "Invitations"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:82
 msgid "Invite someone by email or with a link, also to Jellyfin"
-msgstr ""
+msgstr "Invitez quelqu'un par e-mail ou avec un lien, aussi sur Jellyfin"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:88
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:220
@@ -1309,17 +1309,17 @@ msgstr "État du serveur"
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:132
 #: desktop/ui/app.slint:3458
 msgid "Read only: change these in Server settings (web app)."
-msgstr ""
+msgstr "Lecture seule : modifiez-les dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:139
 #: desktop/ui/app.slint:3451
 msgid "Test mode: nothing is changed in Maintainerr or Seerr. Turn it off in Server settings (web app)."
-msgstr ""
+msgstr "Mode test : rien n'est modifié dans Maintainerr ni Seerr. Désactivez-le dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:162
 #: desktop/src/app.rs:5702
 msgid "Off. Set up Maintainerr in Server settings (web app)."
-msgstr ""
+msgstr "Désactivé. Configurez Maintainerr dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:163
 #: desktop/src/app.rs:5705
@@ -1330,7 +1330,7 @@ msgstr "Première lecture de Maintainerr…"
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:172
 #: desktop/src/app.rs:5717
 msgid "Can't reach Maintainerr. Check its address and API key in Server settings (web app)."
-msgstr ""
+msgstr "Maintainerr est injoignable. Vérifiez son adresse et sa clé API dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:180
 #: desktop/src/app.rs:5724
@@ -1341,7 +1341,7 @@ msgstr "Activé : chaque app fait les demandes sous l'utilisateur Seerr de chaq
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:182
 #: desktop/src/app.rs:5726
 msgid "Off: only direct request-site logins work. Set up Seerr in Server settings (web app)."
-msgstr ""
+msgstr "Désactivé : seules les connexions directes au site de demandes fonctionnent. Configurez Seerr dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:190
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:200
@@ -1351,12 +1351,12 @@ msgstr "Les titres gardés sont libérés d'eux-mêmes une fois vus."
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:192
 #: desktop/src/app.rs:5730
 msgid "Jellyfin keeps don't end by themselves. Add the Jellyfin server's key in Server settings (web app)."
-msgstr ""
+msgstr "Les conservations Jellyfin ne prennent pas fin toutes seules. Ajoutez la clé du serveur Jellyfin dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:202
 #: desktop/src/app.rs:5735
 msgid "Plex keeps don't end by themselves. Set up Tautulli in Server settings (web app)."
-msgstr ""
+msgstr "Les conservations Plex ne prennent pas fin toutes seules. Configurez Tautulli dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:207
 #: web/src/keep.rs:1024
@@ -1371,7 +1371,7 @@ msgstr "Activé : les titres vus sont détectés immédiatement."
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:212
 #: desktop/src/app.rs:5746
 msgid "Optional: watched titles are noticed within 15 min. For instant, add the webhooks shown in Server settings (web app)."
-msgstr ""
+msgstr "Facultatif : les titres vus sont repérés sous 15 min. Pour que ce soit instantané, ajoutez les webhooks indiqués dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:216
 #: desktop/src/app.rs:5770
@@ -1387,7 +1387,7 @@ msgstr "Activé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:216
 msgid "Off: set this site's address (https) in Server settings (web app)"
-msgstr ""
+msgstr "Désactivé : indiquez l'adresse (https) de ce site dans Paramètres du serveur (application web)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:221
 #: web/src/keep.rs:1035
@@ -1418,12 +1418,12 @@ msgstr "Serveur AlwyWatch"
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:258
 #: web/src/admin.rs:457
 msgid "Server settings"
-msgstr ""
+msgstr "Paramètres du serveur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:259
 #: desktop/ui/app.slint:3317
 msgid "Media servers, Seerr, Maintainerr, Tautulli, email and sign-up are set up in the web app."
-msgstr ""
+msgstr "Les serveurs multimédias, Seerr, Maintainerr, Tautulli, l'e-mail et l'inscription se configurent dans l'application web."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:295
 msgid "Invitations are made with an AlwyWatch account: sign in to yours on this device (Settings → Account), or use the web app."
@@ -1431,94 +1431,94 @@ msgstr "Les invitations se créent avec un compte AlwyWatch : connectez-vous au
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:349
 msgid "End this invitation?"
-msgstr ""
+msgstr "Mettre fin à cette invitation ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:350
 #: desktop/ui/app.slint:3442
 msgid "Its code and link stop working. Accounts already made with it stay."
-msgstr ""
+msgstr "Son code et son lien ne fonctionneront plus. Les comptes déjà créés avec elle sont conservés."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:351
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:570
 #: web/src/admin.rs:1279
 msgid "End"
-msgstr ""
+msgstr "Terminer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:376
 msgid "A new person gets an AlwyWatch account, and a Jellyfin login if you like"
-msgstr ""
+msgstr "Une nouvelle personne reçoit un compte AlwyWatch, et un compte Jellyfin si vous le souhaitez"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:381
 msgid "Invite someone"
-msgstr ""
+msgstr "Inviter quelqu'un"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:387
 #: web/src/admin.rs:1143
 #: desktop/ui/app.slint:3327
 msgid "Email (optional)"
-msgstr ""
+msgstr "E-mail (facultatif)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:395
 #: desktop/ui/app.slint:3329
 msgid "Empty: you get a link and a code to send them yourself."
-msgstr ""
+msgstr "Vide : vous obtenez un lien et un code à envoyer vous-même."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:397
 #: desktop/ui/app.slint:3329
 msgid "AlwyWatch emails them a link that works once."
-msgstr ""
+msgstr "AlwyWatch lui envoie par e-mail un lien utilisable une seule fois."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:405
 #: web/src/admin.rs:1149
 #: desktop/ui/app.slint:3340
 msgid "Set up email in Server settings to send invitations by email"
-msgstr ""
+msgstr "Configurez l'e-mail dans Paramètres du serveur pour envoyer les invitations par e-mail"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:406
 #: desktop/ui/app.slint:3341
 msgid "For now, you get a link and a code to send them yourself."
-msgstr ""
+msgstr "Pour l'instant, vous obtenez un lien et un code à envoyer vous-même."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:416
 #: web/src/admin.rs:1159
 msgid "Also make a Jellyfin login on {server}"
-msgstr ""
+msgstr "Créer aussi un compte Jellyfin sur {server}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:419
 #: desktop/ui/app.slint:3347
 msgid "Same username and password as their AlwyWatch account"
-msgstr ""
+msgstr "Mêmes nom d'utilisateur et mot de passe que son compte AlwyWatch"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:426
 #: desktop/ui/app.slint:3352
 msgid "Jellyfin server"
-msgstr ""
+msgstr "Serveur Jellyfin"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:437
 #: web/src/admin.rs:1180
 #: desktop/ui/app.slint:3358
 msgid "With the same access as"
-msgstr ""
+msgstr "Avec les mêmes accès que"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:438
 #: desktop/src/app/invites.rs:174
 #: web/src/admin.rs:1185
 msgid "Jellyfin's defaults"
-msgstr ""
+msgstr "Réglages par défaut de Jellyfin"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:441
 #: desktop/ui/app.slint:3359
 msgid "Libraries, parental rating and permissions are copied from this user"
-msgstr ""
+msgstr "Les bibliothèques, le contrôle parental et les autorisations sont copiés depuis cet utilisateur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:451
 #: web/src/admin.rs:1196
 msgid "Personal note (optional)"
-msgstr ""
+msgstr "Message personnel (facultatif)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:452
 msgid "A few words in the email"
-msgstr ""
+msgstr "Quelques mots dans l'e-mail"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:459
 #: web/src/admin.rs:1201
@@ -1529,7 +1529,7 @@ msgstr "Valable"
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:464
 #: desktop/ui/app.slint:3371
 msgid "How many people"
-msgstr ""
+msgstr "Combien de personnes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:473
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt:963
@@ -1541,18 +1541,18 @@ msgstr "Envoi…"
 #: web/src/admin.rs:1222
 #: desktop/ui/app.slint:3379
 msgid "Send invitation"
-msgstr ""
+msgstr "Envoyer l'invitation"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:476
 #: web/src/admin.rs:1222
 #: desktop/ui/app.slint:3379
 msgid "Create link"
-msgstr ""
+msgstr "Créer un lien"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:501
 #: web/src/admin.rs:1230
 msgid "Sent to {email}"
-msgstr ""
+msgstr "Envoyé à {email}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:506
 #: desktop/ui/app.slint:3389
@@ -1567,7 +1567,7 @@ msgstr "Votre code d'invitation AlwyWatch : {code}"
 #: web/src/admin.rs:102
 #: desktop/ui/app.slint:3409
 msgid "Copy"
-msgstr ""
+msgstr "Copier"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:527
 #: web/src/admin.rs:1240
@@ -1576,30 +1576,30 @@ msgstr "Partager"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:554
 msgid "Until {date}"
-msgstr ""
+msgstr "Jusqu'au {date}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:555
 #: desktop/src/app/invites.rs:81
 msgid "Ended"
-msgstr ""
+msgstr "Terminée"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:560
 #: desktop/src/app/invites.rs:84
 #: web/src/admin.rs:1264
 msgid "with a login on {server}"
-msgstr ""
+msgstr "avec un compte sur {server}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:561
 #: desktop/src/app/invites.rs:86
 #: web/src/admin.rs:1262
 msgid "by {name}"
-msgstr ""
+msgstr "par {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:562
 #: desktop/src/app/invites.rs:88
 #: web/src/admin.rs:1267
 msgid "used by {names}"
-msgstr ""
+msgstr "utilisée par {names}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:566
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:324
@@ -4428,11 +4428,11 @@ msgstr "Rien d'enregistré pour l'instant. Sur un film ou une série, appuyez su
 
 #: core/alwywatch-core/src/account.rs:424
 msgid "Set up email and this site's address in Server settings (web app) first."
-msgstr ""
+msgstr "Configurez d'abord l'e-mail et l'adresse de ce site dans Paramètres du serveur (application web)."
 
 #: core/alwywatch-core/src/account.rs:429
 msgid "The email could not be sent. Check the email settings in Server settings (web app)."
-msgstr ""
+msgstr "L'e-mail n'a pas pu être envoyé. Vérifiez les paramètres d'e-mail dans Paramètres du serveur (application web)."
 
 #: core/alwywatch-core/src/account.rs:602
 msgid "too long for a QR code"
@@ -4598,19 +4598,19 @@ msgstr "Nouvelle série"
 msgid "New episodes"
 msgstr "Nouveaux épisodes"
 
-#: core/net/src/lib.rs:244
+#: core/net/src/lib.rs:301
 msgid "{asked} redirected to {landed}: the server is probably only reachable from its own network (LAN or VPN)"
 msgstr "{asked} redirige vers {landed} : le serveur n'est sans doute joignable que depuis son propre réseau (LAN ou VPN)"
 
-#: core/net/src/lib.rs:249
+#: core/net/src/lib.rs:306
 msgid "got a web page instead of the server's API: check the address"
 msgstr "page web reçue au lieu de l'API du serveur : vérifiez l'adresse"
 
-#: core/net/src/lib.rs:285
+#: core/net/src/lib.rs:342
 msgid "empty server address"
 msgstr "adresse du serveur vide"
 
-#: core/net/src/lib.rs:294
+#: core/net/src/lib.rs:351
 msgid "server address must be an http(s) URL"
 msgstr "l'adresse du serveur doit être une URL http(s)"
 
@@ -4738,11 +4738,11 @@ msgstr "La copie s'est arrêtée : {error}"
 
 #: desktop/src/app/invites.rs:79
 msgid "Ends in {time}"
-msgstr ""
+msgstr "Se termine dans {time}"
 
 #: desktop/src/app/invites.rs:335
 msgid "{inviter} invited you"
-msgstr ""
+msgstr "{inviter} vous invite"
 
 #: desktop/src/app/links.rs:161
 #: web/src/links.rs:135
@@ -5390,7 +5390,7 @@ msgstr "Activé."
 
 #: desktop/src/app.rs:5774
 msgid "Off: set this site's address (https) in Server settings (web app)."
-msgstr ""
+msgstr "Désactivé : indiquez l'adresse (https) de ce site dans Paramètres du serveur (application web)."
 
 #: desktop/src/app.rs:5779
 msgid "Pocket ID"
@@ -5469,15 +5469,15 @@ msgstr "Créez-en un avec une invitation"
 
 #: web/src/account.rs:255
 msgid "This invitation can't be used"
-msgstr ""
+msgstr "Cette invitation n'est pas utilisable"
 
 #: web/src/account.rs:256
 msgid "It was already used, ended or expired. Ask the person who invited you for a new one."
-msgstr ""
+msgstr "Elle a déjà été utilisée, terminée ou a expiré. Demandez-en une nouvelle à la personne qui vous a invité."
 
 #: web/src/account.rs:338
 msgid "This invitation can't be used any more. Ask {name} for a new one."
-msgstr ""
+msgstr "Cette invitation n'est plus utilisable. Demandez-en une nouvelle à {name}."
 
 #: web/src/account.rs:342
 msgid "This invitation is unknown, used up or expired. Ask for a new one."
@@ -5485,7 +5485,7 @@ msgstr "Cette invitation est inconnue, déjà utilisée ou expirée. Demandez-en
 
 #: web/src/account.rs:347
 msgid "This username is taken, here or on {server}: choose another."
-msgstr ""
+msgstr "Ce nom d'utilisateur est déjà pris, ici ou sur {server} : choisissez-en un autre."
 
 #: web/src/account.rs:372
 #: desktop/ui/app.slint:2182
@@ -5498,11 +5498,11 @@ msgstr "Vous pourrez ajouter une clé d'accès une fois connecté."
 
 #: web/src/account.rs:389
 msgid "Create your AlwyWatch account: it comes with a login on {server}, to watch right away."
-msgstr ""
+msgstr "Créez votre compte AlwyWatch : il inclut un compte sur {server}, pour regarder tout de suite."
 
 #: web/src/account.rs:390
 msgid "Create your AlwyWatch account. It keeps your profile, settings and server list, and signs your devices in."
-msgstr ""
+msgstr "Créez votre compte AlwyWatch. Il conserve votre profil, vos paramètres et votre liste de serveurs, et connecte vos appareils."
 
 #: web/src/account.rs:397
 #: desktop/ui/app.slint:2171
@@ -5826,473 +5826,473 @@ msgstr "Seuls les administrateurs de ce serveur AlwyWatch peuvent voir ceci."
 #: web/src/admin.rs:102
 #: desktop/ui/app.slint:3409
 msgid "Copied"
-msgstr ""
+msgstr "Copié"
 
 #: web/src/admin.rs:143
 msgid "Done: the server runs with the new settings."
-msgstr ""
+msgstr "Terminé : le serveur fonctionne avec les nouveaux paramètres."
 
 #: web/src/admin.rs:147
 #: web/src/setup.rs:107
 msgid "The server hasn't come back yet. Reload this page in a moment."
-msgstr ""
+msgstr "Le serveur n'est pas encore revenu. Rechargez cette page dans un instant."
 
 #: web/src/admin.rs:270
 msgid "Set"
-msgstr ""
+msgstr "Défini"
 
 #: web/src/admin.rs:272
 msgid "Replace"
-msgstr ""
+msgstr "Remplacer"
 
 #: web/src/admin.rs:280
 msgid "Not set"
-msgstr ""
+msgstr "Non défini"
 
 #: web/src/admin.rs:321
 #: web/src/setup.rs:227
 msgid "Advanced: address from this server"
-msgstr ""
+msgstr "Avancé : adresse depuis ce serveur"
 
 #: web/src/admin.rs:323
 #: web/src/setup.rs:228
 msgid "Address the AlwyWatch server uses"
-msgstr ""
+msgstr "Adresse utilisée par le serveur AlwyWatch"
 
 #: web/src/admin.rs:324
 #: web/src/setup.rs:232
 msgid "When it can't use the public address, e.g. http://jellyfin:8096 when both run in Docker on the same network. Empty: the public address."
-msgstr ""
+msgstr "Quand il ne peut pas utiliser l'adresse publique, p. ex. http://jellyfin:8096 quand les deux tournent dans Docker sur le même réseau. Vide : l'adresse publique."
 
 #: web/src/admin.rs:368
 msgid "Testing…"
-msgstr ""
+msgstr "Test en cours…"
 
 #: web/src/admin.rs:368
 msgid "Test"
-msgstr ""
+msgstr "Tester"
 
 #: web/src/admin.rs:395
 msgid "Sign in as an admin of this AlwyWatch server first."
-msgstr ""
+msgstr "Connectez-vous d'abord en tant qu'administrateur de ce serveur AlwyWatch."
 
 #: web/src/admin.rs:445
 msgid "Saved. The server is starting again with the new settings…"
-msgstr ""
+msgstr "Enregistré. Le serveur redémarre avec les nouveaux paramètres…"
 
 #: web/src/admin.rs:458
 msgid "What this AlwyWatch server connects to. Changes apply when you save: the server starts again, which takes a few seconds."
-msgstr ""
+msgstr "Ce à quoi ce serveur AlwyWatch se connecte. Les modifications s'appliquent à l'enregistrement : le serveur redémarre, ce qui prend quelques secondes."
 
 #: web/src/admin.rs:476
 msgid "Undo changes"
-msgstr ""
+msgstr "Annuler les modifications"
 
 #: web/src/admin.rs:497
 msgid "Keep at least one media server: without one, nobody can sign in."
-msgstr ""
+msgstr "Gardez au moins un serveur multimédia : sans cela, personne ne peut se connecter."
 
 #: web/src/admin.rs:508
 msgid "Remove {name}? Maintainerr is set up for it: Leaving soon stops until Maintainerr manages another of these servers."
-msgstr ""
+msgstr "Supprimer {name} ? Maintainerr est configuré pour lui : Bientôt supprimés s'arrête tant que Maintainerr ne gère pas un autre de ces serveurs."
 
 #: web/src/admin.rs:513
 msgid "Remove {name}? Its people can no longer sign in to AlwyWatch with it."
-msgstr ""
+msgstr "Supprimer {name} ? Ses utilisateurs ne pourront plus se connecter à AlwyWatch avec lui."
 
 #: web/src/admin.rs:529
 msgid "Media servers"
-msgstr ""
+msgstr "Serveurs multimédias"
 
 #: web/src/admin.rs:530
 msgid "People sign in to AlwyWatch with their login on these servers."
-msgstr ""
+msgstr "Les utilisateurs se connectent à AlwyWatch avec leur compte sur ces serveurs."
 
 #: web/src/admin.rs:541
 msgid "From this server: {address}"
-msgstr ""
+msgstr "Depuis ce serveur : {address}"
 
 #: web/src/admin.rs:544
 msgid "API key: set"
-msgstr ""
+msgstr "Clé API : définie"
 
 #: web/src/admin.rs:546
 msgid "API key: missing. “Until watched” and invitations with a Jellyfin login need it: renew it."
-msgstr ""
+msgstr "Clé API : manquante. « Jusqu'à ce que je l'aie vu » et les invitations avec un compte Jellyfin en ont besoin : renouvelez-la."
 
 #: web/src/admin.rs:552
 msgid "Renew key"
-msgstr ""
+msgstr "Renouveler la clé"
 
 #: web/src/admin.rs:562
 #: web/src/admin.rs:628
 msgid "Add a Jellyfin server"
-msgstr ""
+msgstr "Ajouter un serveur Jellyfin"
 
 #: web/src/admin.rs:563
 #: web/src/admin.rs:716
 msgid "Add a Plex server"
-msgstr ""
+msgstr "Ajouter un serveur Plex"
 
 #: web/src/admin.rs:581
 msgid "Save or undo your other changes first: adding a server starts the server again."
-msgstr ""
+msgstr "Enregistrez ou annulez d'abord vos autres modifications : ajouter un serveur redémarre le serveur."
 
 #: web/src/admin.rs:614
 #: web/src/admin.rs:702
 msgid "{name} is set. The server is starting again with it…"
-msgstr ""
+msgstr "{name} est configuré. Le serveur redémarre avec lui…"
 
 #: web/src/admin.rs:629
 #: web/src/admin.rs:717
 #: web/src/admin.rs:758
 msgid "Address"
-msgstr ""
+msgstr "Adresse"
 
 #: web/src/admin.rs:629
 #: web/src/setup.rs:224
 msgid "The address you open Jellyfin at."
-msgstr ""
+msgstr "L'adresse à laquelle vous ouvrez Jellyfin."
 
 #: web/src/admin.rs:632
 #: web/src/setup.rs:240
 msgid "Administrator's username"
-msgstr ""
+msgstr "Nom d'utilisateur de l'administrateur"
 
 #: web/src/admin.rs:636
 msgid "Used once to make AlwyWatch's own API key on this server, not kept."
-msgstr ""
+msgstr "Utilisé une seule fois pour créer la clé API propre à AlwyWatch sur ce serveur, puis non conservé."
 
 #: web/src/admin.rs:717
 #: web/src/setup.rs:224
 msgid "The address you open Plex at."
-msgstr ""
+msgstr "L'adresse à laquelle vous ouvrez Plex."
 
 #: web/src/admin.rs:720
 msgid "Only the server's owner can add it: AlwyWatch checks it with the owner's Plex sign-in."
-msgstr ""
+msgstr "Seule la personne qui gère le serveur peut l'ajouter : AlwyWatch le vérifie avec sa connexion Plex."
 
 #: web/src/admin.rs:724
 msgid "Add with my Plex sign-in"
-msgstr ""
+msgstr "Ajouter avec ma connexion Plex"
 
 #: web/src/admin.rs:727
 msgid "Sign in with another Plex account"
-msgstr ""
+msgstr "Se connecter avec un autre compte Plex"
 
 #: web/src/admin.rs:727
 msgid "Sign in with Plex and add"
-msgstr ""
+msgstr "Se connecter avec Plex et ajouter"
 
 #: web/src/admin.rs:753
 msgid "Leaving soon: what Maintainerr will delete, and people's keep requests."
-msgstr ""
+msgstr "Bientôt supprimés : ce que Maintainerr va supprimer, et les demandes de conservation des utilisateurs."
 
 #: web/src/admin.rs:754
 msgid "Use Maintainerr"
-msgstr ""
+msgstr "Utiliser Maintainerr"
 
 #: web/src/admin.rs:758
 msgid "How the AlwyWatch server reaches Maintainerr (it doesn't need to be public)."
-msgstr ""
+msgstr "Comment le serveur AlwyWatch joint Maintainerr (il n'a pas besoin d'être public)."
 
 #: web/src/admin.rs:760
 msgid "API key (optional)"
-msgstr ""
+msgstr "Clé API (facultatif)"
 
 #: web/src/admin.rs:760
 msgid "Only when Maintainerr asks for one: Maintainerr → Settings → API key."
-msgstr ""
+msgstr "Seulement si Maintainerr en demande une : Maintainerr → Paramètres → Clé API."
 
 #: web/src/admin.rs:762
 msgid "Media server it manages"
-msgstr ""
+msgstr "Serveur multimédia géré"
 
 #: web/src/admin.rs:765
 msgid "Choose…"
-msgstr ""
+msgstr "Choisir…"
 
 #: web/src/admin.rs:771
 msgid "Maintainerr works with one: the one chosen in Maintainerr → Settings."
-msgstr ""
+msgstr "Maintainerr n'en gère qu'un : celui choisi dans Maintainerr → Paramètres."
 
 #: web/src/admin.rs:773
 msgid "Read Maintainerr every (minutes)"
-msgstr ""
+msgstr "Relire Maintainerr toutes les … minutes"
 
 #: web/src/admin.rs:773
 msgid "Empty: every 10 minutes."
-msgstr ""
+msgstr "Vide : toutes les 10 minutes."
 
 #: web/src/admin.rs:799
 msgid "Requests in every app, each person as their own Seerr user."
-msgstr ""
+msgstr "Demandes dans toutes les applis, chaque personne avec son propre utilisateur Seerr."
 
 #: web/src/admin.rs:800
 msgid "Requests through AlwyWatch"
-msgstr ""
+msgstr "Demandes via AlwyWatch"
 
 #: web/src/admin.rs:803
 msgid "How the AlwyWatch server reaches Seerr."
-msgstr ""
+msgstr "Comment le serveur AlwyWatch joint Seerr."
 
 #: web/src/admin.rs:804
 msgid "Public address (optional)"
-msgstr ""
+msgstr "Adresse publique (facultatif)"
 
 #: web/src/admin.rs:804
 msgid "Seerr's own site, for links to it."
-msgstr ""
+msgstr "Le site propre de Seerr, pour y faire des liens."
 
 #: web/src/admin.rs:806
 #: web/src/admin.rs:828
 msgid "API key"
-msgstr ""
+msgstr "Clé API"
 
 #: web/src/admin.rs:806
 msgid "Seerr → Settings → General → API Key."
-msgstr ""
+msgstr "Seerr → Paramètres → Général → Clé d'API."
 
 #: web/src/admin.rs:807
 msgid "Create Seerr users automatically"
-msgstr ""
+msgstr "Créer automatiquement les utilisateurs Seerr"
 
 #: web/src/admin.rs:807
 msgid "Someone without a Seerr user gets one at their first request."
-msgstr ""
+msgstr "Une personne sans utilisateur Seerr en reçoit un à sa première demande."
 
 #: web/src/admin.rs:823
 msgid "Plex: notices when a title kept “until watched” has been watched."
-msgstr ""
+msgstr "Plex : détecte quand un titre gardé « jusqu'à ce qu'on l'ait vu » a été vu."
 
 #: web/src/admin.rs:824
 msgid "Use Tautulli"
-msgstr ""
+msgstr "Utiliser Tautulli"
 
 #: web/src/admin.rs:827
 msgid "How the AlwyWatch server reaches Tautulli."
-msgstr ""
+msgstr "Adresse utilisée par le serveur AlwyWatch pour joindre Tautulli."
 
 #: web/src/admin.rs:828
 msgid "Tautulli → Settings → Web Interface → API Key."
-msgstr ""
+msgstr "Tautulli → Paramètres → Interface web → Clé d'API."
 
 #: web/src/admin.rs:867
 msgid "To send invitations by email. Any email provider works: use its SMTP settings."
-msgstr ""
+msgstr "Pour envoyer les invitations par e-mail. Tout fournisseur convient : utilisez ses paramètres SMTP."
 
 #: web/src/admin.rs:868
 msgid "Send emails"
-msgstr ""
+msgstr "Envoyer des e-mails"
 
 #: web/src/admin.rs:871
 msgid "SMTP server"
-msgstr ""
+msgstr "Serveur SMTP"
 
 #: web/src/admin.rs:871
 msgid "In your email provider's help, under SMTP."
-msgstr ""
+msgstr "Dans l'aide de votre fournisseur d'e-mail, à la rubrique SMTP."
 
 #: web/src/admin.rs:872
 msgid "Security"
-msgstr ""
+msgstr "Sécurité"
 
 #: web/src/admin.rs:874
 msgid "SSL/TLS (port 465)"
-msgstr ""
+msgstr "SSL/TLS (port 465)"
 
 #: web/src/admin.rs:874
 msgid "STARTTLS (port 587)"
-msgstr ""
+msgstr "STARTTLS (port 587)"
 
 #: web/src/admin.rs:874
 msgid "None (not encrypted)"
-msgstr ""
+msgstr "Aucune (non chiffré)"
 
 #: web/src/admin.rs:878
 msgid "Port (optional)"
-msgstr ""
+msgstr "Port (facultatif)"
 
 #: web/src/admin.rs:878
 msgid "Empty: the usual one for the security chosen."
-msgstr ""
+msgstr "Vide : le port habituel pour la sécurité choisie."
 
 #: web/src/admin.rs:879
 msgid "Often the email address itself."
-msgstr ""
+msgstr "Souvent l'adresse e-mail elle-même."
 
 #: web/src/admin.rs:880
 msgid "Some providers want an app password here."
-msgstr ""
+msgstr "Certains fournisseurs demandent ici un mot de passe d'application."
 
 #: web/src/admin.rs:881
 msgid "Sent from"
-msgstr ""
+msgstr "Envoyé depuis"
 
 #: web/src/admin.rs:881
 msgid "The address emails come from."
-msgstr ""
+msgstr "L'adresse d'où partent les e-mails."
 
 #: web/src/admin.rs:882
 msgid "Sender name (optional)"
-msgstr ""
+msgstr "Nom de l'expéditeur (facultatif)"
 
 #: web/src/admin.rs:882
 msgid "Empty: AlwyWatch."
-msgstr ""
+msgstr "Vide : AlwyWatch."
 
 #: web/src/admin.rs:883
 msgid "Send a test email to (optional)"
-msgstr ""
+msgstr "Envoyer un e-mail de test à (facultatif)"
 
 #: web/src/admin.rs:917
 msgid "Sign-up and sign-in"
-msgstr ""
+msgstr "Inscription et connexion"
 
 #: web/src/admin.rs:919
 msgid "This site's address"
-msgstr ""
+msgstr "Adresse de ce site"
 
 #: web/src/admin.rs:919
 msgid "Needed for links in emails, passkeys and Pocket ID."
-msgstr ""
+msgstr "Nécessaire pour les liens dans les e-mails, les clés d'accès et Pocket ID."
 
 #: web/src/admin.rs:924
 msgid "Use this page's address ({address})"
-msgstr ""
+msgstr "Utiliser l'adresse de cette page ({address})"
 
 #: web/src/admin.rs:927
 msgid "Who can create an AlwyWatch account"
-msgstr ""
+msgstr "Qui peut créer un compte AlwyWatch"
 
 #: web/src/admin.rs:930
 msgid "People with an invitation"
-msgstr ""
+msgstr "Les personnes invitées"
 
 #: web/src/admin.rs:930
 msgid "Anyone"
-msgstr ""
+msgstr "Tout le monde"
 
 #: web/src/admin.rs:930
 msgid "Nobody"
-msgstr ""
+msgstr "Personne"
 
 #: web/src/admin.rs:935
 msgid "People with a login on one of the media servers can always sign in."
-msgstr ""
+msgstr "Les personnes ayant un compte sur l'un des serveurs multimédias peuvent toujours se connecter."
 
 #: web/src/admin.rs:939
 msgid "Single sign-on, for accounts without a password."
-msgstr ""
+msgstr "Authentification unique, pour les comptes sans mot de passe."
 
 #: web/src/admin.rs:942
 msgid "Pocket ID address"
-msgstr ""
+msgstr "Adresse de Pocket ID"
 
 #: web/src/admin.rs:944
 msgid "Callback URL"
-msgstr ""
+msgstr "URL de rappel"
 
 #: web/src/admin.rs:947
 msgid "Set this site's address above first."
-msgstr ""
+msgstr "Indiquez d'abord l'adresse de ce site ci-dessus."
 
 #: web/src/admin.rs:949
 msgid "In Pocket ID → OIDC Clients → Add, paste this callback URL, then copy the client ID and secret here."
-msgstr ""
+msgstr "Dans Pocket ID → Clients OIDC → Ajouter, collez cette URL de rappel, puis copiez ici l'ID client et le secret."
 
 #: web/src/admin.rs:951
 msgid "Client ID"
-msgstr ""
+msgstr "ID client"
 
 #: web/src/admin.rs:952
 msgid "Client secret"
-msgstr ""
+msgstr "Secret client"
 
 #: web/src/admin.rs:965
 msgid "Webhooks (optional)"
-msgstr ""
+msgstr "Webhooks (facultatif)"
 
 #: web/src/admin.rs:966
 msgid "Without them, watched titles are noticed within 15 minutes. With them, at once."
-msgstr ""
+msgstr "Sans eux, les titres vus sont détectés en moins de 15 minutes. Avec eux, immédiatement."
 
 #: web/src/admin.rs:967
 msgid "Set this site's address and save to get them."
-msgstr ""
+msgstr "Indiquez l'adresse de ce site et enregistrez pour les obtenir."
 
 #: web/src/admin.rs:970
 msgid "Needs Plex Pass: Plex → Settings → Webhooks → Add webhook."
-msgstr ""
+msgstr "Nécessite Plex Pass : Plex → Paramètres → Webhooks → Ajouter un webhook."
 
 #: web/src/admin.rs:971
 msgid "Tautulli → Settings → Notification Agents → Add → Webhook, triggered on “Watched”."
-msgstr ""
+msgstr "Tautulli → Paramètres → Agents de notification → Ajouter → Webhook, déclenché sur « Watched »."
 
 #: web/src/admin.rs:972
 msgid "Install Jellyfin's Webhook plugin, then add a “Generic” destination with this address."
-msgstr ""
+msgstr "Installez le plugin Webhook de Jellyfin, puis ajoutez une destination « Generic » avec cette adresse."
 
 #: web/src/admin.rs:995
 #: web/src/admin.rs:996
 msgid "Test mode"
-msgstr ""
+msgstr "Mode test"
 
 #: web/src/admin.rs:996
 msgid "AlwyWatch reads everything but changes nothing in Maintainerr or Seerr: keep choices and requests are not applied."
-msgstr ""
+msgstr "AlwyWatch lit tout mais ne modifie rien dans Maintainerr ni Seerr : les choix de conservation et les demandes ne sont pas appliqués."
 
 #: web/src/admin.rs:998
 msgid "Turn it off once everything works, or keep choices will never protect anything."
-msgstr ""
+msgstr "Désactivez-le quand tout fonctionne, sinon les choix de conservation ne protégeront jamais rien."
 
 #: web/src/admin.rs:1099
 msgid "Set this site's address in Server settings first: invitations need it for their link."
-msgstr ""
+msgstr "Indiquez d'abord l'adresse de ce site dans les paramètres du serveur : les invitations en ont besoin pour leur lien."
 
 #: web/src/admin.rs:1103
 msgid "Set up email in Server settings first."
-msgstr ""
+msgstr "Configurez d'abord l'e-mail dans les paramètres du serveur."
 
 #: web/src/admin.rs:1105
 msgid "The email could not be sent. Check Server settings → Email (its Test button tells why)."
-msgstr ""
+msgstr "L'e-mail n'a pas pu être envoyé. Vérifiez Paramètres du serveur → E-mail (son bouton Tester en explique la raison)."
 
 #: web/src/admin.rs:1133
 msgid "Invite someone: with one link they create an AlwyWatch account, and a Jellyfin login too if you want."
-msgstr ""
+msgstr "Invitez quelqu'un : avec un seul lien, la personne crée un compte AlwyWatch, et un compte Jellyfin si vous le souhaitez."
 
 #: web/src/admin.rs:1147
 msgid "Empty: just make a link to send yourself."
-msgstr ""
+msgstr "Vide : crée seulement un lien à envoyer vous-même."
 
 #: web/src/admin.rs:1161
 msgid "Also make a Jellyfin login"
-msgstr ""
+msgstr "Créer aussi un compte Jellyfin"
 
 #: web/src/admin.rs:1162
 msgid "Same username and password as their AlwyWatch account."
-msgstr ""
+msgstr "Mêmes nom d'utilisateur et mot de passe que son compte AlwyWatch."
 
 #: web/src/admin.rs:1187
 msgid "Libraries and parental ratings are copied from this person."
-msgstr ""
+msgstr "Les bibliothèques et le contrôle parental sont copiés de cette personne."
 
 #: web/src/admin.rs:1198
 msgid "A few words in the email."
-msgstr ""
+msgstr "Quelques mots dans l'e-mail."
 
 #: web/src/admin.rs:1209
 msgid "How many people can use it"
-msgstr ""
+msgstr "Nombre de personnes pouvant l'utiliser"
 
 #: web/src/admin.rs:1218
 msgid "Set this site's address in Server settings so invitations come with a link."
-msgstr ""
+msgstr "Indiquez l'adresse de ce site dans les paramètres du serveur pour que les invitations contiennent un lien."
 
 #: web/src/admin.rs:1240
 msgid "Join me on AlwyWatch"
-msgstr ""
+msgstr "Rejoignez-moi sur AlwyWatch"
 
 #: web/src/admin.rs:1245
 msgid "Invitation code: {code}"
@@ -6300,23 +6300,23 @@ msgstr "Code d'invitation : {code}"
 
 #: web/src/admin.rs:1248
 msgid "They open the link (or {site}/join and type the code)."
-msgstr ""
+msgstr "La personne ouvre le lien (ou {site}/join et saisit le code)."
 
 #: web/src/admin.rs:1257
 msgid "Sent and waiting"
-msgstr ""
+msgstr "Envoyées et en attente"
 
 #: web/src/admin.rs:1270
 msgid "until {date}"
-msgstr ""
+msgstr "jusqu'au {date}"
 
 #: web/src/admin.rs:1272
 msgid "used up"
-msgstr ""
+msgstr "épuisée"
 
 #: web/src/admin.rs:1274
 msgid "ended"
-msgstr ""
+msgstr "terminée"
 
 #: web/src/browse.rs:101
 msgid "Recently added · {library}"
@@ -6594,19 +6594,19 @@ msgstr "{n} h"
 
 #: web/src/keep.rs:961
 msgid "Off. Set up Maintainerr in Server settings."
-msgstr ""
+msgstr "Désactivé. Configurez Maintainerr dans les paramètres du serveur."
 
 #: web/src/keep.rs:974
 msgid "Can't reach Maintainerr. Check its address and API key in Server settings (Test tells why)."
-msgstr ""
+msgstr "Impossible de joindre Maintainerr. Vérifiez son adresse et sa clé d'API dans les paramètres du serveur (Tester en explique la raison)."
 
 #: web/src/keep.rs:1005
 msgid "Test mode: nothing is changed in Maintainerr or Seerr. Turn it off in Server settings."
-msgstr ""
+msgstr "Mode test : rien n'est modifié dans Maintainerr ni Seerr. Désactivez-le dans les paramètres du serveur."
 
 #: web/src/keep.rs:1012
 msgid "Off: only direct request-site logins work. Turn it on in Server settings → Seerr."
-msgstr ""
+msgstr "Désactivé : seules les connexions directes au site de demandes fonctionnent. Activez-le dans Paramètres du serveur → Seerr."
 
 #: web/src/keep.rs:1014
 msgid "Keep until watched (Jellyfin)"
@@ -6614,7 +6614,7 @@ msgstr "Garder jusqu'à visionnage (Jellyfin)"
 
 #: web/src/keep.rs:1017
 msgid "Jellyfin keeps don't end by themselves: AlwyWatch has no API key on Jellyfin. Renew it in Server settings → Media servers."
-msgstr ""
+msgstr "Les conservations Jellyfin ne se terminent pas toutes seules : AlwyWatch n'a pas de clé d'API sur Jellyfin. Renouvelez-la dans Paramètres du serveur → Serveurs multimédias."
 
 #: web/src/keep.rs:1019
 msgid "Keep until watched (Plex)"
@@ -6622,15 +6622,15 @@ msgstr "Garder jusqu'à visionnage (Plex)"
 
 #: web/src/keep.rs:1022
 msgid "Plex keeps don't end by themselves. Set up Tautulli in Server settings."
-msgstr ""
+msgstr "Les conservations Plex ne se terminent pas toutes seules. Configurez Tautulli dans les paramètres du serveur."
 
 #: web/src/keep.rs:1027
 msgid "Optional: watched titles are noticed within 15 min. For instant, paste the webhook addresses from Server settings."
-msgstr ""
+msgstr "Facultatif : les titres vus sont détectés en moins de 15 min. Pour une détection immédiate, collez les adresses de webhook des paramètres du serveur."
 
 #: web/src/keep.rs:1032
 msgid "Off: set this site's address (https) in Server settings."
-msgstr ""
+msgstr "Désactivé : indiquez l'adresse de ce site (https) dans les paramètres du serveur."
 
 #: web/src/keep.rs:1036
 msgid "Anyone can create one"
@@ -6638,7 +6638,7 @@ msgstr "Tout le monde peut en créer un"
 
 #: web/src/keep.rs:1044
 msgid "Change these in {page}."
-msgstr ""
+msgstr "Modifiez-les dans {page}."
 
 #: web/src/lang.rs:61
 msgid "Same as the browser"
@@ -6964,59 +6964,59 @@ msgstr "Film · demandé le {date}"
 
 #: web/src/setup.rs:38
 msgid "Wrong setup code. It is in the AlwyWatch server's log: docker logs alwywatch-server"
-msgstr ""
+msgstr "Code d'installation incorrect. Il se trouve dans le journal du serveur AlwyWatch : docker logs alwywatch-server"
 
 #: web/src/setup.rs:41
 msgid "This server is already set up: sign in."
-msgstr ""
+msgstr "Ce serveur est déjà configuré : connectez-vous."
 
 #: web/src/setup.rs:190
 msgid "Set up AlwyWatch"
-msgstr ""
+msgstr "Configurer AlwyWatch"
 
 #: web/src/setup.rs:193
 msgid "Done. AlwyWatch is starting with your server and signs you in…"
-msgstr ""
+msgstr "Terminé. AlwyWatch démarre avec votre serveur et vous connecte…"
 
 #: web/src/setup.rs:198
 msgid "Welcome. AlwyWatch needs a Jellyfin or Plex server to start: you do this once. Everything else is set later in Settings → Admin → Server settings."
-msgstr ""
+msgstr "Bienvenue. AlwyWatch a besoin d'un serveur Jellyfin ou Plex pour démarrer : vous ne le faites qu'une fois. Le reste se règle plus tard dans Paramètres → Administration → Paramètres du serveur."
 
 #: web/src/setup.rs:200
 msgid "Setup code"
-msgstr ""
+msgstr "Code d'installation"
 
 #: web/src/setup.rs:203
 msgid "It is in the AlwyWatch server's log, on a line with “setup code” (docker logs alwywatch-server)."
-msgstr ""
+msgstr "Il se trouve dans le journal du serveur AlwyWatch, sur une ligne contenant « setup code » (docker logs alwywatch-server)."
 
 #: web/src/setup.rs:206
 msgid "Your media server"
-msgstr ""
+msgstr "Votre serveur multimédia"
 
 #: web/src/setup.rs:210
 msgid "With an administrator's login"
-msgstr ""
+msgstr "Avec un compte administrateur"
 
 #: web/src/setup.rs:214
 msgid "With the server owner's Plex sign-in"
-msgstr ""
+msgstr "Avec la connexion Plex du propriétaire du serveur"
 
 #: web/src/setup.rs:244
 msgid "AlwyWatch uses it once to make its own API key, and doesn't keep it. You'll be this AlwyWatch server's admin."
-msgstr ""
+msgstr "AlwyWatch l'utilise une seule fois pour créer sa propre clé d'API, et ne le conserve pas. Vous serez l'administrateur de ce serveur AlwyWatch."
 
 #: web/src/setup.rs:246
 msgid "Set up"
-msgstr ""
+msgstr "Configurer"
 
 #: web/src/setup.rs:254
 msgid "Plex opens in a new tab: sign in there as the server's owner, then come back. You'll be this AlwyWatch server's admin."
-msgstr ""
+msgstr "Plex s'ouvre dans un nouvel onglet : connectez-vous-y en tant que propriétaire du serveur, puis revenez. Vous serez l'administrateur de ce serveur AlwyWatch."
 
 #: web/src/setup.rs:257
 msgid "Sign in with Plex and set up"
-msgstr ""
+msgstr "Se connecter avec Plex et configurer"
 
 #: web/src/signin.rs:186
 msgid "With your Jellyfin or Plex login, or below with your AlwyWatch account."
@@ -7101,7 +7101,7 @@ msgstr "Sections des paramètres"
 
 #: web/src/signin.rs:589
 msgid "Media servers, Maintainerr, Seerr, Tautulli, email, sign-up"
-msgstr ""
+msgstr "Serveurs multimédias, Maintainerr, Seerr, Tautulli, e-mail, inscription"
 
 #: web/src/signin.rs:603
 msgid "Accounts and settings are kept in this browser only. Sign out on shared computers."
@@ -7729,27 +7729,27 @@ msgstr "Les personnes et leurs droits, sous quel utilisateur elles font leurs de
 
 #: desktop/ui/app.slint:3310
 msgid "ALWYWATCH SERVER"
-msgstr ""
+msgstr "SERVEUR ALWYWATCH"
 
 #: desktop/ui/app.slint:3323
 msgid "INVITE SOMEONE"
-msgstr ""
+msgstr "INVITER QUELQU'UN"
 
 #: desktop/ui/app.slint:3324
 msgid "A new person gets an AlwyWatch account, and a Jellyfin login if you like."
-msgstr ""
+msgstr "La personne invitée obtient un compte AlwyWatch, et un compte Jellyfin si vous le souhaitez."
 
 #: desktop/ui/app.slint:3346
 msgid "Also make a Jellyfin login on {}"
-msgstr ""
+msgstr "Créer aussi un compte Jellyfin sur {}"
 
 #: desktop/ui/app.slint:3363
 msgid "Personal note (optional): a few words in the email"
-msgstr ""
+msgstr "Note personnelle (facultatif) : quelques mots dans l'e-mail"
 
 #: desktop/ui/app.slint:3384
 msgid "Sent to {}"
-msgstr ""
+msgstr "Envoyé à {}"
 
 #: desktop/ui/app.slint:3423
 msgid "INVITATIONS"
@@ -7837,47 +7837,47 @@ msgstr "Démarrer à {}"
 msgid "They get an invitation and join directly."
 msgstr "Les invités reçoivent une invitation et rejoignent directement."
 
-#: server/src/invites.rs:216
+#: server/src/invites.rs:243
 msgid "This invitation works once and expires in {n} day."
 msgid_plural "This invitation works once and expires in {n} days."
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "Cette invitation ne fonctionne qu'une fois et expire dans {n} jour."
+msgstr[1] "Cette invitation ne fonctionne qu'une fois et expire dans {n} jours."
 
-#: server/src/invites.rs:141
+#: server/src/invites.rs:166
 msgid "{name} via AlwyWatch"
-msgstr ""
-
-#: server/src/invites.rs:183
-msgid "{name} invites you to watch on {server}"
-msgstr ""
-
-#: server/src/invites.rs:189
-msgid "{name} invites you to AlwyWatch"
-msgstr ""
-
-#: server/src/invites.rs:192
-msgid "{name} invites you to {server}, with AlwyWatch to watch it on your phone, TV, computer or browser."
-msgstr ""
-
-#: server/src/invites.rs:198
-msgid "{name} invites you to AlwyWatch, to watch on your phone, TV, computer or browser."
-msgstr ""
-
-#: server/src/invites.rs:205
-msgid "Choose a username and a password: they work in AlwyWatch and in every Jellyfin app on {server}."
-msgstr ""
+msgstr "{name} via AlwyWatch"
 
 #: server/src/invites.rs:210
+msgid "{name} invites you to watch on {server}"
+msgstr "{name} vous invite à regarder sur {server}"
+
+#: server/src/invites.rs:216
+msgid "{name} invites you to AlwyWatch"
+msgstr "{name} vous invite sur AlwyWatch"
+
+#: server/src/invites.rs:219
+msgid "{name} invites you to {server}, with AlwyWatch to watch it on your phone, TV, computer or browser."
+msgstr "{name} vous invite sur {server}, avec AlwyWatch pour le regarder sur votre téléphone, votre TV, votre ordinateur ou votre navigateur."
+
+#: server/src/invites.rs:225
+msgid "{name} invites you to AlwyWatch, to watch on your phone, TV, computer or browser."
+msgstr "{name} vous invite sur AlwyWatch, pour regarder sur votre téléphone, votre TV, votre ordinateur ou votre navigateur."
+
+#: server/src/invites.rs:232
+msgid "Choose a username and a password: they work in AlwyWatch and in every Jellyfin app on {server}."
+msgstr "Choisissez un nom d'utilisateur et un mot de passe : ils fonctionnent dans AlwyWatch et dans toutes les applis Jellyfin sur {server}."
+
+#: server/src/invites.rs:237
 msgid "Choose a username and a password to create your account."
-msgstr ""
+msgstr "Choisissez un nom d'utilisateur et un mot de passe pour créer votre compte."
 
-#: server/src/invites.rs:215
+#: server/src/invites.rs:242
 msgid "Create my account"
-msgstr ""
+msgstr "Créer mon compte"
 
-#: server/src/invites.rs:222
+#: server/src/invites.rs:249
 msgid "Not expecting this? You can ignore this email."
-msgstr ""
+msgstr "Vous n'attendiez pas ce message ? Vous pouvez ignorer cet e-mail."
 
 #~ msgid "A code and a link to create an AlwyWatch account"
 #~ msgstr "Un code et un lien pour créer un compte AlwyWatch"
