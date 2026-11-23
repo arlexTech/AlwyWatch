@@ -439,7 +439,7 @@ impl App {
                     }),
                     status: sstr(
                         match (r.started, r.playing) {
-                            (false, _) => "Lobby: not started yet".to_owned(),
+                            (false, _) => "Waiting room: not started yet".to_owned(),
                             (true, true) => format!("Watching · {}", clock(room_position(r))),
                             (true, false) => format!("Paused at {}", clock(room_position(r))),
                         } + if !r.invited && here.as_deref() != Some(r.code.as_str()) {
@@ -774,10 +774,10 @@ impl App {
                  another title and choose Watch together. Everyone stays here."
                 .to_owned(),
             (false, _) if host => {
-                "Lobby: invite people, then start when everyone is here.".to_owned()
+                "Waiting room: invite people, then start when everyone is here.".to_owned()
             }
             (false, _) if s.round > 0 => format!("{host_name} is picking what to watch next."),
-            (false, _) => "Lobby: nothing plays until the host starts.".to_owned(),
+            (false, _) => "Waiting room: nothing plays until the host starts.".to_owned(),
             (true, _) if !s.loading.is_empty() => "Starting: loading for everyone…".to_owned(),
             (true, playing) => format!(
                 "{} {}",

@@ -83,11 +83,11 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         be.alwyapps.watch.ui
-            .PageTitle("Requests", "Connect Seerr to ask for movies and shows")
+            .PageTitle("Requests", "Ask for movies and shows that aren't on the server yet")
         val i = info
         if (i == null && core.keepActive()) {
             // Works whatever media server the user signed in with (Seerr itself serves one type).
-            be.alwyapps.watch.ui.Group(null, footer = "No extra sign-in: your AlwyWatch server links your Seerr account.") {
+            be.alwyapps.watch.ui.Group(null, footer = "No extra sign-in: your AlwyWatch server handles it.") {
                 be.alwyapps.watch.ui.ListRow(
                     "Use my AlwyWatch server",
                     subtitle = "Recommended",
@@ -105,7 +105,7 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                     },
                 )
             }
-            Text("Or connect Seerr directly", style = MaterialTheme.typography.titleSmall, color = Muted)
+            Text("Or type the address of the request site (Seerr, Overseerr or Jellyseerr)", style = MaterialTheme.typography.titleSmall, color = Muted)
         }
         if (i == null) {
             val submit = { attempt { info = core.seerrInfo(normalizeServerUrl(url)) } }
@@ -133,8 +133,8 @@ fun SeerrConnectScreen(onDone: () -> Unit) {
                                 SeerrLogin.PLEX -> ActionButton("Sign in with Plex", { method = m }, Modifier.initialFocus(), primary = true)
                                 SeerrLogin.JELLYFIN -> ActionButton("Sign in with Jellyfin", { method = m }, Modifier.initialFocus(), primary = true)
                                 SeerrLogin.EMBY -> ActionButton("Sign in with Emby", { method = m }, primary = true)
-                                SeerrLogin.LOCAL -> ActionButton("Seerr account", { method = m })
-                                SeerrLogin.NOT_CONFIGURED -> Text("This Seerr has no sign-in method enabled.", color = Danger)
+                                SeerrLogin.LOCAL -> ActionButton("An account made on the request site", { method = m })
+                                SeerrLogin.NOT_CONFIGURED -> Text("This request site has no sign-in method enabled. Tell your server's owner.", color = Danger)
                             }
                         }
                     }

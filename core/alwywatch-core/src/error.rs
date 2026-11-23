@@ -1,29 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 use net::Error as NetError;
 
-/// Errors surfaced to the UIs. Messages never contain tokens.
+/// Errors surfaced to the UIs, worded for the person in front of the screen (the UIs show
+/// them as they are). Messages never contain tokens.
 /// Flat for the bindings: Kotlin gets one exception class per variant whose `message` is the
 /// text below (fields stay available to Rust callers such as the desktop app).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 #[uniffi(flat_error)]
 pub enum CoreError {
-    #[error("sign in again: the session expired or was revoked")]
+    #[error("The server refused: your sign-in may have ended. Sign in again in Settings.")]
     Unauthorized,
-    #[error("not found")]
+    #[error("This isn't on the server any more.")]
     NotFound,
-    #[error("server error (HTTP {status})")]
+    #[error("The server couldn't do this (HTTP {status}). Try again in a moment.")]
     Server { status: u16 },
-    #[error("network unavailable: {detail}")]
+    #[error("Can't reach the server. Check your connection.")]
     Network { detail: String },
-    #[error("waiting for authorization")]
+    #[error("Still waiting for approval.")]
     Pending,
     #[error("{detail}")]
     Invalid { detail: String },
-    #[error("account {account_id} is not signed in on this device")]
+    #[error("This sign-in is no longer on this device. Sign in again in Settings.")]
     NotSignedIn { account_id: String },
-    #[error("local storage error: {detail}")]
+    #[error("This device's storage had a problem: {detail}")]
     Storage { detail: String },
-    #[error("internal error: {detail}")]
+    #[error("Something went wrong in the app: {detail}")]
     Internal { detail: String },
 }
 

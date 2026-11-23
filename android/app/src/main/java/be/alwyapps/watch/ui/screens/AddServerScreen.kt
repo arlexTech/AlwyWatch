@@ -324,7 +324,7 @@ fun AddServerScreen(onSignedIn: (accountId: String) -> Unit) {
                 )
                 ActionButton(if (busy) "Signing in…" else "Sign in", { submit() }, primary = true)
                 Text(
-                    "Passkey or Pocket ID? Use “Sign in with a code” and approve it on your phone.",
+                    "No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone.",
                     color = Subtle,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -579,7 +579,7 @@ private fun AlwyWatchServerPicker(
         }
     }
     Text(
-        "Enter the address your server's owner gave you, then pick the server you watch on.",
+        "Type the AlwyWatch address the person who runs your server gave you. You then sign in with your Jellyfin or Plex login, or with a code from a device where you already use AlwyWatch.",
         color = Muted,
         style = MaterialTheme.typography.bodyMedium,
     )
@@ -593,16 +593,26 @@ private fun AlwyWatchServerPicker(
         keyboardActions = KeyboardActions(onGo = { load() }),
         modifier = Modifier.fillMaxWidth().dpadEscape().initialFocus(),
     )
-    ActionButton("Show servers", { load() }, primary = entries == null)
+    ActionButton("Continue", { load() }, primary = entries == null)
     entries?.let { (base, list) ->
-        if (list.isEmpty()) Text("This AlwyWatch server lists no media servers.", color = Muted)
+        if (list.isEmpty()) {
+            Text(
+                "Nothing to sign in to at this address. Check it with the person who runs your server, or go back and sign in to Jellyfin or Plex directly.",
+                color = Muted,
+            )
+        }
         list.forEach { e -> ServerCard(e) { if (!busy) onPick(base, e) } }
         // Already signed in elsewhere: copy everything instead of signing in again.
         Text("Already using AlwyWatch on another device?", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
         ChoiceCard("Sign in with a code", "Scan a QR code with your phone, or approve on a device where you're signed in", Icons.Download, {
             onCopy(base)
         })
-        ChoiceCard("AlwyWatch account", "Username and password", Icons.Person, { onAccount(base) })
+        ChoiceCard(
+            "AlwyWatch account (optional)",
+            "Only if your server's owner invited you to create one: username and password",
+            Icons.Person,
+            { onAccount(base) },
+        )
     }
 }
 
@@ -628,17 +638,17 @@ private fun FirstChoices(
     onAlwyWatch: () -> Unit,
     onDirect: () -> Unit,
 ) {
-    Text("How do you watch?", style = MaterialTheme.typography.titleMedium)
+    Text("Sign in", style = MaterialTheme.typography.titleMedium)
     ChoiceCard(
-        "I have an AlwyWatch server",
-        "Its address comes from your server's owner. Includes what's leaving soon and requests.",
+        "I was given an AlwyWatch address",
+        "Something like watch.example.org, from the person who runs your server. Adds requests, watch together and saving titles from deletion.",
         Icons.Hourglass,
         onAlwyWatch,
         Modifier.initialFocus(),
     )
     ChoiceCard(
-        "I don't have one",
-        "Sign in to Jellyfin or Plex directly. You can add an AlwyWatch server later in Settings.",
+        "I have a Jellyfin or Plex login",
+        "Sign in directly. You can add an AlwyWatch address later in Settings.",
         Icons.Person,
         onDirect,
     )

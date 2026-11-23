@@ -442,7 +442,7 @@ fun ProfilesGroup() {
             Divider()
             var auto by remember { mutableStateOf(services.profiles.autoSignIn) }
             be.alwyapps.watch.ui.ToggleRow(
-                "Sign in automatically",
+                "Skip “Who's watching?” at start",
                 auto,
                 {
                     auto = it

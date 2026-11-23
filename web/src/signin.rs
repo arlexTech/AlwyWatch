@@ -93,17 +93,30 @@ pub async fn check_keep(c: Ctx) {
     }
 }
 
+/// Where a signed-out visitor was heading (a device's code page), kept for a few minutes so
+/// the sign-in brings them back there instead of to the home.
+const RETURN_TO: &str = "aw.signin.return";
+
+pub fn return_after_sign_in(path: &str) {
+    state::save(RETURN_TO, &(path.to_owned(), js_sys::Date::now()));
+}
+
+fn after_sign_in() -> String {
+    let kept = state::load::<(String, f64)>(RETURN_TO);
+    state::remove(RETURN_TO);
+    match kept {
+        Some((path, at)) if path.starts_with("/q/") && js_sys::Date::now() - at < 900_000.0 => path,
+        _ => "/".to_owned(),
+    }
+}
+
 #[component]
 pub fn SignIn() -> impl IntoView {
     let c = state::ctx();
     let http = c.http.clone();
     let served = LocalResource::new(move || {
         let http = http.clone();
-        async move {
-            KeepClient::servers(&http, &Ctx::origin())
-                .await
-                .unwrap_or_default()
-        }
+        async move { KeepClient::servers(&http, &Ctx::origin()).await.ok() }
     });
     let picked = RwSignal::new(None::<ServerEntry>);
     let account = c.account;
@@ -112,7 +125,10 @@ pub fn SignIn() -> impl IntoView {
         <p class="muted">"Use your Jellyfin or Plex account."</p>
         {move || match served.get() {
             None => view! { <crate::ui::Loading /> }.into_any(),
-            Some(list) => {
+            Some(None) => view! {
+                <ErrorText text="Can't load the list of servers. Check your connection and reload the page.".to_owned() />
+            }.into_any(),
+            Some(Some(list)) => {
                 let all = list.clone();
                 view! {
                     <div class="choices">
@@ -143,8 +159,11 @@ pub fn SignIn() -> impl IntoView {
                                 <leptos_router::components::A href="/account">"Manage"</leptos_router::components::A></p>
                         }.into_any(),
                         None => view! {
-                            <p class="muted">"Or, without a media server: your AlwyWatch account (profile, settings, signing in other devices)."</p>
-                            <crate::account::AccountSignIn next="/settings" />
+                            <details>
+                                <summary>"Have an AlwyWatch account instead? Sign in with it"</summary>
+                                <p class="muted small">"An AlwyWatch account is optional: your server's owner may have invited you to create one. It is not your Jellyfin or Plex login."</p>
+                                <crate::account::AccountSignIn next="/settings" />
+                            </details>
                         }.into_any(),
                     }}
                 }.into_any()
@@ -185,7 +204,7 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
             {
                 Ok(s) => {
                     finish(&c, s, &served).await;
-                    navigate("/", Default::default());
+                    navigate(&after_sign_in(), Default::default());
                 }
                 Err(e) => error.set(Some(sign_in_error(&e, &base))),
             }
@@ -230,7 +249,7 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
                             return;
                         }
                         finish(&c, s, &served).await;
-                        return navigate("/", Default::default());
+                        return navigate(&after_sign_in(), Default::default());
                     }
                     Err(Error::Pending) => {}
                     Err(e) => {
@@ -249,7 +268,7 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
         <form class="form" on:submit=submit>
             <h2>{entry.name.clone()}</h2>
             {ask_url.then(|| view! {
-                <label>"Server address"<input type="text" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="jellyfin.example.com"
+                <label>"Server address (ask the person who gave you your login)"<input type="text" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="jellyfin.example.org"
                     prop:value=move || url.get() on:input=move |ev| url.set(event_target_value(&ev)) /></label>
             })}
             <label>"Username"<input autocomplete="username" prop:value=move || user.get()
@@ -258,7 +277,7 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
                 on:input=move |ev| pass.set(event_target_value(&ev)) /></label>
             <div class="actions">
                 <button class="primary" type="submit" disabled=move || busy.get()>"Sign in"</button>
-                <button type="button" on:click=quick>"Use Quick Connect"</button>
+                <button type="button" on:click=quick>"Use a code from another Jellyfin app (Quick Connect)"</button>
             </div>
             {move || code.get().map(|k| view! {
                 <p class="code-hint">"In a Jellyfin app where you're signed in, open Quick Connect and enter "
@@ -344,7 +363,7 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
                     // The watchlist (My list) lives on plex.tv, under the account's own token.
                     c.set_plex_tv_token(&state::account_key(&s), &plex_tv);
                     finish(&c, s, &served).await;
-                    navigate("/", Default::default());
+                    navigate(&after_sign_in(), Default::default());
                 }
                 Err(e) => error.set(Some(e)),
             }
@@ -483,7 +502,7 @@ fn AlwyWatchSection() -> impl IntoView {
                     // Plex accounts from before the plex.tv token was kept can't sign in here.
                     let old_plex = c2.accounts.get().iter().any(|s| s.kind == media_api::ServerKind::Plex && c2.keep_token(s).is_none());
                     view! {
-                        <p class="muted">"None of your accounts is on a server this site serves."</p>
+                        <p class="muted">"None of your logins is on a server this site works with. Add one: Servers → Add a server."</p>
                         {old_plex.then(|| view! { <p class="muted small">"Plex account: sign out and sign in again to use requests, Leaving soon and watch together."</p> })}
                     }.into_any()
                 }

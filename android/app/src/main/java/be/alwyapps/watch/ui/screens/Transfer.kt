@@ -190,7 +190,7 @@ fun ReceiveFromDevice(
             }
         }
         Text(
-            "Or on a device where you're signed in: Settings → AlwyWatch server → Add a device, and type this code.",
+            "Or on a device where you're signed in: Settings → AlwyWatch & requests → Add a device, and type this code.",
             color = Muted,
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -241,7 +241,7 @@ fun SendToDeviceDialog(onDismiss: () -> Unit) {
                 when {
                     sent -> Text("Your accounts and settings are on their way. The other device signs in by itself.", color = Muted)
                     r == null -> {
-                        Text("On the new device, choose \"Copy from another device\" and type its code here.", color = Muted)
+                        Text("On the new device, choose “Sign in with a code”, then type the code it shows here.", color = Muted)
                         Field(
                             code,
                             { code = it.filter(Char::isDigit).take(6) },

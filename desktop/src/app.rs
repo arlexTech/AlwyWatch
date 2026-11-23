@@ -483,7 +483,7 @@ impl App {
                 Some(d) => {
                     let days = (d - now).div_euclid(86_400);
                     let mut s = match days {
-                        d if d < 0 => "Overdue".to_owned(),
+                        d if d < 0 => "Any day now".to_owned(),
                         0 => "Leaves today".into(),
                         1 => "Leaves tomorrow".into(),
                         d => format!("Leaves in {d} days"),
@@ -499,7 +499,7 @@ impl App {
             .my_vote
             .as_ref()
             .map(|v| match v.kind {
-                VoteKind::DontCare => "You don't care".to_owned(),
+                VoteKind::DontCare => "You're fine with it going".to_owned(),
                 VoteKind::KeepDays => "You keep it a while".into(),
                 VoteKind::KeepUntilWatched => "You keep it until you watch it".into(),
                 VoteKind::KeepForever => format!(
@@ -995,7 +995,7 @@ impl App {
         if let Some(k) = self.core.keep_connection() {
             ui.set_keep_admin(k.is_admin);
             ui.set_keep_label(sstr(format!(
-                "Syncing as {} @ {}{}",
+                "Signed in as {} on {}{}",
                 k.user_name,
                 k.base_url,
                 if k.is_admin { " (admin)" } else { "" }
@@ -1034,7 +1034,7 @@ impl App {
         if usable.is_empty() {
             let names: Vec<&str> = list.iter().map(|e| e.name.as_str()).collect();
             ui.set_keep_message(sstr(format!(
-                "None of your accounts is on a server it serves ({}). Add one of those first.",
+                "This needs a login on one of its servers ({}). Add one first: Settings → Servers → Add a server.",
                 names.join(", ")
             )));
             return;
@@ -3054,7 +3054,7 @@ impl App {
             Some(c) => lang(c),
         }));
         ui.set_sub_mode_label(sstr(match get("player.sub_mode").as_deref() {
-            Some("forced") => "Forced only",
+            Some("forced") => "Only foreign-language parts",
             Some("always") => "Always",
             Some("off") => "Off",
             _ => "Automatic",
@@ -3510,8 +3510,7 @@ impl App {
                     panel.looking = false;
                     panel.error = sstr(match e {
                         CoreError::NotFound => {
-                            "This title isn't in the library that deletions are managed for."
-                                .to_owned()
+                            "This title is never deleted automatically.".to_owned()
                         }
                         e => e.to_string(),
                     });
@@ -3860,14 +3859,14 @@ impl App {
             .into_iter()
             .map(|a| {
                 let sync = match &keep {
-                    Some(k) if k.account_id == a.id => "synced with your AlwyWatch server",
-                    Some(_) => "not synced with your AlwyWatch server",
-                    None => "only on this device",
+                    Some(k) if k.account_id == a.id => " · used for AlwyWatch",
+                    Some(_) => "",
+                    None => "",
                 };
                 AccountRow {
                     current: Some(&a.id) == current.as_ref(),
-                    label: sstr(format!("{} @ {}", a.user_name, a.server_name)),
-                    detail: sstr(format!("{:?} · {} · {sync}", a.kind, a.base_url)),
+                    label: sstr(format!("{} on {}", a.user_name, a.server_name)),
+                    detail: sstr(format!("{:?} · {}{sync}", a.kind, a.base_url)),
                     id: sstr(a.id),
                 }
             })

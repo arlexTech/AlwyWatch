@@ -102,7 +102,7 @@ fun HistoryCopyScreen() {
             style = MaterialTheme.typography.bodyMedium,
         )
         if (accounts.size < 2) {
-            Text("Add both servers first (Settings → Add a server).", color = Muted)
+            Text("Sign in to both servers first: Settings → Servers → Add a server.", color = Muted)
             return@Column
         }
         Group(null) {

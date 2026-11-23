@@ -209,7 +209,7 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
                     let to = format!("/v1/account/oidc/start?next={}", pct(&next3));
                     view! {
                         {passkeys.then(|| view! { <button type="button" on:click=with_passkey.clone()>"Use a passkey"</button> })}
-                        {pocket.then(|| view! { <button type="button" on:click=move |_| go(&to)>"Pocket ID"</button> })}
+                        {pocket.then(|| view! { <button type="button" on:click=move |_| go(&to)>"Sign in with Pocket ID"</button> })}
                     }
                 }}
             </div>
@@ -263,7 +263,7 @@ pub fn Join() -> impl IntoView {
                     navigate("/account", Default::default());
                 }
                 Err(net::Error::Unauthorized) => error.set(Some(
-                    "This invitation is unknown, used up or expired.".into(),
+                    "This invitation is unknown, used up or expired. Ask for a new one.".into(),
                 )),
                 Err(e) => error.set(Some(account::explain(&e, false))),
             }
@@ -282,7 +282,7 @@ pub fn Join() -> impl IntoView {
                     <p><button class="primary" on:click=move |_| go("/v1/account/oidc/start?next=/account")>"Continue with Pocket ID"</button>
                         <span class="muted small">" No invitation needed."</span></p>
                 })}
-                {closed.then(|| view! { <p class="muted">"New accounts with a password are not open on this server."</p> })}
+                {closed.then(|| view! { <p class="muted">"This server doesn't accept new accounts without an invitation. Ask its owner for one, or sign in with your Jellyfin or Plex login."</p> })}
                 {(!closed).then(|| view! {
                     <form class="form" on:submit=submit.clone()>
                         {invite_needed.then(|| view! {
@@ -413,9 +413,10 @@ pub fn Approve() -> impl IntoView {
             view! { <p>"Done. The device signs itself in within a few seconds."</p> }.into_any()
         } else if !signed_in() {
             view! {
-                <p class="muted">"Sign in first: the device then gets your account."</p>
+                <p class="muted">"Sign in first: the device is then signed in as you."</p>
+                <p><A href="/signin" attr:class="button primary" on:click={let n = next.clone(); move |_| crate::signin::return_after_sign_in(&n)}>"Sign in with Jellyfin or Plex"</A></p>
+                <p class="muted small">"You'll come straight back here. Or use your AlwyWatch account, if you have one:"</p>
                 <AccountSignIn next=next.clone() />
-                <p class="muted small">"Or "<A href="/signin">"sign in with Jellyfin or Plex"</A>" and open this page again."</p>
             }.into_any()
         } else {
             let approve = approve.clone();
@@ -552,6 +553,7 @@ pub fn AccountPage() -> impl IntoView {
                 <MediaSignIn info=i.clone() page=page />
                 <section class="group">
                     <h2>"Passkeys"</h2>
+                    <p class="muted small">"Sign in with your fingerprint, face or device PIN instead of a password."</p>
                     {i.passkeys.iter().map(|p| {
                         let (id, c) = (p.id.clone(), c.clone());
                         view! {
@@ -596,7 +598,7 @@ pub fn AccountPage() -> impl IntoView {
                         <section class="group">
                             <h2>"Pocket ID"</h2>
                             <div class="row">
-                                <div class="muted">{if linked { "Linked: you can sign in with Pocket ID." } else { "Not linked." }}</div>
+                                <div class="muted">{if linked { "Linked: you can sign in with Pocket ID." } else { "Pocket ID is this server's single sign-on. Link it to sign in without a password." }}</div>
                                 {if linked {
                                     view! { <button on:click=move |_| {
                                         let c = c.clone();
@@ -728,7 +730,7 @@ fn Password(info: AccountView, page: Page) -> impl IntoView {
         <section class="group">
             <h2>"Password"</h2>
             {move || if !has_username {
-                view! { <p class="muted small">"This account was made by signing a device in; it has no username, so no password."</p> }.into_any()
+                view! { <p class="muted small">"This account has no username yet, so it can't have a password. Add a passkey below to sign in without Jellyfin or Plex."</p> }.into_any()
             } else if open.get() {
                 view! {
                     <form class="form" on:submit=submit.clone()>
@@ -890,7 +892,7 @@ fn Invitations() -> impl IntoView {
         <Show when=move || keep.get().is_some_and(|k| k.is_admin)>
             <section class="group">
                 <h2>"Invitations"</h2>
-                <p class="muted small">"Someone without Jellyfin or Plex can create an AlwyWatch account with an invitation (one use, 7 days)."</p>
+                <p class="muted small">"Someone without Jellyfin or Plex can create an AlwyWatch account with an invitation (works once, for 7 days)."</p>
                 <button on:click=make.clone()>"New invitation"</button>
                 {move || made.get().map(|i| view! {
                     <p>"Send this link: "<strong class="code">{i.url.clone().unwrap_or_else(|| i.code.clone())}</strong></p>

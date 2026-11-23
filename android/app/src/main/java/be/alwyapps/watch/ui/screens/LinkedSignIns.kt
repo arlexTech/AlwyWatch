@@ -395,7 +395,7 @@ fun alsoSignedInAs(links: List<LinkedIdentity>?): String? =
         ?.let { "Also signed in as $it" }
 
 /**
- * Settings → AlwyWatch server & requests → Your AlwyWatch account → Linked sign-ins: the
+ * Settings → AlwyWatch & requests → Your AlwyWatch account → Linked sign-ins: the
  * sign-ins of my account ("Main", "This device"), Unlink for the others, and "Link another
  * sign-in" when an account of this device can join. Shown when there is something to show.
  */

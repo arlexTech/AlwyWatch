@@ -360,17 +360,28 @@ component KeepChoices inherits HorizontalLayout {
     Button { label: "Keep 30 days"; clicked => { root.vote(root.key, "days30"); } }
     Button { label: "Keep 7 days"; clicked => { root.vote(root.key, "days7"); } }
     Button { label: "Keep forever"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.vote(root.key, "love"); } }
-    Button { label: "I don't care"; clicked => { root.vote(root.key, "dontcare"); } }
+    Button { label: "Fine to delete"; clicked => { root.vote(root.key, "dontcare"); } }
     if root.voted : Button { label: "Remove my choice"; clicked => { root.vote(root.key, "remove"); } }
 }
 
 component IconButton inherits Focusable {
     in property <image> icon;
+    /// What the button does, shown under it while hovered or focused (an icon alone is a guess).
+    in property <string> tip;
     width: 44px;
     height: 44px;
     border-radius: 22px;
     background: root.active ? #ffffff : Palette.surface-high;
     Icon { source: root.icon; tint: root.active ? #000 : Palette.text; }
+    if root.tip != "" && root.active : Rectangle {
+        y: parent.height + 4px;
+        x: (parent.width - self.width) / 2;
+        width: tip-text.preferred-width + 16px;
+        height: 24px;
+        border-radius: 8px;
+        background: #000000e0;
+        tip-text := Text { text: root.tip; color: #fff; font-size: 12px; horizontal-alignment: center; vertical-alignment: center; }
+    }
 }
 
 // Cast and crew: round photos with name and role, scrolling sideways.
@@ -1433,6 +1444,8 @@ export component AppWindow inherits Window {
     in property <bool> add-from-keep;
     callback use-account(string);
     callback remove-account(string);
+    /// Server row whose "Sign out" was clicked once (a second click signs out).
+    property <string> remove-armed;
     callback clear-cache();
     callback toggle-spdif();
     /// Flips a boolean setting ("1"/"0") and refreshes the switches.
@@ -1836,14 +1849,17 @@ export component AppWindow inherits Window {
                                         }
                                         if root.detail.can-watchlist : IconButton {
                                             icon: root.detail.watchlisted ? @image-url("icons/bookmark_fill1.svg") : @image-url("icons/bookmark.svg");
+                                            tip: root.detail.watchlisted ? "In my list" : "Add to my list";
                                             clicked => { root.toggle-watchlist(root.detail.id); }
                                         }
                                         if root.detail.playable : IconButton {
                                             icon: @image-url("icons/download.svg");
+                                            tip: "Download";
                                             clicked => { root.download(root.detail.id); }
                                         }
                                         IconButton {
                                             icon: @image-url("icons/check.svg");
+                                            tip: "Watched or not";
                                             clicked => { root.toggle-played(root.detail.id); }
                                         }
                                     }
@@ -1886,7 +1902,7 @@ export component AppWindow inherits Window {
                                             Icon { source: @image-url("icons/hourglass_bottom.svg"); tint: root.detail-keep.listed ? Palette.accent : Palette.muted; width: 20px; height: 20px; y: (parent.height - self.height) / 2; }
                                             Text { text: root.detail-keep.title; color: Palette.text; font-size: 16px; font-weight: 700; vertical-alignment: center; }
                                         }
-                                        if !root.detail-keep.listed : Text { text: "It is in none of the server's deletion lists. What you choose now counts if it gets into one."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                        if !root.detail-keep.listed : Text { text: "The server doesn't plan to delete this. You can still say you want it kept, in case it does later."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                                         if root.detail-keep.detail != "" : Text { text: root.detail-keep.detail; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                                         Text { text: root.detail-keep.choice; color: Palette.text; font-size: 14px; wrap: word-wrap; }
                                         if root.detail-keep.key == "" || root.leaving-open != root.detail-keep.key : HorizontalLayout {
@@ -1990,7 +2006,7 @@ export component AppWindow inherits Window {
                                 if root.add-step == "choose" && root.add-from-keep && root.preset-servers.length > 0 : Text { text: "Another server"; color: Palette.text; font-size: 17px; font-weight: 700; }
                                 if root.add-step == "choose" && root.add-from-keep : ChoiceCard {
                                     title: "Jellyfin";
-                                    subtitle: "Quick Connect or password";
+                                    subtitle: "Password, or a code from another Jellyfin app";
                                     icon: @image-url("icons/video_library.svg");
                                     clicked => { root.add-choose("jellyfin"); }
                                 }
@@ -2022,16 +2038,16 @@ export component AppWindow inherits Window {
                                         vertical-alignment: center;
                                     }
                                 }
-                                if root.add-step == "choose" && !root.add-from-keep : Text { text: "How do you watch?"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                if root.add-step == "choose" && !root.add-from-keep : Text { text: "Sign in"; color: Palette.text; font-size: 17px; font-weight: 700; }
                                 if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
-                                    title: "I have an AlwyWatch server";
-                                    subtitle: "Its address comes from your server's owner. Includes what's leaving soon and requests.";
+                                    title: "I was given an AlwyWatch address";
+                                    subtitle: "Something like watch.example.org, from the person who runs your server. Adds requests, watch together and saving titles from deletion.";
                                     icon: @image-url("icons/hourglass_bottom.svg");
                                     clicked => { root.add-choose("alwywatch"); }
                                 }
                                 if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
-                                    title: "I don't have one";
-                                    subtitle: "Sign in to Jellyfin or Plex directly. You can add an AlwyWatch server later in Settings.";
+                                    title: "I have a Jellyfin or Plex login";
+                                    subtitle: "Sign in directly. You can add an AlwyWatch address later in Settings.";
                                     icon: @image-url("icons/person.svg");
                                     clicked => { root.add-choose("direct"); }
                                 }
@@ -2049,12 +2065,12 @@ export component AppWindow inherits Window {
                                 }
                                 if root.add-step == "alwywatch" : VerticalLayout {
                                     spacing: 12px;
-                                    if root.account-note == "" : Text { text: "Enter the address your server's owner gave you, then pick the server you watch on."; color: Palette.muted; wrap: word-wrap; }
+                                    if root.account-note == "" : Text { text: "Type the AlwyWatch address the person who runs your server gave you. You then sign in with your Jellyfin or Plex login, or with a code from a device where you already use AlwyWatch."; color: Palette.muted; wrap: word-wrap; }
                                     if root.account-note != "" : Text { text: root.account-note; color: Palette.text; font-size: 17px; font-weight: 700; wrap: word-wrap; }
                                     HorizontalLayout {
                                         spacing: 10px;
                                         kserver := Field { placeholder: "watch.example.org"; text <=> root.keep-address; accepted(t) => { root.add-keep-servers(t); } }
-                                        Button { label: "Show servers"; primary: root.preset-servers.length == 0; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
+                                        Button { label: "Continue"; primary: root.preset-servers.length == 0; y: (parent.height - self.height) / 2; clicked => { root.add-keep-servers(kserver.text); } }
                                     }
                                     for s in root.preset-servers : ChoiceCard {
                                         title: s.title;
@@ -2085,7 +2101,7 @@ export component AppWindow inherits Window {
                                         accepted => { root.account-login(root.keep-address, auser.text, apass.text); }
                                     }
                                     HorizontalLayout { alignment: start; Button { label: "Sign in"; primary: true; clicked => { root.account-login(root.keep-address, auser.text, apass.text); } } }
-                                    Text { text: "Passkey or Pocket ID? Use “Sign in with a code” and approve it on your phone."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                                    Text { text: "No password (passkey or single sign-on)? Go back, choose “Sign in with a code” and approve it on your phone."; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
                                     if root.transfer-status != "" : Text { text: root.transfer-status; color: Palette.danger; wrap: word-wrap; }
                                 }
                                 if root.add-step == "receive" : VerticalLayout {
@@ -2109,7 +2125,7 @@ export component AppWindow inherits Window {
                                         }
                                     }
                                     Text {
-                                        text: "Or on a device where you're signed in: Settings → AlwyWatch server → Add a device, and type this code.";
+                                        text: "Or on a device where you're signed in: Settings → AlwyWatch & requests → Add a device, and type this code.";
                                         color: Palette.muted;
                                         wrap: word-wrap;
                                     }
@@ -2206,7 +2222,7 @@ export component AppWindow inherits Window {
                                     if d.completed : IconButton { y: (parent.height - self.height) / 2; icon: @image-url("icons/play_arrow_fill1.svg"); clicked => { root.play-download(d.account, d.item); } }
                                     if !d.completed && d.active : Button { y: (parent.height - self.height) / 2; label: "Pause"; clicked => { root.download-action(d.id, "pause"); } }
                                     if !d.completed && !d.active : Button { y: (parent.height - self.height) / 2; label: "Resume"; primary: true; clicked => { root.download-action(d.id, "resume"); } }
-                                    IconButton { y: (parent.height - self.height) / 2; icon: @image-url("icons/delete.svg"); clicked => { root.download-action(d.id, "remove"); } }
+                                    IconButton { y: (parent.height - self.height) / 2; icon: @image-url("icons/delete.svg"); tip: "Delete download"; clicked => { root.download-action(d.id, "remove"); } }
                                 }
                             }
                         }
@@ -2359,14 +2375,15 @@ export component AppWindow inherits Window {
                         padding-top: 28px;
                         padding-bottom: 0;
                         spacing: 10px;
-                        PageTitle { title: "Leaving soon"; subtitle: "What the server will delete, soonest first. Keep what you want to watch or love."; }
+                        PageTitle { title: "Leaving soon"; subtitle: "What the server will delete, soonest first. Keep what you want to watch or love. Everyone's choices count and the longest one wins."; }
                         HorizontalLayout {
                             spacing: 10px;
                             alignment: start;
                             padding-bottom: 8px;
-                            Button { label: "Sort them out"; primary: true; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.go(Page.triage); } }
+                            Button { label: "Go through them one by one"; primary: true; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.go(Page.triage); } }
                             if root.keep-admin : Button { label: "Admin"; has-icon: true; icon: @image-url("icons/settings.svg"); clicked => { root.go(Page.keepadmin); } }
                         }
+                        if root.leaving.length == 0 : Text { text: "Nothing is leaving. Nothing to do."; color: Palette.muted; }
                         ListView {
                             vertical-stretch: 1;
                             changed content-y => { root.leaving-scrolled(-self.content-y / 118px); }
@@ -2580,10 +2597,10 @@ export component AppWindow inherits Window {
                                 padding: 32px;
                                 spacing: 14px;
                                 alignment: start;
-                                Text { text: "Sort them out"; color: Palette.text; font-size: 30px; font-weight: 800; horizontal-alignment: center; }
+                                Text { text: "One by one"; color: Palette.text; font-size: 30px; font-weight: 800; horizontal-alignment: center; }
                                 if root.triage-left == 0 : Text { text: "Nothing left to sort. Thanks!"; color: Palette.muted; horizontal-alignment: center; }
                                 if root.triage-left > 0 : Text {
-                                    text: root.triage-left + " left  ·  ← don't care   → until I watch it   ↑ forever";
+                                    text: root.triage-left + " left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever";
                                     color: Palette.subtle;
                                     horizontal-alignment: center;
                                 }
@@ -2608,7 +2625,7 @@ export component AppWindow inherits Window {
                                         HorizontalLayout { alignment: start; Button { label: "Until I watch it"; primary: true; has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.triage-vote("watched"); } } }
                                         HorizontalLayout { alignment: start; Button { label: "Forever"; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.triage-vote("love"); } } }
                                         HorizontalLayout { alignment: start; Button { label: "Keep 30 days"; clicked => { root.triage-vote("days30"); } } }
-                                        HorizontalLayout { alignment: start; Button { label: "Don't care"; has-icon: true; icon: @image-url("icons/close.svg"); clicked => { root.triage-vote("dontcare"); } } }
+                                        HorizontalLayout { alignment: start; Button { label: "Fine to delete"; has-icon: true; icon: @image-url("icons/close.svg"); clicked => { root.triage-vote("dontcare"); } } }
                                     }
                                 }
                             }
@@ -2701,7 +2718,7 @@ export component AppWindow inherits Window {
                                 color: Palette.muted;
                                 wrap: word-wrap;
                             }
-                            if root.history-from.length < 2 : Text { text: "Add both servers first (Settings → Add a server)."; color: Palette.muted; }
+                            if root.history-from.length < 2 : Text { text: "Sign in to both servers first: Settings → Servers → Add a server."; color: Palette.muted; }
                             if root.history-from.length >= 2 : Group {
                                 title: "FROM";
                                 for c in root.history-from : AccountChoiceRow { choice: c; clicked => { root.history-pick("from", c.id); } }
@@ -2777,9 +2794,14 @@ export component AppWindow inherits Window {
                                         Text { text: a.detail; color: Palette.muted; font-size: 12px; }
                                     }
                                     Rectangle { horizontal-stretch: 1; }
-                                    if !a.current : Button { label: "Use"; clicked => { root.use-account(a.id); } }
-                                    if a.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
-                                    IconButton { icon: @image-url("icons/delete.svg"); clicked => { root.remove-account(a.id); } }
+                                    if !a.current : Button { label: "Switch to this one"; clicked => { root.use-account(a.id); } }
+                                    if a.current : Text { text: "Showing now"; color: Palette.muted; vertical-alignment: center; }
+                                    Button {
+                                        label: root.remove-armed == a.id ? "Click again to sign out" : "Sign out";
+                                        clicked => {
+                                            if (root.remove-armed == a.id) { root.remove-armed = ""; root.remove-account(a.id); } else { root.remove-armed = a.id; }
+                                        }
+                                    }
                                 }
                                 HorizontalLayout {
                                     alignment: start;
@@ -2857,7 +2879,7 @@ export component AppWindow inherits Window {
                                     spacing: 10px;
                                     Text { text: root.keep-label; color: Palette.text; vertical-alignment: center; }
                                     Rectangle { horizontal-stretch: 1; }
-                                    if root.keep-can-switch && root.keep-choices.length == 0 : Button { label: "Sync another account"; clicked => { root.keep-choose(); } }
+                                    if root.keep-can-switch && root.keep-choices.length == 0 : Button { label: "Use another login"; clicked => { root.keep-choose(); } }
                                     if root.send-step == "" : Button { label: "Add a device"; clicked => { root.send-start(); } }
                                     // This computer forgets the AlwyWatch server (choices stay on the server).
                                     Button { label: "Disconnect"; clicked => { root.keep-disconnect(); } }
@@ -2901,13 +2923,13 @@ export component AppWindow inherits Window {
                                     kurl := Field { placeholder: "AlwyWatch server address"; accepted(t) => { root.keep-connect(t); } }
                                     Button { label: "Connect"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.keep-connect(kurl.text); } }
                                 }
-                                if root.keep-choices.length > 0 : Text { text: "Choose the account that syncs with it:"; color: Palette.muted; }
+                                if root.keep-choices.length > 0 : Text { text: "Choose the login that identifies you there:"; color: Palette.muted; }
                                 for c in root.keep-choices : HorizontalLayout {
                                     spacing: 10px;
                                     Text { text: c.title; color: c.selected ? Palette.accent : Palette.text; vertical-alignment: center; }
                                     Rectangle { horizontal-stretch: 1; }
-                                    if c.selected : Text { text: "Syncing"; color: Palette.muted; vertical-alignment: center; }
-                                    if !c.selected : Button { label: "Sync this one"; primary: true; clicked => { root.keep-sync(c.id); } }
+                                    if c.selected : Text { text: "Used for AlwyWatch"; color: Palette.muted; vertical-alignment: center; }
+                                    if !c.selected : Button { label: "Use this one"; primary: true; clicked => { root.keep-sync(c.id); } }
                                 }
                             }
                             Group {
@@ -2920,7 +2942,7 @@ export component AppWindow inherits Window {
                                 }
                                 if !root.seerr-active && root.seerr-step == "url" : HorizontalLayout {
                                     spacing: 10px;
-                                    surl := Field { placeholder: "Seerr address"; accepted(t) => { root.seerr-url(t); } }
+                                    surl := Field { placeholder: "Request site address (Seerr, Overseerr, Jellyseerr)"; accepted(t) => { root.seerr-url(t); } }
                                     Button { label: "Connect"; y: (parent.height - self.height) / 2; clicked => { root.seerr-url(surl.text); } }
                                     if root.keep-active : Button { label: "Use my AlwyWatch server"; primary: true; y: (parent.height - self.height) / 2; clicked => { root.seerr-bridge(); } }
                                 }
@@ -2963,15 +2985,15 @@ export component AppWindow inherits Window {
                                     Rectangle { horizontal-stretch: 1; }
                                     if p.current : Text { text: "In use"; color: Palette.muted; vertical-alignment: center; }
                                     if p.current : Button { label: "Rename"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("rename", p.id); } }
-                                    if p.current : Button { label: p.has-pin ? "PIN" : "Set a PIN"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("pin", p.id); } }
+                                    if p.current : Button { label: p.has-pin ? "Change PIN" : "Set a PIN"; y: (parent.height - self.height) / 2; clicked => { root.profile-dialog-open("pin", p.id); } }
                                     if !p.current : Button { label: "Switch"; y: (parent.height - self.height) / 2; clicked => { root.profile-open(p.id); } }
-                                    if p.removable : IconButton { icon: @image-url("icons/delete.svg"); clicked => { root.profile-dialog-open("remove", p.id); } }
+                                    if p.removable : IconButton { icon: @image-url("icons/delete.svg"); tip: "Remove profile"; clicked => { root.profile-dialog-open("remove", p.id); } }
                                 }
                                 HorizontalLayout { alignment: start; Button { label: "Add a profile"; has-icon: true; icon: @image-url("icons/add.svg"); clicked => { root.profile-dialog-open("add", ""); } } }
                             }
                             if root.profiles.length > 1 : Group {
                                 SettingToggle {
-                                    title: "Sign in automatically";
+                                    title: "Skip “Who's watching?” at startup";
                                     subtitle: "Open the last profile used instead of asking who's watching (a PIN is still asked)";
                                     on: root.profile-auto;
                                     clicked => { root.profile-auto-toggle(); }

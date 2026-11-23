@@ -573,7 +573,7 @@ pub fn LinkedSignins() -> impl IntoView {
                         }).collect_view()}
                     })
                 }}
-                <p class="muted small">"Another sign-in of yours isn't listed? Add it with “Add an account” above, then link it here."</p>
+                <p class="muted small">"Another sign-in of yours isn't listed? Add it in Settings → Servers → Add a server, then link it here."</p>
             </div>
         </Show>
         {move || unlinking.get().map(|i| {

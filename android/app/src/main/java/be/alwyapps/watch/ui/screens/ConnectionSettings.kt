@@ -171,9 +171,9 @@ fun AlwyWatchServerGroup(
         val usable = accounts.filter { it.serverId in ids }
         Text(
             if (usable.isEmpty()) {
-                "None of your accounts is on a server it serves (${list.joinToString { it.name }}). Add one of those first."
+                "This needs a login on ${list.joinToString(" or ") { it.name }}. Add one first: Settings → Servers → Add a server."
             } else {
-                "Choose the account that syncs with it."
+                "Choose the login that identifies you there."
             },
             Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             style = MaterialTheme.typography.bodySmall,
@@ -187,7 +187,7 @@ fun AlwyWatchServerGroup(
                 icon = Icons.Person,
                 iconTint = if (a.id == current) Accent else OnSurface,
                 onClick = if (a.id == current) null else ({ attempt { connectKeep(core, ctx, base, a).also { onChanged() } } }),
-                trailing = { if (a.id == current) Value("Syncing") else Chevron() },
+                trailing = { if (a.id == current) Value("Used for AlwyWatch") else Chevron() },
             )
         }
         if (usable.isEmpty()) {
@@ -252,7 +252,7 @@ fun AlwyWatchServerGroup(
                     }
             }
             ListRow(
-                "Syncing as ${keep.userName}" + if (keep.isAdmin) " · admin" else "",
+                "Signed in to AlwyWatch as ${keep.userName}" + if (keep.isAdmin) " · admin" else "",
                 modifier = if (choosing) Modifier else first,
                 subtitle = problem ?: listOfNotNull(syncing?.serverName, keep.baseUrl).joinToString(" · "),
                 icon = Icons.Hourglass,
@@ -289,7 +289,7 @@ fun AlwyWatchServerGroup(
                 }
             } else if (accounts.size > 1) {
                 Divider()
-                ListRow("Sync another account", subtitle = "Pick which of your servers it follows", icon = Icons.Person, onClick = {
+                ListRow("Use another login for AlwyWatch", subtitle = "Pick which of your sign-ins identifies you there", icon = Icons.Person, onClick = {
                     choosing = true
                 }, trailing = { Chevron() })
             }
@@ -307,10 +307,10 @@ fun AlwyWatchServerGroup(
             var stopping by remember { mutableStateOf(false) }
             if (stopping) {
                 ConfirmDialog(
-                    "Sign out of AlwyWatch?",
+                    "Disconnect this device?",
                     "Leaving soon, keep choices and watch together disappear from this device until you connect again. " +
                         "Your choices stay on the server.",
-                    confirm = "Sign out",
+                    confirm = "Disconnect",
                     onConfirm = {
                         core.keepDisconnect()
                         MyAccount.me = null
@@ -320,7 +320,7 @@ fun AlwyWatchServerGroup(
                 )
             }
             ListRow(
-                "Sign out of AlwyWatch",
+                "Disconnect this device from AlwyWatch",
                 subtitle = "Leaving soon, keep choices and watch together disappear from this device",
                 icon = Icons.Close,
                 iconTint = Danger,
@@ -332,17 +332,28 @@ fun AlwyWatchServerGroup(
         val account = remember(version) { core.account() }
         if (account != null) {
             Divider()
+            var leaving by remember { mutableStateOf(false) }
+            if (leaving) {
+                ConfirmDialog(
+                    "Sign out of your AlwyWatch account?",
+                    "This device is signed out of the account of ${account.name}. Your Jellyfin and Plex sign-ins stay.",
+                    confirm = "Sign out",
+                    onConfirm = {
+                        leaving = false
+                        scope.launch {
+                            runCatching { core.accountSignOut() }
+                            ctx.services.tokens.remove(ACCOUNT_TOKEN)
+                            onChanged()
+                        }
+                    },
+                    onDismiss = { leaving = false },
+                )
+            }
             ListRow(
-                "AlwyWatch account: ${account.name}",
-                subtitle = "Sign this device out of the account (passwords, passkeys and devices: on the web)",
+                "Sign out of your AlwyWatch account (${account.name})",
+                subtitle = "Only this device is signed out",
                 icon = Icons.Person,
-                onClick = {
-                    scope.launch {
-                        runCatching { core.accountSignOut() }
-                        ctx.services.tokens.remove(ACCOUNT_TOKEN)
-                        onChanged()
-                    }
-                },
+                onClick = { leaving = true },
             )
             // The account itself is managed on the server's website (one place for every app).
             val page = account.baseUrl.trimEnd('/') + "/account"
@@ -376,7 +387,10 @@ fun RequestsGroup(
     val keep = remember(version) { core.keepConnection() }
     var error by remember(version) { mutableStateOf<String?>(null) }
 
-    Group("Requests", footer = "Seerr lets you ask for movies and shows that aren't on the server yet.") {
+    Group(
+        "Requests",
+        footer = "Ask for movies and shows that aren't on the server yet. It uses a request site (Seerr, Overseerr or Jellyseerr) run by your server's owner.",
+    ) {
         if (seerr == null) {
             if (keep != null) {
                 ListRow(
@@ -398,7 +412,7 @@ fun RequestsGroup(
                 Divider()
             }
             ListRow(
-                if (keep != null) "Connect Seerr directly" else "Connect Seerr",
+                if (keep != null) "Use a request site directly" else "Turn on requests",
                 subtitle = "With its address and your account there",
                 icon = Icons.Add,
                 onClick = { nav.push(Route.SeerrConnect) },
@@ -414,7 +428,7 @@ fun RequestsGroup(
                 trailing = { Chevron() },
             )
             Divider()
-            ListRow("Stop using Seerr", icon = Icons.Close, iconTint = Danger, onClick = {
+            ListRow("Turn off requests", icon = Icons.Close, iconTint = Danger, onClick = {
                 core.seerrSignOut()
                 core.setSetting(be.alwyapps.watch.SEERR_OFF, "1")
                 ctx.services.tokens.remove("seerr")

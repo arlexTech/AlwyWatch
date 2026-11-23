@@ -21,8 +21,7 @@ use wasm_bindgen_futures::JsFuture;
 use crate::state;
 use crate::ui::ErrorText;
 
-const NO_KEEP: &str =
-    "This needs an account on this AlwyWatch server: sign in with one in Settings.";
+const NO_KEEP: &str = "This only works with a login on one of this site's servers. Add one in Settings → Servers → Add a server.";
 
 // ---------------------------------------------------------------------------------------------
 // Drawing

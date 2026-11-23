@@ -35,15 +35,14 @@ fn status(i: &LeavingItem) -> String {
     }
 }
 
-const NO_KEEP: &str =
-    "This needs an account on this AlwyWatch server: sign in with one in Settings.";
+const NO_KEEP: &str = "This only works with a login on one of this site's servers. Add one in Settings → Servers → Add a server.";
 
 fn mine(i: &LeavingItem) -> Option<&'static str> {
     i.my_vote.as_ref().map(|v| match v.kind {
         VoteKind::KeepForever => "You keep it forever",
         VoteKind::KeepUntilWatched => "You keep it until you watch it",
         VoteKind::KeepDays => "You extended it",
-        VoteKind::DontCare => "You don't mind",
+        VoteKind::DontCare => "You're fine with it going",
     })
 }
 
@@ -92,9 +91,9 @@ pub fn Leaving() -> impl IntoView {
     };
     view! {
         <h1>"Leaving soon"</h1>
-        <p class="muted">"What the server will delete. Keep what you want to watch or keep."</p>
+        <p class="muted">"What the server will delete, soonest first. Keep what you want to watch or love."</p>
         <div class="actions">
-            <A href="/leaving/sort" attr:class="button primary">"Sort them out"</A>
+            <A href="/leaving/sort" attr:class="button primary">"Go through them one by one"</A>
             <Show when=move || state::ctx().keep.get().is_some_and(|k| k.is_admin)>
                 <A href="/admin" attr:class="button">"Admin"</A>
             </Show>
@@ -197,11 +196,12 @@ fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoV
             <button class="small" disabled=move || busy.get() on:click=move |_| v3(Some(req(VoteKind::KeepDays, Some(30))))>"Keep 30 days"</button>
             <button class="small" disabled=move || busy.get() on:click=move |_| v6(Some(req(VoteKind::KeepDays, Some(7))))>"Keep 7 days"</button>
             <button class="small" disabled=move || busy.get() on:click=move |_| v2(Some(req(VoteKind::KeepForever, None)))>"Keep forever"</button>
-            <button class="small" disabled=move || busy.get() on:click=move |_| v4(Some(req(VoteKind::DontCare, None)))>"I don't care"</button>
+            <button class="small" disabled=move || busy.get() on:click=move |_| v4(Some(req(VoteKind::DontCare, None)))>"Fine to delete"</button>
             {item.my_vote.is_some().then(|| view! {
                 <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>"Remove my choice"</button>
             })}
         </div>
+        <p class="muted small">"Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it."</p>
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
     }
 }
@@ -265,8 +265,7 @@ fn medium_date(ts: i64) -> String {
 }
 
 /// Under "Not scheduled for deletion": a title can be kept ahead of any list.
-const UNPLANNED: &str =
-    "It is in none of the server's deletion lists. What you choose now counts if it gets into one.";
+const UNPLANNED: &str = "The server doesn't plan to delete this. You can still say you want it kept, in case it does later.";
 
 /// A movie or show page: where it stands in Leaving soon, my choice, the keep choices on
 /// demand. Shown once the list has been loaded (kept in the browser), then refreshed.
@@ -340,9 +339,7 @@ pub fn KeepPanel(item: media_api::Item) -> impl IntoView {
                     choosing.try_set(true);
                 }
                 Err(net::Error::NotFound) => {
-                    lookup_error.try_set(Some(
-                        "This title isn't in the library that deletions are managed for.".into(),
-                    ));
+                    lookup_error.try_set(Some("This title is never deleted automatically.".into()));
                 }
                 Err(e) => {
                     lookup_error.try_set(Some(state::plain_keep(&e)));
@@ -512,7 +509,7 @@ pub fn short_label(i: &LeavingItem, now: i64) -> (String, bool) {
     };
     let days = (d - now).div_euclid(DAY);
     match days {
-        ..0 => ("Overdue".into(), true),
+        ..0 => ("Any day now".into(), true),
         0 => ("Today".into(), true),
         1 => ("1 day".into(), true),
         n => (format!("{n} days"), n <= 7),
@@ -616,7 +613,7 @@ pub fn Triage() -> impl IntoView {
     });
     view! {
         <div class="triage">
-            <h1>"Sort them out"</h1>
+            <h1>"One by one"</h1>
             {move || {
                 let left = queue.with(|q| q.as_ref().map_or(0, Vec::len)) as u32;
                 let total = left + done.get();
@@ -641,7 +638,7 @@ pub fn Triage() -> impl IntoView {
                     let c = &item.counts;
                     let keepers = c.forever + c.until_watched + c.days;
                     view! {
-                        <p class="muted small">{format!("{} left · ← don't care   → until I watch it   ↑ forever", q.len())}</p>
+                        <p class="muted small">{format!("{} left · ← fine to delete   → keep until I watch it   ↑ keep forever", q.len())}</p>
                         <div class="triage-body">
                             <div class="triage-card" tabindex="0" node_ref=card on:keydown=on_key>
                                 {item.poster_url.clone().map(|p| view! { <img src=p alt="" /> })}
@@ -659,7 +656,7 @@ pub fn Triage() -> impl IntoView {
                                     <button class="primary" on:click=move |_| until()>"Until I watch it"</button>
                                     <button on:click=move |_| forever()>"♥ Forever"</button>
                                     <button on:click=move |_| days()>"Keep 30 days"</button>
-                                    <button on:click=move |_| dont()>"✕ Don't care"</button>
+                                    <button on:click=move |_| dont()>"✕ Fine to delete"</button>
                                 </div>
                             </div>
                         </div>
@@ -947,7 +944,7 @@ mod tests {
         );
         assert_eq!(
             short_label(&item(Protection::None, true, Some(now - 10)), now),
-            ("Overdue".into(), true)
+            ("Any day now".into(), true)
         );
         assert_eq!(
             short_label(&item(Protection::None, true, Some(now + 100)), now),

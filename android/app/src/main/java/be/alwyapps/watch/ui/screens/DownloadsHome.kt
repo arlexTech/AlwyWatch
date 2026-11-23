@@ -507,7 +507,7 @@ fun DownloadRow(
         if (confirm) {
             be.alwyapps.watch.ui.ConfirmDialog(
                 if (dl.done) "Delete the download?" else "Cancel the download?",
-                "${dl.title.split(" · ").first()} (${dl.progressLabel()}) will be removed from this phone.",
+                "${dl.title.split(" · ").first()} (${dl.progressLabel()}) will be removed from this device.",
                 confirm = if (dl.done) "Delete" else "Cancel download",
                 onConfirm = {
                     core.removeDownload(dl.id)
@@ -667,7 +667,7 @@ fun DownloadSheet(
             }
             if (choice == "next") {
                 Text(
-                    "Keeps your next unwatched episodes on this phone and replaces them as you watch.",
+                    "Keeps your next unwatched episodes on this device and replaces them as you watch.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Muted,
                 )
@@ -713,7 +713,7 @@ fun DownloadSheet(
                 ask?.let { (question, list) ->
                     be.alwyapps.watch.ui.ConfirmDialog(
                         question,
-                        "%.1f GB will be freed on this phone.".format(list.sumOf { it.downloaded.toLong() } / 1e9),
+                        "%.1f GB will be freed on this device.".format(list.sumOf { it.downloaded.toLong() } / 1e9),
                         onConfirm = {
                             list.forEach { core.removeDownload(it.id) }
                             DownloadPending.changed()

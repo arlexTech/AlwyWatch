@@ -49,11 +49,11 @@ fun requestErrorText(e: CoreException): String =
     when (e) {
         // Seerr answers 403 both when the quota is used up and when the person may not request.
         is CoreException.Unauthorized ->
-            "Seerr refused: you may have no requests left, or not be allowed to request. If it keeps happening, sign in again in Settings."
-        is CoreException.Network -> "Can't reach Seerr right now."
-        is CoreException.NotFound -> "Seerr doesn't know this title."
+            "The request was refused: you may have no requests left, or not be allowed to request. If it keeps happening, sign in again in Settings."
+        is CoreException.Network -> "Can't reach the request site right now."
+        is CoreException.NotFound -> "The request site doesn't know this title."
         is CoreException.Server ->
-            if (e.message.orEmpty().contains("409")) "It has already been requested." else "Seerr had a problem. Try again in a moment."
+            if (e.message.orEmpty().contains("409")) "It has already been requested." else "The request site had a problem. Try again in a moment."
         else -> e.message ?: "Something went wrong."
     }
 

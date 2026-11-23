@@ -1488,13 +1488,13 @@ class PlayerActivity : ComponentActivity() {
         )
         val playing = player?.isPlaying == true
         return listOf(
-            action(PIP_BACK, android.R.drawable.ic_media_rew, "Back 10 seconds"),
+            action(PIP_BACK, android.R.drawable.ic_media_rew, "Back ${(player?.seekBackIncrement ?: 10_000L) / 1000} seconds"),
             if (playing) {
                 action(PIP_PAUSE, android.R.drawable.ic_media_pause, "Pause")
             } else {
                 action(PIP_PLAY, android.R.drawable.ic_media_play, "Play")
             },
-            action(PIP_FORWARD, android.R.drawable.ic_media_ff, "Forward 30 seconds"),
+            action(PIP_FORWARD, android.R.drawable.ic_media_ff, "Forward ${(player?.seekForwardIncrement ?: 30_000L) / 1000} seconds"),
         )
     }
 

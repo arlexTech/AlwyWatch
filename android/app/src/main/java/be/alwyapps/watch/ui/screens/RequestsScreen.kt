@@ -104,7 +104,7 @@ fun RequestsScreen() {
         list.error?.let { msg ->
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
-                    if (all && msg.startsWith("sign in again")) "Only Seerr managers can see everyone's requests." else msg,
+                    if (all && msg.startsWith("The server refused")) "Only request managers can see everyone's requests." else msg,
                     color = Muted,
                 )
             }

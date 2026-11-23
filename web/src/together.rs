@@ -1055,7 +1055,7 @@ impl Invites {
 }
 
 fn room_status(started: bool) -> &'static str {
-    if started { "Watching" } else { "Lobby" }
+    if started { "Watching" } else { "Waiting room" }
 }
 
 /// Hosting a room: this title becomes the room's (everyone stays; a playing room loads it).

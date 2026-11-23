@@ -93,7 +93,7 @@ fun LeavingItem.leavesLabel(): String {
             val days = (d - now) / DAY
             val base =
                 when {
-                    days < 0 -> "Overdue"
+                    days < 0 -> "Any day now"
                     days == 0L -> "Leaves today"
                     days == 1L -> "Leaves tomorrow"
                     else -> "Leaves in $days days"
@@ -104,6 +104,9 @@ fun LeavingItem.leavesLabel(): String {
     }
 }
 
+/** Under the keep buttons: how one person's choice weighs. Same sentence in every app. */
+const val KEEP_HINT = "Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it."
+
 /** Short countdown for poster badges: "3 days", "Today", "Overdue", "No date", "Kept". */
 fun LeavingItem.shortLabel(): Pair<String, Boolean> {
     val now = System.currentTimeMillis() / 1000
@@ -113,7 +116,7 @@ fun LeavingItem.shortLabel(): Pair<String, Boolean> {
     val d = effectiveDeletionDate ?: return "Soon" to false
     val days = (d - now) / DAY
     return when {
-        days < 0 -> "Overdue" to true
+        days < 0 -> "Any day now" to true
         days == 0L -> "Today" to true
         days == 1L -> "1 day" to true
         else -> "$days days" to (days <= 7)
@@ -123,7 +126,7 @@ fun LeavingItem.shortLabel(): Pair<String, Boolean> {
 fun LeavingItem.voteLabel(): String? =
     myVote?.let {
         when (it.kind) {
-            VoteKind.DONT_CARE -> "You don't care"
+            VoteKind.DONT_CARE -> "You're fine with it going"
             VoteKind.KEEP_DAYS -> "You keep it a while"
             VoteKind.KEEP_UNTIL_WATCHED -> "You keep it until you watch it"
             VoteKind.KEEP_FOREVER -> "You keep it forever" + (it.reason?.let { r -> " ($r)" } ?: "")
@@ -176,9 +179,10 @@ fun KeepActions(
             item { ActionButton("Keep 30 days", { send(req(VoteKind.KEEP_DAYS, days = 30u)) }) }
             item { ActionButton("Keep 7 days", { send(req(VoteKind.KEEP_DAYS, days = 7u)) }) }
             item { ActionButton("Keep forever", { send(req(VoteKind.KEEP_FOREVER)) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled) }
-            item { ActionButton("I don't care", { send(req(VoteKind.DONT_CARE)) }) }
+            item { ActionButton("Fine to delete", { send(req(VoteKind.DONT_CARE)) }) }
             if (item.myVote != null) item { ActionButton("Remove my choice", { send(null) }, icon = be.alwyapps.watch.ui.Icons.Close) }
         }
+        Text(KEEP_HINT, color = Muted, style = MaterialTheme.typography.bodySmall)
         error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodySmall) }
     }
 }
@@ -216,7 +220,7 @@ fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
                 Text("Keep what you still want to watch", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             ActionButton(
-                "Sort them out",
+                "Go through them one by one",
                 { nav.push(Route.Triage) },
                 Modifier
                     .focusRequester(sort)
@@ -339,7 +343,7 @@ fun LeavingSoonScreen() {
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ActionButton(
-                        "Sort them out",
+                        "Go through them one by one",
                         { nav.push(Route.Triage) },
                         Modifier.initialFocus(),
                         primary = true,
@@ -373,7 +377,7 @@ fun LeavingSoonScreen() {
         list.error?.let { msg ->
             // Unreachable server: say which, and that the list shown is the last one it sent.
             val text =
-                if (msg.startsWith("network unavailable")) {
+                if (msg.startsWith("Can't reach")) {
                     val at = runCatching { core.keepConnection()?.baseUrl }.getOrNull()
                     "Can't reach your AlwyWatch server" + (at?.let { " ($it)" } ?: "") +
                         (if (all.isNotEmpty()) ". This is the last list it sent." else ".")
@@ -495,7 +499,7 @@ fun TriageScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Sort them out", style = MaterialTheme.typography.headlineMedium)
+        Text("One by one", style = MaterialTheme.typography.headlineMedium)
         if (total > 0) {
             Box(
                 Modifier
@@ -519,7 +523,12 @@ fun TriageScreen() {
             else -> {
                 Text(
                     "${queue!!.size} left  ·  " +
-                        if (d.isTv) "← don't care   → until I watch it   ↑ forever" else "swipe ← don't care, → keep, ↑ forever",
+                        if (d.isTv) {
+                            "← fine to delete   → keep until I watch it   ↑ keep forever"
+                        } else {
+                            "Swipe left: fine to delete · right: keep until I watch it · " +
+                                "up: keep forever"
+                        },
                     color = be.alwyapps.watch.ui.Subtle,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -589,7 +598,7 @@ fun TriageScreen() {
                     )
                     ActionButton("Forever", { vote(req(VoteKind.KEEP_FOREVER)) }, icon = be.alwyapps.watch.ui.Icons.FavoriteFilled)
                     ActionButton("Keep 30 days", { vote(req(VoteKind.KEEP_DAYS, days = 30u)) })
-                    ActionButton("Don't care", { vote(req(VoteKind.DONT_CARE)) }, icon = be.alwyapps.watch.ui.Icons.Close)
+                    ActionButton("Fine to delete", { vote(req(VoteKind.DONT_CARE)) }, icon = be.alwyapps.watch.ui.Icons.Close)
                 }
                 if (d.isTv) {
                     Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -236,8 +236,8 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
         "Your servers",
         footer =
             if (keep != null) {
-                "One account syncs with your AlwyWatch server at a time (leaving soon, keep choices, requests). " +
-                    "Change it in AlwyWatch server & requests."
+                "Only one of these logins is used for AlwyWatch (leaving soon, keep choices, requests). " +
+                    "Change it in Settings → AlwyWatch & requests."
             } else {
                 null
             },
@@ -248,10 +248,10 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
             if (i > 0) Divider()
             val sync =
                 when {
-                    keep?.accountId == a.id -> "Synced with AlwyWatch"
-                    keep != null && served?.contains(a.serverId) == true -> "On AlwyWatch · not synced"
+                    keep?.accountId == a.id -> "Used for AlwyWatch"
+                    keep != null && served?.contains(a.serverId) == true -> "Not used for AlwyWatch"
                     keep != null && served == null -> null
-                    else -> "Only on this device"
+                    else -> null
                 }
             ListRow(
                 a.userName,
@@ -557,7 +557,7 @@ private fun AudioSection() {
         var mode by remember { mutableStateOf(settings.subtitleMode) }
         ChoiceRow(
             "Subtitles",
-            listOf("auto" to "Automatic", "forced" to "Forced only", "always" to "Always", "off" to "Off"),
+            listOf("auto" to "Automatic", "forced" to "Only foreign-language parts", "always" to "Always", "off" to "Off"),
             mode,
             {
                 mode = it

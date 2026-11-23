@@ -846,7 +846,7 @@ private fun TrackPills(
             else ->
                 when (settings.subtitleMode) {
                     "off" -> "Off"
-                    "forced" -> "Forced only"
+                    "forced" -> "Only foreign-language parts"
                     "always" ->
                         be.alwyapps.watch.player
                             .languageName(
@@ -1321,7 +1321,7 @@ private fun rememberDownloadToggle(
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirm = false },
             title = { Text(if (dl.state == DownloadState.COMPLETED) "Remove the download?" else "Cancel the download?") },
-            text = { Text("${item.title} (${dl.progressLabel()}) will be deleted from this phone.") },
+            text = { Text("${item.title} (${dl.progressLabel()}) will be deleted from this device.") },
             confirmButton = {
                 ActionButton("Remove", {
                     core.removeDownload(dl.id)
@@ -1548,7 +1548,7 @@ private fun KeepPanel(
         }
         if (unplanned) {
             Text(
-                "It is in none of the server's deletion lists. What you choose now counts if it gets into one.",
+                "The server doesn't plan to delete this. You can still say you want it kept, in case it does later.",
                 color = Muted,
                 style = MaterialTheme.typography.bodySmall,
             )
@@ -1592,7 +1592,7 @@ private fun KeepPanel(
                             } catch (e: be.alwyapps.watch.core.CoreException) {
                                 error =
                                     if (e is be.alwyapps.watch.core.CoreException.NotFound) {
-                                        "This title isn't in the library that deletions are managed for."
+                                        "This title is never deleted automatically."
                                     } else {
                                         e.message
                                     }

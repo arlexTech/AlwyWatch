@@ -1028,9 +1028,21 @@ impl AlwyWatch {
     pub async fn jellyfin_server_info(&self, url: String) -> Result<ServerInfo> {
         self.run(|c| async move {
             let base = net::normalize_base_url(&url)?;
-            Ok(JellyfinAuth::new(c.http.clone(), c.client.clone())
+            // The first thing a newcomer types: say what is wrong with the address.
+            JellyfinAuth::new(c.http.clone(), c.client.clone())
                 .public_info(&base)
-                .await?)
+                .await
+                .map_err(|e| match e {
+                    net::Error::Network { .. } => CoreError::Invalid {
+                        detail: format!(
+                            "Can't reach {base}. Check the address and your connection."
+                        ),
+                    },
+                    net::Error::NotFound | net::Error::Decode { .. } => CoreError::Invalid {
+                        detail: "There is no Jellyfin server at this address.".into(),
+                    },
+                    e => e.into(),
+                })
         })
         .await
     }
@@ -1044,7 +1056,15 @@ impl AlwyWatch {
         self.run(|c| async move {
             let base = net::normalize_base_url(&url)?;
             let auth = JellyfinAuth::new(c.http.clone(), c.client.clone());
-            let session = auth.sign_in(&base, &username, &password).await?;
+            let session = auth
+                .sign_in(&base, &username, &password)
+                .await
+                .map_err(|e| match e {
+                    net::Error::Unauthorized => CoreError::Invalid {
+                        detail: "Wrong username or password.".into(),
+                    },
+                    e => e.into(),
+                })?;
             c.signed_in(session)
         })
         .await

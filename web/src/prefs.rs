@@ -219,7 +219,7 @@ pub fn AudioSettings() -> impl IntoView {
                     prop:value=move || prefs.with(|p| p.sub_mode.clone())
                     on:change=move |ev| { let m = event_target_value(&ev); change(&|p| p.sub_mode = m.clone()) }>
                     <option value="auto">"Automatic"</option>
-                    <option value="forced">"Forced only"</option>
+                    <option value="forced">"Only foreign-language parts"</option>
                     <option value="always">"Always"</option>
                     <option value="off">"Off"</option>
                 </select>
