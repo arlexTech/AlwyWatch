@@ -24,6 +24,7 @@ fn mime(p: &Path) -> &'static str {
         "svg" => "image/svg+xml",
         "png" => "image/png",
         "json" => "application/json",
+        "webmanifest" => "application/manifest+json",
         "txt" => "text/plain; charset=utf-8",
         _ => "application/octet-stream",
     }
