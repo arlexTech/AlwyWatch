@@ -121,6 +121,8 @@ struct State {
     seerr_selected: Option<SeerrResult>,
     seerr_seasons: Vec<(SeerrSeason, bool)>,
     triage: Vec<LeavingItem>,
+    /// A swipe card's page is open: Back shows the same card instead of reloading.
+    triage_back: bool,
     /// Leaving soon posters, loaded around the visible rows only: (url, requested).
     leaving_posters: Vec<(Option<String>, bool)>,
     leaving_model: Option<Rc<VecModel<LeavingRow>>>,
@@ -288,6 +290,7 @@ impl App {
                 seerr_selected: None,
                 seerr_seasons: vec![],
                 triage: vec![],
+                triage_back: false,
                 leaving_posters: vec![],
                 leaving_model: None,
                 together: None,
@@ -697,6 +700,39 @@ impl App {
                     t.show_triage_card();
                 }
                 Err(e) => t.set_error(Some(e)),
+            }
+        })
+        .ok();
+    }
+
+    /// The swipe card's title page (a click on its poster, or Enter); Back returns to it.
+    fn triage_open(self: &Rc<Self>) {
+        let Some(item) = self.state.borrow().triage.first().cloned() else {
+            return;
+        };
+        let (core, this, prefer) = (self.core.clone(), Rc::downgrade(self), self.account());
+        slint::spawn_local(async move {
+            let kind = if item.kind == "show" {
+                SeerrMediaType::Tv
+            } else {
+                SeerrMediaType::Movie
+            };
+            let found = match item.tmdb_id.as_deref().and_then(|t| t.parse().ok()) {
+                Some(tmdb) => core
+                    .library_title(kind, tmdb, prefer.clone())
+                    .await
+                    .ok()
+                    .flatten(),
+                None => None,
+            };
+            let at = found
+                .map(|f| (f.account_id, f.item_id))
+                .or_else(|| prefer.zip(item.server_item_id.clone()));
+            let Some(t) = this.upgrade() else { return };
+            if let Some((account, id)) = at {
+                t.state.borrow_mut().triage_back = true;
+                t.own_ids(std::iter::once(&id), &account);
+                t.navigate(Route::Detail(id));
             }
         })
         .ok();
@@ -2087,7 +2123,12 @@ impl App {
             }
             Route::Triage => {
                 ui.set_page(Page::Triage);
-                self.load_triage();
+                let back = std::mem::take(&mut self.state.borrow_mut().triage_back);
+                if back {
+                    self.show_triage_card();
+                } else {
+                    self.load_triage();
+                }
             }
             Route::KeepAdmin => {
                 ui.set_page(Page::Keepadmin);
@@ -5376,6 +5417,7 @@ impl App {
         on!(on_crop_cancel, |a| a.crop_cancel());
         on!(on_leaving_scrolled, |a, first| a.leaving_scrolled(first));
         on!(on_triage_vote, |a, choice| a.triage_vote(choice.into()));
+        on!(on_triage_open, |a| a.triage_open());
         on!(on_admin_rights, |a, user, field| a
             .admin_rights(user.into(), field.into()));
         on!(on_admin_countdown, |a, id, stagger| a

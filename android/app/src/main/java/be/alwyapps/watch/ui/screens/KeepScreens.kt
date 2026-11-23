@@ -4,6 +4,7 @@ package be.alwyapps.watch.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,7 @@ import be.alwyapps.watch.core.keep.Protection
 import be.alwyapps.watch.core.keep.Rights
 import be.alwyapps.watch.core.keep.VoteKind
 import be.alwyapps.watch.core.keep.VoteRequest
+import be.alwyapps.watch.core.seerr.SeerrMediaType
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
 import be.alwyapps.watch.ui.Danger
@@ -541,24 +543,57 @@ fun LeavingSoonScreen() {
     }
 }
 
+// The swipe queue while one of its titles' page is open, to come back to the same card.
+private object TriageMemory {
+    var saved: Pair<List<LeavingItem>?, Int>? = null
+}
+
 /**
  * Swipe mode: one card at a time, most urgent first, only items I have not voted on.
  * Phone: left = don't care, right = keep until I watch it, up = keep forever.
  * TV/keyboard: the same with the D-pad; the buttons are always there too.
  */
+
 @Composable
 fun TriageScreen() {
     val core = LocalCore.current
     val d = LocalDimens.current
     val scope = rememberCoroutineScope()
-    var queue by remember { mutableStateOf<List<LeavingItem>?>(null) }
+    val nav = be.alwyapps.watch.ui.LocalNavigator.current
+    val account = be.alwyapps.watch.ui.LocalAccount.current
+    // Back from a title's page: the same card, where it was.
+    val back = TriageMemory.saved
+    TriageMemory.saved = null
+    var queue by remember { mutableStateOf(back?.first) }
     var error by remember { mutableStateOf<String?>(null) }
-    var done by remember { mutableIntStateOf(0) }
+    var done by remember { mutableIntStateOf(back?.second ?: 0) }
+    var opening by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
+        if (queue != null) return@LaunchedEffect
         try {
             queue = core.keepTriage(50u)
         } catch (e: CoreException) {
             error = e.message
+        }
+    }
+
+    // A tap on the card (OK on TV): the title's page; Back comes back here.
+    fun open(item: LeavingItem) {
+        if (opening) return
+        opening = true
+        scope.launch {
+            val kind = if (item.kind == "show") SeerrMediaType.TV else SeerrMediaType.MOVIE
+            val at =
+                item.tmdbId?.toLongOrNull()?.let { tmdb -> runCatching { core.libraryTitle(kind, tmdb, account) }.getOrNull() }
+                    ?: item.serverItemId?.let {
+                        be.alwyapps.watch.core
+                            .LibraryTitle(account, it)
+                    }
+            opening = false
+            if (at != null) {
+                TriageMemory.saved = queue to done
+                nav.push(Route.Detail(at.itemId, account = at.accountId))
+            }
         }
     }
 
@@ -640,9 +675,12 @@ fun TriageScreen() {
                                     Key.DirectionLeft -> vote(req(VoteKind.DONT_CARE))
                                     Key.DirectionRight -> vote(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u))
                                     Key.DirectionUp -> vote(req(VoteKind.KEEP_FOREVER))
+                                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> open(item)
                                     else -> return@onKeyEvent false
                                 }
                                 true
+                            }.pointerInput(item.key) {
+                                detectTapGestures(onTap = { open(item) })
                             }.pointerInput(item.key) {
                                 // Distance or a quick flick decides (people swipe fast).
                                 val tracker =

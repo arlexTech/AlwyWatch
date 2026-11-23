@@ -621,13 +621,24 @@ fn vote_req(
     }
 }
 
+/// The swipe queue while one of its titles' page is open.
+const TRIAGE_BACK: &str = "aw.triage.back";
+
 /// "Sort them out": one undecided title at a time, decided with a button or an arrow key.
 #[component]
 pub fn Triage() -> impl IntoView {
-    let queue = RwSignal::new(None::<Vec<LeavingItem>>);
+    // Back from a title's page: the same card, where it was (kept for this tab only).
+    let back = state::tab_load::<(Vec<LeavingItem>, u32)>(TRIAGE_BACK);
+    state::tab_save::<(Vec<LeavingItem>, u32)>(TRIAGE_BACK, None);
+    let resumed = back.is_some();
+    let (back_queue, back_done) = back.map_or((None, 0), |(q, d)| (Some(q), d));
+    let queue = RwSignal::new(back_queue);
     let error = RwSignal::new(None::<String>);
-    let done = RwSignal::new(0u32);
+    let done = RwSignal::new(back_done);
     spawn_local(async move {
+        if resumed {
+            return;
+        }
         let Some(k) = state::ctx().keep_client() else {
             return error.set(Some(no_keep()));
         };
@@ -685,8 +696,20 @@ pub fn Triage() -> impl IntoView {
     let forever = move || vote(vote_req(VoteKind::KeepForever, None, None, None));
     let days = move || vote(vote_req(VoteKind::KeepDays, Some(30), None, None));
     let dont = move || vote(vote_req(VoteKind::DontCare, None, None, None));
+    let card = NodeRef::<leptos::html::Div>::new();
     let on_key = move |ev: web_sys::KeyboardEvent| {
         match ev.key().as_str() {
+            // The title's page (its link inside the card).
+            "Enter" => {
+                use wasm_bindgen::JsCast;
+                if let Some(a) = card
+                    .get_untracked()
+                    .and_then(|c| c.query_selector("a").ok().flatten())
+                    .and_then(|a| a.dyn_into::<web_sys::HtmlElement>().ok())
+                {
+                    a.click();
+                }
+            }
             "ArrowLeft" => dont(),
             "ArrowRight" => until(),
             "ArrowUp" => forever(),
@@ -694,7 +717,6 @@ pub fn Triage() -> impl IntoView {
         }
         ev.prevent_default();
     };
-    let card = NodeRef::<leptos::html::Div>::new();
     // Keyboard first: the card has the focus, so the arrows decide at once.
     Effect::new(move |_| {
         queue.track();
@@ -732,7 +754,23 @@ pub fn Triage() -> impl IntoView {
                         <p class="muted small">{trn!("{n} left · ← fine to delete   → keep until I watch it   ↑ keep forever", "{n} left · ← fine to delete   → keep until I watch it   ↑ keep forever", q.len())}</p>
                         <div class="triage-body">
                             <div class="triage-card" tabindex="0" node_ref=card on:keydown=on_key>
-                                {item.poster_url.clone().map(|p| view! { <img src=p alt="" /> })}
+                                // A click (Enter) opens the title's page; Back comes back to this card.
+                                {match (state::ctx().keep.get_untracked().map(|k| k.account), item.server_item_id.clone()) {
+                                    (Some(acc), Some(id)) => {
+                                        let remember = move |_| {
+                                            let d = done.get_untracked();
+                                            queue.with_untracked(|q| {
+                                                state::tab_save(TRIAGE_BACK, q.as_ref().map(|q| (q.clone(), d)).as_ref());
+                                            });
+                                        };
+                                        view! {
+                                            <A href=format!("/item/{acc}/{id}") attr:aria-label=item.title.clone() on:click=remember>
+                                                {item.poster_url.clone().map(|p| view! { <img src=p alt="" /> })}
+                                            </A>
+                                        }.into_any()
+                                    }
+                                    _ => item.poster_url.clone().map(|p| view! { <img src=p alt="" /> }).into_any(),
+                                }}
                             </div>
                             <div class="triage-info">
                                 <h2>{item.title.clone()}</h2>

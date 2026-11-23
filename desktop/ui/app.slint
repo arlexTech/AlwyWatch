@@ -1694,6 +1694,7 @@ export component AppWindow inherits Window {
     callback crop-cancel();
     callback leaving-scrolled(int); // first visible row, to load the posters around it
     callback triage-vote(string);       // choice
+    callback triage-open();             // the card's title page
     callback admin-rights(string, string); // user key, field
     callback admin-countdown(string, int); // collection id, stagger days
     // Profiles
@@ -2810,6 +2811,7 @@ export component AppWindow inherits Window {
                             if (e.text == Key.LeftArrow) { root.triage-vote("dontcare"); return accept; }
                             if (e.text == Key.RightArrow) { root.triage-vote("watched"); return accept; }
                             if (e.text == Key.UpArrow) { root.triage-vote("love"); return accept; }
+                            if (e.text == Key.Return) { root.triage-open(); return accept; }
                             return reject;
                         }
                         init => { self.focus(); }
@@ -2836,6 +2838,8 @@ export component AppWindow inherits Window {
                                         clip: true;
                                         background: Palette.surface-high;
                                         Image { source: root.triage-card.poster; width: parent.width; height: parent.height; image-fit: cover; }
+                                        // The title's page; Back comes back to this card.
+                                        TouchArea { mouse-cursor: pointer; clicked => { root.triage-open(); } }
                                     }
                                     VerticalLayout {
                                         alignment: center;
