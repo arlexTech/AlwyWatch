@@ -6,7 +6,7 @@
 |---|---|
 | Everything | Rust stable (edition 2024, see `rust-version` in `Cargo.toml`) |
 | Android | JDK 21, Android SDK (compileSdk 37), NDK `29.0.14206865`, `cargo install cargo-ndk`, Rust targets `aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
-| Desktop (Linux) | Wayland or X11 dev libs (`libxkbcommon`, `fontconfig`); **libmpv** at run time (package `mpv`/`libmpv2`) |
+| Desktop (Linux) | Wayland or X11 dev libs (`libxkbcommon`, `fontconfig`); **libmpv** at run time (Debian/Ubuntu: `libmpv2`, which the `mpv` package doesn't pull in; elsewhere `mpv`) |
 | Desktop (Windows, cross from Linux) | `cargo install cargo-xwin`, target `x86_64-pc-windows-msvc`, `makensis` (NSIS) and `7z` for the installer |
 | Web | Rust target `wasm32-unknown-unknown`, `wasm-bindgen-cli` at the exact version pinned in `web/Cargo.toml` (`wasm-bindgen = "=…"`); optional `wasm-opt` (Binaryen) |
 | Server image | Docker (builds the web app too) |

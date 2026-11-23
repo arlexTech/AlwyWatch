@@ -5564,7 +5564,7 @@ msgid "This picture stays too large once cropped."
 msgstr ""
 
 #: desktop/src/player.rs:167
-msgid "libmpv is not installed. Install mpv (Linux: your distribution's mpv/libmpv package) or put libmpv-2.dll next to AlwyWatch.exe (Windows)."
+msgid "libmpv is not installed. Install it (Linux: the libmpv2 package on Debian and Ubuntu, mpv elsewhere) or put libmpv-2.dll next to AlwyWatch.exe (Windows)."
 msgstr ""
 
 #: desktop/src/player.rs:552

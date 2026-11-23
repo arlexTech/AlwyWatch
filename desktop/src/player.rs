@@ -165,7 +165,7 @@ pub struct Progress {
 pub fn spawn(req: PlayRequest, report: impl Fn(Progress) + Send + 'static) -> Result<(), String> {
     if !mpv::available() {
         return Err(tr!(
-            "libmpv is not installed. Install mpv (Linux: your distribution's mpv/libmpv package) or put libmpv-2.dll next to AlwyWatch.exe (Windows)."
+            "libmpv is not installed. Install it (Linux: the libmpv2 package on Debian and Ubuntu, mpv elsewhere) or put libmpv-2.dll next to AlwyWatch.exe (Windows)."
         ));
     }
     std::thread::Builder::new()

@@ -5569,8 +5569,8 @@ msgid "This picture stays too large once cropped."
 msgstr "Cette image reste trop grande une fois recadrée."
 
 #: desktop/src/player.rs:167
-msgid "libmpv is not installed. Install mpv (Linux: your distribution's mpv/libmpv package) or put libmpv-2.dll next to AlwyWatch.exe (Windows)."
-msgstr "libmpv n'est pas installé. Installez mpv (Linux : le paquet mpv/libmpv de votre distribution) ou placez libmpv-2.dll à côté de AlwyWatch.exe (Windows)."
+msgid "libmpv is not installed. Install it (Linux: the libmpv2 package on Debian and Ubuntu, mpv elsewhere) or put libmpv-2.dll next to AlwyWatch.exe (Windows)."
+msgstr "libmpv n'est pas installé. Installez-la (Linux : le paquet libmpv2 sur Debian et Ubuntu, mpv ailleurs) ou placez libmpv-2.dll à côté de AlwyWatch.exe (Windows)."
 
 #: desktop/src/player.rs:552
 msgid "The player could not play this file."

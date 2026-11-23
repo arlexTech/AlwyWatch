@@ -5,7 +5,8 @@
 #   scripts/package.sh windows   -> dist/AlwyWatch-<version>-setup.exe   (needs cargo-xwin, makensis)
 # Windows: bundles libmpv-2.dll from a pinned shinchiro "mpv-dev-x86_64" build (checksum
 # verified), or MPV_DLL=/path/to/libmpv-2.dll to use another one.
-# Linux: the AppImage uses the system libmpv (package "mpv"/"libmpv2"), which also keeps the
+# Linux: the AppImage uses the system libmpv (Debian/Ubuntu: "libmpv2"; there the mpv player
+# does not bring it; elsewhere usually "mpv"), which also keeps the
 # distribution's VA-API/VDPAU drivers in charge of hardware decoding.
 set -euo pipefail
 cd "$(dirname "$0")/.."
