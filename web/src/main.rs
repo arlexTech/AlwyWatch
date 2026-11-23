@@ -6,6 +6,7 @@ mod account;
 mod admin;
 mod browse;
 mod extra;
+mod icons;
 mod keep;
 mod lang;
 mod links;
@@ -185,8 +186,28 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
     let services = move || me.get().map(|m| m.services).unwrap_or_default();
     let requests_on = move || keep_on() && services().requests;
     let leaving_on = move || keep_on() && services().leaving_soon;
+    use icons::Icon;
     view! {
         <div class="shell">
+            // Phones: the apps' layout, a header and a tab bar at the bottom (the side menu is
+            // for wide screens; CSS shows one or the other).
+            <header class="topbar">
+                <A href="/" attr:class="logo">"alwy"<span>"watch"</span></A>
+                <Show when=signed_in>
+                    <A href="/list" attr:class="iconbtn" attr:aria-label=tr!("My list") attr:title=tr!("My list")><Icon path=icons::BOOKMARK /></A>
+                    <A href="/search" attr:class="iconbtn" attr:aria-label=tr!("Search") attr:title=tr!("Search")><Icon path=icons::SEARCH /></A>
+                </Show>
+                <A href="/settings" attr:class="iconbtn" attr:aria-label=tr!("Settings") attr:title=tr!("Settings")><Icon path=icons::SETTINGS /></A>
+                <profiles::ProfileMenu />
+            </header>
+            <Show when=signed_in>
+                <nav class="tabbar">
+                    <A href="/" exact=true><Icon path=icons::HOME /><span>{tr!("Home")}</span></A>
+                    <Show when=leaving_on><A href="/leaving"><Icon path=icons::HOURGLASS /><span>{tr!("Leaving")}</span></A></Show>
+                    <Show when=keep_on><A href="/together"><Icon path=icons::GROUP /><span>{tr!("Together")}</span></A></Show>
+                    <Show when=requests_on><A href="/requests"><Icon path=icons::ADD /><span>{tr!("Requests")}</span></A></Show>
+                </nav>
+            </Show>
             <nav class="menu">
                 <A href="/" attr:class="brand">"AlwyWatch"</A>
                 <profiles::ProfileMenu />

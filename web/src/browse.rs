@@ -152,10 +152,11 @@ async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
     watching.extend(dedupe(next).into_iter().filter(|(_, i)| {
         !started.contains(&i.id) && i.series_id.as_ref().is_none_or(|s| !started.contains(s))
     }));
+    // Posters, as in the apps (the show's name on an episode).
     let mut rails: Rails = vec![(
         tr!("Continue watching"),
         watching,
-        true,
+        false,
         vec![],
         "/continue".into(),
     )];
@@ -205,7 +206,11 @@ pub fn Home() -> impl IntoView {
             Some(r) if r.iter().all(|(_, items, _, _, _)| items.is_empty()) && !offline.get() => view! {
                 <p class="muted">{tr!("Nothing here yet. Your libraries are above.")}</p>
             }.into_any(),
-            Some(r) => r.into_iter().map(|(t, items, wide, notes, link)| view! { <Rail title=t items=items wide=wide notes=notes see_all=link /> }).collect_view().into_any(),
+            // Leaving soon right after "Continue watching", as in the apps.
+            Some(r) => r.into_iter().enumerate().map(|(n, (t, items, wide, notes, link))| view! {
+                <Rail title=t items=items wide=wide notes=notes see_all=link />
+                {(n == 0).then(|| view! { <crate::keep::LeavingRail /> })}
+            }).collect_view().into_any(),
         }}
     }
 }

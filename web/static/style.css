@@ -25,12 +25,32 @@ h2 { font-size: 1.15rem; margin: 1.4em 0 .6em; }
 .menu .brand { font-weight: 700; color: var(--accent); margin-bottom: 14px; }
 .menu .brand[aria-current="page"] { background: none; color: var(--accent); }
 .page { flex: 1; min-width: 0; padding: 24px 40px 60px; }
+/* Phones: a header and a bottom tab bar, like the apps, instead of the side menu. */
+.topbar, .tabbar { display: none; }
+.icon { width: 24px; height: 24px; flex: none; display: block; }
 @media (max-width: 720px) {
   .shell { flex-direction: column; }
-  .menu { position: static; height: auto; width: auto; flex-direction: row; overflow-x: auto;
-    border-right: 0; border-bottom: 1px solid var(--outline); padding: 10px 16px; }
-  .menu .brand { margin: 0 8px 0 0; }
-  .page { padding: 16px; }
+  .menu { display: none; }
+  .topbar { display: flex; align-items: center; gap: 2px; position: sticky; top: 0; z-index: 30;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px 16px; background: var(--bg); }
+  .topbar .logo { margin-right: auto; font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
+  .topbar .logo span { color: var(--accent); }
+  .iconbtn { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: var(--text); }
+  .iconbtn[aria-current="page"] { color: var(--accent); }
+  .topbar .profile-menu { margin: 0 0 0 4px; }
+  .topbar .profile-menu summary { background: none; padding: 0; }
+  .topbar .pname { display: none; }
+  .topbar .pdot { width: 36px; height: 36px; font-size: 1rem; }
+  .topbar .profile-list { left: auto; right: 0; }
+  .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    background: linear-gradient(#ffffff0a, #ffffff0a), var(--bg); border-top: 1px solid var(--outline); }
+  .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    font-size: .75rem; font-weight: 600; color: var(--muted); padding: 4px 0; }
+  .tabbar a .icon { width: 56px; height: 30px; padding: 3px 16px; border-radius: 999px; box-sizing: border-box; }
+  .tabbar a[aria-current="page"] { color: var(--text); }
+  .tabbar a[aria-current="page"] .icon { background: var(--surface-high); }
+  .page { padding: 4px 16px calc(96px + env(safe-area-inset-bottom)); }
 }
 
 button, .button { font: inherit; color: var(--text); background: var(--surface); border: 0;
@@ -371,3 +391,13 @@ code.wrap { overflow-wrap: anywhere; font-size: .85rem; background: var(--surfac
   max-width: 800px; padding: 12px 0; background: var(--bg); border-top: 1px solid var(--outline); }
 .choice.selected { box-shadow: inset 0 0 0 2px var(--accent); }
 .page.setup { max-width: 900px; margin: 0 auto; }
+/* The home's Leaving soon row: its button beside the title, and a badge on each poster. */
+.leaving-head { align-items: center; flex-wrap: wrap; gap: 8px 16px; margin: 1.4em 0 .6em; }
+.leaving-head h2 { margin: 0; }
+.leaving-head p { margin: 2px 0 0; }
+.card .when { position: absolute; top: 6px; left: 6px; padding: 3px 9px; border-radius: 999px; font-size: .72rem;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .03em; background: #000b; color: var(--text); }
+@media (max-width: 720px) {
+  .card { width: 128px; }
+  .leaving-head .see-all { display: none; }
+}

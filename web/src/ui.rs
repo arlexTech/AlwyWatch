@@ -51,7 +51,15 @@ pub fn Card(
         .runtime_ms
         .filter(|&r| r > 0 && item.user.position_ms > 0)
         .map(|r| (item.user.position_ms * 100 / r).min(100));
-    let title = item.title.clone();
+    // An episode as a poster: the show's name, and where it is (as in the apps).
+    let as_show = !wide && note.is_none() && item.kind == ItemKind::Episode;
+    let title = if as_show {
+        item.series_title
+            .clone()
+            .unwrap_or_else(|| item.title.clone())
+    } else {
+        item.title.clone()
+    };
     let (sub, href) = match note {
         Some(n) => {
             let season = n
@@ -61,6 +69,14 @@ pub fn Card(
                 .unwrap_or_default();
             (n.label, format!("/item/{acc}/{}{season}", n.open_id))
         }
+        None if as_show => (
+            tr!(
+                "S{season} · E{episode}",
+                season = item.season_number.unwrap_or(0),
+                episode = item.episode_number.unwrap_or(0)
+            ),
+            item_href(&acc, &item),
+        ),
         None => (subtitle(&item), item_href(&acc, &item)),
     };
     view! {

@@ -36,6 +36,81 @@ fn status(i: &LeavingItem) -> String {
     }
 }
 
+/// The home's "Leaving soon" row: what is still to be decided (not already kept), soonest
+/// first, from the last copy at once. Nothing without Maintainerr behind the AlwyWatch server.
+#[component]
+pub fn LeavingRail() -> impl IntoView {
+    let c = state::ctx();
+    let on = move || c.keep.get().is_some() && c.me.get().is_some_and(|m| m.services.leaving_soon);
+    let items = RwSignal::new(state::load::<Vec<LeavingItem>>(state::LEAVING).unwrap_or_default());
+    Effect::new(move |_| {
+        if !on() {
+            return;
+        }
+        spawn_local(async move {
+            let Some(k) = state::ctx().keep_client() else {
+                return;
+            };
+            if let Ok(l) = k.leaving_soon().await {
+                state::save(state::LEAVING, &l);
+                items.try_set(l);
+            }
+        });
+    });
+    move || {
+        let acc = state::ctx().keep.get().map(|k| k.account)?;
+        let shown: Vec<LeavingItem> = items
+            .get()
+            .into_iter()
+            .filter(|i| matches!(i.protection, Protection::None | Protection::Extended))
+            .take(15)
+            .collect();
+        (on() && !shown.is_empty()).then(|| view! {
+            <section class="rail">
+                <div class="rail-head leaving-head">
+                    <div>
+                        <h2>{tr!("Leaving soon")}</h2>
+                        <p class="muted small">{tr!("Keep what you still want to watch")}</p>
+                    </div>
+                    <A href="/leaving/sort" attr:class="button primary small">{tr!("One by one")}</A>
+                    <A href="/leaving" attr:class="see-all">{tr!("See all ›")}</A>
+                </div>
+                <div class="rail-row">
+                    {shown.into_iter().map(|i| {
+                        let href = i.server_item_id.as_ref().map_or_else(|| "/leaving".to_owned(), |id| format!("/item/{acc}/{id}"));
+                        view! {
+                            <A href=href attr:class="card">
+                                <div class="art">
+                                    {i.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
+                                    <span class="when">{short_when(&i)}</span>
+                                </div>
+                                <div class="title">{i.title.clone()}</div>
+                                <div class="sub">{i.year.map(|y| y.to_string()).unwrap_or_default()}</div>
+                            </A>
+                        }
+                    }).collect_view()}
+                </div>
+            </section>
+        })
+    }
+}
+
+/// The badge on a Leaving soon poster: "No date" while nothing is scheduled, else how soon.
+fn short_when(i: &LeavingItem) -> String {
+    let now = (js_sys::Date::now() / 1000.0) as i64;
+    match i.effective_deletion_date.or(i.deletion_date) {
+        Some(d) if i.collection_active && d > now => {
+            let days = (d - now) / 86_400;
+            match days {
+                0 => tr!("Today"),
+                1 => tr!("Tomorrow"),
+                n => trn!("{n} day", "{n} days", n),
+            }
+        }
+        _ => tr!("No date"),
+    }
+}
+
 fn no_keep() -> String {
     tr!(
         "This only works with a login on one of this site's servers. Add one in Settings → Servers → Add a server."

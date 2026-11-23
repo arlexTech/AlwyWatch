@@ -211,7 +211,7 @@ pub fn ProfileMenu() -> impl IntoView {
         .unwrap_or_default();
     view! {
         <details class="profile-menu">
-            <summary title=tr!("Switch profile")><span class="pdot">{initial(&name)}</span>{name}</summary>
+            <summary title=tr!("Switch profile")><span class="pdot">{initial(&name)}</span><span class="pname">{name}</span></summary>
             <div class="profile-list">
                 {all.into_iter().filter(|p| p.id != me).map(|p| {
                     let id = p.id.clone();
