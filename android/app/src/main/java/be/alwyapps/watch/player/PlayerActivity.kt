@@ -795,12 +795,18 @@ class PlayerActivity : ComponentActivity() {
                 return true
             }
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                if (down) p?.seekForward()
+                if (down && p != null) {
+                    p.seekForward()
+                    ui.bubble(true, (p.seekForwardIncrement / 1000).toInt())
+                }
                 ui.poke()
                 return true
             }
             KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                if (down) p?.seekBack()
+                if (down && p != null) {
+                    p.seekBack()
+                    ui.bubble(false, (p.seekBackIncrement / 1000).toInt())
+                }
                 ui.poke()
                 return true
             }
@@ -860,6 +866,7 @@ class PlayerActivity : ComponentActivity() {
                         ui.seekTarget = target
                         p.seekTo(target)
                         ui.seekFlash++
+                        ui.bubble(step > 0, (kotlin.math.abs(step) / 1000).toInt())
                     }
                     return true
                 }

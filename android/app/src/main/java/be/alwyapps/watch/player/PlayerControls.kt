@@ -48,6 +48,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -71,6 +72,7 @@ import be.alwyapps.watch.ui.Subtle
 import be.alwyapps.watch.ui.tr
 import be.alwyapps.watch.ui.trn
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** Overlay state shared between the activity (keys, player events) and the Compose controls. */
 class PlayerUi {
@@ -140,6 +142,27 @@ class PlayerUi {
     /** Seeking with ←/→ while the controls are hidden: where it goes, and a counter per press. */
     var seekTarget by mutableStateOf<Long?>(null)
     var seekFlash by mutableIntStateOf(0)
+
+    /**
+     * The "+30" / "−10" bubble (double taps, remote, media keys): its side (true = forward)
+     * and the seconds added up while presses follow each other, bumped once per press.
+     */
+    var seekBubble by mutableStateOf<Pair<Boolean, Int>?>(null)
+    var seekBubbleN by mutableIntStateOf(0)
+    private var seekBubbleAt = 0L
+
+    /** Whether a press on that side now adds to the bubble shown (taps that follow a double tap). */
+    fun seekBubbleActive(forward: Boolean) = seekBubble?.first == forward && android.os.SystemClock.uptimeMillis() - seekBubbleAt < SEEK_BUBBLE_MS
+
+    fun bubble(
+        forward: Boolean,
+        seconds: Int,
+    ) {
+        val soFar = if (seekBubbleActive(forward)) seekBubble?.second ?: 0 else 0
+        seekBubble = forward to soFar + seconds
+        seekBubbleAt = android.os.SystemClock.uptimeMillis()
+        seekBubbleN++
+    }
 
     /** Paused after hours without the remote: "Are you still watching?". */
     var stillWatching by mutableStateOf(false)
@@ -262,10 +285,8 @@ fun PlayerOverlay(
     }
     val playFocus = remember { FocusRequester() }
     // Touch: a double tap on the left half goes back 10 s, on the right half forward 30 s.
-    // Each further tap on the same side soon after repeats it, so taps add up (−10, −20…).
-    // `tapSeek`: the side (true = forward) and the seconds added up so far, shown on that side.
-    var tapSeek by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
-    var lastTapSeekAt by remember { mutableStateOf(0L) }
+    // Each further tap on the same side soon after repeats it, so taps add up (−10, −20…),
+    // counted in the bubble on that side.
     val seekByTap = { forward: Boolean ->
         player()?.let { p ->
             val step = if (forward) p.seekForwardIncrement else -p.seekBackIncrement
@@ -275,15 +296,7 @@ fun PlayerOverlay(
             ui.seekTarget = target
             p.seekTo(target)
             ui.seekFlash++
-            val soFar = tapSeek?.takeIf { it.first == forward }?.second ?: 0
-            tapSeek = forward to soFar + (kotlin.math.abs(step) / 1000).toInt()
-            lastTapSeekAt = android.os.SystemClock.uptimeMillis()
-        }
-    }
-    LaunchedEffect(tapSeek) {
-        if (tapSeek != null) {
-            delay(900)
-            tapSeek = null
+            ui.bubble(forward, (kotlin.math.abs(step) / 1000).toInt())
         }
     }
     Box(
@@ -294,10 +307,8 @@ fun PlayerOverlay(
                     onDoubleTap = { o -> seekByTap(o.x > size.width / 2) },
                     onTap = { o ->
                         val forward = o.x > size.width / 2
-                        val repeating =
-                            tapSeek?.first == forward && android.os.SystemClock.uptimeMillis() - lastTapSeekAt < 900
                         when {
-                            repeating -> seekByTap(forward)
+                            ui.seekBubbleActive(forward) -> seekByTap(forward)
                             ui.visible -> ui.dismiss()
                             else -> ui.poke()
                         }
@@ -305,18 +316,7 @@ fun PlayerOverlay(
                 )
             },
     ) {
-        tapSeek?.let { (forward, seconds) ->
-            Text(
-                if (forward) tr("+{seconds} s", "seconds" to seconds) else tr("−{seconds} s", "seconds" to seconds),
-                Modifier
-                    .align(if (forward) Alignment.CenterEnd else Alignment.CenterStart)
-                    .padding(horizontal = 56.dp)
-                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(50))
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-            )
-        }
+        SeekBubble(ui)
         AnimatedVisibility(ui.visible, enter = fadeIn(), exit = fadeOut()) {
             LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
             Box(Modifier.fillMaxSize()) {
@@ -951,5 +951,73 @@ private fun friendlyFormat(mime: String?): String? {
         "vobsub" in m || "dvd" in m -> "VobSub"
         "raw" in m -> null
         else -> m.substringAfterLast('/').uppercase()
+    }
+}
+
+/** How long a seek bubble stays, and presses on its side keep adding to it. */
+private const val SEEK_BUBBLE_MS = 900L
+
+/**
+ * "+30" / "−10" on the side seeked to, under an arrow that turns once per press, fading
+ * quickly; presses that follow each other add up (+30, +60…).
+ */
+@Composable
+private fun SeekBubble(ui: PlayerUi) {
+    val (forward, seconds) = ui.seekBubble ?: return
+    var shown by remember { mutableStateOf(false) }
+    val spin =
+        remember {
+            androidx.compose.animation.core
+                .Animatable(0f)
+        }
+    LaunchedEffect(ui.seekBubbleN) {
+        if (ui.seekBubbleN == 0) return@LaunchedEffect
+        shown = true
+        launch {
+            spin.snapTo(0f)
+            spin.animateTo(
+                if (forward) 360f else -360f,
+                androidx.compose.animation.core
+                    .tween(450),
+            )
+        }
+        delay(SEEK_BUBBLE_MS - 250)
+        shown = false
+    }
+    val alpha by androidx.compose.animation.core.animateFloatAsState(
+        if (shown) 1f else 0f,
+        androidx.compose.animation.core
+            .tween(if (shown) 90 else 250),
+        label = "seek-bubble",
+    )
+    val tv = LocalDimens.current.isTv
+    Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha }) {
+        Column(
+            Modifier
+                .align(if (forward) Alignment.CenterEnd else Alignment.CenterStart)
+                .padding(horizontal = if (tv) 120.dp else 48.dp)
+                .size(if (tv) 112.dp else 96.dp)
+                .background(Color.Black.copy(alpha = 0.45f), androidx.compose.foundation.shape.CircleShape),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                Icons.Refresh,
+                null,
+                Modifier
+                    .size(if (tv) 40.dp else 34.dp)
+                    // The arrow turns clockwise forward; mirrored, it turns back.
+                    .graphicsLayer {
+                        rotationZ = spin.value
+                        scaleX = if (forward) 1f else -1f
+                    },
+                tint = Color.White,
+            )
+            Text(
+                if (forward) "+$seconds" else "−$seconds",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+        }
     }
 }

@@ -529,6 +529,28 @@ component PlayerOverlay inherits Rectangle {
     property <float> drag: 0;
     property <bool> seeking;
     property <length> side: 56px;
+    // The "+30" / "−10" bubble: side, seconds added up while presses follow each other,
+    // when the last press was (animation-tick), the arrow's turn, whether it shows.
+    property <bool> bubble-forward;
+    property <int> bubble-secs;
+    property <duration> bubble-at;
+    property <angle> bubble-spin;
+    property <bool> bubble-live;
+    // The press on the picture is a finger (touch screen), not the mouse.
+    property <bool> touched;
+
+    function seek-step(forward: bool) {
+        root.cmd("rel", forward ? "30" : "-10");
+        if (root.bubble-live && root.bubble-forward == forward) {
+            root.bubble-secs += forward ? 30 : 10;
+        } else {
+            root.bubble-secs = forward ? 30 : 10;
+        }
+        root.bubble-forward = forward;
+        root.bubble-at = animation-tick();
+        root.bubble-spin += forward ? 360deg : -360deg;
+        root.bubble-live = true;
+    }
 
     pure function two(n: int) -> string { return (n < 10 ? "0" : "") + n; }
     pure function clock(ms: int) -> string {
@@ -550,8 +572,8 @@ component PlayerOverlay inherits Rectangle {
         key-pressed(e) => {
             root.idle = 0;
             if (e.text == " " || e.text == "k") { root.cmd("pause", ""); return accept; }
-            if (e.text == Key.LeftArrow) { root.cmd("rel", "-10"); return accept; }
-            if (e.text == Key.RightArrow) { root.cmd("rel", "10"); return accept; }
+            if (e.text == Key.LeftArrow) { root.seek-step(false); return accept; }
+            if (e.text == Key.RightArrow) { root.seek-step(true); return accept; }
             if (e.text == Key.UpArrow) { root.cmd("volume", "5"); return accept; }
             if (e.text == Key.DownArrow) { root.cmd("volume", "-5"); return accept; }
             if (e.text == "m") { root.cmd("mute", ""); return accept; }
@@ -571,16 +593,80 @@ component PlayerOverlay inherits Rectangle {
         }
     }
 
-    // The picture itself: a click pauses, a double click toggles full screen.
+    // The picture itself. Mouse: a click pauses, a double click toggles full screen.
+    // Touch: a tap shows or hides the controls; a double tap on the left half goes back 10 s,
+    // on the right half forward 30 s, and taps on that side soon after add up.
     TouchArea {
         mouse-cursor: root.show ? MouseCursor.default : MouseCursor.none;
-        changed mouse-x => { root.idle = 0; }
-        changed mouse-y => { root.idle = 0; }
+        changed mouse-x => { if (!root.touched) { root.idle = 0; } }
+        changed mouse-y => { if (!root.touched) { root.idle = 0; } }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { root.touched = e.touch-finger-id != 0; }
+        }
         clicked => {
             keys.focus();
-            if (root.tracks-open) { root.tracks-open = false; } else { root.cmd("pause", ""); }
+            if (root.tracks-open) {
+                root.tracks-open = false;
+            } else if (root.touched) {
+                if (root.bubble-live && root.bubble-forward == (self.mouse-x > self.width / 2)) {
+                    root.seek-step(self.mouse-x > self.width / 2);
+                } else {
+                    root.idle = root.show && !root.paused ? 99 : 0;
+                }
+            } else {
+                root.cmd("pause", "");
+            }
         }
-        double-clicked => { root.cmd("fullscreen", ""); }
+        double-clicked => {
+            if (root.touched) {
+                // (Its two taps showed and hid the controls: they are as they were.)
+                if (!(root.bubble-live && root.bubble-forward == (self.mouse-x > self.width / 2))) {
+                    root.seek-step(self.mouse-x > self.width / 2);
+                }
+            } else {
+                root.cmd("fullscreen", "");
+            }
+        }
+    }
+
+    // Hides the bubble a moment after the last press (checked a few times a second while shown).
+    Timer {
+        interval: 150ms;
+        running: root.bubble-live;
+        triggered => {
+            if (animation-tick() - root.bubble-at > 650ms) { root.bubble-live = false; }
+        }
+    }
+    Rectangle {
+        width: 104px;
+        height: 104px;
+        x: root.bubble-forward ? root.width * 0.92 - self.width : root.width * 0.08;
+        y: (root.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: #00000073;
+        opacity: root.bubble-live ? 1 : 0;
+        animate opacity { duration: root.bubble-live ? 90ms : 250ms; }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            HorizontalLayout {
+                alignment: center;
+                Image {
+                    width: 36px;
+                    height: 36px;
+                    source: root.bubble-forward ? @image-url("icons/seek_forward.svg") : @image-url("icons/seek_back.svg");
+                    rotation-angle: root.bubble-spin;
+                    animate rotation-angle { duration: 450ms; easing: ease-out; }
+                }
+            }
+            Text {
+                text: (root.bubble-forward ? "+" : "−") + root.bubble-secs;
+                color: #ffffff;
+                font-size: 20px;
+                font-weight: 600;
+                horizontal-alignment: center;
+            }
+        }
     }
 
     if root.show : Rectangle {

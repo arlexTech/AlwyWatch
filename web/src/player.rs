@@ -23,6 +23,36 @@ use crate::profile::Avatar;
 use crate::state::{self, fmt_time};
 use crate::together::{self, Room};
 
+/// −10 s / +30 s, like the apps' defaults.
+const SEEK_BACK_S: u32 = 10;
+const SEEK_FORWARD_S: u32 = 30;
+/// How long the bubble stays, and presses on its side keep adding to it.
+const SEEK_BUBBLE_MS: u64 = 900;
+
+/// The "+30" / "−10" bubble: its side, the seconds added up, one count per press.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SeekBubble {
+    forward: bool,
+    seconds: u32,
+    n: u32,
+    at: f64,
+    fading: bool,
+}
+
+impl SeekBubble {
+    /// After a press at `now`: adds up while presses on the same side follow each other.
+    fn next(prev: Option<&Self>, forward: bool, step: u32, now: f64) -> Self {
+        let follows = prev.filter(|p| p.forward == forward && now - p.at < SEEK_BUBBLE_MS as f64);
+        SeekBubble {
+            forward,
+            seconds: follows.map_or(0, |p| p.seconds) + step,
+            n: prev.map_or(0, |p| p.n) + 1,
+            at: now,
+            fading: false,
+        }
+    }
+}
+
 fn test_video() -> Option<web_sys::HtmlMediaElement> {
     web_sys::window()?
         .document()?
@@ -586,6 +616,87 @@ fn PlayerView(
     let last_report = StoredValue::new(0f64);
     let start_sent = StoredValue::new(false);
     let stopped = StoredValue::new(false);
+    // ←/→ and double taps on the picture: −10 s / +30 s, added up in a bubble on that side.
+    let bubble = RwSignal::new(None::<SeekBubble>);
+    let bubble_shape = Memo::new(move |_| bubble.with(|b| b.map(|b| (b.forward, b.seconds, b.n))));
+    let seek_by = move |forward: bool| {
+        let Some(v) = video.get_untracked() else {
+            return;
+        };
+        let secs = if forward { SEEK_FORWARD_S } else { SEEK_BACK_S };
+        let dur = v.duration();
+        let step = f64::from(secs);
+        let mut to = v.current_time() + if forward { step } else { -step };
+        if dur.is_finite() {
+            to = to.min(dur - 0.5);
+        }
+        v.set_current_time(to.max(0.0));
+        let now = js_sys::Date::now();
+        let next = bubble.with_untracked(|b| SeekBubble::next(b.as_ref(), forward, secs, now));
+        let n = next.n;
+        bubble.set(Some(next));
+        set_timeout(
+            move || {
+                if bubble.with_untracked(|b| b.as_ref().is_some_and(|b| b.n == n)) {
+                    bubble.update(|b| {
+                        if let Some(b) = b {
+                            b.fading = true;
+                        }
+                    });
+                }
+            },
+            std::time::Duration::from_millis(SEEK_BUBBLE_MS - 250),
+        );
+    };
+    let keys = window_event_listener(leptos::ev::keydown, move |ev| {
+        let typing = ev
+            .target()
+            .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
+            .is_some_and(|e| matches!(e.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT"));
+        if typing || ev.alt_key() || ev.ctrl_key() || ev.meta_key() {
+            return;
+        }
+        let forward = match ev.key().as_str() {
+            "ArrowRight" => true,
+            "ArrowLeft" => false,
+            _ => return,
+        };
+        // Instead of the browser's own 5 s.
+        ev.prevent_default();
+        seek_by(forward);
+    });
+    on_cleanup(move || keys.remove());
+    // Touch: two taps on the same half of the picture seek, and each tap that follows soon
+    // after repeats it. The second tap's click is cancelled (no native seek or controls).
+    let last_tap = StoredValue::new((0f64, false));
+    let on_touch_end = move |ev: web_sys::TouchEvent| {
+        let (Some(v), Some(t)) = (video.get_untracked(), ev.changed_touches().get(0)) else {
+            return;
+        };
+        let r = v.get_bounding_client_rect();
+        let (x, y) = (
+            f64::from(t.client_x()) - r.left(),
+            f64::from(t.client_y()) - r.top(),
+        );
+        // The bottom strip is the browser's control bar; the middle third pauses there.
+        if y > r.height() - 72.0 || (x > r.width() / 3.0 && x < r.width() * 2.0 / 3.0) {
+            return;
+        }
+        let forward = x > r.width() / 2.0;
+        let now = js_sys::Date::now();
+        let (at, side) = last_tap.get_value();
+        let following = bubble.with_untracked(|b| {
+            b.as_ref()
+                .is_some_and(|b| b.forward == forward && now - b.at < SEEK_BUBBLE_MS as f64)
+        });
+        if following || (side == forward && now - at < 300.0) {
+            ev.prevent_default();
+            seek_by(forward);
+            last_tap.set_value((0.0, forward));
+        } else {
+            last_tap.set_value((now, forward));
+        }
+    };
     {
         let (acc, id) = (acc.clone(), id.clone());
         spawn_local(async move {
@@ -1223,7 +1334,7 @@ fn PlayerView(
 
     view! {
         <div class="player">
-            <video node_ref=video controls autoplay playsinline
+            <video node_ref=video controls autoplay playsinline on:touchend=on_touch_end
                 on:loadedmetadata=on_meta on:timeupdate=on_time on:error=on_error
                 on:playing=move |_| {
                     // Start once; later "playing" (after a pause or buffering) is a resume.
@@ -1244,6 +1355,14 @@ fn PlayerView(
                         leave(&nav6, &acc6, &id6);
                     }
                 } />
+            // Re-created on each press (the arrow turns again); fading only changes a class.
+            {move || bubble_shape.get().map(|(forward, seconds, _)| view! {
+                <div class="seek-bubble" class:forward=forward aria-hidden="true"
+                    class:fading=move || bubble.with(|b| b.is_some_and(|b| b.fading))>
+                    <svg viewBox="0 -960 960 960"><path d=crate::icons::REPLAY /></svg>
+                    <span>{if forward { format!("+{seconds}") } else { format!("−{seconds}") }}</span>
+                </div>
+            })}
             <div class="player-top">
                 <button class="icon" on:click=back.clone() aria-label=tr!("Back")>"←"</button>
                 {move || match loaded.get() {
@@ -1558,5 +1677,20 @@ mod tests {
             &source("mp4", vec![v("h264", None)], None),
             &small
         ));
+    }
+}
+
+#[cfg(test)]
+mod seek_tests {
+    use super::*;
+
+    #[test]
+    fn seek_presses_add_up_on_one_side_only() {
+        let a = SeekBubble::next(None, true, 30, 0.0);
+        let b = SeekBubble::next(Some(&a), true, 30, 500.0);
+        assert_eq!((b.seconds, b.n), (60, 2));
+        // The other side, or too late: starts again.
+        assert_eq!(SeekBubble::next(Some(&b), false, 10, 600.0).seconds, 10);
+        assert_eq!(SeekBubble::next(Some(&b), true, 30, 2_000.0).seconds, 30);
     }
 }
