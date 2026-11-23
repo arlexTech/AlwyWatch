@@ -6,6 +6,7 @@ mod account;
 mod browse;
 mod extra;
 mod keep;
+mod lang;
 mod links;
 mod passkey;
 mod player;
@@ -24,6 +25,7 @@ use leptos_router::path;
 
 fn main() {
     show_crashes();
+    lang::init();
     // The page's own "Loading…" (shown while the app downloads) makes way for the app.
     if let Some(boot) = web_sys::window()
         .and_then(|w| w.document())

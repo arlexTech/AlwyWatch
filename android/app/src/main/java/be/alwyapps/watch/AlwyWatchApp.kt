@@ -59,6 +59,9 @@ class Services(
             be.alwyapps.watch.core.NativeTls
                 .ensure(app)
             val core = AlwyWatch(config())
+            // The language, before the first frame (one table read from the core).
+            be.alwyapps.watch.ui.I18n
+                .apply(app)
             activate(core)
             // The first frame waits for this block (it renders from the core's cache): only the
             // core and its tokens are needed for that. Everything else starts right after, in

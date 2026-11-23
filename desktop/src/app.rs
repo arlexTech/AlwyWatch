@@ -315,6 +315,7 @@ impl App {
         ui.set_grid(ModelRc::from(app.state.borrow().grid_model.clone()));
         ui.set_episodes(ModelRc::from(app.state.borrow().episodes_model.clone()));
         app.load_player_settings();
+        app.load_language_label();
         // Settings changed on the viewer's other devices (kept with their Jellyfin user).
         {
             let (core, this) = (app.core.clone(), Rc::downgrade(&app));
@@ -3037,6 +3038,38 @@ impl App {
         self.load_player_settings();
     }
 
+    /// Settings → Language: the next choice ("same as the computer", then each language).
+    /// Text in the .slint files changes at once; text built here follows as pages refresh.
+    fn cycle_language(&self) {
+        let data = crate::platform::paths().data;
+        let choices: Vec<String> = std::iter::once(String::new())
+            .chain(i18n::languages().into_iter().map(|(c, _)| c.to_owned()))
+            .collect();
+        let now = crate::lang::choice(&data);
+        let at = choices.iter().position(|c| *c == now).unwrap_or(0);
+        crate::lang::choose(&data, &choices[(at + 1) % choices.len()]);
+        self.load_language_label();
+        self.load_player_settings();
+    }
+
+    fn load_language_label(&self) {
+        let choice = crate::lang::choice(&crate::platform::paths().data);
+        let label = if choice.is_empty() {
+            let name = i18n::languages()
+                .into_iter()
+                .find(|(c, _)| *c == i18n::language())
+                .map(|(_, n)| n)
+                .unwrap_or("English");
+            i18n::tr!("Same as the computer ({name})", name = name)
+        } else {
+            i18n::languages()
+                .into_iter()
+                .find(|(c, _)| *c == choice)
+                .map_or(choice.clone(), |(_, n)| n.to_owned())
+        };
+        self.ui().set_language_label(label.into());
+    }
+
     /// Player switches in settings (defaults: auto intro skip off, auto next episode on).
     fn load_player_settings(&self) {
         let get = |k: &str| self.core.get_setting(k.to_owned()).ok().flatten();
@@ -5015,6 +5048,7 @@ impl App {
             p.into()
         ));
         on!(on_account_sign_out, |a| a.account_sign_out());
+        on!(on_cycle_language, |a| a.cycle_language());
         on!(on_account_manage, |a| {
             if let Some(acc) = a.core.account() {
                 platform::open_url(&format!("{}/account", acc.base_url.trim_end_matches('/')));

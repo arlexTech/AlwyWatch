@@ -22,6 +22,10 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 # The admin "kept forever" stats type (`ForeverStats`), kept to redraw it when avatars arrive;
 # a workspace crate the core already compiles in (no size cost).
 keep-service = { workspace = true }
+# Translations shared with the other apps (/i18n), and the system's languages (already built
+# for Slint's own translation support).
+i18n = { workspace = true }
+sys-locale = "0.3"
 # Fetches custom avatars with the AlwyWatch sign-in headers (the core's shared HTTP setup, already
 # compiled in: no size cost).
 net = { workspace = true }

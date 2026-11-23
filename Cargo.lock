@@ -57,6 +57,7 @@ name = "alwywatch-core"
 version = "0.1.0"
 dependencies = [
  "downloads",
+ "i18n",
  "jni",
  "keep-service",
  "media-api",
@@ -79,6 +80,7 @@ name = "alwywatch-desktop"
 version = "0.1.0"
 dependencies = [
  "alwywatch-core",
+ "i18n",
  "image",
  "keep-service",
  "libloading",
@@ -88,6 +90,7 @@ dependencies = [
  "serde_json",
  "slint",
  "slint-build",
+ "sys-locale",
  "tokio",
  "windows-sys 0.61.2",
 ]
@@ -117,6 +120,7 @@ dependencies = [
 name = "alwywatch-web"
 version = "0.1.0"
 dependencies = [
+ "i18n",
  "js-sys",
  "keep-service",
  "leptos",
@@ -2621,6 +2625,10 @@ dependencies = [
  "swash",
  "zeno",
 ]
+
+[[package]]
+name = "i18n"
+version = "0.1.0"
 
 [[package]]
 name = "iana-time-zone"

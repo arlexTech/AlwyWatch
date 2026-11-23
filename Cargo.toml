@@ -8,6 +8,7 @@ members = [
     "core/keep-service",
     "core/downloads",
     "core/store",
+    "core/i18n",
     "core/alwywatch-core",
     "server",
     "desktop",
@@ -22,6 +23,7 @@ default-members = [
     "core/keep-service",
     "core/downloads",
     "core/store",
+    "core/i18n",
     "core/alwywatch-core",
     "server",
 ]
@@ -37,6 +39,7 @@ publish = false
 [workspace.dependencies]
 # Internal crates
 net = { path = "core/net" }
+i18n = { path = "core/i18n" }
 media-api = { path = "core/media-api" }
 seerr = { path = "core/seerr" }
 maintainerr = { path = "core/maintainerr" }

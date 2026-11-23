@@ -134,6 +134,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val services = services
         takeRoom(intent)
+        // Recreated after the per-app language changed in Android's settings: read it again.
+        if (services.core.isCompleted) {
+            be.alwyapps.watch.ui.I18n
+                .apply(this)
+        }
         // Once Compose draws (its root paints the background), the window's own background is a
         // full-screen fill under it on every frame for nothing.
         window.decorView.post { window.setBackgroundDrawable(null) }

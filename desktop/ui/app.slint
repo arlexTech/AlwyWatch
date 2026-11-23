@@ -1479,6 +1479,8 @@ export component AppWindow inherits Window {
     callback keep-disconnect();
     callback account-sign-out();
     callback account-manage();
+    callback cycle-language();
+    in property <string> language-label;
     callback keep-vote(string, string); // key, choice
     callback keep-look-up(); // the title page's title, in no deletion list
     callback watch-together(string); // item: a new room (lobby) with it
@@ -2038,7 +2040,7 @@ export component AppWindow inherits Window {
                                         vertical-alignment: center;
                                     }
                                 }
-                                if root.add-step == "choose" && !root.add-from-keep : Text { text: "Sign in"; color: Palette.text; font-size: 17px; font-weight: 700; }
+                                if root.add-step == "choose" && !root.add-from-keep : Text { text: @tr("Sign in"); color: Palette.text; font-size: 17px; font-weight: 700; }
                                 if root.add-step == "choose" && !root.add-from-keep : ChoiceCard {
                                     title: "I was given an AlwyWatch address";
                                     subtitle: "Something like watch.example.org, from the person who runs your server. Adds requests, watch together and saving titles from deletion.";
@@ -2773,7 +2775,7 @@ export component AppWindow inherits Window {
                                     NavItem { label: "Profiles"; icon: @image-url("icons/person.svg"); selected: root.shown-section == "profiles"; clicked => { root.settings-section = "profiles"; if (root.page != Page.settings) { root.go(Page.settings); } } }
                                     NavItem { label: "Playback"; icon: @image-url("icons/play_arrow_fill1.svg"); selected: root.shown-section == "playback"; clicked => { root.settings-section = "playback"; if (root.page != Page.settings) { root.go(Page.settings); } } }
                                     NavItem { label: "Audio & subtitles"; icon: @image-url("icons/subtitles.svg"); selected: root.shown-section == "audio"; clicked => { root.settings-section = "audio"; if (root.page != Page.settings) { root.go(Page.settings); } } }
-                                    NavItem { label: "About & storage"; icon: @image-url("icons/info.svg"); selected: root.shown-section == "about"; clicked => { root.settings-section = "about"; if (root.page != Page.settings) { root.go(Page.settings); } } }
+                                    NavItem { label: "Language & about"; icon: @image-url("icons/info.svg"); selected: root.shown-section == "about"; clicked => { root.settings-section = "about"; if (root.page != Page.settings) { root.go(Page.settings); } } }
                         }
                         ScrollView {
                         VerticalLayout {
@@ -3066,6 +3068,10 @@ export component AppWindow inherits Window {
                             if root.shown-section == "about" : VerticalLayout {
                                 spacing: 22px;
                                 alignment: start;
+                            Group {
+                                title: "LANGUAGE";
+                                SettingChoice { title: "Language"; subtitle: ""; value: root.language-label; clicked => { root.cycle-language(); } }
+                            }
                             Group {
                                 title: "ABOUT";
                                 Text { text: root.about; color: Palette.text; }

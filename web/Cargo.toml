@@ -11,6 +11,8 @@ publish.workspace = true
 [dependencies]
 media-api = { workspace = true }
 keep-service = { workspace = true }
+# Translations shared with the other apps (/i18n).
+i18n = { workspace = true }
 seerr = { workspace = true }
 net = { workspace = true }
 serde = { workspace = true }

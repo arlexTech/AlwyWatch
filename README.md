@@ -92,6 +92,7 @@ docker build -f server/Dockerfile -t alwywatch-server .   # server image, web ap
 ## Docs
 
 * [Building](docs/build.md) and packaging
+* [Languages](docs/i18n.md): adding a language is adding one file
 * [Setting up the server](docs/deploy.md): quick start, options, administration, backup
 * [Core API](docs/core-api.md), [keep-service protocol](docs/keep-protocol.md), [web app](docs/web.md)
 * [Decisions and dependencies](docs/decisions.md)

@@ -7,6 +7,7 @@ cd "$(dirname "$0")/.."
 what="${1:-all}"
 
 rust() {
+    python3 scripts/i18n.py check   # translation template up to date, placeholders intact
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo test --workspace --locked

@@ -32,6 +32,7 @@
     </queries>
 
     <application
+        android:localeConfig="@xml/locales_config"
         android:name=".AlwyWatchApp"
         android:allowBackup="false"
         android:banner="@drawable/tv_banner"

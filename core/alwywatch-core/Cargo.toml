@@ -20,6 +20,8 @@ store = { workspace = true }
 downloads = { workspace = true, features = ["uniffi"] }
 seerr = { workspace = true, features = ["uniffi"] }
 keep-service = { workspace = true, features = ["uniffi"] }
+# Translations, shared with the desktop and web apps (one catalog per language in /i18n).
+i18n = { workspace = true }
 uniffi = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "macros"] }
 serde = { workspace = true }

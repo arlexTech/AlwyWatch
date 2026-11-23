@@ -18,6 +18,7 @@ mod android;
 mod app;
 mod error;
 mod history;
+mod lang;
 mod merge;
 mod playback;
 mod settings_sync;
@@ -39,6 +40,7 @@ pub use keep_service::{
     AdminUser, Avatar, AvatarPreset, CountdownResult, LeavingItem, Me, MyVote, Protection, Rights,
     ServerEntry, ServerType, Services, VoteCounts, VoteKind, VoteRequest,
 };
+pub use lang::*;
 pub use media_api::jellyfin::QuickConnectCode;
 pub use media_api::model::*;
 pub use media_api::plex::{PlexHomeUser, PlexPin, PlexServerResource};

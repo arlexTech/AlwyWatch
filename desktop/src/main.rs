@@ -5,6 +5,7 @@
 mod app;
 mod avatars;
 mod headless;
+mod lang;
 mod localtime;
 mod mpv;
 mod platform;
@@ -45,6 +46,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let paths = platform::paths();
     // Several people on one computer: each profile its own database and tokens (the original
     // profile's stay where they were); downloads are shared.
+    // The language first: everything after may build text.
+    let language = lang::resolve(&lang::choice(&paths.data));
+    lang::apply(&language, false);
     let profiles = profiles::ProfileStore::new(&paths.data);
     let profile = profiles.current();
     let gate = !profiles.opens_directly();
@@ -222,6 +226,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let ui = AppWindow::new()?;
+    lang::apply(&language, true);
     let app = app::App::new(core.clone(), &ui, tokens, profiles, gate);
     // Test hook (headless screenshots): start the Jellyfin sign-in with this address.
     match std::env::var("ALWYWATCH_TEST_PAGE").as_deref() {

@@ -15,7 +15,7 @@ val rustAbis = providers.gradleProperty("alwywatch.abis").getOrElse("arm64-v8a,a
 
 val rustSources =
     fileTree(rustRoot) {
-        include("core/**/*.rs", "core/**/Cargo.toml", "core/**/uniffi.toml", "tools/**/*.rs", "Cargo.toml", "Cargo.lock")
+        include("core/**/*.rs", "core/**/Cargo.toml", "core/**/uniffi.toml", "tools/**/*.rs", "Cargo.toml", "Cargo.lock", "i18n/*.po")
     }
 
 // Release variants: the configured profile (fat LTO). Debug variants: "android-dev" (no LTO,
@@ -45,6 +45,14 @@ val uniffiBindgen =
         workspace.set(rustRoot)
         sources.from(rustSources)
         outDir.set(layout.buildDirectory.dir("generated/uniffi/kotlin"))
+    }
+
+val localesConfig =
+    tasks.register<LocalesConfigTask>("localesConfig") {
+        group = "i18n"
+        description = "Lists the app's languages (from /i18n) for Android's per-app language setting"
+        catalogs.from(fileTree(File(rustRoot, "i18n")) { include("*.po") })
+        outDir.set(layout.buildDirectory.dir("generated/res/locales"))
     }
 
 val rustlsVerifierVersion =
@@ -135,6 +143,7 @@ androidComponents {
         val rust = if (variant.buildType == "debug") cargoNdkDev else cargoNdk
         variant.sources.jniLibs?.addGeneratedSourceDirectory(rust, CargoNdkTask::outDir)
         variant.sources.kotlin?.addGeneratedSourceDirectory(uniffiBindgen, UniffiBindgenTask::outDir)
+        variant.sources.res?.addGeneratedSourceDirectory(localesConfig, LocalesConfigTask::outDir)
     }
 }
 

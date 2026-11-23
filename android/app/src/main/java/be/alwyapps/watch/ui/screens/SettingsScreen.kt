@@ -34,6 +34,7 @@ import be.alwyapps.watch.ui.Chevron
 import be.alwyapps.watch.ui.ChoiceRow
 import be.alwyapps.watch.ui.Divider
 import be.alwyapps.watch.ui.Group
+import be.alwyapps.watch.ui.I18n
 import be.alwyapps.watch.ui.IconAction
 import be.alwyapps.watch.ui.Icons
 import be.alwyapps.watch.ui.Images
@@ -47,6 +48,7 @@ import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.ToggleRow
 import be.alwyapps.watch.ui.UiPrefs
 import be.alwyapps.watch.ui.Value
+import be.alwyapps.watch.ui.tr
 import be.alwyapps.watch.ui.usesRail
 
 /** A page of Settings, opened from the list (`Route.SettingsSection`). */
@@ -62,7 +64,7 @@ private enum class Section(
     AUDIO("audio", "Audio & subtitles", Icons.Subtitles),
     INTERFACE("interface", "Menu & pages", Icons.Home),
     DOWNLOADS("downloads", "Downloads", Icons.Download),
-    ABOUT("about", "About & storage", Icons.Info),
+    ABOUT("about", "Language & about", Icons.Info),
     ;
 
     companion object {
@@ -148,7 +150,15 @@ fun SettingsScreen(
                     "quitting",
                 ).joinToString(", ").replaceFirstChar { it.uppercase() }
             Section.DOWNLOADS -> "When to delete, manage downloads"
-            Section.ABOUT -> "AlwyWatch ${BuildConfig.VERSION_NAME} · image cache"
+            Section.ABOUT ->
+                listOfNotNull(
+                    I18n
+                        .languages()
+                        .firstOrNull { it.first == I18n.language }
+                        ?.second,
+                    "AlwyWatch ${BuildConfig.VERSION_NAME}",
+                    "image cache",
+                ).joinToString(" · ")
         }
 
     SettingsPage("Settings") {
@@ -705,6 +715,29 @@ private fun DownloadsSection() {
 @Composable
 private fun AboutSection() {
     val core = LocalCore.current
+    val ctx = LocalContext.current
+    Group(
+        tr("Language"),
+    ) {
+        val system =
+            tr("Same as the device")
+        val options =
+            listOf("" to system) +
+                I18n
+                    .languages()
+        ChoiceRow(
+            tr("Language"),
+            options,
+            I18n
+                .choice(ctx),
+            {
+                I18n
+                    .choose(ctx, it)
+                // Every screen again, in the new language (the place in the app is kept).
+                (ctx as? android.app.Activity)?.recreate()
+            },
+        )
+    }
     var cacheMb by remember { mutableStateOf(core.imageCacheBytes().toLong() / (1024 * 1024)) }
     Group("Storage", footer = "Posters and backdrops kept to show pages instantly; they come back when needed.") {
         ListRow("Image cache", icon = Icons.Library, trailing = {

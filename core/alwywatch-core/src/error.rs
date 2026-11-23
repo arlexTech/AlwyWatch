@@ -1,32 +1,58 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 use net::Error as NetError;
 
-/// Errors surfaced to the UIs, worded for the person in front of the screen (the UIs show
-/// them as they are). Messages never contain tokens.
+/// Errors surfaced to the UIs, worded for the person in front of the screen in the selected
+/// language (the UIs show them as they are). Messages never contain tokens.
 /// Flat for the bindings: Kotlin gets one exception class per variant whose `message` is the
-/// text below (fields stay available to Rust callers such as the desktop app).
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
+/// text below (fields stay available to Rust callers such as the desktop app). Apps that
+/// read the status back look for "HTTP <status>", which every translation keeps.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Error)]
 #[uniffi(flat_error)]
 pub enum CoreError {
-    #[error("The server refused: your sign-in may have ended. Sign in again in Settings.")]
     Unauthorized,
-    #[error("This isn't on the server any more.")]
     NotFound,
-    #[error("The server couldn't do this (HTTP {status}). Try again in a moment.")]
     Server { status: u16 },
-    #[error("Can't reach the server. Check your connection.")]
     Network { detail: String },
-    #[error("Still waiting for approval.")]
     Pending,
-    #[error("{detail}")]
     Invalid { detail: String },
-    #[error("This sign-in is no longer on this device. Sign in again in Settings.")]
     NotSignedIn { account_id: String },
-    #[error("This device's storage had a problem: {detail}")]
     Storage { detail: String },
-    #[error("Something went wrong in the app: {detail}")]
     Internal { detail: String },
 }
+
+impl std::fmt::Display for CoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use i18n::tr;
+        let text = match self {
+            CoreError::Unauthorized => {
+                tr!("The server refused: your sign-in may have ended. Sign in again in Settings.")
+            }
+            CoreError::NotFound => tr!("This isn't on the server any more."),
+            CoreError::Server { status } => tr!(
+                "The server couldn't do this (HTTP {status}). Try again in a moment.",
+                status = status
+            ),
+            CoreError::Network { .. } => tr!("Can't reach the server. Check your connection."),
+            CoreError::Pending => tr!("Still waiting for approval."),
+            CoreError::Invalid { detail } => detail.clone(),
+            CoreError::NotSignedIn { .. } => {
+                tr!("This sign-in is no longer on this device. Sign in again in Settings.")
+            }
+            CoreError::Storage { detail } => {
+                tr!(
+                    "This device's storage had a problem: {detail}",
+                    detail = detail
+                )
+            }
+            CoreError::Internal { detail } => {
+                tr!("Something went wrong in the app: {detail}", detail = detail)
+            }
+        };
+        f.write_str(&text)
+    }
+}
+
+impl std::error::Error for CoreError {}
 
 impl CoreError {
     pub fn is_transient(&self) -> bool {

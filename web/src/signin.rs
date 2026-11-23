@@ -408,7 +408,7 @@ const SECTIONS: [(&str, &str); 6] = [
     ("profiles", "Profiles"),
     ("playback", "Playback"),
     ("audio", "Audio & subtitles"),
-    ("about", "About & storage"),
+    ("about", "Language & about"),
 ];
 
 /// `/settings` and `/settings/:section`: the sections on the left, one shown at a time.
@@ -440,6 +440,7 @@ pub fn Settings() -> impl IntoView {
                     "playback" => view! { <crate::prefs::PlaybackSettings /> }.into_any(),
                     "audio" => view! { <crate::prefs::AudioSettings /> }.into_any(),
                     "about" => view! {
+                        <crate::lang::LanguageSetting />
                         <section class="group">
                             <h2>"About"</h2>
                             <p>{format!("AlwyWatch {}", env!("CARGO_PKG_VERSION"))}</p>
