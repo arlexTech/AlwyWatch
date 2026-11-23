@@ -600,6 +600,21 @@ pub fn PasswordAndPasskeys() -> impl IntoView {
             }
         });
     }
+    // Signed in with Jellyfin or Plex but not to the account in this browser: that sign-in opens
+    // the account here (the sign-in form is only for when the owner turned that off).
+    let opening = RwSignal::new(c.account.get_untracked().is_none());
+    if opening.get_untracked() {
+        let c = c.clone();
+        spawn_local(async move {
+            if let Some(k) = c.keep_client()
+                && let Ok(s) = k.account_session(DEVICE).await
+            {
+                c.set_account(&s.token, &s.account);
+                page.version.update(|v| *v += 1);
+            }
+            opening.set(false);
+        });
+    }
     {
         let c = c.clone();
         Effect::new(move |_| {
@@ -632,6 +647,7 @@ pub fn PasswordAndPasskeys() -> impl IntoView {
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
         {move || note.get().map(|n| view! { <p class="note">{n}</p> })}
         {move || match account.get() {
+            None if opening.get() => view! { <p class="muted">{tr!("Loading…")}</p> }.into_any(),
             None => view! {
                 <p class="muted">{tr!("Not signed in to an AlwyWatch account in this browser.")}</p>
                 <AccountSignIn next="/settings/account/password" />

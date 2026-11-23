@@ -31,8 +31,11 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "s
 # The invitation email in the inviting admin's language (the apps' catalogs).
 i18n = { workspace = true }
 
-[dev-dependencies]
+# Already in the build through axum: switching to new settings without closing the site
+# (one service in front, the current router behind it).
 tower = { version = "0.5", default-features = false, features = ["util"] }
+
+[dev-dependencies]
 wiremock = { workspace = true }
 tempfile = { workspace = true }
 

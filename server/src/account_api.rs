@@ -393,7 +393,10 @@ pub async fn login(
 ) -> Result<Json<SignedIn>, Error> {
     let ip = crate::limit::client(&headers);
     let user = format!("u:{}", r.username.trim().to_lowercase());
-    if s.limits.account_logins.blocked(&ip) || s.limits.account_logins.blocked(&user) {
+    // Per address, and per username across all addresses with a much higher bar: a stranger
+    // guessing someone's password doesn't lock the owner out (their address has its own
+    // count), and guessing it from many addresses together stays far too slow.
+    if s.limits.account_logins.blocked(&ip) || s.limits.username_logins.blocked(&user) {
         return Err(too_many());
     }
     let found =
@@ -402,7 +405,7 @@ pub async fn login(
     let ok = verify_off(found.as_ref().and_then(|(_, h)| h.clone()), &r.password).await;
     let Some((a, _)) = found.filter(|_| ok) else {
         s.limits.account_logins.hit(&ip);
-        s.limits.account_logins.hit(&user);
+        s.limits.username_logins.hit(&user);
         return Err(Error(
             StatusCode::UNAUTHORIZED,
             "wrong username or password".into(),
@@ -491,6 +494,35 @@ pub async fn claim(
         }
     };
     Ok(Json(view(&s, &a, None)?))
+}
+
+#[derive(Deserialize, Default)]
+pub struct FromMedia {
+    #[serde(default)]
+    device: String,
+}
+
+/// `POST /v1/account/session` (media sign-in): a session of the person's AlwyWatch account
+/// for this device, making the account if the person has none yet. A media sign-in can already
+/// set the account's password (`claim`), so this gives it nothing more; refused when the
+/// account's owner turned media sign-ins off for it.
+pub async fn session_from_media(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Json(r): Json<FromMedia>,
+) -> Result<Json<SignedIn>, Error> {
+    if !s.limits.claims.allow(&id.user_key) {
+        return Err(too_many());
+    }
+    let a = match s.db.account_of_person(&id.user_key).map_err(internal)? {
+        Some(a) if a.media_locked => return Err(media_locked()),
+        Some(a) => a,
+        None => {
+            s.db.create_account(None, None, Some(&id.user_key), &id.name)
+                .map_err(account_err)?
+        }
+    };
+    signed_in(&s, &a, &r.device)
 }
 
 /// The account's owner turned media sign-ins off for it.

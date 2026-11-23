@@ -747,7 +747,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt:306
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:289
-#: web/src/account.rs:1043
+#: web/src/account.rs:1059
 msgid "How others see you"
 msgstr ""
 
@@ -1370,7 +1370,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:216
 #: desktop/src/app.rs:5770
-#: web/src/account.rs:658
+#: web/src/account.rs:674
 msgid "Passkeys"
 msgstr ""
 
@@ -1640,7 +1640,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:213
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:235
-#: web/src/account.rs:631
+#: web/src/account.rs:646
 msgid "Password & passkeys"
 msgstr ""
 
@@ -1649,7 +1649,7 @@ msgid "Connected with your login {name}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:223
-#: web/src/account.rs:1013
+#: web/src/account.rs:1029
 msgid "Connected"
 msgstr ""
 
@@ -1662,7 +1662,7 @@ msgid "Also deleting the account: opens {address}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:251
-#: web/src/account.rs:1072
+#: web/src/account.rs:1088
 #: desktop/ui/app.slint:3027
 msgid "Sign out of AlwyWatch"
 msgstr ""
@@ -1696,7 +1696,7 @@ msgid "Profile on this device"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:322
-#: web/src/account.rs:1107
+#: web/src/account.rs:1123
 msgid "Connect to AlwyWatch"
 msgstr ""
 
@@ -1709,7 +1709,7 @@ msgid "With your AlwyWatch account, a code, or your Jellyfin or Plex login"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:334
-#: web/src/account.rs:1111
+#: web/src/account.rs:1127
 #: desktop/ui/app.slint:3056
 msgid "Create an account"
 msgstr ""
@@ -3032,7 +3032,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:431
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:482
-#: web/src/account.rs:717
+#: web/src/account.rs:733
 msgid "Unlink"
 msgstr ""
 
@@ -3059,7 +3059,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt:477
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:93
-#: web/src/account.rs:776
+#: web/src/account.rs:792
 msgid "This device"
 msgstr ""
 
@@ -3547,7 +3547,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:86
-#: web/src/account.rs:630
+#: web/src/account.rs:645
 #: web/src/signin.rs:507
 msgid "Account"
 msgstr ""
@@ -3658,7 +3658,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:309
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:236
-#: web/src/account.rs:1140
+#: web/src/account.rs:1156
 msgid "Sign in another device"
 msgstr ""
 
@@ -5569,247 +5569,247 @@ msgstr ""
 msgid "Pocket ID could not be linked. Try again from this page."
 msgstr ""
 
-#: web/src/account.rs:636
+#: web/src/account.rs:652
 msgid "Not signed in to an AlwyWatch account in this browser."
 msgstr ""
 
-#: web/src/account.rs:641
+#: web/src/account.rs:657
 msgid "Signed in"
 msgstr ""
 
-#: web/src/account.rs:646
+#: web/src/account.rs:662
 msgid "Also you: {list}"
 msgstr ""
 
-#: web/src/account.rs:659
+#: web/src/account.rs:675
 msgid "Sign in with your fingerprint, face or device PIN instead of a password."
 msgstr ""
 
-#: web/src/account.rs:666
+#: web/src/account.rs:682
 msgid "added {date}, last used {used}"
 msgstr ""
 
-#: web/src/account.rs:667
+#: web/src/account.rs:683
 msgid "added {date}"
 msgstr ""
 
-#: web/src/account.rs:672
 #: web/src/account.rs:688
-#: web/src/account.rs:711
+#: web/src/account.rs:704
+#: web/src/account.rs:727
 msgid "Signed out."
 msgstr ""
 
-#: web/src/account.rs:674
+#: web/src/account.rs:690
 msgid "This is your only way to sign in: add a password or Pocket ID first."
 msgstr ""
 
-#: web/src/account.rs:677
+#: web/src/account.rs:693
 msgid "Passkey removed."
 msgstr ""
 
-#: web/src/account.rs:694
+#: web/src/account.rs:710
 msgid "Passkey added."
 msgstr ""
 
-#: web/src/account.rs:695
+#: web/src/account.rs:711
 msgid "Add a passkey"
 msgstr ""
 
-#: web/src/account.rs:706
+#: web/src/account.rs:722
 msgid "Linked: you can sign in with Pocket ID."
 msgstr ""
 
-#: web/src/account.rs:706
+#: web/src/account.rs:722
 msgid "Pocket ID is this server's single sign-on. Link it to sign in without a password."
 msgstr ""
 
-#: web/src/account.rs:713
+#: web/src/account.rs:729
 msgid "This is your only way to sign in: add a password or passkey first."
 msgstr ""
 
-#: web/src/account.rs:716
+#: web/src/account.rs:732
 msgid "Pocket ID unlinked."
 msgstr ""
 
-#: web/src/account.rs:728
+#: web/src/account.rs:744
 msgid "Link Pocket ID"
 msgstr ""
 
-#: web/src/account.rs:735
+#: web/src/account.rs:751
 msgid "Devices"
 msgstr ""
 
-#: web/src/account.rs:740
+#: web/src/account.rs:756
 msgid "Device"
 msgstr ""
 
-#: web/src/account.rs:741
+#: web/src/account.rs:757
 msgid "this browser"
 msgstr ""
 
-#: web/src/account.rs:741
+#: web/src/account.rs:757
 msgid "last seen {date}"
 msgstr ""
 
-#: web/src/account.rs:752
+#: web/src/account.rs:768
 msgid "To sign a TV or another device in, choose “Sign in with a code” on it and open the address it shows (or scan its QR code)."
 msgstr ""
 
-#: web/src/account.rs:777
+#: web/src/account.rs:793
 msgid "Passkey ({device})"
 msgstr ""
 
-#: web/src/account.rs:826
+#: web/src/account.rs:842
 msgid "The current password is wrong."
 msgstr ""
 
-#: web/src/account.rs:830
+#: web/src/account.rs:846
 msgid "Password saved. Your other devices stay signed in only if they use a passkey or Pocket ID."
 msgstr ""
 
-#: web/src/account.rs:838
+#: web/src/account.rs:854
 msgid "This account has no username yet, so it can't have a password. Add a passkey below to sign in without Jellyfin or Plex."
 msgstr ""
 
-#: web/src/account.rs:842
+#: web/src/account.rs:858
 msgid "Current password"
 msgstr ""
 
-#: web/src/account.rs:844
+#: web/src/account.rs:860
 msgid "New password"
 msgstr ""
 
-#: web/src/account.rs:851
+#: web/src/account.rs:867
 msgid "Set."
 msgstr ""
 
-#: web/src/account.rs:851
+#: web/src/account.rs:867
 #: desktop/ui/app.slint:3425
 msgid "None yet."
 msgstr ""
 
-#: web/src/account.rs:852
+#: web/src/account.rs:868
 msgid "Change"
 msgstr ""
 
-#: web/src/account.rs:852
+#: web/src/account.rs:868
 msgid "Set a password"
 msgstr ""
 
-#: web/src/account.rs:876
+#: web/src/account.rs:892
 msgid "The password is wrong."
 msgstr ""
 
-#: web/src/account.rs:884
+#: web/src/account.rs:900
 msgid "Delete account"
 msgstr ""
 
-#: web/src/account.rs:889
+#: web/src/account.rs:905
 msgid "This deletes your AlwyWatch account: its username, password, passkeys and the devices signed in with it. You keep using AlwyWatch with your Plex or Jellyfin sign-in, and your profile and keep requests stay with it."
 msgstr ""
 
-#: web/src/account.rs:891
+#: web/src/account.rs:907
 msgid "This deletes your AlwyWatch account and everything stored for it: username, password, passkeys, profile, picture and synced settings. Devices signed in with it are signed out."
 msgstr ""
 
-#: web/src/account.rs:893
+#: web/src/account.rs:909
 msgid "It can't be undone."
 msgstr ""
 
-#: web/src/account.rs:894
+#: web/src/account.rs:910
 msgid "Your password"
 msgstr ""
 
-#: web/src/account.rs:897
+#: web/src/account.rs:913
 msgid "Delete my account"
 msgstr ""
 
-#: web/src/account.rs:902
+#: web/src/account.rs:918
 msgid "Removes the account for good."
 msgstr ""
 
-#: web/src/account.rs:903
+#: web/src/account.rs:919
 msgid "Delete account…"
 msgstr ""
 
-#: web/src/account.rs:930
+#: web/src/account.rs:946
 msgid "Add a password, passkey or Pocket ID first: it would be your only way in."
 msgstr ""
 
-#: web/src/account.rs:936
+#: web/src/account.rs:952
 msgid "Plex and Jellyfin sign-ins can change this account again."
 msgstr ""
 
-#: web/src/account.rs:938
+#: web/src/account.rs:954
 msgid "Done. Only this account's own sign-in changes it now."
 msgstr ""
 
-#: web/src/account.rs:948
+#: web/src/account.rs:964
 msgid "Plex and Jellyfin sign-ins"
 msgstr ""
 
-#: web/src/account.rs:952
+#: web/src/account.rs:968
 msgid "Turned off: a Plex or Jellyfin sign-in can't set this account's password or sign a new device in to it. You still watch, vote and join rooms with them."
 msgstr ""
 
-#: web/src/account.rs:953
+#: web/src/account.rs:969
 msgid "Turn back on"
 msgstr ""
 
-#: web/src/account.rs:959
+#: web/src/account.rs:975
 msgid "On: whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it."
 msgstr ""
 
-#: web/src/account.rs:960
-#: web/src/account.rs:968
+#: web/src/account.rs:976
+#: web/src/account.rs:984
 msgid "Turn off"
 msgstr ""
 
-#: web/src/account.rs:965
+#: web/src/account.rs:981
 msgid "This account has its own way to sign in now. Do you want to stop Plex and Jellyfin sign-ins from changing it?"
 msgstr ""
 
-#: web/src/account.rs:966
+#: web/src/account.rs:982
 msgid "Today, whoever is signed in to your Plex or Jellyfin account can set this account's password and sign new devices in to it. Turned off, only this account's own sign-in can. Watching, votes and rooms keep working with Plex and Jellyfin either way, and you can turn it back on here."
 msgstr ""
 
-#: web/src/account.rs:969
+#: web/src/account.rs:985
 msgid "Keep it on"
 msgstr ""
 
-#: web/src/account.rs:1011
+#: web/src/account.rs:1027
 msgid "Sign-in expired"
 msgstr ""
 
-#: web/src/account.rs:1020
+#: web/src/account.rs:1036
 msgid "Sign out of AlwyWatch? This profile keeps its Jellyfin and Plex logins and becomes a profile without an AlwyWatch account: Leaving soon and watch together disappear from it."
 msgstr ""
 
-#: web/src/account.rs:1054
+#: web/src/account.rs:1070
 msgid "To change your name and picture, add a Jellyfin or Plex login: Servers → Add a server."
 msgstr ""
 
-#: web/src/account.rs:1060
+#: web/src/account.rs:1076
 msgid "AlwyWatch"
 msgstr ""
 
-#: web/src/account.rs:1067
+#: web/src/account.rs:1083
 msgid "Ways to sign in, devices signed in, deleting the account"
 msgstr ""
 
-#: web/src/account.rs:1108
+#: web/src/account.rs:1124
 msgid "Your name, settings and servers come with you, and you get Leaving soon and watch together."
 msgstr ""
 
-#: web/src/account.rs:1113
+#: web/src/account.rs:1129
 msgid "Plex account: sign out and sign in again to use requests, Leaving soon and watch together."
 msgstr ""
 
-#: web/src/account.rs:1141
+#: web/src/account.rs:1157
 msgid "On the other device, choose “Sign in with a code” and type the code it shows here (or scan its QR code with your phone)."
 msgstr ""
 
-#: web/src/account.rs:1143
+#: web/src/account.rs:1159
 msgid "Code"
 msgstr ""
 

@@ -20,35 +20,22 @@ fn bad(m: impl Into<String>) -> Error {
     Error(StatusCode::BAD_REQUEST, m.into())
 }
 
-/// Checks the new settings, saves them and starts the server again with them (in about a
-/// second, after this answer is sent).
-/// `change` runs on the settings as saved, under a lock: two admins saving together can't
-/// undo each other's change, and nothing is saved once a restart is on its way.
+/// Checks the new settings, saves them and switches to them (the site stays up: requests
+/// already running finish with the old settings). `change` runs on the settings as saved, under a lock: two admins saving together can't
+/// undo each other's change.
 async fn save_and_reload(
     s: &Shared,
     change: impl FnOnce(&mut Stored) -> Result<(), Error>,
 ) -> Result<(), Error> {
-    use std::sync::atomic::Ordering;
     let mut saved = s.stored.lock().await;
-    if s.restarting.load(Ordering::Relaxed) {
-        return Err(Error(
-            StatusCode::CONFLICT,
-            "the server is starting again with new settings: try again in a moment".into(),
-        ));
-    }
     let mut new = saved.clone();
     change(&mut new)?;
     Config::from_stored(&new, s.config.listen, s.config.data_dir.clone()).map_err(bad)?;
     new.save(&Stored::path(&s.config.data_dir))
         .map_err(|e| Error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
     *saved = new;
-    s.restarting.store(true, Ordering::Relaxed);
     drop(saved);
-    let reload = s.reload.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
-        reload.notify_one();
-    });
+    s.reload.notify_one();
     Ok(())
 }
 
@@ -734,7 +721,11 @@ mod tests {
         let mut plex = server("abc", "https://jf.example.org");
         plex.kind = Some(ServerType::Plex);
         assert!(upsert(&mut st, plex).is_err());
-        assert!(st.servers[0].public_url.starts_with("https://jf.example.org"));
+        assert!(
+            st.servers[0]
+                .public_url
+                .starts_with("https://jf.example.org")
+        );
         assert!(upsert(&mut st, server("other", "https://two.example.org")).is_ok());
         assert_eq!(st.servers.len(), 2);
     }

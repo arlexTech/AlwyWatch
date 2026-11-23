@@ -4115,3 +4115,102 @@ async fn a_wrong_setup_code_is_refused_and_setup_ends_once_done() {
     let (_, _, v) = e.anon("GET", "/v1/setup", None, None).await;
     assert_eq!(v["needed"], true);
 }
+
+#[tokio::test]
+async fn a_stranger_guessing_a_password_does_not_lock_its_owner_out() {
+    let e = env().await;
+    e.sign_up("carol").await;
+    let login = async |ip: &str, password: &str| {
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/account/login")
+            .header("content-type", "application/json")
+            .header("x-forwarded-for", ip)
+            .body(Body::from(
+                json!({"username": "carol", "password": password}).to_string(),
+            ))
+            .unwrap();
+        crate::api::router(e.state.clone())
+            .oneshot(req)
+            .await
+            .unwrap()
+            .status()
+    };
+    for _ in 0..12 {
+        login("203.0.113.9", "wrong-guess").await;
+    }
+    assert_eq!(
+        login("203.0.113.9", "password1").await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    // From the owner's own address: still fine.
+    assert_eq!(login("198.51.100.7", "password1").await, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_media_sign_in_opens_its_account_in_a_browser() {
+    let e = env().await;
+    let (st, s) = e
+        .call(
+            "POST",
+            "/v1/account/session",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"device": "Web browser"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{s}");
+    let token = s["token"].as_str().unwrap().to_owned();
+    let (st, _, me) = e.anon("GET", "/v1/account", Some(&token), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(me["user_key"], s["account"]["user_key"]);
+    // Twice: the same account, not a new one.
+    let (_, again) = e
+        .call(
+            "POST",
+            "/v1/account/session",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(again["account"]["user_key"], s["account"]["user_key"]);
+    // With a password, then media sign-ins turned off for the account, it is refused.
+    let (st, _, _) = e
+        .anon(
+            "PUT",
+            "/v1/account/username",
+            Some(&token),
+            Some(json!({"username": "bobby"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (st, _, _) = e
+        .anon(
+            "PUT",
+            "/v1/account/password",
+            Some(&token),
+            Some(json!({"new": "password1"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (st, _, _) = e
+        .anon(
+            "PUT",
+            "/v1/account/media-sign-in",
+            Some(&token),
+            Some(json!({"allowed": false})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    let (st, _) = e
+        .call(
+            "POST",
+            "/v1/account/session",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+}

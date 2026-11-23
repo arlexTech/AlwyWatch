@@ -104,6 +104,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/account/logout", post(account_api::logout))
         .route("/v1/account/delete", post(account_api::delete_account))
         .route("/v1/account/claim", post(account_api::claim))
+        .route("/v1/account/session", post(account_api::session_from_media))
         .route("/v1/account/password", put(account_api::set_password))
         .route("/v1/account/username", put(account_api::set_username))
         .route(

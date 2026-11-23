@@ -37,13 +37,13 @@ pub struct State {
     /// Serialises Maintainerr writes (it has its own lock and answers 409 when busy).
     write_lock: tokio::sync::Mutex<()>,
     /// Pending device-to-device transfers (in memory only).
-    pub transfers: crate::transfer::Transfers,
+    pub transfers: Arc<crate::transfer::Transfers>,
     /// Watch together rooms (in memory only).
-    pub rooms: crate::together::Rooms,
+    pub rooms: Arc<crate::together::Rooms>,
     /// Passkey challenges in progress (in memory only).
-    pub passkeys: crate::passkey::Flows,
+    pub passkeys: Arc<crate::passkey::Flows>,
     /// Pocket ID sign-ins in progress (in memory only).
-    pub oidc: crate::oidc::Oidc,
+    pub oidc: Arc<crate::oidc::Oidc>,
     /// Attempt limits (see `limit.rs`).
     pub limits: Arc<Limits>,
     /// Maintainerr's state from the last sync: 0 not tried yet, 1 answered, 2 failed.
@@ -52,14 +52,12 @@ pub struct State {
     pub last_sync: std::sync::atomic::AtomicI64,
     pub last_sync_items: std::sync::atomic::AtomicUsize,
     /// The saved settings this server runs with (Settings → Admin → Server settings).
-    pub stored: tokio::sync::Mutex<crate::settings::Stored>,
-    /// Wakes `main` to start again with new settings.
+    pub stored: Arc<tokio::sync::Mutex<crate::settings::Stored>>,
+    /// Wakes `main` to switch to the saved settings.
     pub reload: Arc<Notify>,
     /// While no media server is set up: the code printed in the log that the setup page asks
     /// for (nobody else can claim a new server).
     pub setup_code: Option<String>,
-    /// Settings were saved and the server is about to start again with them.
-    pub restarting: std::sync::atomic::AtomicBool,
     /// Wrong setup codes so far, from anyone.
     pub setup_failures: std::sync::atomic::AtomicU32,
     /// Why Maintainerr is not used although it is set up (an unsupported version).
@@ -81,8 +79,10 @@ pub struct Limits {
     pub together_creates: crate::limit::Limiter,
     /// Identity link attempts, per person (each validates a second token).
     pub links: crate::limit::Limiter,
-    /// Failed account sign-ins, per client address and per username.
+    /// Failed account sign-ins, per client address.
     pub account_logins: crate::limit::Limiter,
+    /// Failed account sign-ins, per username from every address together.
+    pub username_logins: crate::limit::Limiter,
     /// Accounts created, per client address.
     pub account_signups: crate::limit::Limiter,
     /// Invitation emails sent, per admin.
@@ -113,6 +113,7 @@ impl Default for Limits {
             profile_changes: Limiter::new(20, min(10)),
             links: Limiter::new(10, min(10)),
             account_logins: Limiter::new(10, min(10)),
+            username_logins: Limiter::new(200, min(60)),
             account_signups: Limiter::new(5, min(60)),
             invite_emails: Limiter::new(20, min(60)),
             setup_codes: Limiter::new(10, min(10)),
@@ -174,7 +175,6 @@ impl State {
             stored: Default::default(),
             reload: Default::default(),
             setup_code: None,
-            restarting: Default::default(),
             setup_failures: Default::default(),
             maintainerr_problem: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),
@@ -984,16 +984,52 @@ fn lookup(m: &ProviderIndex, row: &ItemRow) -> Option<String> {
 
 /// Background jobs: periodic sync, reconciler (on demand + every 5 min), watched checks
 /// (every 15 min + on webhooks).
-pub fn spawn_jobs(state: Shared) {
+/// The in-memory things that outlive a change of settings: rooms, device transfers, sign-ins
+/// in progress, attempt limits, the saved settings and the switch signal.
+#[derive(Clone, Default)]
+pub struct Lasting {
+    pub transfers: Arc<crate::transfer::Transfers>,
+    pub rooms: Arc<crate::together::Rooms>,
+    pub passkeys: Arc<crate::passkey::Flows>,
+    pub oidc: Arc<crate::oidc::Oidc>,
+    pub limits: Arc<Limits>,
+    pub stored: Arc<tokio::sync::Mutex<crate::settings::Stored>>,
+    pub reload: Arc<Notify>,
+}
+
+impl State {
+    pub fn with_lasting(mut self, l: &Lasting) -> Self {
+        self.transfers = l.transfers.clone();
+        self.rooms = l.rooms.clone();
+        self.passkeys = l.passkeys.clone();
+        self.oidc = l.oidc.clone();
+        self.limits = l.limits.clone();
+        self.stored = l.stored.clone();
+        self.reload = l.reload.clone();
+        self
+    }
+
+    /// Stops these background jobs between two Maintainerr writes, never in the middle of one.
+    pub async fn stop_jobs(&self, jobs: Vec<tokio::task::JoinHandle<()>>) {
+        let _between_writes = self.write_lock.lock().await;
+        for j in jobs {
+            j.abort();
+        }
+    }
+}
+
+/// Starts the background jobs; the handles stop them when the settings change.
+pub fn spawn_jobs(state: Shared) -> Vec<tokio::task::JoinHandle<()>> {
     if !state.config.keep_on() {
         // No Maintainerr: nothing to read, apply or release. The apps hide Leaving soon.
         state
             .maintainerr_state
             .store(2, std::sync::atomic::Ordering::Relaxed);
-        return;
+        return vec![];
     }
     let s = state.clone();
-    tokio::spawn(async move {
+    let mut jobs = vec![];
+    jobs.push(tokio::spawn(async move {
         loop {
             let ok = match s.sync().await {
                 Ok(n) => {
@@ -1012,24 +1048,25 @@ pub fn spawn_jobs(state: Shared) {
                 .store(if ok { 1 } else { 2 }, std::sync::atomic::Ordering::Relaxed);
             tokio::time::sleep(Duration::from_secs(s.config.sync_minutes.max(1) * 60)).await;
         }
-    });
+    }));
     let s = state.clone();
-    tokio::spawn(async move {
+    jobs.push(tokio::spawn(async move {
         loop {
             if let Err(e) = s.reconcile_once().await {
                 eprintln!("[keep] reconcile failed: {e}");
             }
             let _ = tokio::time::timeout(Duration::from_secs(300), s.reconcile.notified()).await;
         }
-    });
-    tokio::spawn(async move {
+    }));
+    jobs.push(tokio::spawn(async move {
         loop {
             let _ = tokio::time::timeout(Duration::from_secs(900), state.watch.notified()).await;
             if let Err(e) = state.check_watched().await {
                 eprintln!("[keep] watched check failed: {e}");
             }
         }
-    });
+    }));
+    jobs
 }
 
 /// Admin stats: who keeps what forever, and how much of it someone else keeps too.

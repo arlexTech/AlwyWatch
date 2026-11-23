@@ -644,6 +644,16 @@ impl KeepClient {
         .await
     }
 
+    /// Media sign-in: a session of my AlwyWatch account for this device (made if I have none),
+    /// unless I turned media sign-ins off for it (403).
+    pub async fn account_session(&self, device: &str) -> Result<account::SignedIn> {
+        net::send_json(
+            self.req(Method::POST, "/account/session")
+                .json(&serde_json::json!({ "device": device })),
+        )
+        .await
+    }
+
     /// Media sign-in: adds a username and password to me (signing in without the media server).
     pub async fn account_claim(
         &self,
