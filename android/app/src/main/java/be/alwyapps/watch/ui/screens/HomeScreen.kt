@@ -481,7 +481,10 @@ private fun HomeTopBar(
                 .size(38.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
                 .background(Brush.linearGradient(listOf(be.alwyapps.watch.ui.Accent, Color(0xFFFF6A3D))))
-                .clickable { if (profile != null) switching = true else nav.push(Route.Settings) },
+                .clickable(
+                    onClickLabel = if (profile != null) "Switch profile, settings" else "Settings",
+                    role = androidx.compose.ui.semantics.Role.Button,
+                ) { if (profile != null) switching = true else nav.push(Route.Settings) },
             contentAlignment = Alignment.Center,
         ) {
             Text(
