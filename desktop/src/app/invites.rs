@@ -234,7 +234,7 @@ impl App {
             )
         };
         let email = Some(ui.get_invite_email().trim().to_owned()).filter(|e| mail && !e.is_empty());
-        let note = Some(ui.get_invite_note().to_string()).filter(|_| email.is_some());
+        let note = email.is_some().then(|| ui.get_invite_note().to_string());
         let days = i64::from(ui.get_invite_days().max(1));
         let uses = if email.is_some() {
             1
