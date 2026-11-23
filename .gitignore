@@ -30,3 +30,6 @@ android/.kotlin/
 .idea/
 /dist/
 web/dist/
+
+# Private notes (real hostnames)
+CLAUDE.local.md
