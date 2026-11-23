@@ -623,16 +623,6 @@ impl Db {
         )? > 0)
     }
 
-    /// Ends the invitations still waiting for this email (a new one replaces them).
-    pub fn revoke_invites_to(&self, email: &str) -> rusqlite::Result<()> {
-        self.c().execute(
-            "UPDATE invites SET uses_left = 0, expires = MIN(expires, ?2)
-             WHERE lower(email) = lower(?1) AND uses_left > 0",
-            params![email, now() - 1],
-        )?;
-        Ok(())
-    }
-
     /// Uses one sign-up of `code`; false when unknown, expired or used up.
     #[cfg(test)]
     pub fn use_invite(&self, code: &str) -> rusqlite::Result<bool> {
@@ -649,6 +639,39 @@ impl Db {
             params![sha256_hex(code.trim().as_bytes()), now(), username],
         )?;
         Ok(n > 0)
+    }
+
+    /// Gives back the use `username` took (the sign-up failed after taking it).
+    pub fn unuse_invite(&self, code: &str, username: &str) -> rusqlite::Result<()> {
+        let c = self.c();
+        let hash = sha256_hex(code.trim().as_bytes());
+        let used: Option<String> = c
+            .query_row(
+                "SELECT used_by FROM invites WHERE code_hash = ?1",
+                [&hash],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(used) = used else { return Ok(()) };
+        let mut names: Vec<&str> = used.split(',').filter(|u| !u.is_empty()).collect();
+        if let Some(i) = names.iter().rposition(|u| *u == username) {
+            names.remove(i);
+        }
+        c.execute(
+            "UPDATE invites SET uses_left = uses_left + 1, used_by = ?2 WHERE code_hash = ?1",
+            params![hash, names.join(",")],
+        )?;
+        Ok(())
+    }
+
+    /// Ends the invitations still waiting for this email, except `keep` (the one just sent).
+    pub fn revoke_other_invites_to(&self, email: &str, keep: i64) -> rusqlite::Result<()> {
+        self.c().execute(
+            "UPDATE invites SET uses_left = 0, expires = MIN(expires, ?3)
+             WHERE lower(email) = lower(?1) AND uses_left > 0 AND rowid != ?2",
+            params![email, keep, now() - 1],
+        )?;
+        Ok(())
     }
 
     /// The Jellyfin user an admin's last invitation to `server` copied access from.

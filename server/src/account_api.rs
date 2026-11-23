@@ -215,21 +215,18 @@ pub async fn register(
     if s.limits.account_signups.blocked(&ip) {
         return Err(too_many());
     }
-    let username = r.username.trim();
-    accounts::check_username(username).map_err(account_err)?;
+    let username = r.username.trim().to_owned();
+    accounts::check_username(&username).map_err(account_err)?;
     accounts::check_password(&r.password).map_err(account_err)?;
-    // Before the invitation is used: a taken name must not cost one of its sign-ups.
-    if s.db
-        .account_by_username(username)
-        .map_err(internal)?
-        .is_some()
-    {
-        s.limits.account_signups.hit(&ip);
-        return Err(account_err(AccountError::UsernameTaken));
-    }
-    // An invitation is checked first, used only once everything else worked.
-    let code = r.invite.as_deref().map(str::trim).filter(|c| !c.is_empty());
-    let invite = match code {
+    // Whether this person may sign up at all comes first: nothing about which usernames exist
+    // is said to someone who can't.
+    let code = r
+        .invite
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(str::to_owned);
+    let invite = match &code {
         Some(c) => s.db.invite(c).map_err(internal)?,
         None => None,
     };
@@ -250,44 +247,90 @@ pub async fn register(
         _ => {}
     }
     s.limits.account_signups.hit(&ip);
-    // Hashed only now: a request without a valid invitation costs no password hashing.
-    let hash = accounts::hash_password(&r.password).map_err(account_err)?;
-    // The Jellyfin login first: a taken name there stops everything before anything is made.
-    let jellyfin = match &invite {
-        Some(i) => crate::invites::make_jellyfin_login(&s, i, username, &r.password).await?,
-        None => None,
-    };
-    let undo_jellyfin = async |s: &Shared| {
-        if let Some((server, key, id)) = &jellyfin {
-            let _ = crate::jellyfin_admin::Jellyfin::new(&s.http, server, key)
-                .delete(id)
-                .await;
-        }
-    };
-    if let Some(c) = code
-        && invite.is_some()
-        && !s.db.use_invite_for(c, username).map_err(internal)?
+    if s.db
+        .account_by_username(&username)
+        .map_err(internal)?
+        .is_some()
     {
-        undo_jellyfin(&s).await;
+        return Err(account_err(AccountError::UsernameTaken));
+    }
+    // From here on it runs to its end even if the client goes away: a Jellyfin login made
+    // halfway, with nobody left to finish or undo it, must never happen.
+    let task = tokio::spawn(make_account(
+        s.clone(),
+        username,
+        r.password,
+        code.filter(|_| invite.is_some()),
+        invite,
+        r.device,
+    ));
+    task.await.map_err(internal)?
+}
+
+async fn make_account(
+    s: Shared,
+    username: String,
+    password: String,
+    code: Option<String>,
+    invite: Option<accounts::InviteRow>,
+    device: String,
+) -> Result<Json<SignedIn>, Error> {
+    // The invitation is taken first (only one sign-up can have its last use), and given back
+    // if anything below fails.
+    if let Some(c) = &code
+        && !s.db.use_invite_for(c, &username).map_err(internal)?
+    {
         return Err(Error(
             StatusCode::FORBIDDEN,
             "this invitation is unknown, used up or expired".into(),
         ));
     }
+    let give_back = |s: &Shared| {
+        if let Some(c) = &code
+            && let Err(e) = s.db.unuse_invite(c, &username)
+        {
+            eprintln!("[invite] could not give an invitation back: {e}");
+        }
+    };
+    let pw = password.clone();
+    let hash = match tokio::task::spawn_blocking(move || accounts::hash_password(&pw)).await {
+        Ok(Ok(h)) => h,
+        Ok(Err(e)) => {
+            give_back(&s);
+            return Err(account_err(e));
+        }
+        Err(e) => {
+            give_back(&s);
+            return Err(internal(e));
+        }
+    };
+    let jellyfin = match &invite {
+        Some(i) => match crate::invites::make_jellyfin_login(&s, i, &username, &password).await {
+            Ok(j) => j,
+            Err(e) => {
+                give_back(&s);
+                return Err(e);
+            }
+        },
+        None => None,
+    };
     let a = match s
         .db
-        .create_account(Some(username), Some(&hash), None, username)
+        .create_account(Some(&username), Some(&hash), None, &username)
     {
         Ok(a) => a,
         Err(e) => {
-            undo_jellyfin(&s).await;
+            if let Some((server, key, id)) = &jellyfin {
+                crate::invites::remove_jellyfin_login(&s, server, key, id).await;
+            }
+            give_back(&s);
             return Err(account_err(e));
         }
     };
     s.db.log(&a.person, "account", "created with a password");
     let mut new_login = None;
     if let Some((server, key, _)) = &jellyfin {
-        match crate::invites::join_jellyfin_login(&s, server, key, &a.person, username, &r.password)
+        match crate::invites::join_jellyfin_login(&s, server, key, &a.person, &username, &password)
             .await
         {
             Ok(()) => {
@@ -297,18 +340,20 @@ pub async fn register(
                     &format!("Jellyfin login made on {}", server.name),
                 );
             }
+            // The login exists with its access; the app signs in to it right after, which
+            // links it like any sign-in.
             Err(e) => eprintln!("[invite] the new Jellyfin login could not join its account: {e}"),
         }
         new_login = Some(keep_service::account::NewJellyfinLogin {
             server_id: server.id.clone(),
             name: server.name.clone(),
             url: server.public_url.clone(),
-            username: username.to_owned(),
+            username: username.clone(),
         });
     }
     // Linking may have changed the account's person: read it again.
     let a = s.db.account(&a.id).map_err(internal)?.unwrap_or(a);
-    let Json(mut out) = signed_in(&s, &a, &r.device)?;
+    let Json(mut out) = signed_in(&s, &a, &device)?;
     out.jellyfin = new_login;
     Ok(Json(out))
 }

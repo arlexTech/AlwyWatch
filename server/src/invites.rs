@@ -65,12 +65,43 @@ pub async fn create(
         },
     );
     let jellyfin = r.jellyfin.clone().filter(|j| !j.is_empty());
+    // A leaked link must not make dozens of Jellyfin logins.
+    let uses = if jellyfin.is_some() {
+        uses.min(10)
+    } else {
+        uses
+    };
     if let Some(j) = &jellyfin
         && jellyfin_target(&s, j).is_none()
     {
         return Err(bad(
             "this Jellyfin server has no API key: add it again in Server settings",
         ));
+    }
+    let like = r
+        .like
+        .clone()
+        .filter(|l| !l.is_empty() && jellyfin.is_some());
+    // The access copied must be a plain user's on that server (never an admin's).
+    if let (Some(l), Some((server, key))) = (
+        &like,
+        jellyfin.as_deref().and_then(|j| jellyfin_target(&s, j)),
+    ) {
+        let users = Jellyfin::new(&s.http, server, key)
+            .users()
+            .await
+            .map_err(|e| {
+                eprintln!("[invite] Jellyfin: {e}");
+                Error(
+                    StatusCode::BAD_GATEWAY,
+                    format!("{} can't be reached right now", server.name),
+                )
+            })?;
+        if !users.iter().any(|u| &u.id == l && u.is_regular()) {
+            return Err(bad(
+                "choose a Jellyfin user who is not an administrator to copy access from",
+            ));
+        }
     }
     let note: Option<String> = r
         .note
@@ -102,17 +133,10 @@ pub async fn create(
             Some(m)
         }
     };
-    if let Some(e) = &email {
-        // A new invitation to the same person replaces the one still waiting.
-        s.db.revoke_invites_to(e).map_err(internal)?;
-    }
     let extra = InviteExtra {
         email: email.clone(),
         jellyfin: jellyfin.clone(),
-        like_user: r
-            .like
-            .clone()
-            .filter(|l| !l.is_empty() && jellyfin.is_some()),
+        like_user: like,
         note: note.clone(),
     };
     let (code, row) =
@@ -147,6 +171,8 @@ pub async fn create(
                 format!("The email could not be sent ({e}). Check Server settings → Email."),
             ));
         }
+        // Sent: it replaces any invitation still waiting for this person.
+        let _ = s.db.revoke_other_invites_to(to, row);
     }
     s.db.log(
         &id.user_key,
@@ -454,14 +480,47 @@ pub async fn make_jellyfin_login<'a>(
             format!("this username is taken on {}: choose another", server.name),
         ));
     }
+    // The access to copy must still be a plain user's; otherwise nothing is made (a new
+    // Jellyfin login with the defaults would see every library).
+    let like = match &invite.extra.like_user {
+        Some(l) => match users.iter().find(|u| &u.id == l) {
+            Some(u) if u.is_regular() => Some(l),
+            _ => {
+                return Err(Error(
+                    StatusCode::CONFLICT,
+                    "this invitation's Jellyfin access can't be given any more: ask for a new one"
+                        .into(),
+                ));
+            }
+        },
+        None => None,
+    };
     let new = jf.create(username, password).await.map_err(unreachable)?;
-    if let Some(like) = &invite.extra.like_user
-        && users.iter().any(|u| &u.id == like)
+    if let Some(like) = like
         && let Err(e) = jf.copy_policy(like, &new).await
     {
         eprintln!("[invite] could not copy a Jellyfin user's access: {e}");
+        remove_jellyfin_login(s, server, key, &new).await;
+        return Err(unreachable(e));
     }
     Ok(Some((server, key, new)))
+}
+
+/// Deletes a Jellyfin login an unfinished sign-up made (retried: it must not stay).
+pub async fn remove_jellyfin_login(
+    s: &Shared,
+    server: &crate::config::ServerConf,
+    key: &str,
+    id: &str,
+) {
+    let jf = Jellyfin::new(&s.http, server, key);
+    for wait in [0, 2, 10] {
+        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+        match jf.delete(id).await {
+            Ok(()) | Err(net::Error::Status { status: 404 }) => return,
+            Err(e) => eprintln!("[invite] could not delete an unfinished Jellyfin login: {e}"),
+        }
+    }
 }
 
 /// After the account exists: the Jellyfin login joins it (one person), signing in once to

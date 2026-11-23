@@ -8,7 +8,7 @@ use axum::http::{Request, StatusCode};
 use keep_service::*;
 use serde_json::{Value, json};
 use tower::ServiceExt;
-use wiremock::matchers::{body_json, header, header_regex, method, path, query_param};
+use wiremock::matchers::{body_json, header, header_regex, method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use crate::config::{Config, Secrets};
@@ -3805,13 +3805,28 @@ async fn an_invitation_makes_the_jellyfin_login_too() {
         })))
         .mount(&e.jf)
         .await;
-    // bob's access, never admin, hidden from the login screen.
+    Mock::given(method("GET"))
+        .and(path("/Users/jn"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Id": "jn",
+            "Policy": {"EnableAllFolders": true, "AuthenticationProviderId": "auth-default",
+                "PasswordResetProviderId": "reset-default"}
+        })))
+        .mount(&e.jf)
+        .await;
+    // bob's access, never admin, hidden from the login screen, no rights over others or the
+    // media, with the providers Jellyfin requires.
     Mock::given(method("POST"))
         .and(path("/Users/jn/Policy"))
         .and(body_json(json!({
             "IsAdministrator": false, "IsDisabled": false, "IsHidden": true,
             "InvalidLoginAttemptCount": 0, "EnableAllFolders": false, "EnabledFolders": ["kids"],
-            "EnableAllDevices": true, "EnabledDevices": []
+            "EnableAllDevices": true, "EnabledDevices": [],
+            "EnableContentDeletion": false, "EnableContentDeletionFromFolders": [],
+            "EnableRemoteControlOfOtherUsers": false, "EnableSharedDeviceControl": false,
+            "EnableCollectionManagement": false, "EnableSubtitleManagement": false,
+            "EnableLiveTvManagement": false,
+            "AuthenticationProviderId": "auth-default", "PasswordResetProviderId": "reset-default"
         })))
         .respond_with(ResponseTemplate::new(204))
         .expect(1)
@@ -3850,6 +3865,18 @@ async fn an_invitation_makes_the_jellyfin_login_too() {
         )
         .await;
     assert_eq!(st, StatusCode::NOT_IMPLEMENTED);
+
+    // An administrator's access can't be copied.
+    let (st, _) = e
+        .call(
+            "POST",
+            "/v1/account/invites",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"jellyfin": "jfsrv", "like": "ja"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
 
     let (st, inv) = e
         .call(
@@ -3975,4 +4002,78 @@ async fn only_admins_see_the_server_settings_and_secrets_stay_hidden() {
     // Setup is over once there is a server.
     let (_, _, setup) = e.anon("GET", "/v1/setup", None, None).await;
     assert_eq!(setup["needed"], false);
+}
+
+#[tokio::test]
+async fn a_jellyfin_login_whose_access_cant_be_set_is_deleted_and_the_invitation_given_back() {
+    let e = env().await;
+    Mock::given(method("GET"))
+        .and(path("/Users"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"Id": "jb", "Name": "bob", "Policy": {"IsAdministrator": false, "IsDisabled": false}}
+        ])))
+        .mount(&e.jf)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Users/New"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"Id": "jn", "Name": "newbie"})),
+        )
+        .mount(&e.jf)
+        .await;
+    Mock::given(method("GET"))
+        .and(path_regex("^/Users/(jb|jn)$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Policy": {}})))
+        .mount(&e.jf)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Users/jn/Policy"))
+        .respond_with(ResponseTemplate::new(400))
+        .mount(&e.jf)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Users/jn"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&e.jf)
+        .await;
+    let (st, inv) = e
+        .call(
+            "POST",
+            "/v1/account/invites",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"jellyfin": "jfsrv", "like": "jb"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{inv}");
+    let code = inv["code"].as_str().unwrap();
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/register",
+            None,
+            Some(json!({"username": "newbie", "password": "password1", "invite": code})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::BAD_GATEWAY);
+    // No account was made, and the invitation still works.
+    let (st, _, _) = e
+        .anon(
+            "GET",
+            &format!("/v1/account/invites/check/{code}"),
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/login",
+            None,
+            Some(json!({"username": "newbie", "password": "password1"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
 }

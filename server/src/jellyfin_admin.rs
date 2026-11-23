@@ -75,26 +75,52 @@ impl<'a> Jellyfin<'a> {
         Ok(u.id)
     }
 
-    /// Gives `to` the same access as `from` (libraries, ratings, downloads…), never admin.
+    /// Gives `to` the same access as `from` (libraries, ratings, downloads…), never admin and
+    /// never rights over other people or the media itself.
     pub async fn copy_policy(&self, from: &str, to: &str) -> Result<(), net::Error> {
-        let u: Value = net::send_json(self.req(
-            Method::GET,
-            &format!("/Users/{}", net::percent_encode(from)),
-        ))
-        .await?;
-        let Some(mut p) = u.get("Policy").cloned() else {
-            return Ok(());
+        let get = async |id: &str| -> Result<Value, net::Error> {
+            let u: Value = net::send_json(
+                self.req(Method::GET, &format!("/Users/{}", net::percent_encode(id))),
+            )
+            .await?;
+            u.get("Policy")
+                .cloned()
+                .filter(Value::is_object)
+                .ok_or(net::Error::Status { status: 502 })
         };
-        if let Some(o) = p.as_object_mut() {
-            o.insert("IsAdministrator".into(), false.into());
-            o.insert("IsDisabled".into(), false.into());
-            o.insert("IsHidden".into(), true.into());
-            o.insert("InvalidLoginAttemptCount".into(), 0.into());
-            // Their own provider ids and devices, not the template's.
-            o.remove("AuthenticationProviderId");
-            o.remove("PasswordResetProviderId");
-            o.insert("EnableAllDevices".into(), true.into());
-            o.insert("EnabledDevices".into(), Value::Array(vec![]));
+        let mut p = get(from).await?;
+        let own = get(to).await?;
+        let o = p
+            .as_object_mut()
+            .ok_or(net::Error::Status { status: 502 })?;
+        for (k, v) in [
+            ("IsAdministrator", false),
+            ("IsDisabled", false),
+            ("IsHidden", true),
+            ("EnableContentDeletion", false),
+            ("EnableRemoteControlOfOtherUsers", false),
+            ("EnableSharedDeviceControl", false),
+            ("EnableCollectionManagement", false),
+            ("EnableSubtitleManagement", false),
+            ("EnableLiveTvManagement", false),
+            ("EnableAllDevices", true),
+        ] {
+            o.insert(k.into(), v.into());
+        }
+        o.insert("InvalidLoginAttemptCount".into(), 0.into());
+        o.insert(
+            "EnableContentDeletionFromFolders".into(),
+            Value::Array(vec![]),
+        );
+        o.insert("EnabledDevices".into(), Value::Array(vec![]));
+        // Required by Jellyfin; the new user's own (the built-in providers).
+        for k in ["AuthenticationProviderId", "PasswordResetProviderId"] {
+            if let Some(v) = own
+                .get(k)
+                .filter(|v| v.as_str().is_some_and(|s| !s.is_empty()))
+            {
+                o.insert(k.into(), v.clone());
+            }
         }
         send_empty(
             self.req(
