@@ -495,8 +495,9 @@ Server environment: `ALWYWATCH_PUBLIC_URL` (needed for passkeys and Pocket ID),
 | POST | `/v1/account/passkeys/register/start` · `/finish` | session | → `{flow_id, options}` · `{flow_id, name?, credential}` |
 | POST | `/v1/account/passkeys/login/start` · `/finish` | anyone | → `{flow_id, options}` · `{flow_id, device, credential}` → `{token, account}` |
 | PUT · DELETE | `/v1/account/passkeys/{id}` | session | rename `{name}` · remove |
-| GET | `/v1/account/oidc/start?next=` | browser | → Pocket ID → `/v1/account/oidc/callback` → `/account/signed-in#token=…&next=…` |
+| GET | `/v1/account/oidc/start?next=` | browser | → Pocket ID → `/v1/account/oidc/callback` → `/account/signed-in#token=…&next=…`. `start` sets an `aw_oidc` cookie (HttpOnly, SameSite=Lax) and the callback refuses to go on without it: a flow only ends in the browser that started it |
 | POST | `/v1/account/oidc/ticket` | session | → `{ticket}`; `start?ticket=` links Pocket ID to that account |
+| POST | `/v1/account/oidc/link` | session | `{id}` from `/account?link=<id>` (where the callback lands when linking): the account confirms, only then is Pocket ID linked. 403 from another account, 400 expired |
 | DELETE | `/v1/account/oidc` | session | unlinks Pocket ID |
 
 * Usernames: 3–32 of `A-Z a-z 0-9 . _ -`, unique ignoring case. Passwords: 8–256

@@ -215,7 +215,16 @@ pub async fn register(
     }
     let username = r.username.trim();
     accounts::check_username(username).map_err(account_err)?;
-    let hash = accounts::hash_password(&r.password).map_err(account_err)?;
+    accounts::check_password(&r.password).map_err(account_err)?;
+    // Before the invitation is used: a taken name must not cost one of its sign-ups.
+    if s.db
+        .account_by_username(username)
+        .map_err(internal)?
+        .is_some()
+    {
+        s.limits.account_signups.hit(&ip);
+        return Err(account_err(AccountError::UsernameTaken));
+    }
     match s.config.accounts.registration {
         Registration::Closed => {
             return Err(Error(
@@ -236,6 +245,8 @@ pub async fn register(
         Registration::Open => {}
     }
     s.limits.account_signups.hit(&ip);
+    // Hashed only now: a request without a valid invitation costs no password hashing.
+    let hash = accounts::hash_password(&r.password).map_err(account_err)?;
     let a =
         s.db.create_account(Some(username), Some(&hash), None, username)
             .map_err(account_err)?;
@@ -751,7 +762,14 @@ pub async fn oidc_start(State(s): State<Shared>, Query(q): Query<OidcStart>) -> 
         },
     };
     match s.oidc.start(&s.http, cfg, intent).await {
-        Ok(url) => Redirect::to(&url).into_response(),
+        Ok((url, browser)) => (
+            [(
+                axum::http::header::SET_COOKIE,
+                crate::oidc::cookie(&browser),
+            )],
+            Redirect::to(&url),
+        )
+            .into_response(),
         Err(e) => web_error(&e.to_string()).into_response(),
     }
 }
@@ -779,7 +797,11 @@ pub struct OidcCallback {
 }
 
 /// `GET /v1/account/oidc/callback`: back from Pocket ID; on to the web app.
-pub async fn oidc_callback(State(s): State<Shared>, Query(q): Query<OidcCallback>) -> Redirect {
+pub async fn oidc_callback(
+    State(s): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<OidcCallback>,
+) -> Redirect {
     let Some(cfg) = s.config.accounts.pocketid.as_ref() else {
         return web_error("Pocket ID is not set up on this server");
     };
@@ -789,7 +811,12 @@ pub async fn oidc_callback(State(s): State<Shared>, Query(q): Query<OidcCallback
     let (Some(code), Some(state)) = (q.code, q.state) else {
         return web_error("Pocket ID's answer was incomplete");
     };
-    let (intent, user) = match s.oidc.finish(&s.http, cfg, &code, &state).await {
+    let browser = headers
+        .get_all(axum::http::header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find_map(crate::oidc::cookie_of);
+    let (intent, user) = match s.oidc.finish(&s.http, cfg, &code, &state, browser).await {
         Ok(x) => x,
         Err(e) => return web_error(&e.to_string()),
     };
@@ -805,11 +832,12 @@ pub async fn oidc_callback(State(s): State<Shared>, Query(q): Query<OidcCallback
             if found.as_deref().is_some_and(|a| a != account) {
                 return web_error("this Pocket ID is already used by another account");
             }
-            if let Err(e) = s.db.link_oidc(&cfg.issuer, &user.sub, &account) {
-                eprintln!("[account] {e}");
-                return web_error("something went wrong");
-            }
-            to_web("/account?linked=pocketid")
+            // Not linked yet: the account's own session confirms (`oidc_link`), so being sent
+            // through this flow by someone else links nothing to their account.
+            to_web(&format!(
+                "/account?link={}",
+                s.oidc.hold_link(&account, &user.sub)
+            ))
         }
         crate::oidc::Intent::Login { next } => {
             let account = match found {
@@ -854,6 +882,48 @@ pub async fn oidc_callback(State(s): State<Shared>, Query(q): Query<OidcCallback
             }
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct OidcLink {
+    id: String,
+}
+
+/// `POST /v1/account/oidc/link`: the account confirms the Pocket ID it just came back with
+/// (`/account?link=<id>`).
+pub async fn oidc_link(
+    State(s): State<Shared>,
+    session: Session,
+    Json(r): Json<OidcLink>,
+) -> Result<StatusCode, Error> {
+    let cfg = s.config.accounts.pocketid.as_ref().ok_or(Error(
+        StatusCode::NOT_IMPLEMENTED,
+        "Pocket ID is not set up on this server".into(),
+    ))?;
+    let expired = || {
+        Error(
+            StatusCode::BAD_REQUEST,
+            "this link has expired, try again".into(),
+        )
+    };
+    let (account, sub) = s.oidc.take_link(&r.id).ok_or_else(expired)?;
+    if account != session.account.id {
+        return Err(Error(
+            StatusCode::FORBIDDEN,
+            "this Pocket ID link was started from another account".into(),
+        ));
+    }
+    let found = s.db.oidc_account(&cfg.issuer, &sub).map_err(internal)?;
+    if found.as_deref().is_some_and(|a| a != account) {
+        return Err(Error(
+            StatusCode::CONFLICT,
+            "this Pocket ID is already used by another account".into(),
+        ));
+    }
+    s.db.link_oidc(&cfg.issuer, &sub, &account)
+        .map_err(internal)?;
+    s.db.log(&session.account.person, "account", "linked Pocket ID");
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `DELETE /v1/account/oidc`: unlinks Pocket ID.

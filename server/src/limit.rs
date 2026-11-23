@@ -69,9 +69,21 @@ pub fn client(headers: &HeaderMap) -> String {
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.rsplit(',').next())
-        .map(|v| v.trim().to_owned())
+        .map(|v| network(v.trim()))
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| "direct".into())
+}
+
+/// What one subscriber holds: an IPv4 address, or the /64 of an IPv6 one (a single line gets
+/// billions of addresses there, each of which would otherwise count on its own).
+fn network(addr: &str) -> String {
+    match addr.parse::<std::net::Ipv6Addr>() {
+        Ok(v6) if v6.to_ipv4_mapped().is_none() => {
+            let s = v6.segments();
+            format!("{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
+        }
+        _ => addr.to_owned(),
+    }
 }
 
 #[cfg(test)]
@@ -95,5 +107,10 @@ mod tests {
         assert_eq!(client(&h), "direct");
         h.insert("x-forwarded-for", "1.2.3.4, 5.6.7.8".parse().unwrap());
         assert_eq!(client(&h), "5.6.7.8");
+        h.insert(
+            "x-forwarded-for",
+            "2001:db8:1:2:aaaa:bbbb:cccc:dddd".parse().unwrap(),
+        );
+        assert_eq!(client(&h), "2001:db8:1:2::/64", "one IPv6 line, one key");
     }
 }

@@ -574,6 +574,14 @@ impl KeepClient {
         Ok(t.ticket)
     }
 
+    /// Account session: confirms the Pocket ID the browser came back with
+    /// (`/account?link=<id>`); only then is it linked.
+    pub async fn oidc_link(&self, id: &str) -> Result<()> {
+        let body = serde_json::json!({ "id": id });
+        net::send(self.req(Method::POST, "/account/oidc/link").json(&body)).await?;
+        Ok(())
+    }
+
     pub async fn oidc_unlink(&self) -> Result<()> {
         net::send(self.req(Method::DELETE, "/account/oidc")).await?;
         Ok(())

@@ -3040,6 +3040,25 @@ async fn a_person_whose_canonical_server_is_no_longer_served_keeps_working() {
 
 impl Env {
     /// A request without a media sign-in: `bearer` is an account session (or nothing).
+    /// The browser coming back from Pocket ID, with the cookie it got at the start (or not).
+    async fn callback(
+        &self,
+        query: &str,
+        cookie: Option<&str>,
+    ) -> (StatusCode, axum::http::HeaderMap) {
+        let mut req = Request::builder()
+            .method("GET")
+            .uri(format!("/v1/account/oidc/callback?{query}"));
+        if let Some(c) = cookie {
+            req = req.header("cookie", format!("theme=dark; {c}"));
+        }
+        let res = crate::api::router(self.state.clone())
+            .oneshot(req.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        (res.status(), res.headers().clone())
+    }
+
     async fn anon(
         &self,
         method: &str,
@@ -3160,6 +3179,16 @@ async fn accounts_sign_up_with_an_invitation_and_sign_in() {
         )
         .await;
     assert_eq!(st, StatusCode::CONFLICT);
+    // The taken name did not cost the invitation its one sign-up.
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/register",
+            None,
+            Some(json!({"username": "sam2", "password": "password1", "invite": inv["code"]})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
     let (st, _, _) = e
         .anon(
             "POST",
@@ -3376,6 +3405,13 @@ async fn pocket_id_creates_the_account_then_signs_it_in() {
             .anon("GET", "/v1/account/oidc/start?next=/q/123456", None, None)
             .await;
         assert_eq!(st, StatusCode::SEE_OTHER);
+        let cookie = h["set-cookie"]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
         let to = h["location"].to_str().unwrap().to_owned();
         assert!(to.starts_with(&format!("{base}/authorize?")), "{to}");
         assert!(to.contains("code_challenge_method=S256"));
@@ -3387,13 +3423,8 @@ async fn pocket_id_creates_the_account_then_signs_it_in() {
             .next()
             .unwrap()
             .to_owned();
-        let (st, h, _) = e
-            .anon(
-                "GET",
-                &format!("/v1/account/oidc/callback?code=c&state={state}"),
-                None,
-                None,
-            )
+        let (st, h) = e
+            .callback(&format!("code=c&state={state}"), Some(&cookie))
             .await;
         assert_eq!(st, StatusCode::SEE_OTHER);
         let back = h["location"].to_str().unwrap().to_owned();
@@ -3408,26 +3439,130 @@ async fn pocket_id_creates_the_account_then_signs_it_in() {
             .unwrap()
             .to_owned();
         let (_, _, me) = e.anon("GET", "/v1/account", Some(&token), None).await;
-        me
+        (me, token)
     };
-    let first = sign_in().await;
+    let (first, pat_token) = sign_in().await;
     assert_eq!(
         (first["username"].as_str(), first["name"].as_str()),
         (Some("pat"), Some("Pat"))
     );
     assert_eq!(first["pocketid"], true);
-    let again = sign_in().await;
+    let (again, _) = sign_in().await;
     assert_eq!(again["id"], first["id"], "the same account the second time");
 
-    // A replayed state is refused.
-    let (_, h, _) = e
+    // A callback in another browser than the one that started (a link made by someone else)
+    // signs nobody in, and its state is spent.
+    let (_, h, _) = e.anon("GET", "/v1/account/oidc/start", None, None).await;
+    let cookie = h["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let to = h["location"].to_str().unwrap();
+    let state = to
+        .split("state=")
+        .nth(1)
+        .unwrap()
+        .split('&')
+        .next()
+        .unwrap()
+        .to_owned();
+    let (_, h) = e.callback(&format!("code=c&state={state}"), None).await;
+    let back = h["location"].to_str().unwrap();
+    assert!(back.starts_with("/account?error="), "{back}");
+    assert!(back.contains("another%20browser"), "{back}");
+    let (_, h) = e
+        .callback(&format!("code=c&state={state}"), Some(&cookie))
+        .await;
+    assert!(
+        h["location"]
+            .to_str()
+            .unwrap()
+            .starts_with("/account?error=")
+    );
+
+    // Linking: back from Pocket ID nothing is linked until that account's session confirms.
+    let lee = e.sign_up("lee").await;
+    let pat = pat_token.clone();
+    let link_id = |who: String| {
+        let e = &e;
+        async move {
+            let (_, _, t) = e
+                .anon("POST", "/v1/account/oidc/ticket", Some(&who), None)
+                .await;
+            let (_, h, _) = e
+                .anon(
+                    "GET",
+                    &format!(
+                        "/v1/account/oidc/start?ticket={}",
+                        t["ticket"].as_str().unwrap()
+                    ),
+                    None,
+                    None,
+                )
+                .await;
+            let cookie = h["set-cookie"]
+                .to_str()
+                .unwrap()
+                .split(';')
+                .next()
+                .unwrap()
+                .to_owned();
+            let to = h["location"].to_str().unwrap();
+            let state = to
+                .split("state=")
+                .nth(1)
+                .unwrap()
+                .split('&')
+                .next()
+                .unwrap()
+                .to_owned();
+            let (_, h) = e
+                .callback(&format!("code=c&state={state}"), Some(&cookie))
+                .await;
+            let back = h["location"].to_str().unwrap().to_owned();
+            back.strip_prefix("/account?link=")
+                .map(str::to_owned)
+                .unwrap_or(back)
+        }
+    };
+    // Pat's Pocket ID is already Pat's account's: Lee's flow is refused outright.
+    assert!(link_id(lee.clone()).await.starts_with("/account?error="));
+    // Pat links again from their own account; someone else's session cannot confirm it.
+    let id = link_id(pat.clone()).await;
+    let (st, _, _) = e
         .anon(
-            "GET",
-            "/v1/account/oidc/callback?code=c&state=unknown",
-            None,
-            None,
+            "POST",
+            "/v1/account/oidc/link",
+            Some(&lee),
+            Some(json!({"id": id})),
         )
         .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/oidc/link",
+            Some(&pat),
+            Some(json!({"id": id})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "a link id works once");
+    let id = link_id(pat.clone()).await;
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/oidc/link",
+            Some(&pat),
+            Some(json!({"id": id})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+
+    // A replayed state is refused.
+    let (_, h) = e.callback("code=c&state=unknown", None).await;
     assert!(
         h["location"]
             .to_str()

@@ -111,6 +111,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/account/oidc", delete(account_api::oidc_unlink))
         .route("/v1/account/oidc/start", get(account_api::oidc_start))
         .route("/v1/account/oidc/ticket", post(account_api::oidc_ticket))
+        .route("/v1/account/oidc/link", post(account_api::oidc_link))
         .route("/v1/account/oidc/callback", get(account_api::oidc_callback))
         .fallback(crate::web::serve)
         .with_state(state)

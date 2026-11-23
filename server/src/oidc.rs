@@ -4,6 +4,12 @@
 //! issuer's userinfo endpoint over TLS with the access token just received from its token
 //! endpoint (no JWT signature to check, so no JWT crate).
 //!
+//! A flow belongs to the browser that started it: `start` hands that browser a cookie and the
+//! callback only goes on with it, so a callback address made by someone else signs nobody in.
+//! Linking is never finished by the callback alone either: the account's own session confirms
+//! it (`POST /v1/account/oidc/link`), so nobody can get another person's Pocket ID linked to
+//! their account by sending them a link.
+//!
 //! `GET /v1/account/oidc/start?next=/q/123456` → Pocket ID → `GET /v1/account/oidc/callback`
 //! → the web app with a session (`/account/signed-in#token=…&next=…`). With
 //! `ticket=` (from `POST /v1/account/oidc/ticket`, signed in) the identity is linked to that
@@ -84,6 +90,8 @@ pub enum Intent {
 struct Pending {
     intent: Intent,
     verifier: String,
+    /// Hash of the cookie given to the browser that started the flow.
+    browser: String,
     created: Instant,
 }
 
@@ -98,6 +106,8 @@ pub struct OidcUser {
 #[derive(Debug, PartialEq)]
 pub enum OidcError {
     Expired,
+    /// The callback came from another browser than the one that started.
+    OtherBrowser,
     Provider(String),
 }
 
@@ -105,6 +115,12 @@ impl std::fmt::Display for OidcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OidcError::Expired => write!(f, "this sign-in took too long, try again"),
+            OidcError::OtherBrowser => {
+                write!(
+                    f,
+                    "this sign-in was started in another browser, start again here"
+                )
+            }
             OidcError::Provider(m) => write!(f, "Pocket ID: {m}"),
         }
     }
@@ -117,6 +133,28 @@ pub struct Oidc {
     pending: Mutex<HashMap<String, Pending>>,
     /// Ticket hash → (account, created): stands for a session in a browser tab.
     tickets: Mutex<HashMap<String, (String, Instant)>>,
+    /// Link id hash → (account, Pocket ID user, created): back from Pocket ID, waiting for the
+    /// account's session to confirm.
+    links: Mutex<HashMap<String, (String, String, Instant)>>,
+}
+
+/// The cookie that ties a flow to the browser that started it.
+pub const COOKIE: &str = "aw_oidc";
+
+/// `Set-Cookie` for [`COOKIE`]: only sent back to the callback, not readable by scripts.
+pub fn cookie(value: &str) -> String {
+    format!(
+        "{COOKIE}={value}; Path=/v1/account/oidc; Max-Age={}; HttpOnly; Secure; SameSite=Lax",
+        FLOW_TTL.as_secs()
+    )
+}
+
+/// The value of [`COOKIE`] in a `Cookie` header.
+pub fn cookie_of(header: &str) -> Option<&str> {
+    header.split(';').find_map(|c| {
+        let (k, v) = c.trim().split_once('=')?;
+        (k == COOKIE).then_some(v)
+    })
 }
 
 /// Where the web app may go after signing in: a path on this site.
@@ -195,17 +233,38 @@ impl Oidc {
         (at.elapsed() < TICKET_TTL).then_some(account)
     }
 
-    /// The Pocket ID address to send the browser to.
+    /// Back from Pocket ID to link `sub` to `account`: the id the account's session confirms
+    /// with.
+    pub fn hold_link(&self, account: &str, sub: &str) -> String {
+        let id = random_hex(24);
+        let mut m = self.links.lock().unwrap_or_else(|e| e.into_inner());
+        m.retain(|_, (_, _, at)| at.elapsed() < TICKET_TTL);
+        m.insert(
+            sha256_hex(id.as_bytes()),
+            (account.to_owned(), sub.to_owned(), Instant::now()),
+        );
+        id
+    }
+
+    /// The (account, Pocket ID user) of a held link; one time.
+    pub fn take_link(&self, id: &str) -> Option<(String, String)> {
+        let mut m = self.links.lock().unwrap_or_else(|e| e.into_inner());
+        let (account, sub, at) = m.remove(&sha256_hex(id.trim().as_bytes()))?;
+        (at.elapsed() < TICKET_TTL).then_some((account, sub))
+    }
+
+    /// The Pocket ID address to send the browser to, and the cookie value to give it.
     pub async fn start(
         &self,
         http: &Client,
         cfg: &PocketId,
         intent: Intent,
-    ) -> Result<String, OidcError> {
+    ) -> Result<(String, String), OidcError> {
         let ep = self.endpoints(http, cfg).await?;
         let state = random_hex(24);
         let nonce = random_hex(24);
         let verifier = random_hex(32);
+        let browser = random_hex(24);
         let challenge =
             b64url(ring::digest::digest(&ring::digest::SHA256, verifier.as_bytes()).as_ref());
         {
@@ -221,11 +280,12 @@ impl Oidc {
                 Pending {
                     intent,
                     verifier,
+                    browser: sha256_hex(browser.as_bytes()),
                     created: Instant::now(),
                 },
             );
         }
-        Ok(format!(
+        let url = format!(
             "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&nonce={}\
              &code_challenge={}&code_challenge_method=S256",
             ep.authorization,
@@ -235,7 +295,8 @@ impl Oidc {
             pct(&state),
             pct(&nonce),
             pct(&challenge),
-        ))
+        );
+        Ok((url, browser))
     }
 
     /// The callback: the intent it was started with, and who signed in.
@@ -245,6 +306,7 @@ impl Oidc {
         cfg: &PocketId,
         code: &str,
         state: &str,
+        browser: Option<&str>,
     ) -> Result<(Intent, OidcUser), OidcError> {
         let pending = {
             let mut m = self.pending.lock().unwrap_or_else(|e| e.into_inner());
@@ -252,6 +314,10 @@ impl Oidc {
         }
         .filter(|p| p.created.elapsed() < FLOW_TTL)
         .ok_or(OidcError::Expired)?;
+        // Both sides are hashes of 24 random bytes: nothing to learn from how they compare.
+        if browser.map(|b| sha256_hex(b.as_bytes())).as_deref() != Some(pending.browser.as_str()) {
+            return Err(OidcError::OtherBrowser);
+        }
         let ep = self.endpoints(http, cfg).await?;
         let form = format!(
             "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}&code_verifier={}",
@@ -316,6 +382,21 @@ mod tests {
         assert_eq!(safe_next(Some("https://evil.example")), "/");
         assert_eq!(safe_next(Some("/a b")), "/");
         assert_eq!(safe_next(None), "/");
+    }
+
+    #[test]
+    fn the_cookie_is_found_among_others() {
+        assert_eq!(cookie_of("a=1; aw_oidc=xyz; b=2"), Some("xyz"));
+        assert_eq!(cookie_of("a=1"), None);
+        assert!(cookie("v").contains("HttpOnly; Secure; SameSite=Lax"));
+    }
+
+    #[test]
+    fn held_links_are_one_time() {
+        let o = Oidc::default();
+        let id = o.hold_link("acc", "sub");
+        assert_eq!(o.take_link(&id), Some(("acc".into(), "sub".into())));
+        assert!(o.take_link(&id).is_none());
     }
 
     #[test]

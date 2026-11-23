@@ -462,6 +462,30 @@ pub fn AccountPage() -> impl IntoView {
         note,
         version: RwSignal::new(0),
     };
+    // Back from Pocket ID to link it: this account's session confirms, only then is it linked.
+    if let Some(id) = use_query_map().with_untracked(|q| q.get("link")) {
+        let c = c.clone();
+        spawn_local(async move {
+            let Some(k) = c.account_client() else {
+                error.set(Some(
+                    "Sign in to your AlwyWatch account, then link Pocket ID again.".to_owned(),
+                ));
+                return;
+            };
+            match k.oidc_link(&id).await {
+                Ok(()) => {
+                    note.set(Some("Pocket ID is linked.".to_owned()));
+                    page.version.update(|v| *v += 1);
+                }
+                Err(net::Error::Status { status: 409 }) => error.set(Some(
+                    "This Pocket ID is already used by another account.".to_owned(),
+                )),
+                Err(_) => error.set(Some(
+                    "Pocket ID could not be linked. Try again from this page.".to_owned(),
+                )),
+            }
+        });
+    }
     {
         let c = c.clone();
         Effect::new(move |_| {
