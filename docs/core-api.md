@@ -118,7 +118,7 @@ and subtitle codecs, max width/height, HDR kinds) and passes it to `playback_inf
   passes, `transcode` otherwise, and switches to `transcode` at the same position when the
   decoder fails on the original.
 * **Desktop**: a fixed broad profile (mpv/FFmpeg decode nearly everything, 10-bit included) and
-  always the original file.
+  the original file unless a quality is picked (below).
 * **Web**: the profile is asked to the browser; see [web.md](web.md#playback).
 
 Per server:
@@ -137,6 +137,24 @@ Per server:
   width/height, and an 8-bit limit for each codec not in `video_10bit_codecs`. Streams the device
   plays are copied, the others converted. The same session name is used in progress reports, so
   Plex ties them together and stops converting when playback stops.
+
+### Quality menu
+
+Every player's track panel ("Audio, subtitles & quality") shows what plays now and offers the
+original plus smaller sizes (`media_api::quality`: `quality_label`, `quality_choices`, exported
+by the core for Kotlin). Sizes are presets (4K 40 Mbps, 1080p 20/8, 720p 4, 480p 1.5, 360p 0.7)
+smaller than the file, named from the picture's width (a 1920×800 film is "1080p"). A pick sets
+`TrackSelection.quality = Quality { max_bitrate, max_height }` and playback restarts at the
+same position through `playback_info_with`, which then always converts:
+
+* **Jellyfin**: `EnableDirectPlay`/`EnableDirectStream` false, `MaxStreamingBitrate` and the
+  profile's max size capped, `MaxHeight` added to the transcoding URL when missing.
+* **Plex**: the profile's max size capped and `maxVideoBitrate` (kbit/s) on the conversion URL;
+  `supports_direct_play` false. No stream selection is saved on the part for a quality alone.
+
+"Original" goes back to the file (or the server's own conversion when the device can't play
+it). The pick holds for the next titles of the session. Desktop doesn't offer it in a watch
+together room (everyone plays the same file).
 
 ## Skippable segments
 
