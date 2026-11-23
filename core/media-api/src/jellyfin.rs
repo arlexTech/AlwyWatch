@@ -997,12 +997,15 @@ impl MediaServer for JellyfinClient {
         profile: &DeviceProfile,
         selection: &TrackSelection,
     ) -> Result<PlaybackInfo> {
+        // A chosen quality: converted to it, never the original.
+        let profile = &selection.profile(profile);
+        let original = selection.quality.is_none();
         let mut body = json!({
             "UserId": self.uid(),
             "MaxStreamingBitrate": profile.max_bitrate,
             "DeviceProfile": jellyfin_profile(profile),
-            "EnableDirectPlay": true,
-            "EnableDirectStream": true,
+            "EnableDirectPlay": original,
+            "EnableDirectStream": original,
             "EnableTranscoding": true,
             "AutoOpenLiveStream": true,
         });
@@ -1028,6 +1031,16 @@ impl MediaServer for JellyfinClient {
             .into_iter()
             .map(|s| self.convert_source(item_id, s, &session))
             .collect();
+        if let Some(q) = selection.quality {
+            for s in &mut sources {
+                s.supports_direct_play = false;
+                if let Some(t) = s.transcode.as_mut()
+                    && !t.url.to_ascii_lowercase().contains("maxheight=")
+                {
+                    t.url.push_str(&format!("&MaxHeight={}", q.max_height));
+                }
+            }
+        }
         // Direct-playable sources first.
         sources.sort_by_key(|s| !s.supports_direct_play);
         Ok(PlaybackInfo {

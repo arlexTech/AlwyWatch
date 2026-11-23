@@ -432,6 +432,7 @@ pub fn conversion_tracks(
             Some(index) => SubtitleSelection::Stream { index },
             None => SubtitleSelection::Off,
         },
+        quality: None,
     }
 }
 

@@ -1254,7 +1254,9 @@ impl MediaServer for PlexClient {
         let meta = mc.metadata.into_iter().next().ok_or(Error::NotFound)?;
         // The `subtitles=` of each version's conversion; nothing (Plex decides) by default.
         let mut subtitles = vec![None; meta.media.len()];
-        if !selection.is_default() {
+        // A chosen quality: converted to it (bitrate and height), never the original.
+        let profile = &selection.profile(profile);
+        if selection.has_tracks() {
             for (m, subs) in meta.media.iter().zip(subtitles.iter_mut()) {
                 *subs = self.select_streams(m, selection).await;
             }
@@ -1266,6 +1268,9 @@ impl MediaServer for PlexClient {
             .enumerate()
             .filter_map(|(i, (m, subs))| {
                 let mut src = self.convert_source(item_id, i, m, profile)?;
+                if selection.quality.is_some() {
+                    src.supports_direct_play = false;
+                }
                 if let (Some(subs), Some(t)) = (subs, src.transcode.as_mut()) {
                     t.url.push_str("&subtitles=");
                     t.url.push_str(subs);
@@ -1589,8 +1594,13 @@ fn transcode_url(
             ));
         }
     }
+    // The bitrate cap, in kbit/s (a lower one than the file's makes Plex convert the video).
+    let max = profile
+        .max_bitrate
+        .map(|b| format!("&maxVideoBitrate={}", b / 1000))
+        .unwrap_or_default();
     format!(
-        "{base_url}/video/:/transcode/universal/start.m3u8?hasMDE=1&path={}&mediaIndex={index}&partIndex=0&protocol=hls&fastSeek=1&copyts=1&directPlay=0&directStream=1&directStreamAudio=1&videoQuality=100&mediaBufferSize=102400&session={}&X-Plex-Session-Identifier={}&X-Plex-Client-Profile-Name=Generic&X-Plex-Client-Profile-Extra={}",
+        "{base_url}/video/:/transcode/universal/start.m3u8?hasMDE=1&path={}&mediaIndex={index}&partIndex=0&protocol=hls&fastSeek=1&copyts=1&directPlay=0&directStream=1&directStreamAudio=1&videoQuality=100&mediaBufferSize=102400&session={}&X-Plex-Session-Identifier={}&X-Plex-Client-Profile-Name=Generic&X-Plex-Client-Profile-Extra={}{max}",
         net::percent_encode(&format!("/library/metadata/{rating_key}")),
         net::percent_encode(session),
         net::percent_encode(session),

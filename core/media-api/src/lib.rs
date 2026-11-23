@@ -11,6 +11,7 @@ uniffi::setup_scaffolding!();
 pub mod jellyfin;
 pub mod model;
 pub mod plex;
+pub mod quality;
 pub mod recent;
 
 use std::future::Future;
@@ -35,6 +36,7 @@ static NO_SELECTION: TrackSelection = TrackSelection {
     source_id: None,
     audio_index: None,
     subtitle: SubtitleSelection::Default,
+    quality: None,
 };
 
 /// The read and playback surface every supported server implements.

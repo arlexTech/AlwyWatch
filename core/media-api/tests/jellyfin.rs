@@ -425,6 +425,7 @@ async fn chosen_tracks_go_into_the_playback_info_request() {
                 source_id: Some("ms1".into()),
                 audio_index: Some(2),
                 subtitle: SubtitleSelection::Stream { index: 4 },
+                quality: None,
             },
         )
         .await
@@ -706,4 +707,43 @@ async fn latest_lists_episodes_one_by_one_and_groups_per_show() {
     );
     assert_eq!(r.items[0].kind, ItemKind::Series);
     assert_eq!(r.items[0].title, "Dreamland");
+}
+
+#[tokio::test]
+async fn a_chosen_quality_asks_for_a_conversion() {
+    let s = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Items/i1/PlaybackInfo"))
+        .and(body_partial_json(json!({
+            "MaxStreamingBitrate": 4_000_000, "EnableDirectPlay": false, "EnableDirectStream": false,
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "PlaySessionId": "ps3",
+            "MediaSources": [{"Id": "ms1", "SupportsDirectPlay": true,
+                "TranscodingUrl": "/videos/i1/master.m3u8?VideoBitrate=3800000"}]
+        })))
+        .expect(1)
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    let sel = TrackSelection {
+        quality: Some(media_api::model::Quality {
+            max_bitrate: 4_000_000,
+            max_height: 720,
+        }),
+        ..Default::default()
+    };
+    let info = c
+        .playback_info_with("i1", &plain_profile(), &sel)
+        .await
+        .unwrap();
+    assert!(!info.sources[0].supports_direct_play);
+    assert!(
+        info.sources[0]
+            .transcode
+            .as_ref()
+            .unwrap()
+            .url
+            .ends_with("VideoBitrate=3800000&MaxHeight=720")
+    );
 }

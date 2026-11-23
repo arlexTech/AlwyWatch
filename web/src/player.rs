@@ -13,8 +13,8 @@ use leptos::task::spawn_local;
 use leptos_router::hooks::{use_navigate, use_params_map, use_query_map};
 use media_api::{
     AnyServer, DeviceProfile, Item, ItemKind, MediaServer, MediaSource, MediaStream, PlayMethod,
-    PlaybackEvent, PlaybackInfo, ProgressReport, Segment, SegmentKind, ServerKind, StreamKind,
-    SubtitleSelection, TrackSelection,
+    PlaybackEvent, PlaybackInfo, ProgressReport, Quality, Segment, SegmentKind, ServerKind,
+    StreamKind, SubtitleSelection, TrackSelection,
 };
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
@@ -616,6 +616,11 @@ fn PlayerView(
     let last_report = StoredValue::new(0f64);
     let start_sent = StoredValue::new(false);
     let stopped = StoredValue::new(false);
+    // The quality menu: the file as the server has it, the size picked (None: the original
+    // when the browser plays it), and a switch in progress (resumes where it was).
+    let original = RwSignal::new(None::<PlaybackInfo>);
+    let quality = RwSignal::new(None::<Quality>);
+    let switching = StoredValue::new(false);
     // ←/→ and double taps on the picture: −10 s / +30 s, added up in a bubble on that side.
     let bubble = RwSignal::new(None::<SeekBubble>);
     let bubble_shape = Memo::new(move |_| bubble.with(|b| b.map(|b| (b.forward, b.seconds, b.n))));
@@ -792,6 +797,7 @@ fn PlayerView(
             source_id: Some(fallback.0),
             audio_index: None,
             subtitle: server_subtitle(&l, pick),
+            quality: quality.get_untracked(),
         };
         let stop_old = restart.then(|| build_report(PlaybackEvent::Stop)).flatten();
         transcoding.set(true);
@@ -844,6 +850,53 @@ fn PlayerView(
         });
     };
 
+    // A size picked in the menu: the conversion restarts at it, here; "Original" goes back to
+    // the file itself when the browser plays it (else to the server's own conversion).
+    let pick_quality = move |q: Option<Quality>| {
+        let (Some(v), Some(info), Some(Ok(l))) = (
+            video.get_untracked(),
+            original.get_untracked(),
+            loaded.get_untracked(),
+        ) else {
+            return;
+        };
+        if quality.get_untracked() == q {
+            return;
+        }
+        quality.set(q);
+        pos.set((v.current_time() * 1000.0) as u64);
+        let Some(src) = info.sources.first().cloned() else {
+            return;
+        };
+        if q.is_none() && src.supports_direct_play && can_direct(&src, &l.profile) {
+            if transcoding.get_untracked() {
+                if let Some((srv, r)) = build_report(PlaybackEvent::Stop) {
+                    spawn_local(async move {
+                        let _ = srv.report_progress(&r).await;
+                    });
+                }
+                start_sent.set_value(false);
+            }
+            destroy_hls(hls);
+            transcoding.set(false);
+            switching.set_value(true);
+            burned.set_value(SubtitleSelection::Default);
+            loaded.update(|x| {
+                if let Some(Ok(x)) = x {
+                    x.info = info;
+                }
+            });
+            v.set_src(&state::media_url(&src.direct, l.srv.session()));
+            play(&v);
+            let pick = sub_pick.get_untracked();
+            if pick >= 0 {
+                spawn_local(async move { show_subtitle(&l, &v, pick, sub_pick).await });
+            }
+        } else {
+            convert(v, sub_pick.get_untracked(), true);
+        }
+    };
+
     // Starts the source once both the data and the element are there (once: the extras
     // arriving later don't restart it).
     let ready = Memo::new(move |_| loaded.with(|l| matches!(l, Some(Ok(_)))));
@@ -857,6 +910,7 @@ fn PlayerView(
         let Some(src) = l.info.sources.first() else {
             return;
         };
+        original.set(Some(l.info.clone()));
         let session = l.srv.session().clone();
         if src.supports_direct_play && can_direct(src, &l.profile) {
             v.set_src(&state::media_url(&src.direct, &session));
@@ -947,7 +1001,8 @@ fn PlayerView(
         };
         let first = !started.get_value();
         started.set_value(true);
-        let at = if transcoding.get_untracked() && pos.get_untracked() > 0 {
+        let switched = switching.try_update_value(std::mem::take).unwrap_or(false);
+        let at = if (transcoding.get_untracked() || switched) && pos.get_untracked() > 0 {
             pos.get_untracked()
         } else {
             start_ms
@@ -1376,7 +1431,33 @@ fn PlayerView(
                     Some(Err(_)) => ().into_any(),
                     None => view! { <div class="muted">{tr!("Loading…")}</div> }.into_any(),
                 }}
-                {move || transcoding.get().then(|| view! { <span class="pill">{tr!("Converted by the server")}</span> })}
+                // Quality: what plays now, and a menu to pick another size.
+                {move || {
+                    let src = original.get().and_then(|i| i.sources.into_iter().next());
+                    match src.filter(|s| s.transcode.is_some()) {
+                        Some(src) => {
+                            let converted = transcoding.get();
+                            let chosen = quality.get();
+                            let now = media_api::quality::quality_label(&src, converted, chosen.filter(|_| converted));
+                            let choices = media_api::quality::quality_choices(&src);
+                            let picks: Vec<Option<Quality>> = choices.iter().map(|c| c.quality).collect();
+                            view! {
+                                <span class="pill" title=tr!("Playing now")>{now}</span>
+                                <select class="chip small quality" aria-label=tr!("Quality")
+                                    on:change=move |ev| {
+                                        if let Some(q) = event_target_value(&ev).parse::<usize>().ok().and_then(|i| picks.get(i)) {
+                                            pick_quality(*q);
+                                        }
+                                    }>
+                                    {choices.into_iter().enumerate().map(|(i, c)| view! {
+                                        <option value=i.to_string() selected=c.quality == chosen>{c.label}</option>
+                                    }).collect_view()}
+                                </select>
+                            }.into_any()
+                        }
+                        None => transcoding.get().then(|| view! { <span class="pill">{tr!("Converted by the server")}</span> }).into_any(),
+                    }
+                }}
                 {move || match room.state.get().filter(|_| { room.code.track(); joined() }) {
                     Some(s) => {
                         let people = together::group_members(&s);

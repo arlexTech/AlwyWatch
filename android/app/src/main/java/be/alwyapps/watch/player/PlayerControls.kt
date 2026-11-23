@@ -143,6 +143,9 @@ class PlayerUi {
     var seekTarget by mutableStateOf<Long?>(null)
     var seekFlash by mutableIntStateOf(0)
 
+    /** The quality menu; None for a downloaded file (nothing to convert). */
+    var quality by mutableStateOf<QualityInfo?>(null)
+
     /**
      * The "+30" / "−10" bubble (double taps, remote, media keys): its side (true = forward)
      * and the seconds added up while presses follow each other, bumped once per press.
@@ -176,6 +179,13 @@ class PlayerUi {
     }
 }
 
+/** The quality menu: what plays now, the choices (original first), the size picked. */
+data class QualityInfo(
+    val label: String,
+    val choices: List<be.alwyapps.watch.core.media.QualityChoice>,
+    val chosen: be.alwyapps.watch.core.media.Quality?,
+)
+
 /** The file's streams and the selection the conversion was asked with. */
 data class ServerTracks(
     val streams: List<be.alwyapps.watch.core.media.MediaStream>,
@@ -203,6 +213,7 @@ fun PlayerOverlay(
     onStartTogether: () -> Unit = {},
     onTrackPicked: (Int, androidx.media3.common.Format?) -> Unit = { _, _ -> },
     onServerTrackPicked: (be.alwyapps.watch.core.media.StreamKind, Long?) -> Unit = { _, _ -> },
+    onQualityPicked: (be.alwyapps.watch.core.media.Quality?) -> Unit = {},
     onStillWatching: () -> Unit = {},
 ) {
     if (ui.stillWatching && !ui.pip) {
@@ -443,7 +454,7 @@ fun PlayerOverlay(
                             PillButton(be.alwyapps.watch.ui.Icons.Group, tr("Watch together"), onStartTogether)
                             Spacer(Modifier.width(10.dp))
                         }
-                        PillButton(Icons.Subtitles, tr("Audio & subtitles"), {
+                        PillButton(Icons.Subtitles, tr("Audio, subtitles & quality"), {
                             ui.tracksOpen = true
                             ui.poke()
                         })
@@ -585,9 +596,9 @@ fun PlayerOverlay(
             }
             val server = ui.serverTracks
             if (server != null) {
-                ServerTracksPanel(server, onPicked = onServerTrackPicked, onClose = close)
+                ServerTracksPanel(server, ui.quality, onPicked = onServerTrackPicked, onQuality = onQualityPicked, onClose = close)
             } else {
-                TracksPanel(player, onPicked = onTrackPicked, onClose = close)
+                TracksPanel(player, ui.quality, onPicked = onTrackPicked, onQuality = onQualityPicked, onClose = close)
             }
         }
     }
@@ -744,7 +755,9 @@ private fun SeekBar(
 @Composable
 private fun TracksPanel(
     player: () -> Player?,
+    quality: QualityInfo?,
     onPicked: (Int, androidx.media3.common.Format?) -> Unit,
+    onQuality: (be.alwyapps.watch.core.media.Quality?) -> Unit,
     onClose: () -> Unit,
 ) {
     val p = player() ?: return
@@ -836,7 +849,7 @@ private fun TracksPanel(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("Audio & subtitles"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text(tr("Audio, subtitles & quality"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
             RoundButton(Icons.Close, tr("Close"), onClose, size = 36)
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -845,6 +858,7 @@ private fun TracksPanel(
             item { Section(tr("Subtitles")) }
             item { TrackRow(tr("Off"), subsOff, { select(C.TRACK_TYPE_TEXT, null, 0) }) }
             items(subs) { o -> TrackRow(o.label, o.selected && !subsOff, o.pick) }
+            qualityItems(quality, onQuality)
         }
     }
 }
@@ -853,7 +867,9 @@ private fun TracksPanel(
 @Composable
 private fun ServerTracksPanel(
     tracks: ServerTracks,
+    quality: QualityInfo?,
     onPicked: (be.alwyapps.watch.core.media.StreamKind, Long?) -> Unit,
+    onQuality: (be.alwyapps.watch.core.media.Quality?) -> Unit,
     onClose: () -> Unit,
 ) {
     val firstFocus = remember { FocusRequester() }
@@ -878,7 +894,7 @@ private fun ServerTracksPanel(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("Audio & subtitles"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text(tr("Audio, subtitles & quality"), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
             RoundButton(Icons.Close, tr("Close"), onClose, size = 36)
         }
         Text(tr("Converted by the server: changing a track restarts the stream"), style = MaterialTheme.typography.labelSmall, color = Subtle)
@@ -895,8 +911,27 @@ private fun ServerTracksPanel(
             item { Section(tr("Subtitles")) }
             item { TrackRow(tr("Off"), subNow == null, { if (subNow != null) onPicked(be.alwyapps.watch.core.media.StreamKind.SUBTITLE, null) }) }
             items(subs) { s -> TrackRow(label(s), s.index == subNow, { if (s.index != subNow) onPicked(s.kind, s.index) }) }
+            qualityItems(quality, onQuality)
         }
     }
+}
+
+/** Quality: what plays now, then the original and the sizes the server converts to. */
+private fun androidx.compose.foundation.lazy.LazyListScope.qualityItems(
+    quality: QualityInfo?,
+    onQuality: (be.alwyapps.watch.core.media.Quality?) -> Unit,
+) {
+    quality ?: return
+    item { Section(tr("Quality")) }
+    item {
+        Text(
+            tr("Now: {quality}", "quality" to quality.label),
+            Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = Muted,
+        )
+    }
+    items(quality.choices) { c -> TrackRow(c.label, c.quality == quality.chosen, { onQuality(c.quality) }) }
 }
 
 @Composable

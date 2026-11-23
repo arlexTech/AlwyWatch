@@ -46,6 +46,7 @@ pub use lang::*;
 pub use media_api::jellyfin::QuickConnectCode;
 pub use media_api::model::*;
 pub use media_api::plex::{PlexHomeUser, PlexPin, PlexServerResource};
+pub use media_api::quality::QualityChoice;
 pub use media_api::recent::{RailNote, recently_added};
 pub use merge::{AccountHome, MergedHome, merge_homes, same_as};
 pub use playback::{PlaybackPrompt, playback_prompt};
@@ -98,6 +99,18 @@ pub fn season_state_label(state: SeasonState) -> String {
 #[uniffi::export]
 pub fn seasons_requested_message(numbers: Vec<u32>) -> String {
     seerr::seasons_requested_message(&numbers)
+}
+
+/// The player's quality menu: the original, then the sizes the server can convert it to.
+#[uniffi::export]
+pub fn quality_choices(source: MediaSource) -> Vec<QualityChoice> {
+    media_api::quality::quality_choices(&source)
+}
+
+/// What plays now: "Original · 1080p · 12 Mbps", "Converted · 720p · 4.0 Mbps"…
+#[uniffi::export]
+pub fn quality_label(source: MediaSource, converted: bool, quality: Option<Quality>) -> String {
+    media_api::quality::quality_label(&source, converted, quality)
 }
 
 #[cfg(test)]

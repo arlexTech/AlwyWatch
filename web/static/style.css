@@ -413,3 +413,6 @@ code.wrap { overflow-wrap: anywhere; font-size: .85rem; background: var(--surfac
   .card { width: 128px; }
   .leaving-head .see-all { display: none; }
 }
+/* Player: the quality menu next to "Playing now". */
+.player-top select.quality { width: auto; max-width: 15em; padding: 6px 10px; font-size: 14px; background: rgba(0,0,0,.5); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; }
+@media (max-width: 720px) { .player-top .pill[title] { display: none; } }

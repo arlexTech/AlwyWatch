@@ -100,6 +100,10 @@ class PlayerActivity : ComponentActivity() {
 
     /** The tracks the server's conversion was asked with (null: direct play, or the server's own choice). */
     private var conversion: TrackSelection? = null
+
+    /** The file as the server has it (the quality menu's "Original"), and the size picked. */
+    private var original: MediaSource? = null
+    private var chosenQuality: be.alwyapps.watch.core.media.Quality? = null
     private val ui = PlayerUi()
 
     // ----- watch together: the room this player follows (null: alone) -----
@@ -183,6 +187,7 @@ class PlayerActivity : ComponentActivity() {
                             onStartTogether = { watchTogether() },
                             onTrackPicked = { type, format -> rememberTrack(type, format) },
                             onServerTrackPicked = { kind, index -> pickServerTrack(kind, index) },
+                            onQualityPicked = { pickQuality(it) },
                             onStillWatching = {
                                 ui.stillWatching = false
                                 lastInteraction = android.os.SystemClock.uptimeMillis()
@@ -284,7 +289,10 @@ class PlayerActivity : ComponentActivity() {
         }
         info = pi
         source = src
-        if (DeviceProfiles.canDirectPlay(src, profile) || src.transcode == null) {
+        original = src
+        if (chosenQuality != null && src.transcode != null) {
+            startConversion(src, startMs, null)
+        } else if (DeviceProfiles.canDirectPlay(src, profile) || src.transcode == null) {
             startPlayer(src.direct, src, transcoding = false, startMs)
         } else {
             startConversion(src, startMs, null)
@@ -305,11 +313,13 @@ class PlayerActivity : ComponentActivity() {
     ) {
         val id = itemId
         val sel =
-            selection ?: be.alwyapps.watch.core.conversionTracks(
-                TrackPrefs.get(core, account, trackKey),
-                trackRules(PlayerSettings(core, services.isTv), null),
-                src,
-            )
+            (
+                selection ?: be.alwyapps.watch.core.conversionTracks(
+                    TrackPrefs.get(core, account, trackKey),
+                    trackRules(PlayerSettings(core, services.isTv), null),
+                    src,
+                )
+            ).copy(quality = chosenQuality)
         val pi =
             runCatching { core.playbackInfoWith(account, id, DeviceProfiles.get(this), sel) }
                 .onFailure { android.util.Log.w(TAG, "conversion with tracks: ${it.javaClass.simpleName}") }
@@ -328,6 +338,26 @@ class PlayerActivity : ComponentActivity() {
         conversion = sel
         ui.serverTracks = ServerTracks(converted.streams, sel)
         startPlayer(req, converted, transcoding = true, startMs, rewind = rewind)
+    }
+
+    /**
+     * A size picked in the quality menu (None: the original file, or the server's own
+     * conversion when this device can't play it): playback restarts with it, here.
+     */
+    private fun pickQuality(q: be.alwyapps.watch.core.media.Quality?) {
+        val src = original ?: return
+        if (q == chosenQuality || src.transcode == null) return
+        chosenQuality = q
+        val position = player?.currentPosition?.coerceAtLeast(0) ?: 0L
+        lifecycleScope.launch {
+            if (transcoding) report(PlaybackEvent.STOP)?.join()
+            if (q == null && DeviceProfiles.canDirectPlay(src, DeviceProfiles.get(this@PlayerActivity))) {
+                source = src
+                startPlayer(src.direct, src, transcoding = false, position, rewind = false)
+            } else {
+                startConversion(src, position, conversion, rewind = false)
+            }
+        }
     }
 
     /** A track picked in the panel while converting: remembered, then the conversion restarts with it, here. */
@@ -373,6 +403,17 @@ class PlayerActivity : ComponentActivity() {
     ) {
         player?.release()
         this.transcoding = transcoding
+        // The quality menu: what plays now, and the sizes the server can convert to.
+        ui.quality =
+            original?.takeIf { it.transcode != null }?.let { o ->
+                QualityInfo(
+                    be.alwyapps.watch.core
+                        .qualityLabel(src, transcoding, chosenQuality.takeIf { transcoding }),
+                    be.alwyapps.watch.core
+                        .qualityChoices(o),
+                    chosenQuality,
+                )
+            }
         if (!transcoding) {
             conversion = null
             ui.serverTracks = null

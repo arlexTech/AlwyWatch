@@ -326,6 +326,7 @@ async fn chosen_tracks_are_selected_on_the_part_only_when_asked() {
                 source_id: Some("500".into()),
                 audio_index: Some(3),
                 subtitle: SubtitleSelection::Stream { index: 5 },
+                quality: None,
             },
         )
         .await
@@ -362,6 +363,21 @@ async fn chosen_tracks_are_selected_on_the_part_only_when_asked() {
         q.contains(&("subtitleStreamID".into(), "0".into())),
         "{q:?}"
     );
+
+    // A size picked in the menu: converted to it (no direct play), tracks left as they are.
+    let small = TrackSelection {
+        quality: Some(media_api::model::Quality {
+            max_bitrate: 4_000_000,
+            max_height: 720,
+        }),
+        ..Default::default()
+    };
+    let info = c.playback_info_with("77", &profile, &small).await.unwrap();
+    assert!(!info.sources[0].supports_direct_play);
+    let url = &info.sources[0].transcode.as_ref().unwrap().url;
+    assert!(url.contains("&maxVideoBitrate=4000"), "{url}");
+    assert!(url.contains("video.height%26value%3D720"), "{url}");
+    assert_eq!(puts().await.len(), 2, "no stream selection saved");
     assert!(!q.iter().any(|(k, _)| k == "audioStreamID"), "{q:?}");
 
     // Another version's choice, or streams this file doesn't have: nothing saved.
@@ -369,6 +385,7 @@ async fn chosen_tracks_are_selected_on_the_part_only_when_asked() {
         source_id: Some("999".into()),
         audio_index: Some(3),
         subtitle: SubtitleSelection::Off,
+        quality: None,
     };
     let info = c.playback_info_with("77", &profile, &other).await.unwrap();
     assert!(

@@ -144,6 +144,12 @@ struct State {
     /// What the player plays (account, item) and its link for watch together (every player
     /// has one, so a room can start from it without reloading).
     player_item: Option<(String, String)>,
+    /// The size picked in the player's quality menu (None: the original file), kept for
+    /// the next titles, and the menu's choices for the title playing.
+    quality: Option<Quality>,
+    quality_choices: Vec<Option<Quality>>,
+    /// A quality was picked: the player closes and starts again where it was.
+    quality_restart: bool,
     player_tx: Option<std::sync::mpsc::Sender<player::ToPlayer>>,
     /// The home's Continue watching, for its "See all" page.
     continue_items: Vec<Item>,
@@ -301,6 +307,9 @@ impl App {
                 player_notes: None,
                 player_mpv: None,
                 player_item: None,
+                quality: None,
+                quality_choices: vec![],
+                quality_restart: false,
                 player_tx: None,
                 continue_items: vec![],
                 mark_pending: None,
@@ -3274,6 +3283,29 @@ impl App {
         ui.set_together_seek(r.seek);
     }
 
+    /// A line of the player's quality menu: playback starts again at that size, here.
+    fn player_quality(&self, arg: &str) {
+        let pick = {
+            let st = self.state.borrow();
+            arg.parse::<usize>()
+                .ok()
+                .and_then(|i| st.quality_choices.get(i).copied())
+        };
+        let Some(q) = pick else { return };
+        let mpv = {
+            let mut st = self.state.borrow_mut();
+            if st.quality == q {
+                return;
+            }
+            st.quality = q;
+            st.quality_restart = true;
+            st.player_mpv.clone()
+        };
+        if let Some(m) = mpv {
+            let _ = m.command(&["quit"]);
+        }
+    }
+
     fn play(self: &Rc<Self>, id: String, from_start: bool) {
         let Some(account) = self.account_of(&id) else {
             return;
@@ -3326,6 +3358,12 @@ impl App {
         let auto_skip_intro = setting("player.auto_skip_intro").as_deref() == Some("1");
         let auto_next = setting("player.auto_next").as_deref() != Some("0");
         let local = self.core.downloaded_file(account.clone(), id.clone());
+        // A quality picked in the menu (not in a room: everyone plays the same file there).
+        let quality = self
+            .state
+            .borrow()
+            .quality
+            .filter(|_| together == TogetherPlay::Alone);
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             // Downloaded: play the local original (works offline, progress is queued).
@@ -3368,6 +3406,48 @@ impl App {
             let Some(src) = info.sources.into_iter().next() else {
                 return;
             };
+            // The quality menu (a server file that can be converted, watching alone), and the
+            // conversion at the picked size.
+            let menu = (src.transcode.is_some() && together == TogetherPlay::Alone)
+                .then(|| alwywatch_core::quality_choices(src.clone()));
+            let mut converted = None;
+            if let Some(q) = quality.filter(|_| menu.is_some()) {
+                let sel = TrackSelection {
+                    source_id: Some(src.id.clone()),
+                    quality: Some(q),
+                    ..Default::default()
+                };
+                converted = core
+                    .playback_info_with(account.clone(), id.clone(), Self::profile(), sel)
+                    .await
+                    .ok()
+                    .and_then(|i| {
+                        let t = i.sources.first()?.transcode.clone()?;
+                        Some((t, i.play_session_id))
+                    });
+            }
+            if let Some(t) = this.upgrade() {
+                let ui = t.ui();
+                let picked = quality.filter(|_| converted.is_some());
+                ui.set_player_quality_label(sstr(alwywatch_core::quality_label(
+                    src.clone(),
+                    converted.is_some(),
+                    picked,
+                )));
+                let choices = menu.unwrap_or_default();
+                t.state.borrow_mut().quality_choices = choices.iter().map(|c| c.quality).collect();
+                ui.set_player_qualities(ModelRc::new(VecModel::from(
+                    choices
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, c)| crate::PlayerTrack {
+                            id: sstr(i.to_string()),
+                            label: sstr(c.label),
+                            selected: c.quality == picked,
+                        })
+                        .collect::<Vec<_>>(),
+                )));
+            }
             let subs = src
                 .streams
                 .iter()
@@ -3392,8 +3472,17 @@ impl App {
             let previous = adjacent
                 .as_ref()
                 .and_then(|a| a.previous.as_ref().map(|e| e.id.clone()));
+            let play_method = if converted.is_some() {
+                PlayMethod::Transcode
+            } else {
+                PlayMethod::Direct
+            };
+            let session = match &converted {
+                Some((_, s)) => s.clone(),
+                None => info.play_session_id.clone(),
+            };
             let req = PlayRequest {
-                media: src.direct.clone(),
+                media: converted.map_or_else(|| src.direct.clone(), |(t, _)| t),
                 start_ms,
                 view: Some(Self::player_view_link(title.clone())),
                 title,
@@ -3429,7 +3518,7 @@ impl App {
                 t.state.borrow_mut().player_item = Some((account.clone(), id.clone()));
             }
             let linked = together != TogetherPlay::Alone;
-            let (src_id, session) = (src.id.clone(), info.play_session_id.clone());
+            let src_id = src.id.clone();
             let rt = core.runtime();
             let (core2, acct2, id2) = (core.clone(), account.clone(), id.clone());
             let result = player::spawn(req, move |p| {
@@ -3442,8 +3531,8 @@ impl App {
                     event: p.event,
                     audio_index: None,
                     subtitle_index: None,
-                    // mpv always plays the original file.
-                    play_method: PlayMethod::Direct,
+                    // The original file, unless a quality was picked.
+                    play_method,
                 };
                 // A start that failed played nothing: nothing to report.
                 if p.error.is_none() {
@@ -3456,8 +3545,16 @@ impl App {
                     // Back on the UI thread: refresh the page and autoplay the next episode.
                     let (next, previous, acct) = (next.clone(), previous.clone(), acct2.clone());
                     let (finished, go, error) = (p.finished, p.go, p.error);
+                    let (again, at) = (id2.clone(), p.position_ms);
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(t) = APP.with(|a| a.borrow().upgrade()) {
+                            // Another quality picked: the same title again, where it was.
+                            if std::mem::take(&mut t.state.borrow_mut().quality_restart) {
+                                t.state.borrow_mut().player_notes = None;
+                                t.player_closed();
+                                t.play_with(acct, again, Some(at), TogetherPlay::Alone);
+                                return;
+                            }
                             let current = t.state.borrow().stack.last().cloned();
                             if let Some(r) = current {
                                 t.show(r);
@@ -5300,7 +5397,9 @@ impl App {
             .history_pick(side.into(), id.into()));
         on!(on_history_check, |a| a.history_check());
         on!(on_player_cmd, |a, cmd, arg| {
-            if cmd == "together" {
+            if cmd == "quality" {
+                a.player_quality(&arg);
+            } else if cmd == "together" {
                 a.player_watch_together();
             } else if cmd == "room" {
                 a.room_invite();

@@ -325,13 +325,47 @@ record! {
         /// Audio stream; None: the server's default.
         pub audio_index: Option<i64>,
         pub subtitle: SubtitleSelection,
+        /// A size picked by the viewer: the server converts to it, even a file the device
+        /// plays as is. None: the original when it plays, else the server's choice.
+        #[serde(default)]
+        pub quality: Option<Quality>,
+    }
+}
+
+record! {
+    /// A conversion's size: at most this bitrate (bits per second) and picture height.
+    #[derive(Copy, Eq, Hash)]
+    pub struct Quality {
+        pub max_bitrate: u64,
+        pub max_height: u32,
     }
 }
 
 impl TrackSelection {
     /// Nothing chosen: the server decides, and asking has no side effect.
     pub fn is_default(&self) -> bool {
-        self.audio_index.is_none() && self.subtitle == SubtitleSelection::Default
+        !self.has_tracks() && self.quality.is_none()
+    }
+
+    /// An audio or subtitle stream is chosen.
+    pub fn has_tracks(&self) -> bool {
+        self.audio_index.is_some() || self.subtitle != SubtitleSelection::Default
+    }
+
+    /// `profile` capped to the chosen quality, if any.
+    pub fn profile(&self, profile: &DeviceProfile) -> DeviceProfile {
+        let mut p = profile.clone();
+        if let Some(q) = self.quality {
+            p.max_bitrate = Some(
+                p.max_bitrate
+                    .map_or(q.max_bitrate, |b| b.min(q.max_bitrate)),
+            );
+            p.max_height = Some(p.max_height.map_or(q.max_height, |h| h.min(q.max_height)));
+            // Width follows the height (16:9), so a wide film is not cropped to a taller frame.
+            let w = q.max_height * 16 / 9;
+            p.max_width = Some(p.max_width.map_or(w, |x| x.min(w)));
+        }
+        p
     }
 }
 
