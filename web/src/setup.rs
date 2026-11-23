@@ -198,7 +198,7 @@ pub fn Setup() -> impl IntoView {
                     <p class="muted">{tr!("Welcome. AlwyWatch needs a Jellyfin or Plex server to start: you do this once. Everything else is set later in Settings → Admin → Server settings.")}</p>
                     <div class="form">
                         <label>{tr!("Setup code")}
-                            <input inputmode="numeric" autocomplete="one-time-code" maxlength="12" prop:value=move || code.get()
+                            <input type="text" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false" maxlength="20" placeholder="XXXX-XXXX-XXXX" prop:value=move || code.get()
                                 on:input=move |ev| code.set(event_target_value(&ev)) />
                             <span class="hint">{tr!("It is in the AlwyWatch server's log, on a line with “setup code” (docker logs alwywatch-server).")}</span>
                         </label>

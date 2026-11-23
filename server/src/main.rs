@@ -26,6 +26,7 @@ mod together;
 mod transfer;
 mod web;
 
+use std::future::IntoFuture;
 use std::sync::Arc;
 
 fn main() -> std::process::ExitCode {
@@ -38,6 +39,8 @@ fn main() -> std::process::ExitCode {
     };
     // Each generation runs on its own runtime: saving the settings in the app ends it (every
     // task with it) and starts the next one with the new settings, like a restart.
+    // Kept from one run to the next: saving settings must not reset the attempt limits.
+    let limits = Arc::new(keep::Limits::default());
     loop {
         let stored = match config::Config::load_stored(&data_dir) {
             Ok(s) => s,
@@ -58,7 +61,7 @@ fn main() -> std::process::ExitCode {
             .enable_all()
             .build()
             .expect("tokio runtime");
-        let outcome = rt.block_on(run(config, stored));
+        let outcome = rt.block_on(run(config, stored, limits.clone()));
         rt.shutdown_timeout(std::time::Duration::from_secs(3));
         match outcome {
             Ok(Ending::Stop) => return std::process::ExitCode::SUCCESS,
@@ -76,7 +79,11 @@ enum Ending {
     Reload,
 }
 
-async fn run(mut config: config::Config, stored: settings::Stored) -> Result<Ending, String> {
+async fn run(
+    mut config: config::Config,
+    stored: settings::Stored,
+    limits: Arc<keep::Limits>,
+) -> Result<Ending, String> {
     // Dry run: its simulated votes and exclusions never mix with the real ones.
     let db_file = if config.dry_run {
         eprintln!("[keep] DRY RUN: nothing is written to Maintainerr or Seerr");
@@ -93,7 +100,7 @@ async fn run(mut config: config::Config, stored: settings::Stored) -> Result<End
         )
     })?;
     eprintln!("[keep] {}", config.summary());
-    let http = net::api_client(concat!("AlwyWatch-Server/", env!("CARGO_PKG_VERSION")))
+    let http = net::server_client(concat!("AlwyWatch-Server/", env!("CARGO_PKG_VERSION")))
         .map_err(|e| e.to_string())?;
     let listen = config.listen;
     // Never write to a Maintainerr this build doesn't know: Leaving soon stays off and the
@@ -120,10 +127,7 @@ async fn run(mut config: config::Config, stored: settings::Stored) -> Result<End
         }
     }
     let setup_code = config.servers.is_empty().then(|| {
-        let code = format!(
-            "{:06}",
-            u32::from_str_radix(&accounts::random_hex(4), 16).unwrap_or(0) % 1_000_000
-        );
+        let code = server_settings::new_setup_code();
         eprintln!(
             "[setup] No media server yet. Open this site and enter the setup code {code} \
              (a new code at every start until setup is done)"
@@ -132,6 +136,7 @@ async fn run(mut config: config::Config, stored: settings::Stored) -> Result<End
     });
     let mut state = keep::State::new(config, db, http, "https://plex.tv");
     state.setup_code = setup_code;
+    state.limits = limits;
     *state.stored.get_mut() = stored;
     *state
         .maintainerr_problem
@@ -146,15 +151,26 @@ async fn run(mut config: config::Config, stored: settings::Stored) -> Result<End
     eprintln!("[keep] listening on {listen}");
     let reloading = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let flag = reloading.clone();
-    axum::serve(listener, api::router(state))
+    let ending = Arc::new(tokio::sync::Notify::new());
+    let ended = ending.clone();
+    let serve = axum::serve(listener, api::router(state))
         .with_graceful_shutdown(async move {
             tokio::select! {
                 _ = stop_signal() => {}
                 _ = reload.notified() => flag.store(true, std::sync::atomic::Ordering::Relaxed),
             }
+            ended.notify_one();
         })
-        .await
-        .map_err(|e| e.to_string())?;
+        .into_future();
+    // Requests still open (long polls, slow clients) get 5 s, then are cut: a slow client
+    // must not keep the site down.
+    tokio::select! {
+        r = serve => r.map_err(|e| e.to_string())?,
+        _ = async {
+            ending.notified().await;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        } => eprintln!("[keep] requests still open after 5 s were cut"),
+    }
     Ok(if reloading.load(std::sync::atomic::Ordering::Relaxed) {
         Ending::Reload
     } else {

@@ -397,7 +397,9 @@ impl Config {
                 );
                 st
             }
-            Err(_) => Stored::default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Stored::default(),
+            // Unreadable is not "new": a set-up server must never fall back to setup mode.
+            Err(e) => return Err(format!("{}: {e}", toml_path.display())),
         };
         st.ensure_webhook_secret();
         if !st.servers.is_empty() {

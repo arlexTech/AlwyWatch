@@ -189,6 +189,36 @@ pub fn api_client(user_agent: &str) -> Result<reqwest::Client> {
         .map_err(Error::from)
 }
 
+/// [`api_client`] for a server process: redirects are followed only within the same host, so
+/// an API key in a header never goes to another host a service (or a wrong address) points to.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn server_client(user_agent: &str) -> Result<reqwest::Client> {
+    init_tls();
+    let policy = reqwest::redirect::Policy::custom(|a| {
+        let same = a
+            .previous()
+            .first()
+            .map(|u| (u.host_str().map(str::to_owned), u.port_or_known_default()))
+            == Some((
+                a.url().host_str().map(str::to_owned),
+                a.url().port_or_known_default(),
+            ));
+        if same && a.previous().len() < 5 {
+            a.follow()
+        } else {
+            a.stop()
+        }
+    });
+    tls(reqwest::Client::builder())
+        .user_agent(user_agent)
+        .connect_timeout(Duration::from_secs(5))
+        .read_timeout(Duration::from_secs(30))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .redirect(policy)
+        .build()
+        .map_err(Error::from)
+}
+
 /// Builds a client for large transfers: no read deadline beyond stalls, longer pool life.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn transfer_client(user_agent: &str) -> Result<reqwest::Client> {
@@ -230,8 +260,35 @@ pub async fn send_json<T: DeserializeOwned>(req: RequestBuilder) -> Result<T> {
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.starts_with("text/html"));
-    let bytes = res.bytes().await?;
+    let bytes = read_capped(res).await?;
     serde_json::from_slice(&bytes).map_err(|e| not_json(asked, landed, html, e))
+}
+
+/// The most an API answer may weigh: far above any real one, and a wrong or hostile address
+/// can't fill the memory.
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_JSON: usize = 64 << 20;
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn read_capped(mut res: reqwest::Response) -> Result<Vec<u8>> {
+    let too_big = || Error::invalid("the answer is too large");
+    if res.content_length().is_some_and(|n| n > MAX_JSON as u64) {
+        return Err(too_big());
+    }
+    let mut out = Vec::new();
+    while let Some(chunk) = res.chunk().await? {
+        if out.len() + chunk.len() > MAX_JSON {
+            return Err(too_big());
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(out)
+}
+
+/// In a browser, which holds the answer anyway.
+#[cfg(target_arch = "wasm32")]
+async fn read_capped(res: reqwest::Response) -> Result<Vec<u8>> {
+    Ok(res.bytes().await?.to_vec())
 }
 
 fn not_json(

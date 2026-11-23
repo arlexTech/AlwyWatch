@@ -23,7 +23,8 @@ fn bad(m: impl Into<String>) -> Error {
 }
 
 fn internal(e: impl std::fmt::Display) -> Error {
-    Error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    eprintln!("[invite] {e}");
+    Error(StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
 }
 
 /// The Jellyfin servers an invitation can make a login on: the server and its API key.
@@ -371,14 +372,15 @@ pub async fn check(
     Path(code): Path<String>,
 ) -> Result<Json<InviteInfo>, Error> {
     let ip = crate::limit::client(&headers);
-    if s.limits.failed_auth.blocked(&ip) {
+    // Every look counts (a right code also asks Jellyfin which names are free), and on its own
+    // counter: wrong codes don't lock people on the same address out of signing in.
+    if !s.limits.invite_checks.allow(&ip) {
         return Err(Error(
             StatusCode::TOO_MANY_REQUESTS,
             "too many attempts, try again in a few minutes".into(),
         ));
     }
     let Some(i) = s.db.invite(&code).map_err(internal)? else {
-        s.limits.failed_auth.hit(&ip);
         return Err(Error(
             StatusCode::NOT_FOUND,
             "this invitation is unknown, used up or expired".into(),

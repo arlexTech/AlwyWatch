@@ -177,6 +177,7 @@ pub fn safe_next(next: Option<&str>) -> String {
             if n.starts_with('/')
                 && !n.starts_with("//")
                 && !n.contains('\\')
+                && !n.contains('%')
                 && n.len() < 200
                 && n.chars().all(|c| c.is_ascii_graphic()) =>
         {

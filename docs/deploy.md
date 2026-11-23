@@ -72,7 +72,7 @@ docker compose up -d && docker logs alwywatch-server
 ```
 
 The log shows a **setup code**: `[setup] No media server yet. Open this site and enter the
-setup code 123456`. Only someone who can read the log can set the server up.
+setup code K7QM-2XRA-9PDW`. Only someone who can read the log can set the server up.
 
 ### 3. Reverse proxy
 

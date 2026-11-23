@@ -197,6 +197,13 @@ impl FromRequestParts<Shared> for Caller {
                 StatusCode::UNAUTHORIZED,
                 "missing bearer token".into(),
             ))?;
+        // An AlwyWatch session is never sent on to a media server (or plex.tv).
+        if token.starts_with(crate::accounts::SESSION_PREFIX) {
+            return Err(Error(
+                StatusCode::UNAUTHORIZED,
+                "invalid token or no access to this server".into(),
+            ));
+        }
         let server_id = h
             .get(SERVER_HEADER)
             .and_then(|v| v.to_str().ok())
@@ -289,6 +296,33 @@ impl FromRequestParts<Shared> for Admin {
             return Err(Error(StatusCode::FORBIDDEN, "administrators only".into()));
         }
         Ok(Admin(id))
+    }
+}
+
+/// An admin whose own sign-in, right now, is a media server's administrator or owner (not
+/// through a linked sign-in): the server settings, with every key in them, need this.
+pub struct ServerAdmin(pub Identity);
+
+impl FromRequestParts<Shared> for ServerAdmin {
+    type Rejection = Error;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Shared,
+    ) -> Result<Self, Self::Rejection> {
+        let Admin(id) = Admin::from_request_parts(parts, state).await?;
+        if !id
+            .identities
+            .iter()
+            .any(|i| i.user_key == id.signed_in_key && i.is_admin)
+        {
+            return Err(Error(
+                StatusCode::FORBIDDEN,
+                "sign in with a Jellyfin administrator or the Plex owner's login for server settings"
+                    .into(),
+            ));
+        }
+        Ok(ServerAdmin(id))
     }
 }
 
@@ -1221,6 +1255,25 @@ async fn admin_link_seerr(
     let user = s.db.person_of(&user).map_err(internal)?;
     if !s.db.user_exists(&user).map_err(internal)? {
         return Err(Error(StatusCode::NOT_FOUND, "unknown user".into()));
+    }
+    // Requests made as a Seerr manager carry its rights: only an admin who may see every key
+    // anyway (server settings) links someone to one.
+    if let Some(sid) = r.seerr_user_id {
+        let bridge = s
+            .seerr
+            .as_ref()
+            .ok_or(BridgeError::Disabled)
+            .map_err(bridge_err)?;
+        let own_admin = admin
+            .identities
+            .iter()
+            .any(|i| i.user_key == admin.signed_in_key && i.is_admin);
+        if bridge.is_manager(sid).await.map_err(bridge_err)? && !own_admin {
+            return Err(Error(
+                StatusCode::FORBIDDEN,
+                "this Seerr user manages Seerr: sign in with a Jellyfin administrator or the Plex owner's login to link someone to it".into(),
+            ));
+        }
     }
     match r.seerr_user_id {
         Some(id) => s.db.set_seerr_link(&user, id, false).map_err(internal)?,

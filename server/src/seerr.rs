@@ -60,6 +60,8 @@ struct SeerrUserDto {
     email: Option<String>,
     #[serde(default)]
     display_name: Option<String>,
+    #[serde(default)]
+    permissions: u64,
 }
 
 fn same_jellyfin_id(a: &str, b: &str) -> bool {
@@ -161,6 +163,17 @@ impl Bridge {
                     .unwrap_or_else(|| format!("user {}", u.id)),
             })
             .collect())
+    }
+
+    /// Whether this Seerr user may manage Seerr (admin, settings, users or others' requests):
+    /// requests made as them would carry those rights.
+    pub async fn is_manager(&self, user: i64) -> Result<bool, BridgeError> {
+        // Seerr's ADMIN, MANAGE_SETTINGS, MANAGE_USERS, MANAGE_REQUESTS.
+        const MANAGE: u64 = 2 | 4 | 8 | 16;
+        let u: SeerrUserDto = net::send_json(self.req(Method::GET, &format!("user/{user}"), None))
+            .await
+            .map_err(Self::unavailable)?;
+        Ok(u.permissions & MANAGE != 0)
     }
 
     pub async fn link(&self, db: &Db, id: &Identity) -> Result<i64, BridgeError> {

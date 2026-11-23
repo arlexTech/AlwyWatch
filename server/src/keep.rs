@@ -45,7 +45,7 @@ pub struct State {
     /// Pocket ID sign-ins in progress (in memory only).
     pub oidc: crate::oidc::Oidc,
     /// Attempt limits (see `limit.rs`).
-    pub limits: Limits,
+    pub limits: Arc<Limits>,
     /// Maintainerr's state from the last sync: 0 not tried yet, 1 answered, 2 failed.
     pub maintainerr_state: std::sync::atomic::AtomicU8,
     /// Unix seconds and title count of the last successful reading (admin status).
@@ -58,6 +58,10 @@ pub struct State {
     /// While no media server is set up: the code printed in the log that the setup page asks
     /// for (nobody else can claim a new server).
     pub setup_code: Option<String>,
+    /// Settings were saved and the server is about to start again with them.
+    pub restarting: std::sync::atomic::AtomicBool,
+    /// Wrong setup codes so far, from anyone.
+    pub setup_failures: std::sync::atomic::AtomicU32,
     /// Why Maintainerr is not used although it is set up (an unsupported version).
     pub maintainerr_problem: std::sync::Mutex<Option<String>>,
 }
@@ -83,6 +87,16 @@ pub struct Limits {
     pub account_signups: crate::limit::Limiter,
     /// Invitation emails sent, per admin.
     pub invite_emails: crate::limit::Limiter,
+    /// Wrong setup codes, per client address (all of them together are capped too).
+    pub setup_codes: crate::limit::Limiter,
+    /// Invitation codes looked at, right or wrong, per client address.
+    pub invite_checks: crate::limit::Limiter,
+    /// Server settings tests (each reaches a service, an email may be sent), per admin.
+    pub settings_tests: crate::limit::Limiter,
+    /// Password and username claims, per user.
+    pub claims: crate::limit::Limiter,
+    /// Passkey and Pocket ID sign-ins started, per client address.
+    pub flow_starts: crate::limit::Limiter,
 }
 
 impl Default for Limits {
@@ -101,6 +115,11 @@ impl Default for Limits {
             account_logins: Limiter::new(10, min(10)),
             account_signups: Limiter::new(5, min(60)),
             invite_emails: Limiter::new(20, min(60)),
+            setup_codes: Limiter::new(10, min(10)),
+            invite_checks: Limiter::new(30, min(10)),
+            settings_tests: Limiter::new(60, min(60)),
+            claims: Limiter::new(10, min(10)),
+            flow_starts: Limiter::new(30, min(10)),
         }
     }
 }
@@ -155,6 +174,8 @@ impl State {
             stored: Default::default(),
             reload: Default::default(),
             setup_code: None,
+            restarting: Default::default(),
+            setup_failures: Default::default(),
             maintainerr_problem: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),
         }

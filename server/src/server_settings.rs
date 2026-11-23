@@ -11,7 +11,7 @@ use net::reqwest::{Client, Method};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::api::{Admin, Error};
+use crate::api::{Error, ServerAdmin};
 use crate::config::{Config, ServerConf};
 use crate::keep::Shared;
 use crate::settings::{Stored, StoredServer};
@@ -22,11 +22,28 @@ fn bad(m: impl Into<String>) -> Error {
 
 /// Checks the new settings, saves them and starts the server again with them (in about a
 /// second, after this answer is sent).
-async fn save_and_reload(s: &Shared, new: Stored) -> Result<(), Error> {
+/// `change` runs on the settings as saved, under a lock: two admins saving together can't
+/// undo each other's change, and nothing is saved once a restart is on its way.
+async fn save_and_reload(
+    s: &Shared,
+    change: impl FnOnce(&mut Stored) -> Result<(), Error>,
+) -> Result<(), Error> {
+    use std::sync::atomic::Ordering;
+    let mut saved = s.stored.lock().await;
+    if s.restarting.load(Ordering::Relaxed) {
+        return Err(Error(
+            StatusCode::CONFLICT,
+            "the server is starting again with new settings: try again in a moment".into(),
+        ));
+    }
+    let mut new = saved.clone();
+    change(&mut new)?;
     Config::from_stored(&new, s.config.listen, s.config.data_dir.clone()).map_err(bad)?;
     new.save(&Stored::path(&s.config.data_dir))
         .map_err(|e| Error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    *s.stored.lock().await = new;
+    *saved = new;
+    s.restarting.store(true, Ordering::Relaxed);
+    drop(saved);
     let reload = s.reload.clone();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
@@ -64,7 +81,33 @@ pub struct SetupPlex {
     server: AddPlex,
 }
 
+/// Letters and digits that can't be mixed up when copied from a log.
+const CODE_CHARS: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+/// Wrong setup codes from everyone together before setup is locked until a restart.
+const MAX_SETUP_FAILURES: u32 = 100;
+
+/// A setup code like `K7QM-2XRA-9PDW` (about 59 bits): guessing it through the rate limits,
+/// even from many addresses, is out of reach.
+pub fn new_setup_code() -> String {
+    let mut b = [0u8; 12];
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut b)
+        .expect("the system random generator");
+    let c: String = b
+        .iter()
+        .map(|x| CODE_CHARS[*x as usize % CODE_CHARS.len()] as char)
+        .collect();
+    format!("{}-{}-{}", &c[..4], &c[4..8], &c[8..])
+}
+
+fn normalize_code(c: &str) -> Vec<u8> {
+    c.bytes()
+        .filter(u8::is_ascii_alphanumeric)
+        .map(|b| b.to_ascii_uppercase())
+        .collect()
+}
+
 fn check_code(s: &Shared, headers: &HeaderMap, code: &str) -> Result<(), Error> {
+    use std::sync::atomic::Ordering;
     let Some(want) = &s.setup_code else {
         return Err(Error(
             StatusCode::CONFLICT,
@@ -72,14 +115,19 @@ fn check_code(s: &Shared, headers: &HeaderMap, code: &str) -> Result<(), Error> 
         ));
     };
     let ip = crate::limit::client(headers);
-    if s.limits.failed_auth.blocked(&ip) {
+    if s.limits.setup_codes.blocked(&ip)
+        || s.setup_failures.load(Ordering::Relaxed) >= MAX_SETUP_FAILURES
+    {
         return Err(Error(
             StatusCode::TOO_MANY_REQUESTS,
-            "too many attempts, try again in a few minutes".into(),
+            "too many wrong codes: restart the AlwyWatch server for a new one".into(),
         ));
     }
-    if code.trim() != want {
-        s.limits.failed_auth.hit(&ip);
+    let (a, b) = (normalize_code(code), normalize_code(want));
+    let same = a.len() == b.len() && a.iter().zip(&b).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0;
+    if !same {
+        s.limits.setup_codes.hit(&ip);
+        s.setup_failures.fetch_add(1, Ordering::Relaxed);
         return Err(Error(
             StatusCode::FORBIDDEN,
             "wrong setup code: it is in the server's log (docker logs alwywatch-server)".into(),
@@ -97,10 +145,11 @@ pub async fn setup_jellyfin(
 ) -> Result<Json<Value>, Error> {
     check_code(&s, &headers, &r.code)?;
     let server = jellyfin_server(&s.http, &r.server).await?;
-    let mut st = s.stored.lock().await.clone();
-    st.ensure_webhook_secret();
-    upsert(&mut st, server);
-    save_and_reload(&s, st).await?;
+    save_and_reload(&s, |st| {
+        st.ensure_webhook_secret();
+        upsert(st, server)
+    })
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -113,10 +162,11 @@ pub async fn setup_plex(
 ) -> Result<Json<Value>, Error> {
     check_code(&s, &headers, &r.code)?;
     let server = plex_server(&s, &r.server).await?;
-    let mut st = s.stored.lock().await.clone();
-    st.ensure_webhook_secret();
-    upsert(&mut st, server);
-    save_and_reload(&s, st).await?;
+    save_and_reload(&s, |st| {
+        st.ensure_webhook_secret();
+        upsert(st, server)
+    })
+    .await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -134,7 +184,10 @@ pub struct SettingsView {
 }
 
 /// `GET /v1/admin/settings`.
-pub async fn get_settings(State(s): State<Shared>, Admin(_): Admin) -> Json<SettingsView> {
+pub async fn get_settings(
+    State(s): State<Shared>,
+    ServerAdmin(_): ServerAdmin,
+) -> Json<SettingsView> {
     let st = s.stored.lock().await.clone();
     let webhooks = match (&st.public_url, &st.webhook_secret) {
         (Some(url), Some(secret)) => ["jellyfin", "plex", "tautulli"]
@@ -162,17 +215,20 @@ pub async fn get_settings(State(s): State<Shared>, Admin(_): Admin) -> Json<Sett
 /// `PUT /v1/admin/settings`: the whole settings, as `GET` gave them, changed.
 pub async fn put_settings(
     State(s): State<Shared>,
-    Admin(id): Admin,
+    ServerAdmin(id): ServerAdmin,
     Json(new): Json<Stored>,
 ) -> Result<Json<Value>, Error> {
-    let old = s.stored.lock().await.clone();
-    let new = old.merged_from(new);
-    if new.servers.is_empty() {
-        return Err(bad(
-            "keep at least one media server: without one, nobody can sign in",
-        ));
-    }
-    save_and_reload(&s, new).await?;
+    save_and_reload(&s, |st| {
+        let merged = st.merged_from(new);
+        if merged.servers.is_empty() {
+            return Err(bad(
+                "keep at least one media server: without one, nobody can sign in",
+            ));
+        }
+        *st = merged;
+        Ok(())
+    })
+    .await?;
     s.db.log(&id.user_key, "settings", "server settings changed");
     Ok(Json(json!({ "ok": true })))
 }
@@ -199,14 +255,12 @@ pub struct AddPlex {
 /// administrator's login: AlwyWatch makes its own API key there.
 pub async fn add_jellyfin(
     State(s): State<Shared>,
-    Admin(id): Admin,
+    ServerAdmin(id): ServerAdmin,
     Json(r): Json<AddJellyfin>,
 ) -> Result<Json<Value>, Error> {
     let server = jellyfin_server(&s.http, &r).await?;
-    let mut st = s.stored.lock().await.clone();
     let name = server.name.clone();
-    upsert(&mut st, server);
-    save_and_reload(&s, st).await?;
+    save_and_reload(&s, |st| upsert(st, server)).await?;
     s.db.log(
         &id.user_key,
         "settings",
@@ -218,14 +272,12 @@ pub async fn add_jellyfin(
 /// `POST /v1/admin/settings/plex`: adds a Plex server the signed-in Plex account owns.
 pub async fn add_plex(
     State(s): State<Shared>,
-    Admin(id): Admin,
+    ServerAdmin(id): ServerAdmin,
     Json(r): Json<AddPlex>,
 ) -> Result<Json<Value>, Error> {
     let server = plex_server(&s, &r).await?;
-    let mut st = s.stored.lock().await.clone();
     let name = server.name.clone();
-    upsert(&mut st, server);
-    save_and_reload(&s, st).await?;
+    save_and_reload(&s, |st| upsert(st, server)).await?;
     s.db.log(
         &id.user_key,
         "settings",
@@ -236,8 +288,21 @@ pub async fn add_plex(
 
 /// The same server again (same id) replaces the old entry, keeping its key when the new one
 /// has none.
-fn upsert(st: &mut Stored, mut server: StoredServer) {
+/// Adds a server, or renews the key of the same server at the same address. A server answering
+/// with the id of one already here, at another address or of another kind, is refused: moving
+/// a server means removing it first (else any host could take an existing server's place).
+fn upsert(st: &mut Stored, mut server: StoredServer) -> Result<(), Error> {
     if let Some(old) = st.servers.iter_mut().find(|x| x.id == server.id) {
+        let same = |a: &str, b: &str| a.trim_end_matches('/') == b.trim_end_matches('/');
+        if old.kind != server.kind || !same(&old.public_url, &server.public_url) {
+            return Err(Error(
+                StatusCode::CONFLICT,
+                format!(
+                    "{} is already set up at {}: remove it first to move it",
+                    old.name, old.public_url
+                ),
+            ));
+        }
         if server.api_key.is_none() {
             server.api_key = old.api_key.take();
         }
@@ -245,6 +310,7 @@ fn upsert(st: &mut Stored, mut server: StoredServer) {
     } else {
         st.servers.push(server);
     }
+    Ok(())
 }
 
 fn base(url: &str) -> Result<String, Error> {
@@ -459,9 +525,15 @@ pub struct TestResult {
 /// `POST /v1/admin/settings/test`: tries one connection with the settings being edited.
 pub async fn test(
     State(s): State<Shared>,
-    Admin(_): Admin,
+    ServerAdmin(id): ServerAdmin,
     Json(r): Json<TestRequest>,
 ) -> Json<TestResult> {
+    if !s.limits.settings_tests.allow(&id.user_key) {
+        return Json(TestResult {
+            ok: false,
+            message: "too many tests: try again later".into(),
+        });
+    }
     let st = s.stored.lock().await.clone().merged_from(r.settings);
     let res = run_test(
         &s,
@@ -626,5 +698,55 @@ async fn run_test(
             }
         }
         _ => Err("unknown test".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use keep_service::ServerType;
+
+    fn server(id: &str, url: &str) -> StoredServer {
+        StoredServer {
+            id: id.into(),
+            kind: Some(ServerType::Jellyfin),
+            name: "HomeJelly".into(),
+            public_url: url.into(),
+            internal_url: None,
+            api_key: None,
+        }
+    }
+
+    #[test]
+    fn a_server_answering_with_another_ones_id_cant_take_its_place() {
+        let mut st = Stored {
+            servers: vec![StoredServer {
+                api_key: Some("key".into()),
+                ..server("abc", "https://jf.example.org")
+            }],
+            ..Default::default()
+        };
+        // Same server, same address: the key is renewed (or kept).
+        assert!(upsert(&mut st, server("abc", "https://jf.example.org/")).is_ok());
+        assert_eq!(st.servers[0].api_key.as_deref(), Some("key"));
+        // Same id elsewhere, or as another kind: refused.
+        assert!(upsert(&mut st, server("abc", "https://evil.example.org")).is_err());
+        let mut plex = server("abc", "https://jf.example.org");
+        plex.kind = Some(ServerType::Plex);
+        assert!(upsert(&mut st, plex).is_err());
+        assert!(st.servers[0].public_url.starts_with("https://jf.example.org"));
+        assert!(upsert(&mut st, server("other", "https://two.example.org")).is_ok());
+        assert_eq!(st.servers.len(), 2);
+    }
+
+    #[test]
+    fn setup_codes_are_long_and_forgiving_to_type() {
+        let c = new_setup_code();
+        assert_eq!(c.len(), 14, "{c}");
+        assert_ne!(c, new_setup_code());
+        assert_eq!(
+            normalize_code(&c.to_lowercase().replace('-', " ")),
+            normalize_code(&c)
+        );
     }
 }

@@ -1132,6 +1132,12 @@ async fn dry_run_writes_nothing_to_maintainerr_or_seerr() {
 async fn admin_links_a_user_to_an_existing_seerr_user_without_creating_one() {
     // Dry run: Seerr may not be written to, yet linking an existing user works.
     let e = env_with(true).await;
+    // A plain Seerr user (requests only): any admin may link someone to it.
+    Mock::given(method("GET"))
+        .and(path_regex("^/api/v1/user/[0-9]+$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": 1, "permissions": 32})))
+        .mount(&e.seerr)
+        .await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(201))
         .expect(0)
@@ -2255,6 +2261,12 @@ impl Env {
 #[tokio::test]
 async fn linking_merges_two_accounts_into_one_jellyfin_person() {
     let e = env().await;
+    // A plain Seerr user (requests only): any admin may link someone to it.
+    Mock::given(method("GET"))
+        .and(path_regex("^/api/v1/user/[0-9]+$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": 1, "permissions": 32})))
+        .mount(&e.seerr)
+        .await;
     e.state.sync().await.unwrap();
     let alice = "jellyfin:jfsrv:ja";
     e.me_as("jfsrv", "jf-alice").await;
@@ -4076,4 +4088,30 @@ async fn a_jellyfin_login_whose_access_cant_be_set_is_deleted_and_the_invitation
         )
         .await;
     assert_eq!(st, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn an_alwywatch_session_is_never_sent_to_a_media_server() {
+    let e = env().await;
+    Mock::given(path("/Users/Me"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Id": "x", "Name": "x"})))
+        .expect(0)
+        .with_priority(1)
+        .mount(&e.jf)
+        .await;
+    let (st, _) = e.call("GET", "/v1/me", "jfsrv", "aws_secret", None).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_wrong_setup_code_is_refused_and_setup_ends_once_done() {
+    let mut e = env().await;
+    let st = std::sync::Arc::get_mut(&mut e.state).expect("only owner");
+    st.setup_code = Some("ABCD-EFGH-JKMN".into());
+    let body = json!({"code": "ABCD-EFGH-JKMP", "url": "https://jf.example.org",
+        "username": "a", "password": "b"});
+    let (st, _, _) = e.anon("POST", "/v1/setup/jellyfin", None, Some(body)).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (_, _, v) = e.anon("GET", "/v1/setup", None, None).await;
+    assert_eq!(v["needed"], true);
 }

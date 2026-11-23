@@ -130,13 +130,24 @@ impl Stored {
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let tmp = path.with_extension("json.tmp");
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(&tmp, text).map_err(|e| format!("{}: {e}", tmp.display()))?;
+        let err = |e: std::io::Error| format!("{}: {e}", tmp.display());
+        let _ = std::fs::remove_file(&tmp);
+        let mut o = std::fs::OpenOptions::new();
+        o.write(true).create_new(true);
+        // Readable by the server only from its first byte.
         #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
+        let mut f = o.open(&tmp).map_err(err)?;
+        std::io::Write::write_all(&mut f, text.as_bytes()).map_err(err)?;
+        f.sync_all().map_err(err)?;
+        drop(f);
+        std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))?;
+        if let Some(dir) = path.parent()
+            && let Ok(d) = std::fs::File::open(dir)
         {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+            let _ = d.sync_all();
         }
-        std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
+        Ok(())
     }
 
     /// For the apps: every secret replaced by [`KEPT`] (or left out when not set).
@@ -175,41 +186,58 @@ impl Stored {
                 *new = None;
             }
         }
-        for s in &mut new.servers {
-            let old = self.servers.iter().find(|o| o.id == s.id);
-            keep(&mut s.api_key, old.and_then(|o| o.api_key.as_ref()));
-        }
+        // Media servers are added (and their addresses changed) only by signing in to them as
+        // their administrator or owner; here they can be renamed or removed.
+        new.servers = new
+            .servers
+            .into_iter()
+            .filter_map(|s| {
+                let old = self.servers.iter().find(|o| o.id == s.id)?;
+                let name = s.name.trim();
+                Some(StoredServer {
+                    name: if name.is_empty() {
+                        old.name.clone()
+                    } else {
+                        name.to_owned()
+                    },
+                    ..old.clone()
+                })
+            })
+            .collect();
+        // A kept secret goes only to the address it was given for: pointing a section at
+        // another address needs the secret typed again.
+        let same =
+            |a: &str, b: &str| a.trim().trim_end_matches('/') == b.trim().trim_end_matches('/');
         if let Some(m) = &mut new.maintainerr {
-            keep(
-                &mut m.api_key,
-                self.maintainerr.as_ref().and_then(|o| o.api_key.as_ref()),
-            );
+            let old = self.maintainerr.as_ref().filter(|o| same(&o.url, &m.url));
+            keep(&mut m.api_key, old.and_then(|o| o.api_key.as_ref()));
         }
         if let Some(t) = &mut new.tautulli {
-            keep(
-                &mut t.api_key,
-                self.tautulli.as_ref().and_then(|o| o.api_key.as_ref()),
-            );
+            let old = self.tautulli.as_ref().filter(|o| same(&o.url, &t.url));
+            keep(&mut t.api_key, old.and_then(|o| o.api_key.as_ref()));
         }
-        if let Some(s) = &mut new.seerr {
-            keep(
-                &mut s.api_key,
-                self.seerr.as_ref().and_then(|o| o.api_key.as_ref()),
-            );
+        if let Some(n) = &mut new.seerr {
+            let old = self.seerr.as_ref().filter(|o| same(&o.url, &n.url));
+            keep(&mut n.api_key, old.and_then(|o| o.api_key.as_ref()));
         }
         if let Some(p) = &mut new.pocketid {
+            let old = self
+                .pocketid
+                .as_ref()
+                .filter(|o| same(&o.issuer, &p.issuer) && o.client_id.trim() == p.client_id.trim());
             keep(
                 &mut p.client_secret,
-                self.pocketid
-                    .as_ref()
-                    .and_then(|o| o.client_secret.as_ref()),
+                old.and_then(|o| o.client_secret.as_ref()),
             );
         }
         if let Some(m) = &mut new.smtp {
-            keep(
-                &mut m.password,
-                self.smtp.as_ref().and_then(|o| o.password.as_ref()),
-            );
+            let old = self.smtp.as_ref().filter(|o| {
+                o.host.trim().eq_ignore_ascii_case(m.host.trim())
+                    && o.port == m.port
+                    && o.security == m.security
+                    && o.username == m.username
+            });
+            keep(&mut m.password, old.and_then(|o| o.password.as_ref()));
         }
         // Made by the server, never typed: the apps can't change it.
         new.webhook_secret = self.webhook_secret.clone();
@@ -407,15 +435,35 @@ mod tests {
         assert_eq!(s.merged_from(shown.clone()), s);
         // A new key replaces the old one, an empty one removes it, and a section with no
         // address is off.
-        let mut edit = shown;
-        edit.servers[0].api_key = Some("new".into());
+        let mut edit = shown.clone();
         edit.smtp.as_mut().unwrap().password = Some(String::new());
         edit.tautulli = Some(StoredService::default());
         let m = s.merged_from(edit);
-        assert_eq!(m.servers[0].api_key.as_deref(), Some("new"));
         assert_eq!(m.smtp.unwrap().password, None);
         assert_eq!(m.tautulli, None);
         assert_eq!(m.webhook_secret.as_deref(), Some("hook"));
+
+        // A media server's address, key and kind change only by adding it again; it can be
+        // renamed, and none is added here.
+        let mut edit = shown.clone();
+        edit.servers[0].public_url = "https://evil.example.org".into();
+        edit.servers[0].internal_url = Some("http://evil".into());
+        edit.servers[0].api_key = Some("other".into());
+        edit.servers[0].name = "Renamed".into();
+        let mut extra = edit.servers[0].clone();
+        extra.id = "new".into();
+        edit.servers.push(extra);
+        let m = s.merged_from(edit);
+        assert_eq!(m.servers.len(), 1);
+        assert_eq!(m.servers[0].name, "Renamed");
+        assert_eq!(m.servers[0].public_url, s.servers[0].public_url);
+        assert_eq!(m.servers[0].internal_url, None);
+        assert_eq!(m.servers[0].api_key.as_deref(), Some("jf-secret"));
+
+        // A kept secret never follows its section to another address.
+        let mut edit = shown;
+        edit.smtp.as_mut().unwrap().host = "evil.example.org".into();
+        assert_eq!(s.merged_from(edit).smtp.unwrap().password, None);
     }
 
     #[test]

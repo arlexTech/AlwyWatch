@@ -437,7 +437,7 @@ pub fn SignedInPage() -> impl IntoView {
                 .ok()
                 .and_then(|s| s.as_string())
                 .unwrap_or_default();
-            if v.starts_with('/') && !v.starts_with("//") {
+            if v.starts_with('/') && !v.starts_with("//") && !v.contains('\\') {
                 next = v;
             }
         }

@@ -205,6 +205,30 @@ pub struct Register {
     device: String,
 }
 
+/// Password hashing takes tens of milliseconds of CPU: off the async workers, so it never holds
+/// other requests up.
+async fn hash_off(password: &str) -> Result<String, Error> {
+    let pw = password.to_owned();
+    tokio::task::spawn_blocking(move || accounts::hash_password(&pw))
+        .await
+        .map_err(internal)?
+        .map_err(account_err)
+}
+
+/// `verify_password` off the async workers; without a hash it takes as long and says no.
+async fn verify_off(hash: Option<String>, password: &str) -> bool {
+    let pw = password.to_owned();
+    tokio::task::spawn_blocking(move || match hash {
+        Some(h) => accounts::verify_password(&h, &pw),
+        None => {
+            accounts::verify_nothing(&pw);
+            false
+        }
+    })
+    .await
+    .unwrap_or(false)
+}
+
 /// `POST /v1/account/register`: a new account with a password (and a new person).
 pub async fn register(
     State(s): State<Shared>,
@@ -292,16 +316,11 @@ async fn make_account(
             eprintln!("[invite] could not give an invitation back: {e}");
         }
     };
-    let pw = password.clone();
-    let hash = match tokio::task::spawn_blocking(move || accounts::hash_password(&pw)).await {
-        Ok(Ok(h)) => h,
-        Ok(Err(e)) => {
-            give_back(&s);
-            return Err(account_err(e));
-        }
+    let hash = match hash_off(&password).await {
+        Ok(h) => h,
         Err(e) => {
             give_back(&s);
-            return Err(internal(e));
+            return Err(e);
         }
     };
     let jellyfin = match &invite {
@@ -380,13 +399,7 @@ pub async fn login(
     let found =
         s.db.account_by_username(r.username.trim())
             .map_err(internal)?;
-    let ok = match &found {
-        Some((_, Some(hash))) => accounts::verify_password(hash, &r.password),
-        _ => {
-            accounts::verify_nothing(&r.password);
-            false
-        }
-    };
+    let ok = verify_off(found.as_ref().and_then(|(_, h)| h.clone()), &r.password).await;
     let Some((a, _)) = found.filter(|_| ok) else {
         s.limits.account_logins.hit(&ip);
         s.limits.account_logins.hit(&user);
@@ -425,7 +438,7 @@ pub async fn delete_account(
         if s.limits.account_logins.blocked(&ip) {
             return Err(too_many());
         }
-        if !accounts::verify_password(&hash, r.password.as_deref().unwrap_or("")) {
+        if !verify_off(Some(hash), r.password.as_deref().unwrap_or("")).await {
             s.limits.account_logins.hit(&ip);
             return Err(Error(StatusCode::FORBIDDEN, "the password is wrong".into()));
         }
@@ -454,14 +467,20 @@ pub async fn claim(
     Caller(id): Caller,
     Json(r): Json<Claim>,
 ) -> Result<Json<AccountView>, Error> {
+    if !s.limits.claims.allow(&id.user_key) {
+        return Err(too_many());
+    }
     let username = r.username.trim();
     accounts::check_username(username).map_err(account_err)?;
-    let hash = accounts::hash_password(&r.password).map_err(account_err)?;
+    accounts::check_password(&r.password).map_err(account_err)?;
+    let hash = hash_off(&r.password).await?;
     let a = match s.db.account_of_person(&id.user_key).map_err(internal)? {
         Some(a) if a.media_locked => return Err(media_locked()),
         Some(a) => {
             s.db.set_username(&a.id, username).map_err(account_err)?;
             s.db.set_password(&a.id, Some(&hash)).map_err(internal)?;
+            // A new password ends every session, as changing it does.
+            s.db.end_other_sessions(&a.id, None).map_err(internal)?;
             s.db.account(&a.id)
                 .map_err(internal)?
                 .ok_or(Error(StatusCode::NOT_FOUND, "no such account".into()))?
@@ -535,7 +554,7 @@ pub async fn set_password(
         if s.limits.account_logins.blocked(&ip) {
             return Err(too_many());
         }
-        if !accounts::verify_password(&hash, r.current.as_deref().unwrap_or("")) {
+        if !verify_off(Some(hash), r.current.as_deref().unwrap_or("")).await {
             s.limits.account_logins.hit(&ip);
             return Err(Error(
                 StatusCode::FORBIDDEN,
@@ -549,7 +568,7 @@ pub async fn set_password(
             "choose a username first".into(),
         ));
     }
-    let hash = accounts::hash_password(&r.new).map_err(account_err)?;
+    let hash = hash_off(&r.new).await?;
     s.db.set_password(&a.id, Some(&hash)).map_err(internal)?;
     s.db.end_other_sessions(&a.id, Some(&session.id))
         .map_err(internal)?;
@@ -749,7 +768,12 @@ pub async fn passkey_register_finish(
 /// `POST /v1/account/passkeys/login/start`.
 pub async fn passkey_login_start(
     State(s): State<Shared>,
+    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, Error> {
+    // Bounded per address: nobody pushes everyone's sign-in out of the waiting list.
+    if !s.limits.flow_starts.allow(&crate::limit::client(&headers)) {
+        return Err(too_many());
+    }
     Ok(Json(s.passkeys.login_start(rp(&s)?)))
 }
 
@@ -887,7 +911,14 @@ fn web_error(msg: &str) -> Redirect {
 }
 
 /// `GET /v1/account/oidc/start`: off to Pocket ID.
-pub async fn oidc_start(State(s): State<Shared>, Query(q): Query<OidcStart>) -> Response {
+pub async fn oidc_start(
+    State(s): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<OidcStart>,
+) -> Response {
+    if !s.limits.flow_starts.allow(&crate::limit::client(&headers)) {
+        return web_error("too many attempts, try again in a few minutes").into_response();
+    }
     let Some(cfg) = s.config.accounts.pocketid.as_ref() else {
         return web_error("Pocket ID is not set up on this server").into_response();
     };
@@ -909,7 +940,10 @@ pub async fn oidc_start(State(s): State<Shared>, Query(q): Query<OidcStart>) -> 
             Redirect::to(&url),
         )
             .into_response(),
-        Err(e) => web_error(&e.to_string()).into_response(),
+        Err(e) => {
+            eprintln!("[oidc] {e}");
+            web_error("Pocket ID can't be reached right now, try again later").into_response()
+        }
     }
 }
 
@@ -945,7 +979,11 @@ pub async fn oidc_callback(
         return web_error("Pocket ID is not set up on this server");
     };
     if let Some(e) = q.error {
-        return web_error(&format!("Pocket ID said: {e}"));
+        eprintln!(
+            "[oidc] Pocket ID refused: {}",
+            e.chars().take(200).collect::<String>()
+        );
+        return web_error("Pocket ID refused the sign-in");
     }
     let (Some(code), Some(state)) = (q.code, q.state) else {
         return web_error("Pocket ID's answer was incomplete");
@@ -957,6 +995,10 @@ pub async fn oidc_callback(
         .find_map(crate::oidc::cookie_of);
     let (intent, user) = match s.oidc.finish(&s.http, cfg, &code, &state, browser).await {
         Ok(x) => x,
+        Err(crate::oidc::OidcError::Provider(e)) => {
+            eprintln!("[oidc] {e}");
+            return web_error("Pocket ID's answer could not be used, try again later");
+        }
         Err(e) => return web_error(&e.to_string()),
     };
     let found = match s.db.oidc_account(&cfg.issuer, &user.sub) {
