@@ -338,7 +338,13 @@ fun LeavingSoonScreen() {
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ActionButton("Sort them out", { nav.push(Route.Triage) }, Modifier.initialFocus(), primary = true, icon = be.alwyapps.watch.ui.Icons.Favorite)
+                    ActionButton(
+                        "Sort them out",
+                        { nav.push(Route.Triage) },
+                        Modifier.initialFocus(),
+                        primary = true,
+                        icon = be.alwyapps.watch.ui.Icons.Favorite,
+                    )
                     if (core.keepConnection()?.isAdmin == true) ActionButton("Admin", { nav.push(Route.KeepAdmin) }, icon = be.alwyapps.watch.ui.Icons.Settings)
                 }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
