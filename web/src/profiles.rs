@@ -109,6 +109,16 @@ pub fn add_new() -> String {
     id
 }
 
+/// A new profile with Jellyfin/Plex logins only: never linked to the AlwyWatch server by
+/// itself (its logins and settings stay in this browser).
+pub fn add_offline() -> String {
+    let id = add_new();
+    if let Some(s) = storage() {
+        let _ = s.set_item(&scoped_for(&id, crate::state::KEEP_OFF), "true");
+    }
+    id
+}
+
 /// The person of this profile is known now: a profile added without a name takes theirs.
 pub fn adopt_name(name: &str) {
     let me = current();
@@ -189,13 +199,10 @@ pub fn switch_to(id: &str, path: &str) {
     let _ = w.location().set_href(path);
 }
 
-/// The menu's profile item (several profiles): who is watching, one click to switch.
+/// The menu's profile item: who is watching, one click to switch or add someone.
 #[component]
 pub fn ProfileMenu() -> impl IntoView {
     let all = list();
-    if all.len() < 2 {
-        return ().into_any();
-    }
     let me = current();
     let name = all
         .iter()
@@ -212,11 +219,11 @@ pub fn ProfileMenu() -> impl IntoView {
                         <button on:click=move |_| switch(&id)><span class="pdot">{initial(&p.name)}</span>{p.name.clone()}</button>
                     }
                 }).collect_view()}
+                <a href="/settings/device?add=1">{tr!("Add a profile")}</a>
                 <a href="/settings/device">{tr!("Manage profiles")}</a>
             </div>
         </details>
     }
-    .into_any()
 }
 
 fn initial(name: &str) -> String {
@@ -230,12 +237,15 @@ fn initial(name: &str) -> String {
 #[component]
 pub fn ProfilesSettings() -> impl IntoView {
     let version = RwSignal::new(0u32);
-    let adding = RwSignal::new(false);
+    let adding = RwSignal::new(
+        leptos_router::hooks::use_query_map().with_untracked(|q| q.get("add").is_some()),
+    );
     let renaming = RwSignal::new(None::<(String, String)>);
     let me = current();
     // A new profile starts empty: its own sign-in, then it takes the person's name.
     let sign_in = Callback::new(|()| switch_to(&add_new(), "/signin?step=signin"));
     let create = Callback::new(|()| switch_to(&add_new(), "/join"));
+    let media = Callback::new(|()| switch_to(&add_offline(), "/signin?step=media"));
     view! {
         <section class="group">
             <h2>{tr!("Profiles")}</h2>
@@ -293,7 +303,7 @@ pub fn ProfilesSettings() -> impl IntoView {
             {move || if adding.get() {
                 view! {
                     <h3>{tr!("Add a profile")}</h3>
-                    <crate::signin::StartCards on_sign_in=sign_in on_create=create />
+                    <crate::signin::StartCards on_sign_in=sign_in on_create=create on_media=media />
                     <div class="actions"><button class="small subtle" on:click=move |_| adding.set(false)>{tr!("Cancel")}</button></div>
                 }.into_any()
             } else {

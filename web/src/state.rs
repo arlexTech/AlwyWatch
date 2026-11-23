@@ -19,7 +19,7 @@ const ACCOUNTS: &str = "aw.accounts";
 const DEVICE: &str = "aw.device";
 const KEEP: &str = "aw.keep";
 /// Set by "Sign out of AlwyWatch": logins stay, nothing links them to the AlwyWatch server.
-const KEEP_OFF: &str = "aw.keep.off";
+pub const KEEP_OFF: &str = "aw.keep.off";
 /// plex.tv account tokens of Plex accounts (the watchlist lives on plex.tv), by account key.
 const PLEX_TV: &str = "aw.plextv";
 /// Copies of server data kept for an instant next start; they go with the accounts.

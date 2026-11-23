@@ -120,7 +120,11 @@ fn after_sign_in() -> String {
 
 /// The first step of a profile (first visit, "Add a profile"): sign in or create an account.
 #[component]
-pub fn StartCards(on_sign_in: Callback<()>, on_create: Callback<()>) -> impl IntoView {
+pub fn StartCards(
+    on_sign_in: Callback<()>,
+    on_create: Callback<()>,
+    on_media: Callback<()>,
+) -> impl IntoView {
     view! {
         <div class="choices">
             <button class="choice" on:click=move |_| on_sign_in.run(())>
@@ -130,6 +134,10 @@ pub fn StartCards(on_sign_in: Callback<()>, on_create: Callback<()>) -> impl Int
             <button class="choice" on:click=move |_| on_create.run(())>
                 <strong>{tr!("Create an AlwyWatch account")}</strong>
                 <span class="muted">{tr!("You have an invitation")}</span>
+            </button>
+            <button class="choice" on:click=move |_| on_media.run(())>
+                <strong>{tr!("Jellyfin or Plex only")}</strong>
+                <span class="muted">{tr!("No AlwyWatch account: your logins and settings stay in this browser")}</span>
             </button>
         </div>
     }
@@ -144,23 +152,39 @@ pub fn SignIn() -> impl IntoView {
     let fresh = c.accounts.get_untracked().is_empty() && c.account.get_untracked().is_none();
     let step = leptos_router::hooks::use_query_map().with_untracked(|q| q.get("step"));
     let asked = step.as_deref() == Some("signin");
-    let signing_in = RwSignal::new(asked);
+    let media_only = RwSignal::new(step.as_deref() == Some("media"));
+    let signing_in = RwSignal::new(asked || media_only.get_untracked());
     let navigate = use_navigate();
     let create = Callback::new(move |()| navigate("/join", Default::default()));
     let sign_in = Callback::new(move |()| signing_in.set(true));
+    let c2 = c.clone();
+    let media = Callback::new(move |()| {
+        // Never linked to the AlwyWatch server by itself ("Connect to AlwyWatch" does it).
+        c2.set_keep_off(true);
+        media_only.set(true);
+        signing_in.set(true);
+    });
     move || {
         if fresh && !signing_in.get() {
             view! {
                 <h1>{tr!("Welcome to AlwyWatch")}</h1>
-                <StartCards on_sign_in=sign_in on_create=create />
+                <StartCards on_sign_in=sign_in on_create=create on_media=media />
             }
             .into_any()
         } else {
-            let to_alwywatch = fresh || asked;
+            let media = media_only.get();
+            let to_alwywatch = (fresh || asked) && !media;
+            let c = c.clone();
             view! {
-                <h1>{if to_alwywatch { tr!("Sign in to AlwyWatch") } else { tr!("Add a server") }}</h1>
+                <h1>{if to_alwywatch { tr!("Sign in to AlwyWatch") } else if media { tr!("Sign in with Jellyfin or Plex") } else { tr!("Add a server") }}</h1>
                 {(fresh && !asked).then(|| view! {
-                    <p><button class="small subtle" on:click=move |_| signing_in.set(false)>"‹ "{tr!("Back")}</button></p>
+                    <p><button class="small subtle" on:click=move |_| {
+                        if media_only.get_untracked() {
+                            c.set_keep_off(false);
+                            media_only.set(false);
+                        }
+                        signing_in.set(false)
+                    }>"‹ "{tr!("Back")}</button></p>
                 })}
                 <SignInWays to_alwywatch=to_alwywatch />
             }

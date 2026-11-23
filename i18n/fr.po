@@ -694,7 +694,7 @@ msgstr "Paramètres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Scaffold.kt:475
 #: android/app/src/main/java/be/alwyapps/watch/ui/Scaffold.kt:493
-#: web/src/profiles.rs:207
+#: web/src/profiles.rs:214
 msgid "Switch profile"
 msgstr "Changer de profil"
 
@@ -833,18 +833,18 @@ msgstr "Ouverture…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:264
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:385
-#: web/src/signin.rs:161
+#: web/src/signin.rs:179
 msgid "Add a server"
 msgstr "Ajouter un serveur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:269
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:432
-#: web/src/profiles.rs:295
+#: web/src/profiles.rs:222
 msgid "Add a profile"
 msgstr "Ajouter un profil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:269
-#: web/src/signin.rs:154
+#: web/src/signin.rs:170
 #: desktop/ui/app.slint:2109
 msgid "Welcome to AlwyWatch"
 msgstr "Bienvenue dans AlwyWatch"
@@ -870,7 +870,7 @@ msgstr "Créer un compte AlwyWatch"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:287
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:885
-#: web/src/signin.rs:127
+#: web/src/signin.rs:131
 msgid "Sign in to AlwyWatch"
 msgstr "Se connecter à AlwyWatch"
 
@@ -893,7 +893,7 @@ msgstr "Vos serveurs"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:292
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:898
-#: desktop/ui/app.slint:2122
+#: web/src/signin.rs:139
 msgid "Jellyfin or Plex only"
 msgstr "Jellyfin ou Plex uniquement"
 
@@ -1016,7 +1016,7 @@ msgstr "Allez sur plex.tv/link et saisissez ce code."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:602
 #: web/src/setup.rs:257
-#: web/src/signin.rs:402
+#: web/src/signin.rs:426
 msgid "Waiting for Plex…"
 msgstr "En attente de Plex…"
 
@@ -1130,13 +1130,13 @@ msgid "Jellyfin · Quick Connect or password"
 msgstr "Jellyfin · Connexion rapide ou mot de passe"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:886
-#: web/src/signin.rs:128
+#: web/src/signin.rs:132
 msgid "Your name, settings and servers come with you"
 msgstr "Votre nom, vos paramètres et vos serveurs vous suivent"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:893
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:335
-#: web/src/signin.rs:132
+#: web/src/signin.rs:136
 msgid "You have an invitation"
 msgstr "Vous avez une invitation"
 
@@ -1684,7 +1684,7 @@ msgstr "Scannez avec votre téléphone, ou ouvrez"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt:303
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:460
-#: web/src/profiles.rs:335
+#: web/src/profiles.rs:345
 msgid "Name"
 msgstr "Nom"
 
@@ -3100,7 +3100,7 @@ msgid "Add"
 msgstr "Ajouter"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:401
-#: web/src/profiles.rs:241
+#: web/src/profiles.rs:251
 msgid "Profiles"
 msgstr "Profils"
 
@@ -3137,7 +3137,7 @@ msgid "Open the last profile used instead of asking who's watching (a PIN is sti
 msgstr "Ouvrir le dernier profil utilisé au lieu de demander qui regarde (le code PIN reste demandé)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt:458
-#: web/src/profiles.rs:276
+#: web/src/profiles.rs:286
 #: desktop/ui/app.slint:3228
 msgid "Rename"
 msgstr "Renommer"
@@ -3447,7 +3447,7 @@ msgstr "Ou saisissez l'adresse du site de demandes (Seerr, Overseerr ou Jellysee
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt:134
 #: desktop/src/app.rs:1749
-#: web/src/signin.rs:402
+#: web/src/signin.rs:426
 msgid "Sign in with Plex"
 msgstr "Se connecter avec Plex"
 
@@ -3553,18 +3553,18 @@ msgstr[1] "Après {n} heures"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:86
 #: web/src/account.rs:645
-#: web/src/signin.rs:507
+#: web/src/signin.rs:531
 msgid "Account"
 msgstr "Compte"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:87
-#: web/src/signin.rs:508
+#: web/src/signin.rs:532
 #: desktop/ui/app.slint:2905
 msgid "Servers"
 msgstr "Serveurs"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:89
-#: web/src/signin.rs:510
+#: web/src/signin.rs:534
 #: desktop/ui/app.slint:2907
 msgid "Playback"
 msgstr "Lecture"
@@ -4046,7 +4046,7 @@ msgid "Same as the device"
 msgstr "Comme l'appareil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:858
-#: web/src/signin.rs:602
+#: web/src/signin.rs:626
 msgid "Storage"
 msgstr "Stockage"
 
@@ -4065,12 +4065,12 @@ msgid "{size} MB"
 msgstr "{size} Mo"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:870
-#: web/src/signin.rs:606
+#: web/src/signin.rs:630
 msgid "About"
 msgstr "À propos"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:870
-#: web/src/signin.rs:608
+#: web/src/signin.rs:632
 #: desktop/ui/app.slint:3295
 msgid "Free software under the GNU AGPL v3 or later."
 msgstr "Logiciel libre sous licence GNU AGPL v3 ou ultérieure."
@@ -4448,7 +4448,7 @@ msgstr "Il n'y a pas de serveur Jellyfin à cette adresse."
 
 #: core/alwywatch-core/src/app.rs:1065
 #: core/keep-service/src/account.rs:247
-#: web/src/signin.rs:480
+#: web/src/signin.rs:504
 msgid "Wrong username or password."
 msgstr "Nom d'utilisateur ou mot de passe incorrect."
 
@@ -5538,6 +5538,7 @@ msgid "Sign in first: the device is then signed in as you."
 msgstr "Connectez-vous d'abord : l'appareil sera ensuite connecté à votre nom."
 
 #: web/src/account.rs:526
+#: web/src/signin.rs:179
 msgid "Sign in with Jellyfin or Plex"
 msgstr "Se connecter avec Jellyfin ou Plex"
 
@@ -6839,30 +6840,30 @@ msgstr "Dans les salons Regarder ensemble et les invitations. Vous pourrez le mo
 msgid "New profile"
 msgstr "Nouveau profil"
 
-#: web/src/profiles.rs:215
+#: web/src/profiles.rs:223
 #: desktop/ui/app.slint:3867
 msgid "Manage profiles"
 msgstr "Gérer les profils"
 
-#: web/src/profiles.rs:242
+#: web/src/profiles.rs:252
 msgid "Several people on this browser: each profile has its own accounts, history and settings."
 msgstr "Plusieurs personnes sur ce navigateur : chaque profil a ses propres comptes, son historique et ses paramètres."
 
-#: web/src/profiles.rs:270
+#: web/src/profiles.rs:280
 msgid "in use"
 msgstr "actif"
 
-#: web/src/profiles.rs:273
+#: web/src/profiles.rs:283
 #: desktop/ui/app.slint:3230
 #: desktop/ui/app.slint:3835
 msgid "Switch"
 msgstr "Changer"
 
-#: web/src/profiles.rs:280
+#: web/src/profiles.rs:290
 msgid "Remove this profile? Its accounts and settings in this browser are deleted."
 msgstr "Supprimer ce profil ? Ses comptes et paramètres dans ce navigateur seront effacés."
 
-#: web/src/profiles.rs:346
+#: web/src/profiles.rs:356
 msgid "Kept in this browser only."
 msgstr "Conservé dans ce navigateur uniquement."
 
@@ -7018,96 +7019,100 @@ msgstr "Plex s'ouvre dans un nouvel onglet : connectez-vous-y en tant que propr
 msgid "Sign in with Plex and set up"
 msgstr "Se connecter avec Plex et configurer"
 
-#: web/src/signin.rs:186
+#: web/src/signin.rs:140
+msgid "No AlwyWatch account: your logins and settings stay in this browser"
+msgstr "Sans compte AlwyWatch : vos identifiants et réglages restent dans ce navigateur"
+
+#: web/src/signin.rs:210
 msgid "With your Jellyfin or Plex login, or below with your AlwyWatch account."
 msgstr "Avec vos identifiants Jellyfin ou Plex, ou plus bas avec votre compte AlwyWatch."
 
-#: web/src/signin.rs:188
+#: web/src/signin.rs:212
 msgid "Sign in with your Jellyfin or Plex login."
 msgstr "Connectez-vous avec vos identifiants Jellyfin ou Plex."
 
-#: web/src/signin.rs:193
+#: web/src/signin.rs:217
 msgid "Can't load the list of servers. Check your connection and reload the page."
 msgstr "Impossible de charger la liste des serveurs. Vérifiez votre connexion et rechargez la page."
 
-#: web/src/signin.rs:210
-#: web/src/signin.rs:212
+#: web/src/signin.rs:234
+#: web/src/signin.rs:236
 msgid "Another Jellyfin server"
 msgstr "Un autre serveur Jellyfin"
 
-#: web/src/signin.rs:213
+#: web/src/signin.rs:237
 msgid "By its address"
 msgstr "Par son adresse"
 
-#: web/src/signin.rs:226
+#: web/src/signin.rs:250
 msgid "AlwyWatch account: {name}."
 msgstr "Compte AlwyWatch : {name}."
 
-#: web/src/signin.rs:229
+#: web/src/signin.rs:253
 msgid "Manage"
 msgstr "Gérer"
 
-#: web/src/signin.rs:293
+#: web/src/signin.rs:317
 msgid "Quick Connect is turned off on this server. Use your password."
 msgstr "La connexion rapide (Quick Connect) est désactivée sur ce serveur. Utilisez votre mot de passe."
 
-#: web/src/signin.rs:325
+#: web/src/signin.rs:349
 msgid "The Quick Connect code expired. Ask for a new one."
 msgstr "Le code Quick Connect a expiré. Demandez-en un nouveau."
 
-#: web/src/signin.rs:334
+#: web/src/signin.rs:358
 msgid "Server address (ask the person who gave you your login)"
 msgstr "Adresse du serveur (demandez-la à la personne qui vous a donné vos identifiants)"
 
-#: web/src/signin.rs:343
+#: web/src/signin.rs:367
 msgid "Use a code from another Jellyfin app (Quick Connect)"
 msgstr "Utiliser un code d'une autre app Jellyfin (Quick Connect)"
 
-#: web/src/signin.rs:347
+#: web/src/signin.rs:371
 msgid "In a Jellyfin app where you're signed in, open Quick Connect and enter {code}"
 msgstr "Dans une app Jellyfin où vous êtes connecté, ouvrez Quick Connect et saisissez {code}"
 
-#: web/src/signin.rs:399
+#: web/src/signin.rs:423
 msgid "Plex opens in a new tab: sign in there, then come back."
 msgstr "Plex s'ouvre dans un nouvel onglet : connectez-vous-y, puis revenez ici."
 
-#: web/src/signin.rs:421
+#: web/src/signin.rs:445
 msgid "Your Plex account has no server."
 msgstr "Votre compte Plex n'a aucun serveur."
 
-#: web/src/signin.rs:447
+#: web/src/signin.rs:471
 msgid "Allow pop-ups for this site, then try again."
 msgstr "Autorisez les fenêtres pop-up pour ce site, puis réessayez."
 
-#: web/src/signin.rs:462
+#: web/src/signin.rs:486
 msgid "The Plex tab was closed before signing in."
 msgstr "L'onglet Plex a été fermé avant la connexion."
 
-#: web/src/signin.rs:468
+#: web/src/signin.rs:492
 msgid "The Plex sign-in timed out."
 msgstr "La connexion à Plex a expiré."
 
-#: web/src/signin.rs:482
+#: web/src/signin.rs:506
 msgid "This site is secure (https), so the browser won't talk to a server on plain http. Use its https address."
 msgstr "Ce site est sécurisé (https), le navigateur refuse donc de contacter un serveur en simple http. Utilisez son adresse https."
 
-#: web/src/signin.rs:487
+#: web/src/signin.rs:511
 msgid "Can't reach the server. Check the address and your connection."
 msgstr "Impossible de joindre le serveur. Vérifiez l'adresse et votre connexion."
 
-#: web/src/signin.rs:566
+#: web/src/signin.rs:590
 msgid "Settings sections"
 msgstr "Sections des paramètres"
 
-#: web/src/signin.rs:589
+#: web/src/signin.rs:613
 msgid "Media servers, Maintainerr, Seerr, Tautulli, email, sign-up"
 msgstr "Serveurs multimédias, Maintainerr, Seerr, Tautulli, e-mail, inscription"
 
-#: web/src/signin.rs:603
+#: web/src/signin.rs:627
 msgid "Accounts and settings are kept in this browser only. Sign out on shared computers."
 msgstr "Les comptes et paramètres sont enregistrés uniquement dans ce navigateur. Déconnectez-vous sur les ordinateurs partagés."
 
-#: web/src/signin.rs:622
+#: web/src/signin.rs:646
 msgid "Your Jellyfin and Plex servers"
 msgstr "Vos serveurs Jellyfin et Plex"
 
