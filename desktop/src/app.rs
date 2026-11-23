@@ -5016,6 +5016,11 @@ impl App {
             p.into()
         ));
         on!(on_account_sign_out, |a| a.account_sign_out());
+        on!(on_account_manage, |a| {
+            if let Some(acc) = a.core.account() {
+                platform::open_url(&format!("{}/account", acc.base_url.trim_end_matches('/')));
+            }
+        });
         on!(on_send_lookup, |a, code| a.send_lookup(code.into()));
         on!(on_send_confirm, |a| a.send_confirm());
         on!(on_send_start, |a| {

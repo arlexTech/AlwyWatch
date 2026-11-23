@@ -644,6 +644,7 @@ pub fn AccountPage() -> impl IntoView {
                     }).collect_view()}
                     <p class="muted small">"To sign a TV or another device in, choose “Sign in with a code” on it and open the address it shows (or scan its QR code)."</p>
                 </section>
+                <DeleteAccount info=i.clone() />
             }
         })}
         <Invitations />
@@ -742,6 +743,57 @@ fn Password(info: AccountView, page: Page) -> impl IntoView {
             } else {
                 view! { <div class="row"><div class="muted">{if has { "Set." } else { "None yet." }}</div>
                     <button on:click=move |_| open.set(true)>{if has { "Change" } else { "Set a password" }}</button></div> }.into_any()
+            }}
+        </section>
+    }
+}
+
+/// Deleting the account, behind a confirmation (and the password when there is one).
+#[component]
+fn DeleteAccount(info: AccountView) -> impl IntoView {
+    let c = state::ctx();
+    let open = RwSignal::new(false);
+    let password = RwSignal::new(String::new());
+    let error = RwSignal::new(None::<String>);
+    let has = info.has_password;
+    let media = !info.linked.is_empty();
+    let submit = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        let c = c.clone();
+        let pw = password.get_untracked();
+        spawn_local(async move {
+            let Some(k) = c.account_client() else { return };
+            match k.account_delete(has.then_some(pw.as_str())).await {
+                Ok(()) => c.forget_account(),
+                Err(net::Error::Status { status: 403 }) => {
+                    error.set(Some("The password is wrong.".to_owned()))
+                }
+                Err(e) => error.set(Some(account::explain(&e, false))),
+            }
+        });
+    };
+    view! {
+        <section class="group">
+            <h2>"Delete account"</h2>
+            {move || if open.get() {
+                view! {
+                    <form class="form" on:submit=submit.clone()>
+                        <p>{if media {
+                            "This deletes your AlwyWatch account: its username, password, passkeys and the devices signed in with it. You keep using AlwyWatch with your Plex or Jellyfin sign-in, and your profile and keep requests stay with it."
+                        } else {
+                            "This deletes your AlwyWatch account and everything stored for it: username, password, passkeys, profile, picture and synced settings. Devices signed in with it are signed out."
+                        }}</p>
+                        <p class="muted small">"It can't be undone."</p>
+                        {has.then(|| view! { <label>"Your password"<input type="password" autocomplete="current-password"
+                            prop:value=move || password.get() on:input=move |ev| password.set(event_target_value(&ev)) /></label> })}
+                        {move || error.get().map(|e| view! { <ErrorText text=e /> })}
+                        <div class="actions"><button class="danger" type="submit">"Delete my account"</button>
+                            <button type="button" on:click=move |_| open.set(false)>"Cancel"</button></div>
+                    </form>
+                }.into_any()
+            } else {
+                view! { <div class="row"><div class="muted">"Removes the account for good."</div>
+                    <button on:click=move |_| open.set(true)>"Delete account…"</button></div> }.into_any()
             }}
         </section>
     }

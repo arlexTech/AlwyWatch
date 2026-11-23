@@ -687,7 +687,7 @@ private fun ConnectedChoices(
  * Opens a web page in the browser, not in an app that claims the link: with the Plex app
  * installed, app.plex.tv would open there and the sign-in would never reach us.
  */
-private fun openInBrowser(
+internal fun openInBrowser(
     ctx: android.content.Context,
     url: String,
 ) {

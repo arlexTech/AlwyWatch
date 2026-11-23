@@ -480,6 +480,14 @@ impl KeepClient {
         Ok(())
     }
 
+    /// Account session: deletes the account for good (`password` when it has one). A person
+    /// with Jellyfin/Plex sign-ins stays; an account-only person is deleted with its data.
+    pub async fn account_delete(&self, password: Option<&str>) -> Result<()> {
+        let body = serde_json::json!({ "password": password });
+        net::send(self.req(Method::POST, "/account/delete").json(&body)).await?;
+        Ok(())
+    }
+
     /// Account session: sets or changes the password (other sessions end).
     pub async fn account_set_password(&self, current: Option<&str>, new: &str) -> Result<()> {
         net::send(

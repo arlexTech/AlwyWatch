@@ -344,6 +344,20 @@ fun AlwyWatchServerGroup(
                     }
                 },
             )
+            // The account itself is managed on the server's website (one place for every app).
+            val page = account.baseUrl.trimEnd('/') + "/account"
+            val isTv = be.alwyapps.watch.ui.LocalDimens.current.isTv
+            ListRow(
+                "Manage or delete the account",
+                subtitle =
+                    if (isTv) {
+                        "On a phone or computer, open ${page.removePrefix("https://")}"
+                    } else {
+                        "Password, passkeys, devices and deleting the account: opens ${page.removePrefix("https://")}"
+                    },
+                icon = Icons.Settings,
+                onClick = { if (!isTv) openInBrowser(ctx, page) },
+            )
         }
     }
 }

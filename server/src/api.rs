@@ -79,6 +79,7 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/account/register", post(account_api::register))
         .route("/v1/account/login", post(account_api::login))
         .route("/v1/account/logout", post(account_api::logout))
+        .route("/v1/account/delete", post(account_api::delete_account))
         .route("/v1/account/claim", post(account_api::claim))
         .route("/v1/account/password", put(account_api::set_password))
         .route("/v1/account/username", put(account_api::set_username))
@@ -876,7 +877,7 @@ fn avatar_path(s: &Shared, user_key: &str) -> std::path::PathBuf {
     s.config.data_dir.join("avatars").join(name)
 }
 
-async fn forget_avatar_file(s: &Shared, user_key: &str) {
+pub(crate) async fn forget_avatar_file(s: &Shared, user_key: &str) {
     let _ = tokio::fs::remove_file(avatar_path(s, user_key)).await;
 }
 

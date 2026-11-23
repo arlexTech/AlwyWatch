@@ -59,6 +59,9 @@ val signingProps =
         .takeIf { it.isFile }
         ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
 
+// `./gradlew bundleRelease`: the Play Store bundle (.aab) instead of direct-download APKs.
+val playBundle = gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
+
 android {
     namespace = "be.alwyapps.watch"
     compileSdk = 37
@@ -70,6 +73,9 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        // Libraries bring native code for CPUs the Rust core isn't built for: a bundle with
+        // those would install there and crash. (APK builds get this from the ABI splits.)
+        if (playBundle) ndk { abiFilters += rustAbis }
     }
 
     signingConfigs {
@@ -101,7 +107,8 @@ android {
 
     splits {
         abi {
-            isEnable = true
+            // A bundle is split by Play itself; the build refuses both at once.
+            isEnable = !playBundle
             reset()
             include(*rustAbis.toTypedArray())
             isUniversalApk = true
@@ -115,10 +122,10 @@ android {
     }
 
     packaging {
-        // APKs are downloaded directly (not through Play, which compresses on its own): store
-        // native libraries compressed. ~40% smaller download; the system extracts them once at
-        // install time.
-        jniLibs.useLegacyPackaging = true
+        // Direct-download APKs store native libraries compressed: ~40% smaller download, the
+        // system extracts them once at install time. A Play bundle (`bundleRelease`) keeps them
+        // uncompressed and page-aligned instead: Play compresses the download on its own.
+        jniLibs.useLegacyPackaging = !playBundle
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "DebugProbesKt.bin", "kotlin-tooling-metadata.json")
     }
 }

@@ -3701,3 +3701,61 @@ async fn media_sign_ins_can_be_turned_off_for_an_account() {
     let alice = got["account_token"].as_str().unwrap().to_owned();
     assert_eq!(switch(alice, false).await, StatusCode::CONFLICT);
 }
+
+#[tokio::test]
+async fn an_account_can_be_deleted() {
+    let e = env().await;
+    let login = |user: &'static str| {
+        let e = &e;
+        async move {
+            let (st, _, r) = e
+                .anon(
+                    "POST",
+                    "/v1/account/login",
+                    None,
+                    Some(json!({"username": user, "password": "password1"})),
+                )
+                .await;
+            (st, r["token"].as_str().unwrap_or_default().to_owned())
+        }
+    };
+    // Bob's Jellyfin sign-in gets an account; he sets a custom name through it.
+    let (st, _) = e
+        .call(
+            "POST",
+            "/v1/account/claim",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"username": "bob", "password": "password1"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, session) = login("bob").await;
+    assert_eq!(st, StatusCode::OK);
+
+    // The password is asked again; a wrong or missing one deletes nothing.
+    for body in [json!({}), json!({"password": "nope-nope"})] {
+        let (st, _, _) = e
+            .anon("POST", "/v1/account/delete", Some(&session), Some(body))
+            .await;
+        assert_eq!(st, StatusCode::FORBIDDEN);
+    }
+    let (st, _, _) = e.anon("GET", "/v1/account", Some(&session), None).await;
+    assert_eq!(st, StatusCode::OK);
+
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/delete",
+            Some(&session),
+            Some(json!({"password": "password1"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NO_CONTENT);
+    // The session and the username are gone; the Jellyfin sign-in works as before.
+    let (st, _, _) = e.anon("GET", "/v1/account", Some(&session), None).await;
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+    assert_eq!(login("bob").await.0, StatusCode::UNAUTHORIZED);
+    let (st, _) = e.call("GET", "/v1/me", "jfsrv", "jf-bob", None).await;
+    assert_eq!(st, StatusCode::OK);
+}

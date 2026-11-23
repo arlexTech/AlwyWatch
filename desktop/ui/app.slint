@@ -1465,6 +1465,7 @@ export component AppWindow inherits Window {
     callback keep-choose();
     callback keep-disconnect();
     callback account-sign-out();
+    callback account-manage();
     callback keep-vote(string, string); // key, choice
     callback keep-look-up(); // the title page's title, in no deletion list
     callback watch-together(string); // item: a new room (lobby) with it
@@ -2847,8 +2848,9 @@ export component AppWindow inherits Window {
                                         alignment: center;
                                         horizontal-stretch: 1;
                                         Text { text: "Signed in to the account of " + root.alwy-account; color: Palette.text; font-weight: 700; overflow: elide; }
-                                        Text { text: "Password, passkeys and your devices: on the AlwyWatch website."; color: Palette.muted; font-size: 12px; }
+                                        Text { text: "Password, passkeys, devices and deleting the account: on the AlwyWatch website."; color: Palette.muted; font-size: 12px; }
                                     }
+                                    Button { label: "Manage or delete…"; clicked => { root.account-manage(); } }
                                     Button { label: "Sign out"; clicked => { root.account-sign-out(); } }
                                 }
                                 if root.keep-active : HorizontalLayout {

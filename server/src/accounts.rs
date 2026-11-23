@@ -255,6 +255,39 @@ impl Db {
             .optional()
     }
 
+    /// Deletes `account` with its sessions, passkeys and Pocket ID link. A person who only
+    /// existed through the account (`account:<id>`, no media sign-in) goes with it: profile,
+    /// synced settings, rights, votes; the person's key is then returned (its avatar file is
+    /// the caller's to remove). A person with Jellyfin/Plex sign-ins stays, as they were
+    /// before the account.
+    pub fn delete_account(&self, account: &AccountRow) -> rusqlite::Result<Option<String>> {
+        let mut c = self.c();
+        let tx = c.transaction()?;
+        for table in ["sessions", "passkeys", "oidc_links"] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE account = ?1"),
+                [&account.id],
+            )?;
+        }
+        tx.execute("DELETE FROM accounts WHERE id = ?1", [&account.id])?;
+        let p = &account.person;
+        let still_used: i64 = tx.query_row(
+            "SELECT (SELECT COUNT(*) FROM identities WHERE person = ?1)
+                  + (SELECT COUNT(*) FROM accounts WHERE person = ?1)",
+            [p],
+            |r| r.get(0),
+        )?;
+        let gone = still_used == 0;
+        if gone {
+            for table in ["users", "rights", "settings", "votes", "seerr_links"] {
+                tx.execute(&format!("DELETE FROM {table} WHERE user_key = ?1"), [p])?;
+            }
+            tx.execute("DELETE FROM together_pairs WHERE a = ?1 OR b = ?1", [p])?;
+        }
+        tx.commit()?;
+        Ok(gone.then(|| p.clone()))
+    }
+
     pub fn password_hash(&self, account: &str) -> rusqlite::Result<Option<String>> {
         Ok(self
             .c()
@@ -624,6 +657,22 @@ mod tests {
         assert_eq!((list.len(), list[0].device.as_str()), (1, "Pixel"));
         assert!(db.end_session(&a.id, &sid).unwrap());
         assert!(db.session(&t).unwrap().is_none());
+    }
+
+    #[test]
+    fn deleting_an_account_on_its_own_deletes_the_person() {
+        let db = Db::open_in_memory().unwrap();
+        let a = db.create_account(Some("Sam"), None, None, "Sam").unwrap();
+        let t = db.new_session(&a.id, "Pixel").unwrap();
+        assert_eq!(
+            db.delete_account(&a).unwrap().as_deref(),
+            Some(a.person.as_str())
+        );
+        assert!(db.session(&t).unwrap().is_none());
+        assert!(db.account(&a.id).unwrap().is_none());
+        assert_eq!(db.person_name(&a.person).unwrap(), None);
+        // The username is free again.
+        assert!(db.create_account(Some("Sam"), None, None, "Sam").is_ok());
     }
 
     #[test]

@@ -485,6 +485,7 @@ Server environment: `ALWYWATCH_PUBLIC_URL` (needed for passkeys and Pocket ID),
 | POST | `/v1/account/register` | anyone | `{username, password, invite?, device}` → `{token, account}` |
 | POST | `/v1/account/login` | anyone | `{username, password, device}` → `{token, account}`; 401 |
 | POST | `/v1/account/logout` | session | 204 |
+| POST | `/v1/account/delete` | session | `{password?}` (required when the account has one, 403 otherwise) → 204. Deletes the account, its sessions, passkeys and Pocket ID link. A person who only existed through the account (no Jellyfin/Plex sign-in) is deleted with it: profile, avatar, synced settings. A person with media sign-ins stays as before the account; their keep requests and profile belong to those sign-ins |
 | GET | `/v1/account` | session | → account (username, name, user_key, has_password, passkeys, pocketid, sessions, linked) |
 | PUT | `/v1/account/password` | session | `{current?, new}` → 204; other sessions end |
 | PUT | `/v1/account/username` | session | `{username}` → 204; 409 taken |

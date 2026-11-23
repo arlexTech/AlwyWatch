@@ -302,6 +302,37 @@ pub async fn logout(State(s): State<Shared>, session: Session) -> Result<StatusC
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize, Default)]
+pub struct DeleteAccount {
+    #[serde(default)]
+    password: Option<String>,
+}
+
+/// `POST /v1/account/delete`: deletes the account for good (see `Db::delete_account`). An
+/// account with a password needs it again: a session left open on a device is not enough.
+pub async fn delete_account(
+    State(s): State<Shared>,
+    headers: HeaderMap,
+    session: Session,
+    Json(r): Json<DeleteAccount>,
+) -> Result<StatusCode, Error> {
+    let a = &session.account;
+    if let Some(hash) = s.db.password_hash(&a.id).map_err(internal)? {
+        let ip = crate::limit::client(&headers);
+        if s.limits.account_logins.blocked(&ip) {
+            return Err(too_many());
+        }
+        if !accounts::verify_password(&hash, r.password.as_deref().unwrap_or("")) {
+            s.limits.account_logins.hit(&ip);
+            return Err(Error(StatusCode::FORBIDDEN, "the password is wrong".into()));
+        }
+    }
+    if let Some(person) = s.db.delete_account(a).map_err(internal)? {
+        crate::api::forget_avatar_file(&s, &person).await;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// `GET /v1/account`.
 pub async fn me(State(s): State<Shared>, session: Session) -> Result<Json<AccountView>, Error> {
     Ok(Json(view(&s, &session.account, Some(&session.id))?))
