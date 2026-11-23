@@ -552,36 +552,116 @@ impl Db {
     // ----- invitations -----------------------------------------------------------------------
 
     /// A new invitation code (only its hash is stored).
+    #[cfg(test)]
     pub fn create_invite(&self, by: &str, days: i64, uses: i64) -> rusqlite::Result<String> {
+        self.create_invite_with(by, days, uses, &InviteExtra::default())
+            .map(|(code, _)| code)
+    }
+
+    /// A new invitation: (its code, its id). Old ones are forgotten a month after they expire.
+    pub fn create_invite_with(
+        &self,
+        by: &str,
+        days: i64,
+        uses: i64,
+        extra: &InviteExtra,
+    ) -> rusqlite::Result<(String, i64)> {
         let code = random_hex(12);
         let now = now();
         let c = self.c();
         c.execute(
-            "DELETE FROM invites WHERE expires < ?1 OR uses_left <= 0",
-            [now],
+            "DELETE FROM invites WHERE expires < ?1",
+            [now - 30 * 86_400],
         )?;
         c.execute(
-            "INSERT INTO invites(code_hash, created_by, created, expires, uses_left)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO invites(code_hash, created_by, created, expires, uses_left, email,
+                                 jellyfin, like_user, note)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 sha256_hex(code.as_bytes()),
                 by,
                 now,
                 now + days * 86_400,
-                uses
+                uses,
+                extra.email,
+                extra.jellyfin,
+                extra.like_user,
+                extra.note,
             ],
         )?;
-        Ok(code)
+        Ok((code, c.last_insert_rowid()))
+    }
+
+    /// The invitation behind `code`, while it still works.
+    pub fn invite(&self, code: &str) -> rusqlite::Result<Option<InviteRow>> {
+        self.c()
+            .query_row(
+                &format!(
+                    "SELECT {INVITE_COLUMNS} FROM invites
+                     WHERE code_hash = ?1 AND expires >= ?2 AND uses_left > 0"
+                ),
+                params![sha256_hex(code.trim().as_bytes()), now()],
+                row_invite,
+            )
+            .optional()
+    }
+
+    /// Every invitation, newest first.
+    pub fn invites(&self) -> rusqlite::Result<Vec<InviteRow>> {
+        let c = self.c();
+        let mut q = c.prepare(&format!(
+            "SELECT {INVITE_COLUMNS} FROM invites ORDER BY created DESC LIMIT 100"
+        ))?;
+        q.query_map([], row_invite)?.collect()
+    }
+
+    /// Ends an invitation (it stays listed until forgotten).
+    pub fn revoke_invite(&self, id: i64) -> rusqlite::Result<bool> {
+        Ok(self.c().execute(
+            "UPDATE invites SET uses_left = 0, expires = MIN(expires, ?2) WHERE rowid = ?1",
+            params![id, now() - 1],
+        )? > 0)
+    }
+
+    /// Ends the invitations still waiting for this email (a new one replaces them).
+    pub fn revoke_invites_to(&self, email: &str) -> rusqlite::Result<()> {
+        self.c().execute(
+            "UPDATE invites SET uses_left = 0, expires = MIN(expires, ?2)
+             WHERE lower(email) = lower(?1) AND uses_left > 0",
+            params![email, now() - 1],
+        )?;
+        Ok(())
     }
 
     /// Uses one sign-up of `code`; false when unknown, expired or used up.
+    #[cfg(test)]
     pub fn use_invite(&self, code: &str) -> rusqlite::Result<bool> {
+        self.use_invite_for(code, "")
+    }
+
+    /// The same, noting the username it made.
+    pub fn use_invite_for(&self, code: &str, username: &str) -> rusqlite::Result<bool> {
         let n = self.c().execute(
-            "UPDATE invites SET uses_left = uses_left - 1
+            "UPDATE invites SET uses_left = uses_left - 1,
+                    used_by = CASE WHEN ?3 = '' THEN used_by
+                                   WHEN used_by = '' THEN ?3 ELSE used_by || ',' || ?3 END
              WHERE code_hash = ?1 AND expires >= ?2 AND uses_left > 0",
-            params![sha256_hex(code.trim().as_bytes()), now()],
+            params![sha256_hex(code.trim().as_bytes()), now(), username],
         )?;
         Ok(n > 0)
+    }
+
+    /// The Jellyfin user an admin's last invitation to `server` copied access from.
+    pub fn last_like(&self, by: &str, server: &str) -> rusqlite::Result<Option<String>> {
+        self.c()
+            .query_row(
+                "SELECT like_user FROM invites
+                 WHERE created_by = ?1 AND jellyfin = ?2 AND like_user IS NOT NULL
+                 ORDER BY created DESC LIMIT 1",
+                params![by, server],
+                |r| r.get(0),
+            )
+            .optional()
     }
 
     pub fn person_name(&self, person: &str) -> rusqlite::Result<Option<String>> {
@@ -593,6 +673,50 @@ impl Db {
             )
             .optional()
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InviteExtra {
+    pub email: Option<String>,
+    pub jellyfin: Option<String>,
+    pub like_user: Option<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InviteRow {
+    pub id: i64,
+    pub created_by: String,
+    pub created: i64,
+    pub expires: i64,
+    pub uses_left: i64,
+    pub extra: InviteExtra,
+    pub used_by: Vec<String>,
+}
+
+const INVITE_COLUMNS: &str =
+    "rowid, created_by, created, expires, uses_left, email, jellyfin, like_user, note, used_by";
+
+fn row_invite(r: &rusqlite::Row<'_>) -> rusqlite::Result<InviteRow> {
+    let used: String = r.get(9)?;
+    Ok(InviteRow {
+        id: r.get(0)?,
+        created_by: r.get(1)?,
+        created: r.get(2)?,
+        expires: r.get(3)?,
+        uses_left: r.get(4)?,
+        extra: InviteExtra {
+            email: r.get(5)?,
+            jellyfin: r.get(6)?,
+            like_user: r.get(7)?,
+            note: r.get(8)?,
+        },
+        used_by: used
+            .split(',')
+            .filter(|u| !u.is_empty())
+            .map(str::to_owned)
+            .collect(),
+    })
 }
 
 fn row_passkey(r: &rusqlite::Row<'_>) -> rusqlite::Result<PasskeyRow> {

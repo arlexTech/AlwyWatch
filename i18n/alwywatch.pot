@@ -4219,7 +4219,7 @@ msgid "Waiting for the other device…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:227
-#: core/keep-service/src/account.rs:152
+#: core/keep-service/src/account.rs:249
 #: desktop/src/app.rs:4817
 msgid "Unknown or expired code."
 msgstr ""
@@ -4260,7 +4260,7 @@ msgstr ""
 msgid "Nothing saved yet. On a movie or show, press the bookmark to keep it here."
 msgstr ""
 
-#: core/alwywatch-core/src/account.rs:376
+#: core/alwywatch-core/src/account.rs:391
 msgid "too long for a QR code"
 msgstr ""
 
@@ -4273,7 +4273,7 @@ msgid "There is no Jellyfin server at this address."
 msgstr ""
 
 #: core/alwywatch-core/src/app.rs:1065
-#: core/keep-service/src/account.rs:150
+#: core/keep-service/src/account.rs:247
 #: web/src/signin.rs:456
 msgid "Wrong username or password."
 msgstr ""
@@ -4358,23 +4358,23 @@ msgstr ""
 msgid "Syncing {server} and {other}"
 msgstr ""
 
-#: core/keep-service/src/account.rs:151
+#: core/keep-service/src/account.rs:248
 msgid "This sign-in has ended. Sign in again."
 msgstr ""
 
-#: core/keep-service/src/account.rs:153
+#: core/keep-service/src/account.rs:250
 msgid "This username is already taken."
 msgstr ""
 
-#: core/keep-service/src/account.rs:155
+#: core/keep-service/src/account.rs:252
 msgid "Too many attempts. Try again in a few minutes."
 msgstr ""
 
-#: core/keep-service/src/account.rs:158
+#: core/keep-service/src/account.rs:255
 msgid "Check what you typed: usernames are 3 to 32 letters, digits, dots, dashes or underscores; passwords at least 8 characters."
 msgstr ""
 
-#: core/keep-service/src/account.rs:162
+#: core/keep-service/src/account.rs:259
 msgid "This server doesn't offer that."
 msgstr ""
 
@@ -7034,4 +7034,46 @@ msgstr ""
 
 #: desktop/ui/app.slint:3817
 msgid "They get an invitation and join directly."
+msgstr ""
+
+#: server/src/invites.rs:216
+msgid "This invitation works once and expires in {n} day."
+msgid_plural "This invitation works once and expires in {n} days."
+msgstr[0] ""
+msgstr[1] ""
+
+#: server/src/invites.rs:141
+msgid "{name} via AlwyWatch"
+msgstr ""
+
+#: server/src/invites.rs:183
+msgid "{name} invites you to watch on {server}"
+msgstr ""
+
+#: server/src/invites.rs:189
+msgid "{name} invites you to AlwyWatch"
+msgstr ""
+
+#: server/src/invites.rs:192
+msgid "{name} invites you to {server}, with AlwyWatch to watch it on your phone, TV, computer or browser."
+msgstr ""
+
+#: server/src/invites.rs:198
+msgid "{name} invites you to AlwyWatch, to watch on your phone, TV, computer or browser."
+msgstr ""
+
+#: server/src/invites.rs:205
+msgid "Choose a username and a password: they work in AlwyWatch and in every Jellyfin app on {server}."
+msgstr ""
+
+#: server/src/invites.rs:210
+msgid "Choose a username and a password to create your account."
+msgstr ""
+
+#: server/src/invites.rs:215
+msgid "Create my account"
+msgstr ""
+
+#: server/src/invites.rs:222
+msgid "Not expecting this? You can ignore this email."
 msgstr ""

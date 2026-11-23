@@ -90,6 +90,7 @@ async fn env_at(db: Db, dry_run: bool) -> Env {
             "https://watch.example",
         )),
         registration: crate::config::Registration::Invite,
+        mail: None,
     };
     let data = tempfile::tempdir().unwrap();
     config.data_dir = data.path().to_owned();
@@ -3770,4 +3771,208 @@ async fn an_account_can_be_deleted() {
     assert_eq!(login("bob").await.0, StatusCode::UNAUTHORIZED);
     let (st, _) = e.call("GET", "/v1/me", "jfsrv", "jf-bob", None).await;
     assert_eq!(st, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn an_invitation_makes_the_jellyfin_login_too() {
+    let e = env().await;
+    let admin = "MediaBrowser Token=\"jf-admin-key\"";
+    Mock::given(method("GET"))
+        .and(path("/Users"))
+        .and(header("authorization", admin))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"Id": "ja", "Name": "alice", "Policy": {"IsAdministrator": true}},
+            {"Id": "jb", "Name": "bob", "Policy": {"IsAdministrator": false, "IsDisabled": false}}
+        ])))
+        .mount(&e.jf)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Users/New"))
+        .and(body_json(
+            json!({"Name": "newbie", "Password": "password1"}),
+        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"Id": "jn", "Name": "newbie"})),
+        )
+        .expect(1)
+        .mount(&e.jf)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/jb"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Id": "jb",
+            "Policy": {"IsAdministrator": false, "EnableAllFolders": false, "EnabledFolders": ["kids"]}
+        })))
+        .mount(&e.jf)
+        .await;
+    // bob's access, never admin, hidden from the login screen.
+    Mock::given(method("POST"))
+        .and(path("/Users/jn/Policy"))
+        .and(body_json(json!({
+            "IsAdministrator": false, "IsDisabled": false, "IsHidden": true,
+            "InvalidLoginAttemptCount": 0, "EnableAllFolders": false, "EnabledFolders": ["kids"],
+            "EnableAllDevices": true, "EnabledDevices": []
+        })))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&e.jf)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"AccessToken": "jf-newbie", "User": {}})),
+        )
+        .mount(&e.jf)
+        .await;
+    Mock::given(path("/Users/Me"))
+        .and(header_regex("authorization", "Token=\"jf-newbie\"$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"Id": "jn", "Name": "newbie", "Policy": {"IsAdministrator": false}}),
+        ))
+        .with_priority(1)
+        .mount(&e.jf)
+        .await;
+    Mock::given(path("/Sessions/Logout"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&e.jf)
+        .await;
+
+    // Without email set up, an emailed invitation is refused before anything is made.
+    let (st, _) = e
+        .call(
+            "POST",
+            "/v1/account/invites",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"email": "sam@example.org", "jellyfin": "jfsrv"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::NOT_IMPLEMENTED);
+
+    let (st, inv) = e
+        .call(
+            "POST",
+            "/v1/account/invites",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"jellyfin": "jfsrv", "like": "jb"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{inv}");
+    let code = inv["code"].as_str().unwrap().to_owned();
+
+    let (st, list) = e
+        .call("GET", "/v1/account/invites", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(st, StatusCode::OK, "{list}");
+    let jfsrv = list["jellyfin"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|j| j["server_id"] == "jfsrv")
+        .unwrap();
+    assert_eq!(jfsrv["users"], json!([{"id": "jb", "name": "bob"}]));
+    assert_eq!(jfsrv["last_like"], "jb");
+    assert_eq!(list["invites"][0]["jellyfin"], "HomeJelly");
+    assert_eq!(list["mail"], false);
+
+    let (st, _, info) = e
+        .anon(
+            "GET",
+            &format!("/v1/account/invites/check/{code}"),
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(info["jellyfin"], "HomeJelly");
+    assert_eq!(info["inviter"], "alice");
+
+    // A name taken on Jellyfin stops it all; the invitation still works.
+    let (st, _, _) = e
+        .anon(
+            "POST",
+            "/v1/account/register",
+            None,
+            Some(json!({"username": "bob", "password": "password1", "invite": code})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::CONFLICT);
+
+    let (st, _, r) = e
+        .anon("POST", "/v1/account/register", None,
+            Some(json!({"username": "newbie", "password": "password1", "invite": code, "device": "Pixel"})))
+        .await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(r["jellyfin"]["server_id"], "jfsrv");
+    assert_eq!(r["jellyfin"]["username"], "newbie");
+    // One person: the Jellyfin login is part of the account.
+    assert!(
+        r["account"]["linked"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["server_id"] == "jfsrv"),
+        "{r}"
+    );
+    let (_, list) = e
+        .call("GET", "/v1/account/invites", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(list["invites"][0]["used_by"], json!(["newbie"]));
+    let (st, _, _) = e
+        .anon(
+            "GET",
+            &format!("/v1/account/invites/check/{code}"),
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn only_admins_see_the_server_settings_and_secrets_stay_hidden() {
+    let e = env().await;
+    *e.state.stored.lock().await = crate::settings::Stored {
+        servers: vec![crate::settings::StoredServer {
+            id: "jfsrv".into(),
+            kind: Some(ServerType::Jellyfin),
+            name: "HomeJelly".into(),
+            public_url: "https://jf.example".into(),
+            internal_url: None,
+            api_key: Some("very-secret".into()),
+        }],
+        public_url: Some("https://watch.example".into()),
+        webhook_secret: Some("hooky".into()),
+        ..Default::default()
+    };
+    let (st, _) = e
+        .call("GET", "/v1/admin/settings", "jfsrv", "jf-bob", None)
+        .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, v) = e
+        .call("GET", "/v1/admin/settings", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(!v.to_string().contains("very-secret"));
+    assert_eq!(
+        v["settings"]["servers"][0]["api_key"],
+        crate::settings::KEPT
+    );
+    assert_eq!(
+        v["webhooks"][0],
+        json!(["jellyfin", "https://watch.example/v1/hooks/jellyfin/hooky"])
+    );
+    // Removing every server is refused (nobody could sign in again).
+    let mut s = v["settings"].clone();
+    s["servers"] = json!([]);
+    let (st, _) = e
+        .call("PUT", "/v1/admin/settings", "jfsrv", "jf-alice", Some(s))
+        .await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+    // Setup is over once there is a server.
+    let (_, _, setup) = e.anon("GET", "/v1/setup", None, None).await;
+    assert_eq!(setup["needed"], false);
 }

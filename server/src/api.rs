@@ -44,6 +44,28 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/admin/seerr-users", get(admin_seerr_users))
         .route("/v1/admin/forever", get(admin_forever))
         .route("/v1/admin/status", get(admin_status))
+        .route("/v1/setup", get(crate::server_settings::setup_state))
+        .route(
+            "/v1/setup/jellyfin",
+            post(crate::server_settings::setup_jellyfin),
+        )
+        .route("/v1/setup/plex", post(crate::server_settings::setup_plex))
+        .route(
+            "/v1/admin/settings",
+            get(crate::server_settings::get_settings).put(crate::server_settings::put_settings),
+        )
+        .route(
+            "/v1/admin/settings/test",
+            post(crate::server_settings::test),
+        )
+        .route(
+            "/v1/admin/settings/jellyfin",
+            post(crate::server_settings::add_jellyfin),
+        )
+        .route(
+            "/v1/admin/settings/plex",
+            post(crate::server_settings::add_plex),
+        )
         .route(
             "/v1/admin/collections/{id}/countdown",
             post(admin_countdown),
@@ -93,7 +115,15 @@ pub fn router(state: Shared) -> Router {
             delete(account_api::end_session),
         )
         .route("/v1/account/link", post(account_api::link_media))
-        .route("/v1/account/invites", post(account_api::create_invite))
+        .route(
+            "/v1/account/invites",
+            post(crate::invites::create).get(crate::invites::list),
+        )
+        .route("/v1/account/invites/{id}", delete(crate::invites::revoke))
+        .route(
+            "/v1/account/invites/check/{code}",
+            get(crate::invites::check),
+        )
         .route(
             "/v1/account/passkeys/register/start",
             post(account_api::passkey_register_start),

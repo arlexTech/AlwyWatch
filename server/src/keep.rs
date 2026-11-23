@@ -51,6 +51,15 @@ pub struct State {
     /// Unix seconds and title count of the last successful reading (admin status).
     pub last_sync: std::sync::atomic::AtomicI64,
     pub last_sync_items: std::sync::atomic::AtomicUsize,
+    /// The saved settings this server runs with (Settings → Admin → Server settings).
+    pub stored: tokio::sync::Mutex<crate::settings::Stored>,
+    /// Wakes `main` to start again with new settings.
+    pub reload: Arc<Notify>,
+    /// While no media server is set up: the code printed in the log that the setup page asks
+    /// for (nobody else can claim a new server).
+    pub setup_code: Option<String>,
+    /// Why Maintainerr is not used although it is set up (an unsupported version).
+    pub maintainerr_problem: std::sync::Mutex<Option<String>>,
 }
 
 pub struct Limits {
@@ -72,6 +81,8 @@ pub struct Limits {
     pub account_logins: crate::limit::Limiter,
     /// Accounts created, per client address.
     pub account_signups: crate::limit::Limiter,
+    /// Invitation emails sent, per admin.
+    pub invite_emails: crate::limit::Limiter,
 }
 
 impl Default for Limits {
@@ -89,6 +100,7 @@ impl Default for Limits {
             links: Limiter::new(10, min(10)),
             account_logins: Limiter::new(10, min(10)),
             account_signups: Limiter::new(5, min(60)),
+            invite_emails: Limiter::new(20, min(60)),
         }
     }
 }
@@ -140,6 +152,10 @@ impl State {
             maintainerr_state: Default::default(),
             last_sync: Default::default(),
             last_sync_items: Default::default(),
+            stored: Default::default(),
+            reload: Default::default(),
+            setup_code: None,
+            maintainerr_problem: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),
         }
     }

@@ -96,6 +96,20 @@ pub fn tr<'a>(text: &'a str) -> Cow<'a, str> {
     }
 }
 
+/// The translation of `text` in the language `code` (not the selected one: for a server that
+/// writes to several people), or `text` itself.
+pub fn tr_in<'a>(code: &str, text: &'a str) -> Cow<'a, str> {
+    match CATALOGS
+        .iter()
+        .find(|c| c.code.eq_ignore_ascii_case(code.trim()))
+        .and_then(|c| find(c, text))
+        .and_then(|s| s.first())
+    {
+        Some(t) => Cow::Borrowed(t),
+        None => Cow::Borrowed(text),
+    }
+}
+
 /// Which plural form `n` takes in the selected language (English: 0 for 1, else 1).
 pub fn plural_index(n: u64) -> usize {
     match current() {
@@ -140,6 +154,29 @@ macro_rules! tr {
     };
     ($text:expr, $($name:ident = $value:expr),+ $(,)?) => {
         $crate::fill(&$crate::tr($text), &[$((stringify!($name), &$value as &dyn ::std::fmt::Display)),+])
+    };
+}
+
+/// [`trn`] in the language `code`.
+pub fn trn_in(code: &str, singular: &str, plural: &str, n: u64) -> String {
+    let c = CATALOGS
+        .iter()
+        .find(|c| c.code.eq_ignore_ascii_case(code.trim()));
+    let index = |c: &Catalog| po::plural_index(c.plural, n).unwrap_or(usize::from(n != 1));
+    let form =
+        c.and_then(|c| find(c, singular).and_then(|s| s.get(index(c)).or(s.last()).copied()));
+    form.unwrap_or(if n == 1 { singular } else { plural })
+        .replace("{n}", &n.to_string())
+}
+
+/// `tr_in!(lang, "Hello {name}", name = n)`: [`tr_in`] with placeholders filled.
+#[macro_export]
+macro_rules! tr_in {
+    ($lang:expr, $text:expr) => {
+        $crate::tr_in($lang, $text).into_owned()
+    };
+    ($lang:expr, $text:expr, $($name:ident = $value:expr),+ $(,)?) => {
+        $crate::fill(&$crate::tr_in($lang, $text), &[$((stringify!($name), &$value as &dyn ::std::fmt::Display)),+])
     };
 }
 
@@ -202,6 +239,8 @@ mod tests {
 
         // The language is process-wide: checked in this one test, not in parallel ones.
         if CATALOGS.iter().any(|c| c.code == "fr") {
+            assert_eq!(tr_in("fr", "Sign in"), "Se connecter");
+            assert_eq!(tr_in("xx", "Sign in"), "Sign in");
             set_language("fr");
             assert_eq!(best(["fr_BE.UTF-8"]), "fr");
             assert_eq!(tr("Sign in"), "Se connecter");

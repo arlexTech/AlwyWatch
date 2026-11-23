@@ -41,6 +41,7 @@ pub struct PocketId {
 
 impl PocketId {
     /// From `ALWYWATCH_POCKETID_ISSUER`, `_CLIENT_ID`, `_CLIENT_SECRET`; None when unset.
+    #[cfg(test)]
     pub fn from_env(public_url: &str) -> Option<Self> {
         let get = |k: &str| {
             std::env::var(k)
@@ -59,6 +60,18 @@ impl PocketId {
                 public_url.trim_end_matches('/')
             ),
         })
+    }
+
+    pub fn new(issuer: &str, client_id: &str, client_secret: &str, public_url: &str) -> Self {
+        Self {
+            issuer: issuer.trim().trim_end_matches('/').to_owned(),
+            client_id: client_id.to_owned(),
+            client_secret: client_secret.to_owned(),
+            redirect_uri: format!(
+                "{}/v1/account/oidc/callback",
+                public_url.trim_end_matches('/')
+            ),
+        }
     }
 
     #[cfg(test)]

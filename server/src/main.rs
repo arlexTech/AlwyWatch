@@ -12,11 +12,16 @@ mod api;
 mod auth;
 mod config;
 mod db;
+mod invites;
+mod jellyfin_admin;
 mod keep;
 mod limit;
+mod mail;
 mod oidc;
 mod passkey;
 mod seerr;
+mod server_settings;
+mod settings;
 mod together;
 mod transfer;
 mod web;
@@ -24,28 +29,54 @@ mod web;
 use std::sync::Arc;
 
 fn main() -> std::process::ExitCode {
-    let config = match config::Config::load() {
-        Ok(c) => c,
+    let (listen, data_dir) = match config::Config::env_basics() {
+        Ok(b) => b,
         Err(e) => {
             eprintln!("configuration error: {e}");
             return std::process::ExitCode::FAILURE;
         }
     };
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-        .expect("tokio runtime");
-    match rt.block_on(run(config)) {
-        Ok(()) => std::process::ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("fatal: {e}");
-            std::process::ExitCode::FAILURE
+    // Each generation runs on its own runtime: saving the settings in the app ends it (every
+    // task with it) and starts the next one with the new settings, like a restart.
+    loop {
+        let stored = match config::Config::load_stored(&data_dir) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("settings error: {e}");
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+        let config = match config::Config::from_stored(&stored, listen, data_dir.clone()) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("settings error: {e}");
+                return std::process::ExitCode::FAILURE;
+            }
+        };
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+        let outcome = rt.block_on(run(config, stored));
+        rt.shutdown_timeout(std::time::Duration::from_secs(3));
+        match outcome {
+            Ok(Ending::Stop) => return std::process::ExitCode::SUCCESS,
+            Ok(Ending::Reload) => eprintln!("[settings] saved: starting again with them"),
+            Err(e) => {
+                eprintln!("fatal: {e}");
+                return std::process::ExitCode::FAILURE;
+            }
         }
     }
 }
 
-async fn run(config: config::Config) -> Result<(), String> {
+enum Ending {
+    Stop,
+    Reload,
+}
+
+async fn run(mut config: config::Config, stored: settings::Stored) -> Result<Ending, String> {
     // Dry run: its simulated votes and exclusions never mix with the real ones.
     let db_file = if config.dry_run {
         eprintln!("[keep] DRY RUN: nothing is written to Maintainerr or Seerr");
@@ -65,29 +96,70 @@ async fn run(config: config::Config) -> Result<(), String> {
     let http = net::api_client(concat!("AlwyWatch-Server/", env!("CARGO_PKG_VERSION")))
         .map_err(|e| e.to_string())?;
     let listen = config.listen;
-    let state = Arc::new(keep::State::new(config, db, http, "https://plex.tv"));
-    if state.config.keep_on() {
-        match state.maintainerr.version().await {
+    // Never write to a Maintainerr this build doesn't know: Leaving soon stays off and the
+    // admin page says why (the server keeps running so it can be fixed from the app).
+    let mut problem = None;
+    if config.keep_on() {
+        let m = maintainerr::Maintainerr::new(
+            http.clone(),
+            &config.maintainerr.url,
+            config.secrets.maintainerr_api_key.clone(),
+        );
+        match m.version().await {
             Ok(v) if !v.starts_with("3.") => {
-                return Err(format!(
-                    "Maintainerr {v} is not supported: this build works with Maintainerr 3.x and \
-                     will not write to another major version. Use Maintainerr 3.x, or a newer \
-                     alwywatch-server"
-                ));
+                let p = format!(
+                    "Maintainerr {v} is not supported: this version of AlwyWatch works with \
+                     Maintainerr 3.x and will not write to another major version"
+                );
+                eprintln!("[keep] {p}");
+                problem = Some(p);
+                config.maintainerr = Default::default();
             }
             Ok(v) => eprintln!("[keep] Maintainerr {v}"),
             Err(e) => eprintln!("[keep] Maintainerr not reachable yet ({e}); will retry"),
         }
     }
+    let setup_code = config.servers.is_empty().then(|| {
+        let code = format!(
+            "{:06}",
+            u32::from_str_radix(&accounts::random_hex(4), 16).unwrap_or(0) % 1_000_000
+        );
+        eprintln!(
+            "[setup] No media server yet. Open this site and enter the setup code {code} \
+             (a new code at every start until setup is done)"
+        );
+        code
+    });
+    let mut state = keep::State::new(config, db, http, "https://plex.tv");
+    state.setup_code = setup_code;
+    *state.stored.get_mut() = stored;
+    *state
+        .maintainerr_problem
+        .get_mut()
+        .unwrap_or_else(|e| e.into_inner()) = problem;
+    let state = Arc::new(state);
+    let reload = state.reload.clone();
     keep::spawn_jobs(state.clone());
     let listener = tokio::net::TcpListener::bind(listen)
         .await
         .map_err(|e| e.to_string())?;
     eprintln!("[keep] listening on {listen}");
+    let reloading = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = reloading.clone();
     axum::serve(listener, api::router(state))
-        .with_graceful_shutdown(stop_signal())
+        .with_graceful_shutdown(async move {
+            tokio::select! {
+                _ = stop_signal() => {}
+                _ = reload.notified() => flag.store(true, std::sync::atomic::Ordering::Relaxed),
+            }
+        })
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(if reloading.load(std::sync::atomic::Ordering::Relaxed) {
+        Ending::Reload
+    } else {
+        Ending::Stop
+    })
 }
 
 /// Ctrl-C, or the SIGTERM of `docker stop` (unhandled, the container was killed after its

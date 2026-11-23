@@ -29,7 +29,7 @@
 //! `WEBHOOK_SECRET` (path secret for /v1/hooks/*), `SEERR_API_KEY` (Seerr bridge).
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use keep_service::ServerType;
 use serde::Deserialize;
@@ -124,9 +124,12 @@ pub struct AccountsConf {
     pub rp: Option<crate::passkey::RelyingParty>,
     pub pocketid: Option<crate::oidc::PocketId>,
     pub registration: Registration,
+    /// Invitation emails (Settings → Admin → Server settings → Email).
+    pub mail: Option<crate::mail::Mailer>,
 }
 
 impl AccountsConf {
+    #[cfg(test)]
     /// A value that is set but wrong is an error, not a silent fallback: passkeys quietly off
     /// or sign-up quietly on "invite" is found out much later, by someone else.
     pub fn from_env() -> Result<Self, String> {
@@ -175,6 +178,56 @@ impl AccountsConf {
             rp,
             pocketid,
             registration,
+            mail: None,
+        })
+    }
+
+    pub fn from_stored(st: &crate::settings::Stored) -> Result<Self, String> {
+        let rp = match st
+            .public_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|u| !u.is_empty())
+        {
+            None => None,
+            Some(url) => Some(crate::passkey::RelyingParty::from_url(url).ok_or(format!(
+                "This site's address must look like https://watch.example.org (https://, the \
+                 host, no path), got '{url}'"
+            ))?),
+        };
+        let pocketid = match (&st.pocketid, &rp) {
+            (None, _) => None,
+            (Some(_), None) => {
+                return Err("Pocket ID needs this site's address (https://…) first".into());
+            }
+            (Some(p), Some(rp)) => {
+                let secret = p.client_secret.clone().unwrap_or_default();
+                if p.client_id.trim().is_empty() || secret.trim().is_empty() {
+                    return Err("Pocket ID needs its client id and client secret".into());
+                }
+                Some(crate::oidc::PocketId::new(
+                    &p.issuer,
+                    p.client_id.trim(),
+                    secret.trim(),
+                    &rp.origin,
+                ))
+            }
+        };
+        let registration = match st.registration.trim() {
+            "" | "invite" => Registration::Invite,
+            "open" => Registration::Open,
+            "closed" => Registration::Closed,
+            v => return Err(format!("sign-up must be invite, open or closed, got '{v}'")),
+        };
+        let mail = match &st.smtp {
+            None => None,
+            Some(m) => Some(crate::mail::Mailer::from_stored(m)?),
+        };
+        Ok(Self {
+            rp,
+            pocketid,
+            registration,
+            mail,
         })
     }
 }
@@ -212,6 +265,7 @@ fn default_sync() -> u64 {
 }
 
 impl Config {
+    #[cfg(test)]
     pub fn parse(toml_text: &str) -> Result<Self, String> {
         let mut c: Config = toml::from_str(toml_text).map_err(|e| e.to_string())?;
         if c.keep_on() && !c.servers.iter().any(|s| s.id == c.maintainerr.server) {
@@ -231,27 +285,125 @@ impl Config {
         Ok(c)
     }
 
-    pub fn load() -> Result<Self, String> {
-        let path = std::env::var("ALWYWATCH_CONFIG").unwrap_or_else(|_| "/data/config.toml".into());
-        let text = std::fs::read_to_string(&path).map_err(|e| {
-            format!(
-                "{path}: {e}. Copy server/deploy/config.example.toml there and fill it in \
-                 (docs/deploy.md)"
-            )
-        })?;
-        let mut c = Self::parse(&text).map_err(|e| format!("{path}: {e}"))?;
-        if let Ok(l) = std::env::var("ALWYWATCH_LISTEN") {
-            c.listen = l.parse().map_err(|_| {
-                format!("ALWYWATCH_LISTEN must be an address like 0.0.0.0:8080, got '{l}'")
-            })?;
+    /// The server from its saved settings; `listen` and `data_dir` come from the environment.
+    pub fn from_stored(
+        st: &crate::settings::Stored,
+        listen: SocketAddr,
+        data_dir: PathBuf,
+    ) -> Result<Self, String> {
+        let mut servers = Vec::new();
+        for x in &st.servers {
+            let kind = x.kind.ok_or(format!(
+                "the server '{}' has no type (Jellyfin or Plex)",
+                x.name
+            ))?;
+            if x.id.trim().is_empty() || x.public_url.trim().is_empty() {
+                return Err(format!("the server '{}' needs its id and address", x.name));
+            }
+            servers.push(ServerConf {
+                id: x.id.trim().to_owned(),
+                kind,
+                name: x.name.trim().to_owned(),
+                public_url: x.public_url.trim().trim_end_matches('/').to_owned(),
+                internal_url: x
+                    .internal_url
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|u| !u.is_empty())
+                    .map(|u| u.trim_end_matches('/').to_owned()),
+            });
         }
-        if let Ok(d) = std::env::var("ALWYWATCH_DATA") {
-            c.data_dir = d.into();
-        }
-        if std::env::var("ALWYWATCH_DRY_RUN").is_ok_and(|v| v == "1" || v == "true") {
-            c.dry_run = true;
+        let maintainerr = st
+            .maintainerr
+            .as_ref()
+            .map(|m| MaintainerrConf {
+                url: m.url.trim().trim_end_matches('/').to_owned(),
+                server: m.server.trim().to_owned(),
+            })
+            .unwrap_or_default();
+        let c = Config {
+            listen,
+            data_dir,
+            servers,
+            maintainerr,
+            tautulli: st.tautulli.as_ref().map(|t| TautulliConf {
+                url: t.url.trim().trim_end_matches('/').to_owned(),
+            }),
+            seerr: st.seerr.as_ref().map(|x| SeerrConf {
+                url: x.url.trim().trim_end_matches('/').to_owned(),
+                public_url: x.public_url.clone().filter(|u| !u.trim().is_empty()),
+                create_users: x.create_users,
+            }),
+            dry_run: st.dry_run
+                || std::env::var("ALWYWATCH_DRY_RUN").is_ok_and(|v| v == "1" || v == "true"),
+            sync_minutes: st.sync_minutes.unwrap_or_else(default_sync).max(1),
+            secrets: Secrets::from_stored(st),
+            accounts: AccountsConf::from_stored(st)?,
+        };
+        if c.keep_on() && !c.servers.iter().any(|s| s.id == c.maintainerr.server) {
+            return Err(
+                "Maintainerr: choose the media server it is set up for (one of your servers)"
+                    .into(),
+            );
         }
         Ok(c)
+    }
+
+    /// The port and the data folder (`ALWYWATCH_LISTEN`, `ALWYWATCH_DATA`).
+    pub fn env_basics() -> Result<(SocketAddr, PathBuf), String> {
+        let listen = match std::env::var("ALWYWATCH_LISTEN") {
+            Ok(l) => l.parse().map_err(|_| {
+                format!("ALWYWATCH_LISTEN must be an address like 0.0.0.0:8080, got '{l}'")
+            })?,
+            Err(_) => default_listen(),
+        };
+        let data = std::env::var("ALWYWATCH_DATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| default_data());
+        Ok((listen, data))
+    }
+
+    /// The saved settings, imported once from config.toml and the environment for a server set
+    /// up before settings moved into the app; empty for a new server (setup in the web app).
+    pub fn load_stored(data_dir: &Path) -> Result<crate::settings::Stored, String> {
+        use crate::settings::Stored;
+        let path = Stored::path(data_dir);
+        if let Some(st) = Stored::read(&path)? {
+            let old: Vec<&str> = crate::settings::OLD_VARIABLES
+                .into_iter()
+                .filter(|k| std::env::var(k).is_ok_and(|v| !v.trim().is_empty()))
+                .collect();
+            if !old.is_empty() {
+                eprintln!(
+                    "[settings] ignored: {} (settings are changed in the web app now: Settings → \
+                     Admin → Server settings; these variables can be removed)",
+                    old.join(", ")
+                );
+            }
+            return Ok(st);
+        }
+        let toml_path = std::env::var("ALWYWATCH_CONFIG")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| data_dir.join("config.toml"));
+        let mut st = match std::fs::read_to_string(&toml_path) {
+            Ok(text) => {
+                let st =
+                    Stored::import(&text).map_err(|e| format!("{}: {e}", toml_path.display()))?;
+                eprintln!(
+                    "[settings] imported {} and the environment into {}: from now on, settings are \
+                     changed in the web app (Settings → Admin → Server settings)",
+                    toml_path.display(),
+                    path.display()
+                );
+                st
+            }
+            Err(_) => Stored::default(),
+        };
+        st.ensure_webhook_secret();
+        if !st.servers.is_empty() {
+            st.save(&path)?;
+        }
+        Ok(st)
     }
 
     /// Whether Maintainerr is configured (Leaving soon and keep choices).
@@ -291,6 +443,7 @@ impl Config {
 }
 
 impl Secrets {
+    #[cfg(test)]
     pub fn from_env() -> Self {
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         let jellyfin_keys = std::env::vars()
@@ -307,6 +460,22 @@ impl Secrets {
             seerr_api_key: get("SEERR_API_KEY"),
             jellyfin_keys,
             jellyfin_default: get("JELLYFIN_API_KEY"),
+        }
+    }
+
+    pub fn from_stored(st: &crate::settings::Stored) -> Self {
+        let clean = |v: &Option<String>| v.clone().filter(|v| !v.trim().is_empty());
+        Self {
+            maintainerr_api_key: st.maintainerr.as_ref().and_then(|m| clean(&m.api_key)),
+            tautulli_api_key: st.tautulli.as_ref().and_then(|t| clean(&t.api_key)),
+            webhook_secret: clean(&st.webhook_secret),
+            seerr_api_key: st.seerr.as_ref().and_then(|x| clean(&x.api_key)),
+            jellyfin_keys: st
+                .servers
+                .iter()
+                .filter_map(|x| clean(&x.api_key).map(|k| (x.id.clone(), k)))
+                .collect(),
+            jellyfin_default: None,
         }
     }
 

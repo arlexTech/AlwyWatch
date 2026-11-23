@@ -566,10 +566,50 @@ impl KeepClient {
 
     /// Admin: an invitation to create an account.
     pub async fn account_invite(&self, days: i64, uses: i64) -> Result<account::Invite> {
-        net::send_json(
-            self.req(Method::POST, "/account/invites")
-                .json(&account::InviteRequest { days, uses }),
-        )
+        self.account_invite_with(&account::InviteRequest {
+            days,
+            uses,
+            email: None,
+            jellyfin: None,
+            like: None,
+            note: None,
+            lang: None,
+        })
+        .await
+    }
+
+    /// Admin: an invitation, emailed and/or making a Jellyfin login too.
+    pub async fn account_invite_with(&self, r: &account::InviteRequest) -> Result<account::Invite> {
+        net::send_json(self.req(Method::POST, "/account/invites").json(r)).await
+    }
+
+    /// Admin: the invitations, and what one can do here.
+    pub async fn account_invites(&self) -> Result<account::Invitations> {
+        net::send_json(self.req(Method::GET, "/account/invites")).await
+    }
+
+    /// Admin: an invitation no longer works.
+    pub async fn account_revoke_invite(&self, id: i64) -> Result<()> {
+        net::send(self.req(Method::DELETE, &format!("/account/invites/{id}")))
+            .await
+            .map(|_| ())
+    }
+
+    /// Public: who invited, and what the account gets.
+    pub async fn account_invite_info(
+        http: &Client,
+        base_url: &str,
+        code: &str,
+    ) -> Result<account::InviteInfo> {
+        net::send_json(Self::public(
+            http,
+            Method::GET,
+            base_url,
+            &format!(
+                "/account/invites/check/{}",
+                net::percent_encode(code.trim())
+            ),
+        ))
         .await
     }
 

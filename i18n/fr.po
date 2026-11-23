@@ -4224,7 +4224,7 @@ msgid "Waiting for the other device…"
 msgstr "En attente de l'autre appareil…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:227
-#: core/keep-service/src/account.rs:152
+#: core/keep-service/src/account.rs:249
 #: desktop/src/app.rs:4817
 msgid "Unknown or expired code."
 msgstr "Code inconnu ou expiré."
@@ -4265,7 +4265,7 @@ msgstr "Envoyer"
 msgid "Nothing saved yet. On a movie or show, press the bookmark to keep it here."
 msgstr "Rien d'enregistré pour l'instant. Sur un film ou une série, appuyez sur le signet pour le garder ici."
 
-#: core/alwywatch-core/src/account.rs:376
+#: core/alwywatch-core/src/account.rs:391
 msgid "too long for a QR code"
 msgstr "trop long pour un QR code"
 
@@ -4278,7 +4278,7 @@ msgid "There is no Jellyfin server at this address."
 msgstr "Il n'y a pas de serveur Jellyfin à cette adresse."
 
 #: core/alwywatch-core/src/app.rs:1065
-#: core/keep-service/src/account.rs:150
+#: core/keep-service/src/account.rs:247
 #: web/src/signin.rs:456
 msgid "Wrong username or password."
 msgstr "Nom d'utilisateur ou mot de passe incorrect."
@@ -4363,23 +4363,23 @@ msgstr "Copie vers {server}"
 msgid "Syncing {server} and {other}"
 msgstr "Synchronisation de {server} et {other}"
 
-#: core/keep-service/src/account.rs:151
+#: core/keep-service/src/account.rs:248
 msgid "This sign-in has ended. Sign in again."
 msgstr "Cette connexion a expiré. Reconnectez-vous."
 
-#: core/keep-service/src/account.rs:153
+#: core/keep-service/src/account.rs:250
 msgid "This username is already taken."
 msgstr "Ce nom d'utilisateur est déjà pris."
 
-#: core/keep-service/src/account.rs:155
+#: core/keep-service/src/account.rs:252
 msgid "Too many attempts. Try again in a few minutes."
 msgstr "Trop de tentatives. Réessayez dans quelques minutes."
 
-#: core/keep-service/src/account.rs:158
+#: core/keep-service/src/account.rs:255
 msgid "Check what you typed: usernames are 3 to 32 letters, digits, dots, dashes or underscores; passwords at least 8 characters."
 msgstr "Vérifiez votre saisie : les noms d'utilisateur font 3 à 32 lettres, chiffres, points, tirets ou tirets bas ; les mots de passe au moins 8 caractères."
 
-#: core/keep-service/src/account.rs:162
+#: core/keep-service/src/account.rs:259
 msgid "This server doesn't offer that."
 msgstr "Ce serveur ne propose pas cela."
 
@@ -7040,6 +7040,48 @@ msgstr "Démarrer à {}"
 #: desktop/ui/app.slint:3817
 msgid "They get an invitation and join directly."
 msgstr "Les invités reçoivent une invitation et rejoignent directement."
+
+#: server/src/invites.rs:216
+msgid "This invitation works once and expires in {n} day."
+msgid_plural "This invitation works once and expires in {n} days."
+msgstr[0] ""
+msgstr[1] ""
+
+#: server/src/invites.rs:141
+msgid "{name} via AlwyWatch"
+msgstr ""
+
+#: server/src/invites.rs:183
+msgid "{name} invites you to watch on {server}"
+msgstr ""
+
+#: server/src/invites.rs:189
+msgid "{name} invites you to AlwyWatch"
+msgstr ""
+
+#: server/src/invites.rs:192
+msgid "{name} invites you to {server}, with AlwyWatch to watch it on your phone, TV, computer or browser."
+msgstr ""
+
+#: server/src/invites.rs:198
+msgid "{name} invites you to AlwyWatch, to watch on your phone, TV, computer or browser."
+msgstr ""
+
+#: server/src/invites.rs:205
+msgid "Choose a username and a password: they work in AlwyWatch and in every Jellyfin app on {server}."
+msgstr ""
+
+#: server/src/invites.rs:210
+msgid "Choose a username and a password to create your account."
+msgstr ""
+
+#: server/src/invites.rs:215
+msgid "Create my account"
+msgstr ""
+
+#: server/src/invites.rs:222
+msgid "Not expecting this? You can ignore this email."
+msgstr ""
 
 #~ msgid "Nothing to sign in to at this address. Check it with the person who runs your server, or go back and sign in to Jellyfin or Plex directly."
 #~ msgstr "Aucune connexion possible à cette adresse. Vérifiez-la avec la personne qui gère votre serveur, ou revenez en arrière et connectez-vous directement à Jellyfin ou Plex."

@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS log (
 ";
 
 /// Columns added after the first release (older databases get them on open).
-const ADDED_COLUMNS: [(&str, &str, &str); 6] = [
+const ADDED_COLUMNS: [(&str, &str, &str); 11] = [
     ("users", "custom_name", "TEXT"),
     ("users", "avatar_preset", "TEXT"),
     ("users", "avatar_type", "TEXT"),
@@ -98,6 +98,12 @@ const ADDED_COLUMNS: [(&str, &str, &str); 6] = [
     ("users", "profile_set", "INTEGER NOT NULL DEFAULT 0"),
     // 1: Plex/Jellyfin sign-ins of the person no longer act on the account (accounts.rs).
     ("accounts", "media_locked", "INTEGER NOT NULL DEFAULT 0"),
+    // Invitations sent by email and/or making a Jellyfin login too.
+    ("invites", "email", "TEXT"),
+    ("invites", "jellyfin", "TEXT"),
+    ("invites", "like_user", "TEXT"),
+    ("invites", "note", "TEXT"),
+    ("invites", "used_by", "TEXT NOT NULL DEFAULT ''"),
 ];
 
 fn migrate(c: &Connection) -> rusqlite::Result<()> {

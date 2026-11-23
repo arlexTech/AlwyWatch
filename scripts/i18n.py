@@ -12,7 +12,7 @@
                               (the Plural-Forms line of any language: see docs/i18n.md)
 
 What counts as translatable: tr("…") and trn("…", "…", …) in Kotlin and Rust (also tr!/trn!),
-and @tr("…") / @tr("…" | "…" % n) in Slint. Only the standard library is used.
+tr_in!(lang, "…") in the server, and @tr("…") / @tr("…" | "…" % n) in Slint. Only the standard library is used.
 """
 
 import re
@@ -29,6 +29,7 @@ SOURCES = [
     ("desktop/src", ".rs", "rust"),
     ("web/src", ".rs", "rust"),
     ("desktop/ui", ".slint", "slint"),
+    ("server/src", ".rs", "rust"),
 ]
 SKIP = {"core/i18n"}
 
@@ -39,6 +40,8 @@ PATTERNS = {
         re.compile(r"\btr\(\s*" + STR, re.S),
     ],
     "rust": [
+        re.compile(r"\btrn_in\(\s*[^,()]+,\s*" + STR + r"\s*,\s*" + STR, re.S),
+        re.compile(r"\btr_in!\(\s*[^,()]+,\s*" + STR, re.S),
         re.compile(r"\btrn!?\(\s*" + STR + r"\s*,\s*" + STR, re.S),
         re.compile(r"\btr!?\(\s*" + STR, re.S),
     ],

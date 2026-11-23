@@ -23,6 +23,19 @@ pub struct SignedIn {
     /// The session token (`aws_…`): secret, kept in secure storage.
     pub token: String,
     pub account: AccountView,
+    /// The invitation also made a Jellyfin login with the same username and password: the app
+    /// signs in to it right away.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jellyfin: Option<NewJellyfinLogin>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NewJellyfinLogin {
+    pub server_id: String,
+    pub name: String,
+    /// The address the apps use.
+    pub url: String,
+    pub username: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -51,6 +64,14 @@ pub struct AccountView {
 
 fn yes() -> bool {
     true
+}
+
+fn seven() -> i64 {
+    7
+}
+
+fn one() -> i64 {
+    1
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -110,8 +131,26 @@ pub struct ClaimRequest {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InviteRequest {
+    #[serde(default = "seven")]
     pub days: i64,
+    #[serde(default = "one")]
     pub uses: i64,
+    /// Send it by email (one use), from the server's email settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    /// Also make a Jellyfin login on this server (its id), with the same username and password.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jellyfin: Option<String>,
+    /// That login gets the same access (libraries, ratings…) as this Jellyfin user (its id);
+    /// Jellyfin's defaults when none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub like: Option<String>,
+    /// A few words from the admin, in the email.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// The email's language (the admin's app language).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -121,6 +160,64 @@ pub struct Invite {
     pub url: Option<String>,
     pub expires_in_days: i64,
     pub uses: i64,
+    /// Where it was emailed.
+    #[serde(default)]
+    pub sent_to: Option<String>,
+}
+
+/// `GET /v1/account/invites` (admins): what an invitation can do here, and the invitations.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Invitations {
+    /// Emails can be sent (Server settings → Email).
+    pub mail: bool,
+    /// This site's address is set (needed for the links).
+    pub public_url: bool,
+    /// Jellyfin servers where an invitation can make a login (those with an API key).
+    pub jellyfin: Vec<JellyfinTarget>,
+    pub invites: Vec<InviteItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JellyfinTarget {
+    pub server_id: String,
+    pub name: String,
+    /// Users whose access a new login can copy (not admins, not disabled).
+    pub users: Vec<JellyfinUser>,
+    /// The user copied last time, to offer first.
+    #[serde(default)]
+    pub last_like: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JellyfinUser {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InviteItem {
+    pub id: i64,
+    pub created_by: String,
+    pub created: i64,
+    pub expires: i64,
+    pub uses_left: i64,
+    pub email: Option<String>,
+    /// The Jellyfin server name, when it also makes a login there.
+    pub jellyfin: Option<String>,
+    /// Usernames of the accounts made with it.
+    pub used_by: Vec<String>,
+}
+
+/// `GET /v1/account/invites/check/{code}` (public): what the sign-up page shows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InviteInfo {
+    pub inviter: String,
+    /// The Jellyfin server the account also gets a login on.
+    pub jellyfin: Option<String>,
+    pub email: Option<String>,
+    /// A username to offer (from the email address), free on both.
+    pub suggested_username: Option<String>,
+    pub expires: i64,
 }
 
 /// `PUT /v1/transfer/{code}/approve`.

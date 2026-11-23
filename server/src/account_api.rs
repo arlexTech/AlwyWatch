@@ -13,7 +13,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use serde::{Deserialize, Serialize};
 
 use keep_service::account::{
-    AccountOptions, AccountView, Approved, Invite, LinkedView, PasskeyView, SessionView, SignedIn,
+    AccountOptions, AccountView, Approved, LinkedView, PasskeyView, SessionView, SignedIn,
 };
 
 use crate::accounts::{self, AccountError, AccountRow, SESSION_PREFIX};
@@ -191,6 +191,7 @@ fn signed_in(s: &Shared, a: &AccountRow, device: &str) -> Result<Json<SignedIn>,
     Ok(Json(SignedIn {
         account: view(s, a, Some(&current))?,
         token,
+        jellyfin: None,
     }))
 }
 
@@ -226,6 +227,12 @@ pub async fn register(
         s.limits.account_signups.hit(&ip);
         return Err(account_err(AccountError::UsernameTaken));
     }
+    // An invitation is checked first, used only once everything else worked.
+    let code = r.invite.as_deref().map(str::trim).filter(|c| !c.is_empty());
+    let invite = match code {
+        Some(c) => s.db.invite(c).map_err(internal)?,
+        None => None,
+    };
     match s.config.accounts.registration {
         Registration::Closed => {
             return Err(Error(
@@ -233,26 +240,77 @@ pub async fn register(
                 "new accounts are not open on this server".into(),
             ));
         }
-        Registration::Invite => {
-            let code = r.invite.as_deref().unwrap_or("");
-            if !s.db.use_invite(code).map_err(internal)? {
-                s.limits.account_signups.hit(&ip);
-                return Err(Error(
-                    StatusCode::FORBIDDEN,
-                    "this invitation is unknown, used up or expired".into(),
-                ));
-            }
+        Registration::Invite if invite.is_none() => {
+            s.limits.account_signups.hit(&ip);
+            return Err(Error(
+                StatusCode::FORBIDDEN,
+                "this invitation is unknown, used up or expired".into(),
+            ));
         }
-        Registration::Open => {}
+        _ => {}
     }
     s.limits.account_signups.hit(&ip);
     // Hashed only now: a request without a valid invitation costs no password hashing.
     let hash = accounts::hash_password(&r.password).map_err(account_err)?;
-    let a =
-        s.db.create_account(Some(username), Some(&hash), None, username)
-            .map_err(account_err)?;
+    // The Jellyfin login first: a taken name there stops everything before anything is made.
+    let jellyfin = match &invite {
+        Some(i) => crate::invites::make_jellyfin_login(&s, i, username, &r.password).await?,
+        None => None,
+    };
+    let undo_jellyfin = async |s: &Shared| {
+        if let Some((server, key, id)) = &jellyfin {
+            let _ = crate::jellyfin_admin::Jellyfin::new(&s.http, server, key)
+                .delete(id)
+                .await;
+        }
+    };
+    if let Some(c) = code
+        && invite.is_some()
+        && !s.db.use_invite_for(c, username).map_err(internal)?
+    {
+        undo_jellyfin(&s).await;
+        return Err(Error(
+            StatusCode::FORBIDDEN,
+            "this invitation is unknown, used up or expired".into(),
+        ));
+    }
+    let a = match s
+        .db
+        .create_account(Some(username), Some(&hash), None, username)
+    {
+        Ok(a) => a,
+        Err(e) => {
+            undo_jellyfin(&s).await;
+            return Err(account_err(e));
+        }
+    };
     s.db.log(&a.person, "account", "created with a password");
-    signed_in(&s, &a, &r.device)
+    let mut new_login = None;
+    if let Some((server, key, _)) = &jellyfin {
+        match crate::invites::join_jellyfin_login(&s, server, key, &a.person, username, &r.password)
+            .await
+        {
+            Ok(()) => {
+                s.db.log(
+                    &a.person,
+                    "account",
+                    &format!("Jellyfin login made on {}", server.name),
+                );
+            }
+            Err(e) => eprintln!("[invite] the new Jellyfin login could not join its account: {e}"),
+        }
+        new_login = Some(keep_service::account::NewJellyfinLogin {
+            server_id: server.id.clone(),
+            name: server.name.clone(),
+            url: server.public_url.clone(),
+            username: username.to_owned(),
+        });
+    }
+    // Linking may have changed the account's person: read it again.
+    let a = s.db.account(&a.id).map_err(internal)?.unwrap_or(a);
+    let Json(mut out) = signed_in(&s, &a, &r.device)?;
+    out.jellyfin = new_login;
+    Ok(Json(out))
 }
 
 #[derive(Deserialize)]
@@ -545,45 +603,6 @@ pub async fn link_media(
 }
 
 // ----- invitations --------------------------------------------------------------------------
-
-#[derive(Deserialize)]
-pub struct NewInvite {
-    #[serde(default = "seven")]
-    days: i64,
-    #[serde(default = "one")]
-    uses: i64,
-}
-
-fn seven() -> i64 {
-    7
-}
-fn one() -> i64 {
-    1
-}
-
-/// `POST /v1/account/invites` (AlwyWatch admin): an invitation to create an account.
-pub async fn create_invite(
-    State(s): State<Shared>,
-    crate::api::Admin(id): crate::api::Admin,
-    Json(r): Json<NewInvite>,
-) -> Result<Json<Invite>, Error> {
-    let days = r.days.clamp(1, 90);
-    let uses = r.uses.clamp(1, 50);
-    let code =
-        s.db.create_invite(&id.user_key, days, uses)
-            .map_err(internal)?;
-    Ok(Json(Invite {
-        url: s
-            .config
-            .accounts
-            .rp
-            .as_ref()
-            .map(|rp| format!("{}/join/{code}", rp.origin)),
-        code,
-        expires_in_days: days,
-        uses,
-    }))
-}
 
 // ----- passkeys -----------------------------------------------------------------------------
 
