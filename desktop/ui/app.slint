@@ -2516,7 +2516,7 @@ export component AppWindow inherits Window {
                             spacing: 10px;
                             alignment: start;
                             padding-bottom: 8px;
-                            Button { label: @tr("Go through them one by one"); primary: true; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.go(Page.triage); } }
+                            Button { label: @tr("Swipe them!"); primary: true; has-icon: true; icon: @image-url("icons/favorite.svg"); clicked => { root.go(Page.triage); } }
                             if root.keep-admin : Button { label: @tr("Admin"); has-icon: true; icon: @image-url("icons/settings.svg"); clicked => { root.go(Page.keepadmin); } }
                         }
                         if root.leaving.length == 0 : Text { text: @tr("Nothing is leaving. Nothing to do."); color: Palette.muted; }
@@ -2733,7 +2733,7 @@ export component AppWindow inherits Window {
                                 padding: 32px;
                                 spacing: 14px;
                                 alignment: start;
-                                Text { text: @tr("One by one"); color: Palette.text; font-size: 30px; font-weight: 800; horizontal-alignment: center; }
+                                Text { text: @tr("Swipe them!"); color: Palette.text; font-size: 30px; font-weight: 800; horizontal-alignment: center; }
                                 if root.triage-left == 0 : Text { text: @tr("Nothing left to sort. Thanks!"); color: Palette.muted; horizontal-alignment: center; }
                                 if root.triage-left > 0 : Text {
                                     text: @tr("{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever" | "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever" % root.triage-left);

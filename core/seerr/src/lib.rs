@@ -267,6 +267,10 @@ record! {
         /// Filled from the movie/TV details when available.
         pub title: Option<String>,
         pub poster_url: Option<String>,
+        /// Shows: the seasons this request asked for (a show often has several requests,
+        /// one per batch of seasons). Empty for movies.
+        #[serde(default)]
+        pub seasons: Vec<u32>,
     }
 }
 
@@ -876,6 +880,20 @@ impl SeerrClient {
                 .to_owned(),
             title: None,
             poster_url: None,
+            seasons: v
+                .get("seasons")
+                .and_then(|s| s.as_array())
+                .map(|a| {
+                    let mut n: Vec<u32> = a
+                        .iter()
+                        .filter_map(|s| s.get("seasonNumber")?.as_u64())
+                        .map(|n| n as u32)
+                        .collect();
+                    n.sort_unstable();
+                    n.dedup();
+                    n
+                })
+                .unwrap_or_default(),
         })
     }
 
@@ -1190,9 +1208,52 @@ pub fn seasons_requested_message(numbers: &[u32]) -> String {
     }
 }
 
+/// Which seasons a request is for, on its card: "Season 3", "Seasons 1–4", "Seasons 1, 3"
+/// ("Specials" for season 0). Empty when there are none (movies).
+pub fn request_seasons_label(numbers: &[u32]) -> String {
+    let mut n = numbers.to_vec();
+    n.sort_unstable();
+    n.dedup();
+    let specials = n.first() == Some(&0);
+    let real: Vec<u32> = n.into_iter().filter(|x| *x > 0).collect();
+    let main = match real.as_slice() {
+        [] => String::new(),
+        [one] => tr!("Season {number}", number = one),
+        [first, .., last] if (*last - *first) as usize + 1 == real.len() => {
+            tr!("Seasons {first}–{last}", first = first, last = last)
+        }
+        many => tr!(
+            "Seasons {numbers}",
+            numbers = many
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    match (main.is_empty(), specials) {
+        (true, true) => tr!("Specials"),
+        (false, true) => tr!("{seasons} and specials", seasons = main),
+        _ => main,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_request_names_its_seasons() {
+        assert_eq!(request_seasons_label(&[]), "");
+        assert_eq!(request_seasons_label(&[3]), "Season 3");
+        assert_eq!(request_seasons_label(&[2, 1, 3]), "Seasons 1–3");
+        assert_eq!(request_seasons_label(&[1, 3]), "Seasons 1, 3");
+        assert_eq!(request_seasons_label(&[0]), "Specials");
+        assert_eq!(
+            request_seasons_label(&[0, 1, 2]),
+            "Seasons 1–2 and specials"
+        );
+    }
 
     #[test]
     fn status_codes_follow_seerr_code_not_docs() {

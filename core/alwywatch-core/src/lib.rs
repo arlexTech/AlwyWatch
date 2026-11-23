@@ -100,6 +100,12 @@ pub fn seasons_requested_message(numbers: Vec<u32>) -> String {
     seerr::seasons_requested_message(&numbers)
 }
 
+/// Which seasons a request is for, on its card ("Season 3", "Seasons 1–4").
+#[uniffi::export]
+pub fn request_seasons_label(numbers: Vec<u32>) -> String {
+    seerr::request_seasons_label(&numbers)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

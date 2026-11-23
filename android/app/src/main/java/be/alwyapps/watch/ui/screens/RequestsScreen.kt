@@ -162,8 +162,18 @@ private fun MyRequest(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // A show has one request per batch of seasons: which ones this card is.
+        val seasons =
+            remember(r.seasons) {
+                be.alwyapps.watch.core
+                    .requestSeasonsLabel(r.seasons)
+            }
         Text(
-            listOfNotNull(r.requestedBy.takeIf { showWho && it.isNotEmpty() }, r.createdAt.take(10)).joinToString(" · "),
+            listOfNotNull(
+                seasons.takeIf { it.isNotEmpty() },
+                r.requestedBy.takeIf { showWho && it.isNotEmpty() },
+                r.createdAt.take(10),
+            ).joinToString(" · "),
             color = Muted,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,

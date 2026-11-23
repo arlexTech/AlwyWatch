@@ -479,7 +479,7 @@ msgstr "{name} vous invite à regarder {title}. Voir dans Ensemble."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt:101
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt:143
-#: desktop/src/app.rs:1454
+#: desktop/src/app.rs:1461
 msgid "{n} season"
 msgid_plural "{n} seasons"
 msgstr[0] "{n} saison"
@@ -505,7 +505,7 @@ msgstr[1] "Marquer les {n} épisodes comme non vus"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt:107
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt:291
-#: desktop/src/app.rs:1460
+#: desktop/src/app.rs:1467
 msgid "{hours} h {minutes} min"
 msgstr "{hours} h {minutes} min"
 
@@ -606,7 +606,7 @@ msgid "Watched"
 msgstr "Vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt:748
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:256
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:325
 #: desktop/ui/app.slint:1024
 msgid "See all"
 msgstr "Tout voir"
@@ -942,12 +942,12 @@ msgid "Forgot password?"
 msgstr "Mot de passe oublié ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:414
-#: desktop/src/app.rs:4542
+#: desktop/src/app.rs:4549
 msgid "Type your username or email first, then choose “Forgot password?”."
 msgstr "Saisissez d'abord votre nom d'utilisateur ou votre e-mail, puis choisissez « Mot de passe oublié ? »."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:424
-#: desktop/src/app.rs:4556
+#: desktop/src/app.rs:4563
 #: web/src/account.rs:973
 msgid "If this account has an email address, a link to set a new password is on its way. It works for an hour."
 msgstr "Si ce compte a une adresse e-mail, un lien pour choisir un nouveau mot de passe est en route. Il fonctionne pendant une heure."
@@ -961,7 +961,7 @@ msgid "Sign in with your Jellyfin or Plex login instead, or with a code approved
 msgstr "Connectez-vous plutôt avec vos identifiants Jellyfin ou Plex, ou avec un code validé sur votre téléphone (clé d'accès, Pocket ID)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:445
-#: desktop/src/app.rs:4489
+#: desktop/src/app.rs:4496
 msgid "Signed in as {name}. Now sign in to the server you watch on."
 msgstr "Connecté en tant que {name}. Connectez-vous maintenant au serveur sur lequel vous regardez."
 
@@ -1157,12 +1157,12 @@ msgid "Use your login {name}"
 msgstr "Utiliser votre connexion {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:937
-#: desktop/src/app.rs:4202
+#: desktop/src/app.rs:4209
 msgid "Plex · sign in on plex.tv"
 msgstr "Plex · se connecter sur plex.tv"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt:938
-#: desktop/src/app.rs:4203
+#: desktop/src/app.rs:4210
 msgid "Jellyfin · Quick Connect or password"
 msgstr "Jellyfin · Connexion rapide ou mot de passe"
 
@@ -1245,14 +1245,14 @@ msgstr "Cet utilisateur n'a pas accès à {server}."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:112
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:591
-#: desktop/src/app.rs:5724
+#: desktop/src/app.rs:5731
 msgid "{n} minute"
 msgid_plural "{n} minutes"
 msgstr[0] "{n} minute"
 msgstr[1] "{n} minutes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:113
-#: desktop/src/app.rs:5726
+#: desktop/src/app.rs:5733
 msgid "{n} hour"
 msgid_plural "{n} hours"
 msgstr[0] "{n} heure"
@@ -1260,15 +1260,15 @@ msgstr[1] "{n} heures"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:114
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:461
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:123
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:120
 msgid "{n} day"
 msgid_plural "{n} days"
 msgstr[0] "{n} jour"
 msgstr[1] "{n} jours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:165
-#: desktop/src/app.rs:5742
-#: web/src/keep.rs:1040
+#: desktop/src/app.rs:5749
+#: web/src/keep.rs:1039
 msgid "Maintainerr {version} · read {time} ago · {n} title leaving"
 msgid_plural "Maintainerr {version} · read {time} ago · {n} titles leaving"
 msgstr[0] "Maintainerr {version} · lu il y a {time} · {n} titre bientôt supprimé"
@@ -1310,14 +1310,14 @@ msgid "Invite someone by email or with a link, also to Jellyfin"
 msgstr "Invitez quelqu'un par e-mail ou avec un lien, aussi sur Jellyfin"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:88
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:221
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:339
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:317
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:421
 msgid "Leaving soon"
 msgstr "Bientôt supprimés"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:90
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:773
-#: web/src/keep.rs:956
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:847
+#: web/src/keep.rs:955
 msgid "Leaving soon countdown"
 msgstr "Compte à rebours de Bientôt supprimés"
 
@@ -1332,13 +1332,13 @@ msgid "Kept forever"
 msgstr "Gardé pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:99
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:781
-#: web/src/keep.rs:981
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:855
+#: web/src/keep.rs:980
 msgid "Per person, and how much of it someone else keeps too"
 msgstr "Par personne, et la part que d'autres gardent aussi"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:132
-#: web/src/keep.rs:1071
+#: web/src/keep.rs:1070
 msgid "Server status"
 msgstr "État du serveur"
 
@@ -1353,29 +1353,29 @@ msgid "Test mode: nothing is changed in Maintainerr or Seerr. Turn it off in Ser
 msgstr "Mode test : rien n'est modifié dans Maintainerr ni Seerr. Désactivez-le dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:162
-#: desktop/src/app.rs:5737
+#: desktop/src/app.rs:5744
 msgid "Off. Set up Maintainerr in Server settings (web app)."
 msgstr "Désactivé. Configurez Maintainerr dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:163
-#: desktop/src/app.rs:5740
-#: web/src/keep.rs:1038
+#: desktop/src/app.rs:5747
+#: web/src/keep.rs:1037
 msgid "Reading Maintainerr for the first time…"
 msgstr "Première lecture de Maintainerr…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:172
-#: desktop/src/app.rs:5752
+#: desktop/src/app.rs:5759
 msgid "Can't reach Maintainerr. Check its address and API key in Server settings (web app)."
 msgstr "Maintainerr est injoignable. Vérifiez son adresse et sa clé API dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:180
-#: desktop/src/app.rs:5759
-#: web/src/keep.rs:1086
+#: desktop/src/app.rs:5766
+#: web/src/keep.rs:1085
 msgid "On: every app requests as each person's Seerr user."
 msgstr "Activé : chaque app fait les demandes sous l'utilisateur Seerr de chaque personne."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:182
-#: desktop/src/app.rs:5761
+#: desktop/src/app.rs:5768
 msgid "Off: only direct request-site logins work. Set up Seerr in Server settings (web app)."
 msgstr "Désactivé : seules les connexions directes au site de demandes fonctionnent. Configurez Seerr dans Paramètres du serveur (application web)."
 
@@ -1385,32 +1385,32 @@ msgid "Keeps end by themselves once watched."
 msgstr "Les titres gardés sont libérés d'eux-mêmes une fois vus."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:192
-#: desktop/src/app.rs:5765
+#: desktop/src/app.rs:5772
 msgid "Jellyfin keeps don't end by themselves. Add the Jellyfin server's key in Server settings (web app)."
 msgstr "Les conservations Jellyfin ne prennent pas fin toutes seules. Ajoutez la clé du serveur Jellyfin dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:202
-#: desktop/src/app.rs:5770
+#: desktop/src/app.rs:5777
 msgid "Plex keeps don't end by themselves. Set up Tautulli in Server settings (web app)."
 msgstr "Les conservations Plex ne prennent pas fin toutes seules. Configurez Tautulli dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:207
-#: web/src/keep.rs:1100
+#: web/src/keep.rs:1099
 msgid "Webhooks"
 msgstr "Webhooks"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:210
-#: web/src/keep.rs:1101
+#: web/src/keep.rs:1100
 msgid "On: watched titles are noticed at once."
 msgstr "Activé : les titres vus sont détectés immédiatement."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:212
-#: desktop/src/app.rs:5781
+#: desktop/src/app.rs:5788
 msgid "Optional: watched titles are noticed within 15 min. For instant, add the webhooks shown in Server settings (web app)."
 msgstr "Facultatif : les titres vus sont repérés sous 15 min. Pour que ce soit instantané, ajoutez les webhooks indiqués dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:216
-#: desktop/src/app.rs:5805
+#: desktop/src/app.rs:5812
 #: web/src/account.rs:684
 msgid "Passkeys"
 msgstr "Clés d'accès"
@@ -1426,7 +1426,7 @@ msgid "Off: set this site's address (https) in Server settings (web app)"
 msgstr "Désactivé : indiquez l'adresse (https) de ce site dans Paramètres du serveur (application web)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:221
-#: web/src/keep.rs:1111
+#: web/src/keep.rs:1110
 msgid "New accounts"
 msgstr "Nouveaux comptes"
 
@@ -1435,12 +1435,12 @@ msgid "Anyone with the address"
 msgstr "Toute personne ayant l'adresse"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:225
-#: web/src/keep.rs:1113
+#: web/src/keep.rs:1112
 msgid "With an invitation"
 msgstr "Avec une invitation"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt:226
-#: web/src/keep.rs:1114
+#: web/src/keep.rs:1113
 msgid "Closed"
 msgstr "Fermé"
 
@@ -1802,8 +1802,8 @@ msgid "Continue watching"
 msgstr "Reprendre"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1647
-#: desktop/src/app.rs:5598
-#: web/src/keep.rs:297
+#: desktop/src/app.rs:5605
+#: web/src/keep.rs:296
 msgid "Kept until {n} person has watched it"
 msgid_plural "Kept until {n} people have watched it"
 msgstr[0] "Gardé jusqu'à ce que {n} personne l'ait vu"
@@ -1864,7 +1864,7 @@ msgid "Trailer"
 msgstr "Bande-annonce"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:644
-#: desktop/src/app.rs:3498
+#: desktop/src/app.rs:3505
 msgid "Directed by {names}"
 msgstr "Réalisé par {names}"
 
@@ -1887,12 +1887,12 @@ msgstr "Aucun"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:859
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:690
-#: desktop/src/app.rs:3195
+#: desktop/src/app.rs:3202
 msgid "Only foreign-language parts"
 msgstr "Seulement les passages en langue étrangère"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:869
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:688
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:762
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:690
 msgid "Automatic"
 msgstr "Automatique"
@@ -2036,108 +2036,108 @@ msgid "downloading {progress}"
 msgstr "téléchargement {progress}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1566
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:95
-#: desktop/src/app.rs:3591
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:92
+#: desktop/src/app.rs:3598
 msgid "Not scheduled for deletion"
 msgstr "Pas prévu pour suppression"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1570
-#: web/src/keep.rs:354
+#: web/src/keep.rs:353
 #: desktop/ui/app.slint:1998
 msgid "The server doesn't plan to delete this. You can still say you want it kept, in case it does later."
 msgstr "Le serveur ne prévoit pas de le supprimer. Vous pouvez quand même demander à le garder, au cas où cela changerait."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1576
-#: desktop/src/app.rs:3592
-#: desktop/src/app.rs:3611
+#: desktop/src/app.rs:3599
+#: desktop/src/app.rs:3618
 msgid "You haven't chosen anything"
 msgstr "Vous n'avez rien choisi"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1596
-#: web/src/keep.rs:464
+#: web/src/keep.rs:463
 #: desktop/ui/app.slint:2005
 msgid "Looking it up…"
 msgstr "Recherche…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1597
-#: web/src/keep.rs:464
-#: web/src/keep.rs:487
+#: web/src/keep.rs:463
+#: web/src/keep.rs:486
 msgid "Keep it"
 msgstr "Le garder"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1598
-#: web/src/keep.rs:487
+#: web/src/keep.rs:486
 #: desktop/ui/app.slint:2005
 msgid "Change my choice"
 msgstr "Modifier mon choix"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1614
-#: desktop/src/app.rs:3651
-#: web/src/keep.rs:431
+#: desktop/src/app.rs:3658
+#: web/src/keep.rs:430
 msgid "This title is never deleted automatically."
 msgstr "Ce titre n'est jamais supprimé automatiquement."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1645
-#: desktop/src/app.rs:5597
-#: web/src/keep.rs:296
+#: desktop/src/app.rs:5604
+#: web/src/keep.rs:295
 msgid "Kept until the person who asked has watched it"
 msgstr "Gardé jusqu'à ce que la personne qui l'a demandé l'ait vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1651
-#: desktop/src/app.rs:5604
-#: web/src/keep.rs:303
+#: desktop/src/app.rs:5611
+#: web/src/keep.rs:302
 msgid "On the deletion list"
 msgstr "Sur la liste de suppression"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1658
-#: desktop/src/app.rs:5620
-#: web/src/keep.rs:313
+#: desktop/src/app.rs:5627
+#: web/src/keep.rs:312
 msgid "In “{list}”"
 msgstr "Dans « {list} »"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1659
-#: desktop/src/app.rs:5623
-#: web/src/keep.rs:316
+#: desktop/src/app.rs:5630
+#: web/src/keep.rs:315
 msgid "deletion isn't turned on yet"
 msgstr "la suppression n'est pas encore activée"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1665
-#: desktop/src/app.rs:5629
-#: web/src/keep.rs:322
+#: desktop/src/app.rs:5636
+#: web/src/keep.rs:321
 msgid "date {date}"
 msgstr "date : {date}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1673
-#: desktop/src/app.rs:5634
-#: web/src/keep.rs:326
+#: desktop/src/app.rs:5641
+#: web/src/keep.rs:325
 msgid "{n} forever"
 msgid_plural "{n} forever"
 msgstr[0] "{n} pour toujours"
 msgstr[1] "{n} pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1677
-#: desktop/src/app.rs:5637
-#: web/src/keep.rs:327
+#: desktop/src/app.rs:5644
+#: web/src/keep.rs:326
 msgid "{n} until watched"
 msgid_plural "{n} until watched"
 msgstr[0] "{n} jusqu'au visionnage"
 msgstr[1] "{n} jusqu'au visionnage"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1681
-#: desktop/src/app.rs:5644
-#: web/src/keep.rs:328
+#: desktop/src/app.rs:5651
+#: web/src/keep.rs:327
 msgid "{n} for a while"
 msgid_plural "{n} for a while"
 msgstr[0] "{n} pour un temps"
 msgstr[1] "{n} pour un temps"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1683
-#: web/src/keep.rs:334
+#: web/src/keep.rs:333
 msgid "kept by {list}"
 msgstr "gardé par {list}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt:1689
-#: desktop/src/app.rs:5573
+#: desktop/src/app.rs:5580
 #: web/src/request.rs:84
 msgid "Saga · {name}"
 msgstr "Saga · {name}"
@@ -2401,30 +2401,30 @@ msgid "Nothing downloaded."
 msgstr "Aucun téléchargement."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:58
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:363
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:441
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt:298
 msgid "All"
 msgstr "Tout"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:59
-#: web/src/keep.rs:552
+#: web/src/keep.rs:551
 msgid "Kept by several"
 msgstr "Gardés par plusieurs"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:60
-#: web/src/keep.rs:552
+#: web/src/keep.rs:551
 msgid "Kept by one person"
 msgstr "Gardés par une personne"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:109
 #: desktop/src/app.rs:869
-#: web/src/keep.rs:523
+#: web/src/keep.rs:522
 msgid "{titles} titles · {shared} kept by several people · {alone} by one person"
 msgstr "{titles} titres · {shared} gardés par plusieurs personnes · {alone} par une seule"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:120
 #: desktop/src/app.rs:867
-#: web/src/keep.rs:516
+#: web/src/keep.rs:515
 msgid "Nobody keeps anything forever yet."
 msgstr "Personne ne garde rien pour toujours pour l'instant."
 
@@ -2433,7 +2433,7 @@ msgid "Shared: someone else keeps it forever too. Choose a person to see their t
 msgstr "Partagé : quelqu'un d'autre le garde aussi pour toujours. Choisissez une personne pour voir ses titres."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:148
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:465
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:539
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:449
 msgid "Nothing here."
 msgstr "Rien ici."
@@ -2448,7 +2448,7 @@ msgstr "Aussi {names}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt:196
 #: desktop/src/app.rs:903
-#: web/src/keep.rs:542
+#: web/src/keep.rs:541
 msgid "{shared} shared · {alone} only them"
 msgstr "{shared} partagés · {alone} rien qu'à elle"
 
@@ -2558,8 +2558,8 @@ msgid "You can leave the app: it keeps going (see the notification), and this pa
 msgstr "Vous pouvez quitter l'appli : la copie continue (voir la notification), et cette page indique où elle en est à votre retour."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt:253
-#: desktop/src/app.rs:2283
-#: desktop/src/app.rs:5254
+#: desktop/src/app.rs:2290
+#: desktop/src/app.rs:5261
 msgid "New in {library}"
 msgstr "Nouveautés dans {library}"
 
@@ -2580,7 +2580,7 @@ msgid "Nothing downloaded yet. Download from a movie or show page."
 msgstr "Aucun téléchargement pour l'instant. Téléchargez depuis la page d'un film ou d'une série."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt:371
-#: desktop/src/app.rs:2389
+#: desktop/src/app.rs:2396
 msgid "Nothing here yet."
 msgstr "Rien ici pour l'instant."
 
@@ -2621,378 +2621,396 @@ msgid "Go to downloads"
 msgstr "Aller aux téléchargements"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt:846
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:226
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:236
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt:143
 msgid "Show"
 msgstr "Série"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt:846
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:226
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:236
 msgid "Movie"
 msgstr "Film"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:102
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:99
 #: desktop/src/app.rs:500
 msgid "Leaves in {n} day"
 msgid_plural "Leaves in {n} days"
 msgstr[0] "Supprimé dans {n} jour"
 msgstr[1] "Supprimé dans {n} jours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:341
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:261
+msgid "Keep {n} more day"
+msgid_plural "Keep {n} more days"
+msgstr[0] "Garder {n} jour de plus"
+msgstr[1] "Garder {n} jours de plus"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:285
+msgid "{n} other person keeps it."
+msgid_plural "{n} other people keep it."
+msgstr[0] "{n} autre personne le garde."
+msgstr[1] "{n} autres personnes le gardent."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:423
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:421
 msgid "{count} title"
 msgid_plural "{count} titles"
 msgstr[0] "{count} titre"
 msgstr[1] "{count} titres"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:446
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:523
 msgid "{n} other keeps it"
 msgid_plural "{n} others keep it"
 msgstr[0] "{n} autre personne le garde"
 msgstr[1] "{n} autres personnes le gardent"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:541
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:615
 #: desktop/ui/app.slint:2739
 msgid "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever"
 msgid_plural "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever"
 msgstr[0] "{n} restant  ·  ← peut être supprimé   → jusqu'à ce que je l'aie vu   ↑ garder pour toujours"
 msgstr[1] "{n} restants  ·  ← peut être supprimé   → jusqu'à ce que je l'aie vu   ↑ garder pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:547
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:621
 msgid "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgid_plural "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgstr[0] "{n} restant  ·  Glissez à gauche : peut être supprimé · à droite : jusqu'à ce que je l'aie vu · en haut : garder pour toujours"
 msgstr[1] "{n} restants  ·  Glissez à gauche : peut être supprimé · à droite : jusqu'à ce que je l'aie vu · en haut : garder pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:811
-#: web/src/keep.rs:968
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:885
+#: web/src/keep.rs:967
 msgid "Spread over {n} day"
 msgid_plural "Spread over {n} days"
 msgstr[0] "Réparti sur {n} jour"
 msgstr[1] "Réparti sur {n} jours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:907
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:981
 msgid "{n} day at most"
 msgid_plural "{n} days at most"
 msgstr[0] "{n} jour au plus"
 msgstr[1] "{n} jours au plus"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:935
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1009
 msgid "Keeps {n} title forever."
 msgid_plural "Keeps {n} titles forever."
 msgstr[0] "Garde {n} titre pour toujours."
 msgstr[1] "Garde {n} titres pour toujours."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:988
-#: web/src/keep.rs:745
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1062
+#: web/src/keep.rs:744
 msgid "{n} person keeps it"
 msgid_plural "{n} people keep it"
 msgstr[0] "{n} personne le garde"
 msgstr[1] "{n} personnes le gardent"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:92
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:89
 #: desktop/src/app.rs:487
 #: web/src/keep.rs:26
 msgid "Kept until watched"
 msgstr "Gardé jusqu'à visionnage"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:94
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:117
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:91
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:114
 #: desktop/src/app.rs:489
 msgid "No date"
 msgstr "Sans date"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:99
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:121
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:96
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:118
 #: desktop/src/app.rs:497
 msgid "Any day now"
 msgstr "D'un jour à l'autre"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:100
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:97
 #: desktop/src/app.rs:498
 msgid "Leaves today"
 msgstr "Supprimé aujourd'hui"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:101
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:98
 #: desktop/src/app.rs:499
 msgid "Leaves tomorrow"
 msgstr "Supprimé demain"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:104
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:101
 msgid "{status} (extended)"
 msgstr "{status} (prolongé)"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:110
-#: web/src/keep.rs:286
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:107
+#: web/src/keep.rs:285
 msgid "Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it."
 msgstr "Les choix de chacun comptent et le plus long l'emporte. « Peut être supprimé » : le titre n'est supprimé que si personne d'autre ne le garde."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:115
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:363
-#: web/src/keep.rs:595
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:112
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:441
+#: web/src/keep.rs:594
 msgid "Kept"
 msgstr "Gardés"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:118
-#: web/src/keep.rs:601
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:115
+#: web/src/keep.rs:600
 msgid "Soon"
 msgstr "Bientôt"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:122
-#: web/src/keep.rs:106
-#: web/src/keep.rs:606
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:119
+#: web/src/keep.rs:105
+#: web/src/keep.rs:605
 msgid "Today"
 msgstr "Aujourd'hui"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:131
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:128
 #: desktop/src/app.rs:514
-#: web/src/keep.rs:126
+#: web/src/keep.rs:125
 msgid "You're fine with it going"
 msgstr "Vous acceptez sa suppression"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:132
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:129
 #: desktop/src/app.rs:515
 msgid "You keep it a while"
 msgstr "Vous le gardez un temps"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:133
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:130
 #: desktop/src/app.rs:516
-#: web/src/keep.rs:124
+#: web/src/keep.rs:123
 msgid "You keep it until you watch it"
 msgstr "Vous le gardez jusqu'à l'avoir vu"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:134
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:131
 #: desktop/src/app.rs:518
 msgid "You keep it forever ({reason})"
 msgstr "Vous le gardez pour toujours ({reason})"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:134
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:131
 #: desktop/src/app.rs:519
-#: web/src/keep.rs:123
+#: web/src/keep.rs:122
 msgid "You keep it forever"
 msgstr "Vous le gardez pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:173
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:615
-#: web/src/keep.rs:277
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:170
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:245
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:689
 msgid "Until I watch it"
 msgstr "Jusqu'à ce que je l'aie vu"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:181
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:621
-#: web/src/keep.rs:278
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:178
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:695
+#: web/src/keep.rs:277
 msgid "Keep 30 days"
 msgstr "Garder 30 jours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:182
-#: web/src/keep.rs:279
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:179
+#: web/src/keep.rs:278
 #: desktop/ui/app.slint:381
 msgid "Keep 7 days"
 msgstr "Garder 7 jours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:183
-#: web/src/keep.rs:280
-#: desktop/ui/app.slint:382
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:180
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:253
+#: web/src/keep.rs:279
 msgid "Keep forever"
 msgstr "Garder pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:184
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:622
-#: web/src/keep.rs:281
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:181
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:268
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:696
 msgid "Fine to delete"
 msgstr "Peut être supprimé"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:185
-#: web/src/keep.rs:283
-#: desktop/ui/app.slint:384
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:182
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:276
+#: web/src/keep.rs:282
 msgid "Remove my choice"
 msgstr "Retirer mon choix"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:222
-#: web/src/keep.rs:74
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:247
+msgid "Kept until you've seen it"
+msgstr "Gardé jusqu'à ce que vous l'ayez vu"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:254
+msgid "It's a keeper"
+msgstr "Un incontournable"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:269
+msgid "It only goes if nobody else keeps it"
+msgstr "Il ne part que si personne d'autre ne le garde"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:286
+msgid "Everyone's choices count and the longest one wins."
+msgstr "Les choix de chacun comptent et le plus long l'emporte."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:318
+#: web/src/keep.rs:73
 msgid "Keep what you still want to watch"
 msgstr "Gardez ce que vous voulez encore regarder"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:226
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:352
-#: web/src/keep.rs:177
-msgid "Go through them one by one"
-msgstr "Les passer en revue un par un"
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:323
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:377
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:434
+msgid "Swipe them!"
+msgstr "Faites le tri !"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:226
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:517
-#: web/src/keep.rs:76
-msgid "One by one"
-msgstr "Un par un"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:342
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:424
 msgid "{count} with your choice"
 msgstr "{count} avec votre choix"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:346
-msgid "What the server will delete, soonest first. Keep what you still want to watch or love."
-msgstr "Ce que le serveur va supprimer, les plus proches en premier. Gardez ce que vous voulez encore regarder ou ce que vous adorez."
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:359
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:767
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:430
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:841
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:94
 msgid "Admin"
 msgstr "Administration"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:363
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:441
 msgid "Within a week"
 msgstr "Sous une semaine"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:363
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:441
 msgid "My choices"
 msgstr "Mes choix"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:373
-msgid "{count} of these are not scheduled: their date has passed but the server's owner hasn't turned deletion on yet. Your choices still count when it is."
-msgstr "{count} ne sont pas programmés : leur date est passée mais la personne qui gère votre serveur n'a pas encore activé la suppression. Vos choix compteront quand ce sera fait."
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:451
+msgid "{count} aren't scheduled yet: deletion is off for now. Your choices count when it's on."
+msgstr "{count} ne sont pas encore programmés : la suppression est désactivée pour l'instant. Vos choix compteront quand elle sera activée."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:394
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:472
 msgid "Can't reach your AlwyWatch server ({address}). This is the last list it sent."
 msgstr "Impossible de joindre votre serveur AlwyWatch ({address}). Voici la dernière liste reçue."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:395
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:473
 msgid "Can't reach your AlwyWatch server ({address})."
 msgstr "Impossible de joindre votre serveur AlwyWatch ({address})."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:396
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:474
 msgid "Can't reach your AlwyWatch server. This is the last list it sent."
 msgstr "Impossible de joindre votre serveur AlwyWatch. Voici la dernière liste reçue."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:397
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:475
 msgid "Can't reach your AlwyWatch server."
 msgstr "Impossible de joindre votre serveur AlwyWatch."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:537
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:611
 msgid "All done, thanks! {count} sorted."
 msgstr "C'est fini, merci ! {count} triés."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:537
-#: web/src/keep.rs:723
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:611
+#: web/src/keep.rs:722
 msgid "Nothing to sort right now."
 msgstr "Rien à trier pour le moment."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:620
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:694
 #: desktop/ui/app.slint:2762
 msgid "Forever"
 msgstr "Pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:661
-#: web/src/keep.rs:833
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:735
+#: web/src/keep.rs:832
 msgid "Collection {id}"
 msgstr "Collection {id}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:683
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:757
 msgid "Requests of {name}"
 msgstr "Demandes de {name}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:689
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:763
 msgid "Their own Seerr account (created if needed)"
 msgstr "Son propre compte Seerr (créé si besoin)"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:767
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:841
 #: desktop/ui/app.slint:2777
 msgid "Leaving soon: countdown and people's rights"
 msgstr "Bientôt supprimés : compte à rebours et droits de chacun"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:770
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:844
 msgid "What each person may keep, and who they request as"
 msgstr "Ce que chacun peut garder, et sous quel nom il demande"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:780
-#: web/src/keep.rs:980
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:854
+#: web/src/keep.rs:979
 msgid "Who keeps what forever"
 msgstr "Qui garde quoi pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:797
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:871
 msgid "Start countdown"
 msgstr "Lancer le compte à rebours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:799
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:873
 msgid "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr (press twice to confirm)."
 msgstr "Tous les éléments ont déjà dépassé leur date. Avant d'activer une collection dans Maintainerr, relancez son compte à rebours pour que chacun ait tout le délai pour voter. Cela modifie les dates de suppression dans Maintainerr (appuyez deux fois pour confirmer)."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:811
-#: web/src/keep.rs:968
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:885
+#: web/src/keep.rs:967
 #: desktop/ui/app.slint:2789
 msgid "Restart now"
 msgstr "Relancer maintenant"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:813
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:887
 msgid "Confirm"
 msgstr "Confirmer"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:822
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:896
 msgid "{collection}: {reset} restarted, {skipped} skipped"
 msgstr "{collection} : {reset} relancés, {skipped} ignorés"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:847
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:921
 msgid "No limits by default. Select a person to change theirs."
 msgstr "Aucune limite par défaut. Sélectionnez une personne pour changer les siennes."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:849
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:923
 msgid "No limits by default. Tap a person to change theirs."
 msgstr "Aucune limite par défaut. Touchez une personne pour changer les siennes."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:860
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:934
 msgid "{name} · admin"
 msgstr "{name} · admin"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:904
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:978
 msgid "Can't keep forever"
 msgstr "Ne peut pas garder pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:905
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:979
 msgid "Up to {n} forever"
 msgstr "Jusqu'à {n} pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:908
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:982
 msgid "Requests as {name}"
 msgstr "Demande en tant que {name}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:909
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:983
 msgid "No limits"
 msgstr "Aucune limite"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:941
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1015
 msgid "May keep forever"
 msgstr "Peut garder pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:947
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1021
 msgid "Titles kept forever"
 msgstr "Titres gardés pour toujours"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:948
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:955
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1022
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1029
 msgid "No limit"
 msgstr "Sans limite"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:948
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1022
 msgid "Up to {n}"
 msgstr "Jusqu'à {n}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:954
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1028
 msgid "Keep for at most"
 msgstr "Garder au plus"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:958
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1032
 msgid "How long one “keep for a while” can last"
 msgstr "Durée maximale d'un « garder un moment »"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:962
-#: web/src/keep.rs:938
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1036
+#: web/src/keep.rs:937
 msgid "Requests as"
 msgstr "Demande en tant que"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:963
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1037
 msgid "Automatic: their own Seerr account"
 msgstr "Automatique : son propre compte Seerr"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:973
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt:1047
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:302
 #: desktop/ui/app.slint:3286
 msgid "Done"
@@ -3021,17 +3039,17 @@ msgstr "Catégories"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:260
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:428
-#: desktop/src/app.rs:2552
+#: desktop/src/app.rs:2559
 msgid "Recently added"
 msgstr "Ajouts récents"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:302
-#: desktop/src/app.rs:2595
+#: desktop/src/app.rs:2602
 msgid "No collections in this library."
 msgstr "Aucune collection dans cette bibliothèque."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt:428
-#: desktop/src/app.rs:2671
+#: desktop/src/app.rs:2678
 msgid "A–Z"
 msgstr "A–Z"
 
@@ -3271,7 +3289,7 @@ msgid "The camera could not start."
 msgstr "L'appareil photo n'a pas pu démarrer."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt:202
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:262
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:272
 #: web/src/request.rs:199
 msgid "Request {n} season"
 msgid_plural "Request {n} seasons"
@@ -3300,7 +3318,8 @@ msgid "The request site had a problem. Try again in a moment."
 msgstr "Le site de demandes a rencontré un problème. Réessayez dans un instant."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt:77
-#: core/seerr/src/lib.rs:814
+#: core/seerr/src/lib.rs:818
+#: core/seerr/src/lib.rs:1235
 msgid "Specials"
 msgstr "Épisodes spéciaux"
 
@@ -3319,8 +3338,8 @@ msgid "Select all missing"
 msgstr "Sélectionner toutes les manquantes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt:201
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:238
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:261
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:248
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:271
 msgid "Requesting…"
 msgstr "Demande en cours…"
 
@@ -3337,7 +3356,7 @@ msgid "Partly available"
 msgstr "Partiellement disponible"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:60
-#: core/seerr/src/lib.rs:1109
+#: core/seerr/src/lib.rs:1127
 #: desktop/src/app.rs:1331
 msgid "Requested"
 msgstr "Demandé"
@@ -3411,40 +3430,40 @@ msgstr "Aucune demande."
 msgid "You haven't requested anything yet. Search for a title that isn't on your servers to request it."
 msgstr "Vous n'avez encore rien demandé. Recherchez un titre absent de vos serveurs pour le demander."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:199
-#: desktop/src/app.rs:1667
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:209
+#: desktop/src/app.rs:1674
 #: web/src/request.rs:359
 msgid "Requested: {title}"
 msgstr "Demandé : {title}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:205
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:215
 msgid "Could not request {title}: {reason}"
 msgstr "Impossible de demander {title} : {reason}"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:238
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:248
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt:282
 #: web/src/request.rs:379
 msgid "Request"
 msgstr "Demander"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:248
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:258
 #: web/src/request.rs:386
 msgid "Loading seasons…"
 msgstr "Chargement des saisons…"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:256
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:266
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt:258
 #: web/src/request.rs:395
 msgid "Every season is on your servers or already requested."
 msgstr "Toutes les saisons sont sur vos serveurs ou déjà demandées."
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:263
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:273
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt:282
 #: web/src/request.rs:197
 msgid "Request the missing seasons"
 msgstr "Demander les saisons manquantes"
 
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:264
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt:274
 #: web/src/request.rs:198
 #: desktop/ui/app.slint:2443
 msgid "Request all seasons"
@@ -3542,18 +3561,18 @@ msgid "Or type the address of the request site (Seerr, Overseerr or Jellyseerr)"
 msgstr "Ou saisissez l'adresse du site de demandes (Seerr, Overseerr ou Jellyseerr)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt:134
-#: desktop/src/app.rs:1749
+#: desktop/src/app.rs:1756
 #: web/src/signin.rs:426
 msgid "Sign in with Plex"
 msgstr "Se connecter avec Plex"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt:135
-#: desktop/src/app.rs:1750
+#: desktop/src/app.rs:1757
 msgid "Sign in with Jellyfin"
 msgstr "Se connecter avec Jellyfin"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt:136
-#: desktop/src/app.rs:1751
+#: desktop/src/app.rs:1758
 msgid "Sign in with Emby"
 msgstr "Se connecter avec Emby"
 
@@ -3588,7 +3607,7 @@ msgid "Email"
 msgstr "E-mail"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt:323
-#: desktop/src/app.rs:1588
+#: desktop/src/app.rs:1595
 #: web/src/request.rs:112
 msgid "{n} film"
 msgid_plural "{n} films"
@@ -3998,7 +4017,7 @@ msgid "Original (the file's default)"
 msgstr "Originale (par défaut du fichier)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:690
-#: desktop/src/app.rs:3196
+#: desktop/src/app.rs:3203
 #: web/src/prefs.rs:244
 msgid "Always"
 msgstr "Toujours"
@@ -4160,7 +4179,7 @@ msgid "Image cache"
 msgstr "Cache des images"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt:873
-#: desktop/src/app.rs:4019
+#: desktop/src/app.rs:4026
 msgid "{size} MB"
 msgstr "{size} Mo"
 
@@ -4455,8 +4474,8 @@ msgid "Paused for now. Invite people, then start: everyone starts at {time} at t
 msgstr "En pause pour l'instant. Invitez du monde, puis lancez : tout le monde reprend à {time} au même moment."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:164
-#: desktop/src/app.rs:4799
-#: desktop/src/app.rs:4816
+#: desktop/src/app.rs:4806
+#: desktop/src/app.rs:4823
 msgid "Nothing to copy: that device has no accounts."
 msgstr "Rien à copier : cet appareil n'a aucun compte."
 
@@ -4484,7 +4503,7 @@ msgstr "Sans l'appareil photo, saisissez plutôt le code."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt:237
 #: core/keep-service/src/account.rs:283
-#: desktop/src/app.rs:4850
+#: desktop/src/app.rs:4857
 msgid "Unknown or expired code."
 msgstr "Code inconnu ou expiré."
 
@@ -4524,7 +4543,7 @@ msgid "Send"
 msgstr "Envoyer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/WatchlistScreen.kt:92
-#: desktop/src/app.rs:3739
+#: desktop/src/app.rs:3746
 msgid "Nothing saved yet. On a movie or show, press the bookmark to keep it here."
 msgstr "Rien d'enregistré pour l'instant. Sur un film ou une série, appuyez sur le signet pour le garder ici."
 
@@ -4564,7 +4583,7 @@ msgid "invalid key"
 msgstr "clé invalide"
 
 #: core/alwywatch-core/src/app.rs:2635
-#: desktop/src/app.rs:4461
+#: desktop/src/app.rs:4468
 msgid "unreadable transfer: {error}"
 msgstr "transfert illisible : {error}"
 
@@ -4716,53 +4735,65 @@ msgstr "adresse du serveur vide"
 msgid "server address must be an http(s) URL"
 msgstr "l'adresse du serveur doit être une URL http(s)"
 
-#: core/seerr/src/lib.rs:345
+#: core/seerr/src/lib.rs:349
 msgid "user {id}"
 msgstr "utilisateur {id}"
 
-#: core/seerr/src/lib.rs:396
+#: core/seerr/src/lib.rs:400
 msgid "this Seerr instance is not set up yet"
 msgstr "cette instance Seerr n'est pas encore configurée"
 
-#: core/seerr/src/lib.rs:1107
+#: core/seerr/src/lib.rs:1125
 msgid "On your server"
 msgstr "Sur votre serveur"
 
-#: core/seerr/src/lib.rs:1108
+#: core/seerr/src/lib.rs:1126
 msgid "Partly on your server"
 msgstr "En partie sur votre serveur"
 
-#: core/seerr/src/lib.rs:1110
+#: core/seerr/src/lib.rs:1128
 msgid "Being downloaded"
 msgstr "En téléchargement"
 
-#: core/seerr/src/lib.rs:1111
+#: core/seerr/src/lib.rs:1129
 msgid "Not on your server"
 msgstr "Pas sur votre serveur"
 
-#: core/seerr/src/lib.rs:1112
+#: core/seerr/src/lib.rs:1130
 msgid "Can't be requested"
 msgstr "Ne peut pas être demandé"
 
-#: core/seerr/src/lib.rs:1173
+#: core/seerr/src/lib.rs:1191
 msgid "Requested: season {number}. It'll appear here when it's ready."
 msgstr "Demandé : saison {number}. Elle apparaîtra ici quand elle sera prête."
 
-#: core/seerr/src/lib.rs:1177
+#: core/seerr/src/lib.rs:1195
 msgid "Requested: season {number} and the specials. They'll appear here when they're ready."
 msgstr "Demandé : saison {number} et épisodes spéciaux. Ils apparaîtront ici quand ils seront prêts."
 
-#: core/seerr/src/lib.rs:1181
+#: core/seerr/src/lib.rs:1199
 msgid "Requested: the specials. They'll appear here when they're ready."
 msgstr "Demandé : épisodes spéciaux. Ils apparaîtront ici quand ils seront prêts."
 
-#: core/seerr/src/lib.rs:1182
+#: core/seerr/src/lib.rs:1200
 msgid "Requested: seasons {numbers}. They'll appear here when they're ready."
 msgstr "Demandé : saisons {numbers}. Elles apparaîtront ici quand elles seront prêtes."
 
-#: core/seerr/src/lib.rs:1186
+#: core/seerr/src/lib.rs:1204
 msgid "Requested: seasons {numbers} and the specials. They'll appear here when they're ready."
 msgstr "Demandé : saisons {numbers} et épisodes spéciaux. Ils apparaîtront ici quand ils seront prêts."
+
+#: core/seerr/src/lib.rs:1223
+msgid "Seasons {first}–{last}"
+msgstr "Saisons {first} à {last}"
+
+#: core/seerr/src/lib.rs:1225
+msgid "Seasons {numbers}"
+msgstr "Saisons {numbers}"
+
+#: core/seerr/src/lib.rs:1236
+msgid "{seasons} and specials"
+msgstr "{seasons} et épisodes spéciaux"
 
 #: desktop/src/app/account.rs:118
 msgid "Too many changes: try again in a few minutes."
@@ -5104,7 +5135,7 @@ msgid_plural "{n} kept forever"
 msgstr[0] "{n} gardé pour toujours"
 msgstr[1] "{n} gardés pour toujours"
 
-#: desktop/src/app.rs:3865
+#: desktop/src/app.rs:3872
 msgid "Mark all {n} episode of {title} unwatched? This forgets where you stopped."
 msgid_plural "Mark all {n} episodes of {title} unwatched? This forgets where you stopped."
 msgstr[0] "Marquer l'épisode de {title} comme non vu ? L'endroit où vous vous êtes arrêté sera oublié."
@@ -5151,12 +5182,12 @@ msgid "{when} (extended)"
 msgstr "{when} (prolongé)"
 
 #: desktop/src/app.rs:733
-#: web/src/keep.rs:943
+#: web/src/keep.rs:942
 msgid "Requests as: {name}"
 msgstr "Demande en tant que : {name}"
 
 #: desktop/src/app.rs:734
-#: web/src/keep.rs:941
+#: web/src/keep.rs:940
 msgid "Requests as: automatic"
 msgstr "Demande en tant que : automatique"
 
@@ -5181,7 +5212,7 @@ msgid "Automatic (their own Seerr user)"
 msgstr "Automatique (son propre utilisateur Seerr)"
 
 #: desktop/src/app.rs:909
-#: web/src/keep.rs:544
+#: web/src/keep.rs:543
 msgid "{shared} shared · {alone} only them · most with {people}"
 msgstr "{shared} en commun · {alone} rien qu'à eux · surtout avec {people}"
 
@@ -5209,302 +5240,302 @@ msgstr "Il faut des identifiants sur l'un de ses serveurs ({servers}). Ajoutez-e
 msgid "Reminder: you wanted to watch {titles} before it leaves."
 msgstr "Rappel : vous vouliez regarder {titles} avant sa suppression."
 
-#: desktop/src/app.rs:1659
+#: desktop/src/app.rs:1666
 msgid "Pick at least one season."
 msgstr "Choisissez au moins une saison."
 
-#: desktop/src/app.rs:1668
+#: desktop/src/app.rs:1675
 msgid "Could not request {title}: {error}"
 msgstr "Impossible de demander {title} : {error}"
 
-#: desktop/src/app.rs:1719
+#: desktop/src/app.rs:1726
 msgid "could not store the session: {error}"
 msgstr "impossible d'enregistrer la session : {error}"
 
-#: desktop/src/app.rs:1752
+#: desktop/src/app.rs:1759
 msgid "Seerr account"
 msgstr "Compte Seerr"
 
-#: desktop/src/app.rs:2672
+#: desktop/src/app.rs:2679
 msgid "Added"
 msgstr "Date d'ajout"
 
-#: desktop/src/app.rs:2673
+#: desktop/src/app.rs:2680
 msgid "Released"
 msgstr "Date de sortie"
 
-#: desktop/src/app.rs:3173
+#: desktop/src/app.rs:3180
 msgid "Same as the computer ({name})"
 msgstr "Comme l'ordinateur ({name})"
 
-#: desktop/src/app.rs:3191
+#: desktop/src/app.rs:3198
 msgid "Original"
 msgstr "Langue d'origine"
 
-#: desktop/src/app.rs:3201
+#: desktop/src/app.rs:3208
 msgid "System language"
 msgstr "Langue du système"
 
-#: desktop/src/app.rs:3871
+#: desktop/src/app.rs:3878
 msgid "Mark all episodes of {title} unwatched? This forgets where you stopped."
 msgstr "Marquer tous les épisodes de {title} comme non vus ? L'endroit où vous vous êtes arrêté sera oublié."
 
-#: desktop/src/app.rs:4023
+#: desktop/src/app.rs:4030
 msgid "AlwyWatch {version} (core {core}) · GNU AGPL v3 or later · player: {player}"
 msgstr "AlwyWatch {version} (cœur {core}) · GNU AGPL v3 ou ultérieure · lecteur : {player}"
 
-#: desktop/src/app.rs:4028
+#: desktop/src/app.rs:4035
 msgid "libmpv found"
 msgstr "libmpv trouvé"
 
-#: desktop/src/app.rs:4030
+#: desktop/src/app.rs:4037
 msgid "libmpv missing"
 msgstr "libmpv manquant"
 
-#: desktop/src/app.rs:4043
-#: desktop/src/app.rs:4470
-#: desktop/src/app.rs:4523
+#: desktop/src/app.rs:4050
+#: desktop/src/app.rs:4477
+#: desktop/src/app.rs:4530
 msgid "could not store the token: {error}"
 msgstr "impossible d'enregistrer le jeton : {error}"
 
-#: desktop/src/app.rs:4200
+#: desktop/src/app.rs:4207
 msgid "Plex · already signed in"
 msgstr "Plex · déjà connecté"
 
-#: desktop/src/app.rs:4201
+#: desktop/src/app.rs:4208
 msgid "Jellyfin · already signed in"
 msgstr "Jellyfin · déjà connecté"
 
-#: desktop/src/app.rs:4211
+#: desktop/src/app.rs:4218
 msgid "This AlwyWatch server lists no media servers."
 msgstr "Ce serveur AlwyWatch ne propose aucun serveur multimédia."
 
-#: desktop/src/app.rs:4376
+#: desktop/src/app.rs:4383
 msgid "{name} (yours)"
 msgstr "{name} (le vôtre)"
 
-#: desktop/src/app.rs:4464
+#: desktop/src/app.rs:4471
 msgid "unreadable transfer"
 msgstr "transfert illisible"
 
-#: desktop/src/app.rs:4616
+#: desktop/src/app.rs:4623
 #: web/src/account.rs:416
 msgid "This server doesn't accept new accounts without an invitation. Ask its owner for one, or sign in with your Jellyfin or Plex login."
 msgstr "Ce serveur n'accepte pas de nouveaux comptes sans invitation. Demandez-en une à la personne qui gère votre serveur, ou connectez-vous avec vos identifiants Jellyfin ou Plex."
 
-#: desktop/src/app.rs:4648
+#: desktop/src/app.rs:4655
 #: web/src/account.rs:299
 #: web/src/account.rs:1006
 msgid "The two passwords differ."
 msgstr "Les deux mots de passe sont différents."
 
-#: desktop/src/app.rs:4833
+#: desktop/src/app.rs:4840
 msgid "Type the 6 digits the new device shows."
 msgstr "Saisissez les 6 chiffres affichés par le nouvel appareil."
 
-#: desktop/src/app.rs:5468
+#: desktop/src/app.rs:5475
 #: desktop/src/player.rs:835
 #: web/src/prefs.rs:74
 msgid "English"
 msgstr "Anglais"
 
-#: desktop/src/app.rs:5469
+#: desktop/src/app.rs:5476
 #: desktop/src/player.rs:834
 #: web/src/prefs.rs:75
 msgid "French"
 msgstr "Français"
 
-#: desktop/src/app.rs:5470
+#: desktop/src/app.rs:5477
 #: desktop/src/player.rs:840
 #: web/src/prefs.rs:76
 msgid "Dutch"
 msgstr "Néerlandais"
 
-#: desktop/src/app.rs:5471
+#: desktop/src/app.rs:5478
 #: desktop/src/player.rs:836
 #: web/src/prefs.rs:77
 msgid "German"
 msgstr "Allemand"
 
-#: desktop/src/app.rs:5472
+#: desktop/src/app.rs:5479
 #: desktop/src/player.rs:837
 #: web/src/prefs.rs:78
 msgid "Spanish"
 msgstr "Espagnol"
 
-#: desktop/src/app.rs:5473
+#: desktop/src/app.rs:5480
 #: desktop/src/player.rs:838
 #: web/src/prefs.rs:79
 msgid "Italian"
 msgstr "Italien"
 
-#: desktop/src/app.rs:5474
+#: desktop/src/app.rs:5481
 #: desktop/src/player.rs:841
 #: web/src/prefs.rs:80
 msgid "Portuguese"
 msgstr "Portugais"
 
-#: desktop/src/app.rs:5475
+#: desktop/src/app.rs:5482
 #: desktop/src/player.rs:839
 #: web/src/prefs.rs:81
 msgid "Japanese"
 msgstr "Japonais"
 
-#: desktop/src/app.rs:5476
+#: desktop/src/app.rs:5483
 #: desktop/src/player.rs:842
 #: web/src/prefs.rs:82
 msgid "Korean"
 msgstr "Coréen"
 
-#: desktop/src/app.rs:5477
+#: desktop/src/app.rs:5484
 #: desktop/src/player.rs:843
 #: web/src/prefs.rs:83
 msgid "Chinese"
 msgstr "Chinois"
 
-#: desktop/src/app.rs:5478
+#: desktop/src/app.rs:5485
 #: desktop/src/player.rs:845
 #: web/src/prefs.rs:84
 msgid "Arabic"
 msgstr "Arabe"
 
-#: desktop/src/app.rs:5479
+#: desktop/src/app.rs:5486
 #: desktop/src/player.rs:844
 #: web/src/prefs.rs:85
 msgid "Russian"
 msgstr "Russe"
 
-#: desktop/src/app.rs:5480
+#: desktop/src/app.rs:5487
 #: desktop/src/player.rs:846
 #: web/src/prefs.rs:86
 msgid "Polish"
 msgstr "Polonais"
 
-#: desktop/src/app.rs:5481
+#: desktop/src/app.rs:5488
 #: web/src/prefs.rs:87
 msgid "Swedish"
 msgstr "Suédois"
 
-#: desktop/src/app.rs:5482
+#: desktop/src/app.rs:5489
 #: web/src/prefs.rs:88
 msgid "Turkish"
 msgstr "Turc"
 
-#: desktop/src/app.rs:5483
+#: desktop/src/app.rs:5490
 #: web/src/prefs.rs:89
 msgid "Hindi"
 msgstr "Hindi"
 
-#: desktop/src/app.rs:5647
+#: desktop/src/app.rs:5654
 msgid "kept by {people}"
 msgstr "gardé par {people}"
 
-#: desktop/src/app.rs:5670
+#: desktop/src/app.rs:5677
 msgid "Jan"
 msgstr "janv."
 
-#: desktop/src/app.rs:5671
+#: desktop/src/app.rs:5678
 msgid "Feb"
 msgstr "févr."
 
-#: desktop/src/app.rs:5672
+#: desktop/src/app.rs:5679
 msgid "Mar"
 msgstr "mars"
 
-#: desktop/src/app.rs:5673
+#: desktop/src/app.rs:5680
 msgid "Apr"
 msgstr "avr."
 
-#: desktop/src/app.rs:5674
+#: desktop/src/app.rs:5681
 msgid "May"
 msgstr "mai"
 
-#: desktop/src/app.rs:5675
+#: desktop/src/app.rs:5682
 msgid "Jun"
 msgstr "juin"
 
-#: desktop/src/app.rs:5676
+#: desktop/src/app.rs:5683
 msgid "Jul"
 msgstr "juil."
 
-#: desktop/src/app.rs:5677
+#: desktop/src/app.rs:5684
 msgid "Aug"
 msgstr "août"
 
-#: desktop/src/app.rs:5678
+#: desktop/src/app.rs:5685
 msgid "Sep"
 msgstr "sept."
 
-#: desktop/src/app.rs:5679
+#: desktop/src/app.rs:5686
 msgid "Oct"
 msgstr "oct."
 
-#: desktop/src/app.rs:5680
+#: desktop/src/app.rs:5687
 msgid "Nov"
 msgstr "nov."
 
-#: desktop/src/app.rs:5681
+#: desktop/src/app.rs:5688
 msgid "Dec"
 msgstr "déc."
 
-#: desktop/src/app.rs:5683
+#: desktop/src/app.rs:5690
 msgid "{day} {month} {year}"
 msgstr "{day} {month} {year}"
 
-#: desktop/src/app.rs:5776
+#: desktop/src/app.rs:5783
 msgid "They end by themselves for Jellyfin and Plex users."
 msgstr "Ils sont libérés d'eux-mêmes pour les utilisateurs Jellyfin et Plex."
 
-#: desktop/src/app.rs:5779
+#: desktop/src/app.rs:5786
 msgid "Webhooks on: watched titles are noticed at once."
 msgstr "Webhooks activés : les titres vus sont détectés immédiatement."
 
-#: desktop/src/app.rs:5786
+#: desktop/src/app.rs:5793
 msgid "Anyone can create an account."
 msgstr "Tout le monde peut créer un compte."
 
-#: desktop/src/app.rs:5787
+#: desktop/src/app.rs:5794
 msgid "Nobody can create an account."
 msgstr "Personne ne peut créer de compte."
 
-#: desktop/src/app.rs:5788
+#: desktop/src/app.rs:5795
 msgid "New accounts need an invitation."
 msgstr "Les nouveaux comptes nécessitent une invitation."
 
-#: desktop/src/app.rs:5793
+#: desktop/src/app.rs:5800
 msgid "Version {version}"
 msgstr "Version {version}"
 
-#: desktop/src/app.rs:5797
+#: desktop/src/app.rs:5804
 msgid "Leaving soon (Maintainerr)"
 msgstr "Bientôt supprimés (Maintainerr)"
 
-#: desktop/src/app.rs:5801
+#: desktop/src/app.rs:5808
 msgid "Requests (Seerr)"
 msgstr "Demandes (Seerr)"
 
-#: desktop/src/app.rs:5802
+#: desktop/src/app.rs:5809
 msgid "Keep until watched"
 msgstr "Garder jusqu'à visionnage"
 
-#: desktop/src/app.rs:5803
+#: desktop/src/app.rs:5810
 msgid "Accounts"
 msgstr "Comptes"
 
-#: desktop/src/app.rs:5807
-#: desktop/src/app.rs:5815
+#: desktop/src/app.rs:5814
+#: desktop/src/app.rs:5822
 msgid "On."
 msgstr "Activé."
 
-#: desktop/src/app.rs:5809
+#: desktop/src/app.rs:5816
 msgid "Off: set this site's address (https) in Server settings (web app)."
 msgstr "Désactivé : indiquez l'adresse (https) de ce site dans Paramètres du serveur (application web)."
 
-#: desktop/src/app.rs:5814
+#: desktop/src/app.rs:5821
 msgid "Pocket ID"
 msgstr "Pocket ID"
 
-#: desktop/src/app.rs:5815
+#: desktop/src/app.rs:5822
 msgid "Off."
 msgstr "Désactivé."
 
@@ -5990,7 +6021,7 @@ msgid "Code"
 msgstr "Code"
 
 #: web/src/admin.rs:44
-#: web/src/keep.rs:765
+#: web/src/keep.rs:764
 msgid "Only admins of this AlwyWatch server can see this."
 msgstr "Seuls les administrateurs de ce serveur AlwyWatch peuvent voir ceci."
 
@@ -6609,25 +6640,25 @@ msgstr "Marquer la saison comme non vue"
 msgid "Marking…"
 msgstr "Marquage…"
 
-#: web/src/keep.rs:225
+#: web/src/keep.rs:224
 msgid "{n} keeps it"
 msgid_plural "{n} keep it"
 msgstr[0] "{n} le garde"
 msgstr[1] "{n} le gardent"
 
-#: web/src/keep.rs:723
+#: web/src/keep.rs:722
 msgid "All done, thanks! {n} sorted."
 msgid_plural "All done, thanks! {n} sorted."
 msgstr[0] "C'est fini, merci ! {n} titre trié."
 msgstr[1] "C'est fini, merci ! {n} titres triés."
 
-#: web/src/keep.rs:733
+#: web/src/keep.rs:732
 msgid "{n} left · ← fine to delete   → keep until I watch it   ↑ keep forever"
 msgid_plural "{n} left · ← fine to delete   → keep until I watch it   ↑ keep forever"
 msgstr[0] "{n} restant · ← peut être supprimé   → jusqu'à ce que je l'aie vu   ↑ garder pour toujours"
 msgstr[1] "{n} restants · ← peut être supprimé   → jusqu'à ce que je l'aie vu   ↑ garder pour toujours"
 
-#: web/src/keep.rs:994
+#: web/src/keep.rs:993
 msgid "New deletion dates are spread over {n} day."
 msgid_plural "New deletion dates are spread over {n} days."
 msgstr[0] "Les nouvelles dates de suppression sont réparties sur {n} jour."
@@ -6645,182 +6676,182 @@ msgstr "Pas encore programmé"
 msgid "Leaves {date}"
 msgstr "Supprimé le {date}"
 
-#: web/src/keep.rs:77
-#: web/src/ui.rs:109
+#: web/src/keep.rs:76
+#: web/src/ui.rs:111
 msgid "See all ›"
 msgstr "Tout voir ›"
 
-#: web/src/keep.rs:107
+#: web/src/keep.rs:106
 msgid "Tomorrow"
 msgstr "Demain"
 
-#: web/src/keep.rs:116
+#: web/src/keep.rs:115
 #: web/src/profile.rs:26
 msgid "This only works with a login on one of this site's servers. Add one in Settings → Servers → Add a server."
 msgstr "Cela ne fonctionne qu'avec des identifiants sur l'un des serveurs de ce site. Ajoutez-en dans Paramètres → Serveurs → Ajouter un serveur."
 
-#: web/src/keep.rs:125
+#: web/src/keep.rs:124
 msgid "You extended it"
 msgstr "Vous l'avez prolongé"
 
-#: web/src/keep.rs:175
+#: web/src/keep.rs:174
 msgid "What the server will delete, soonest first. Keep what you want to watch or love."
 msgstr "Ce que le serveur va supprimer, les plus proches d'abord. Gardez ce que vous voulez regarder ou que vous adorez."
 
-#: web/src/keep.rs:183
+#: web/src/keep.rs:182
 msgid "Not decided"
 msgstr "Pas encore décidé"
 
-#: web/src/keep.rs:183
+#: web/src/keep.rs:182
 msgid "Kept by me"
 msgstr "Gardés par moi"
 
-#: web/src/keep.rs:190
+#: web/src/keep.rs:189
 #: desktop/ui/app.slint:2522
 msgid "Nothing is leaving. Nothing to do."
 msgstr "Rien ne va être supprimé. Rien à faire."
 
-#: web/src/keep.rs:199
+#: web/src/keep.rs:198
 msgid "More ({shown} of {total} shown)"
 msgstr "Plus ({shown} sur {total} affichés)"
 
-#: web/src/keep.rs:598
+#: web/src/keep.rs:597
 msgid "Not scheduled"
 msgstr "Pas programmé"
 
-#: web/src/keep.rs:668
+#: web/src/keep.rs:667
 msgid "{title} wasn't saved: {error}"
 msgstr "{title} n'a pas été enregistré : {error}"
 
-#: web/src/keep.rs:724
+#: web/src/keep.rs:723
 msgid "Back to Leaving soon"
 msgstr "Retour à Bientôt supprimés"
 
-#: web/src/keep.rs:749
+#: web/src/keep.rs:748
 msgid "♥ Forever"
 msgstr "♥ Pour toujours"
 
-#: web/src/keep.rs:751
+#: web/src/keep.rs:750
 msgid "✕ Fine to delete"
 msgstr "✕ Peut être supprimé"
 
-#: web/src/keep.rs:782
+#: web/src/keep.rs:781
 msgid "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr."
 msgstr "Tous les éléments ont déjà dépassé leur date. Avant d'activer une collection dans Maintainerr, relancez son compte à rebours pour que chacun ait tout le délai pour voter. Cela modifie les dates de suppression dans Maintainerr."
 
-#: web/src/keep.rs:892
+#: web/src/keep.rs:891
 msgid "{title}: {restarted} restarted, {skipped} skipped"
 msgstr "{title} : {restarted} relancés, {skipped} ignorés"
 
-#: web/src/keep.rs:898
+#: web/src/keep.rs:897
 msgid "{title}: {error}"
 msgstr "{title} : {error}"
 
-#: web/src/keep.rs:922
+#: web/src/keep.rs:921
 msgid "admin"
 msgstr "admin"
 
-#: web/src/keep.rs:924
+#: web/src/keep.rs:923
 msgid "{server} · {count} kept forever"
 msgstr "{server} · {count} gardés pour toujours"
 
-#: web/src/keep.rs:928
+#: web/src/keep.rs:927
 msgid "Forever allowed"
 msgstr "Pour toujours autorisé"
 
-#: web/src/keep.rs:928
+#: web/src/keep.rs:927
 msgid "Forever blocked"
 msgstr "Pour toujours bloqué"
 
-#: web/src/keep.rs:931
+#: web/src/keep.rs:930
 msgid "Max forever: {limit}"
 msgstr "Max. pour toujours : {limit}"
 
-#: web/src/keep.rs:934
+#: web/src/keep.rs:933
 msgid "Max days: {limit}"
 msgstr "Max. de jours : {limit}"
 
-#: web/src/keep.rs:953
+#: web/src/keep.rs:952
 msgid "Everyone can keep forever by default. Click a value to change it."
 msgstr "Par défaut, tout le monde peut garder pour toujours. Cliquez sur une valeur pour la changer."
 
-#: web/src/keep.rs:960
+#: web/src/keep.rs:959
 msgid "No collection has items leaving."
 msgstr "Aucune collection n'a d'éléments sur le départ."
 
-#: web/src/keep.rs:975
+#: web/src/keep.rs:974
 msgid "You'll be asked to confirm."
 msgstr "Une confirmation vous sera demandée."
 
-#: web/src/keep.rs:989
+#: web/src/keep.rs:988
 msgid "Restart the countdown of {title}?"
 msgstr "Relancer le compte à rebours de {title} ?"
 
-#: web/src/keep.rs:992
+#: web/src/keep.rs:991
 msgid "Every item of this collection gets its full delay starting today."
 msgstr "Chaque élément de cette collection repart pour tout son délai à partir d'aujourd'hui."
 
-#: web/src/keep.rs:999
+#: web/src/keep.rs:998
 msgid "Changing dates…"
 msgstr "Modification des dates…"
 
-#: web/src/keep.rs:999
+#: web/src/keep.rs:998
 msgid "Change deletion dates"
 msgstr "Modifier les dates de suppression"
 
-#: web/src/keep.rs:1013
+#: web/src/keep.rs:1012
 msgid "{n} min"
 msgstr "{n} min"
 
-#: web/src/keep.rs:1015
+#: web/src/keep.rs:1014
 msgid "{n} h"
 msgstr "{n} h"
 
-#: web/src/keep.rs:1037
+#: web/src/keep.rs:1036
 msgid "Off. Set up Maintainerr in Server settings."
 msgstr "Désactivé. Configurez Maintainerr dans les paramètres du serveur."
 
-#: web/src/keep.rs:1050
+#: web/src/keep.rs:1049
 msgid "Can't reach Maintainerr. Check its address and API key in Server settings (Test tells why)."
 msgstr "Impossible de joindre Maintainerr. Vérifiez son adresse et sa clé d'API dans les paramètres du serveur (Tester en explique la raison)."
 
-#: web/src/keep.rs:1081
+#: web/src/keep.rs:1080
 msgid "Test mode: nothing is changed in Maintainerr or Seerr. Turn it off in Server settings."
 msgstr "Mode test : rien n'est modifié dans Maintainerr ni Seerr. Désactivez-le dans les paramètres du serveur."
 
-#: web/src/keep.rs:1088
+#: web/src/keep.rs:1087
 msgid "Off: only direct request-site logins work. Turn it on in Server settings → Seerr."
 msgstr "Désactivé : seules les connexions directes au site de demandes fonctionnent. Activez-le dans Paramètres du serveur → Seerr."
 
-#: web/src/keep.rs:1090
+#: web/src/keep.rs:1089
 msgid "Keep until watched (Jellyfin)"
 msgstr "Garder jusqu'à visionnage (Jellyfin)"
 
-#: web/src/keep.rs:1093
+#: web/src/keep.rs:1092
 msgid "Jellyfin keeps don't end by themselves: AlwyWatch has no API key on Jellyfin. Renew it in Server settings → Media servers."
 msgstr "Les conservations Jellyfin ne se terminent pas toutes seules : AlwyWatch n'a pas de clé d'API sur Jellyfin. Renouvelez-la dans Paramètres du serveur → Serveurs multimédias."
 
-#: web/src/keep.rs:1095
+#: web/src/keep.rs:1094
 msgid "Keep until watched (Plex)"
 msgstr "Garder jusqu'à visionnage (Plex)"
 
-#: web/src/keep.rs:1098
+#: web/src/keep.rs:1097
 msgid "Plex keeps don't end by themselves. Set up Tautulli in Server settings."
 msgstr "Les conservations Plex ne se terminent pas toutes seules. Configurez Tautulli dans les paramètres du serveur."
 
-#: web/src/keep.rs:1103
+#: web/src/keep.rs:1102
 msgid "Optional: watched titles are noticed within 15 min. For instant, paste the webhook addresses from Server settings."
 msgstr "Facultatif : les titres vus sont détectés en moins de 15 min. Pour une détection immédiate, collez les adresses de webhook des paramètres du serveur."
 
-#: web/src/keep.rs:1108
+#: web/src/keep.rs:1107
 msgid "Off: set this site's address (https) in Server settings."
 msgstr "Désactivé : indiquez l'adresse de ce site (https) dans les paramètres du serveur."
 
-#: web/src/keep.rs:1112
+#: web/src/keep.rs:1111
 msgid "Anyone can create one"
 msgstr "Tout le monde peut en créer un"
 
-#: web/src/keep.rs:1120
+#: web/src/keep.rs:1119
 msgid "Change these in {page}."
 msgstr "Modifiez-les dans {page}."
 
@@ -7125,19 +7156,19 @@ msgstr "Les demandes ne sont pas disponibles sur ce serveur AlwyWatch."
 msgid "You haven't requested anything yet."
 msgstr "Vous n'avez encore rien demandé."
 
-#: web/src/request.rs:709
+#: web/src/request.rs:711
 msgid "Show · requested {date} by {name}"
 msgstr "Série · demandée le {date} par {name}"
 
-#: web/src/request.rs:710
+#: web/src/request.rs:712
 msgid "Show · requested {date}"
 msgstr "Série · demandée le {date}"
 
-#: web/src/request.rs:711
+#: web/src/request.rs:713
 msgid "Movie · requested {date} by {name}"
 msgstr "Film · demandé le {date} par {name}"
 
-#: web/src/request.rs:712
+#: web/src/request.rs:714
 msgid "Movie · requested {date}"
 msgstr "Film · demandé le {date}"
 
@@ -8073,6 +8104,18 @@ msgstr "Créer mon compte"
 #: server/src/invites.rs:249
 msgid "Not expecting this? You can ignore this email."
 msgstr "Vous n'attendiez pas ce message ? Vous pouvez ignorer cet e-mail."
+
+#~ msgid "Go through them one by one"
+#~ msgstr "Les passer en revue un par un"
+
+#~ msgid "One by one"
+#~ msgstr "Un par un"
+
+#~ msgid "What the server will delete, soonest first. Keep what you still want to watch or love."
+#~ msgstr "Ce que le serveur va supprimer, les plus proches en premier. Gardez ce que vous voulez encore regarder ou ce que vous adorez."
+
+#~ msgid "{count} of these are not scheduled: their date has passed but the server's owner hasn't turned deletion on yet. Your choices still count when it is."
+#~ msgstr "{count} ne sont pas programmés : leur date est passée mais la personne qui gère votre serveur n'a pas encore activé la suppression. Vos choix compteront quand ce sera fait."
 
 #~ msgid "{name} · switch profile"
 #~ msgstr "{name} · changer de profil"

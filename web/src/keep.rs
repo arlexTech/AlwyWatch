@@ -72,7 +72,7 @@ pub fn LeavingRail() -> impl IntoView {
                         <h2>{tr!("Leaving soon")}</h2>
                         <p class="muted small">{tr!("Keep what you still want to watch")}</p>
                     </div>
-                    <A href="/leaving/sort" attr:class="button primary small">{tr!("One by one")}</A>
+                    <A href="/leaving/sort" attr:class="button primary small">{tr!("Swipe them!")}</A>
                     <A href="/leaving" attr:class="see-all">{tr!("See all ›")}</A>
                 </div>
                 <div class="rail-row">
@@ -173,7 +173,7 @@ pub fn Leaving() -> impl IntoView {
         <h1>{tr!("Leaving soon")}</h1>
         <p class="muted">{tr!("What the server will delete, soonest first. Keep what you want to watch or love.")}</p>
         <div class="actions">
-            <A href="/leaving/sort" attr:class="button primary">{tr!("Go through them one by one")}</A>
+            <A href="/leaving/sort" attr:class="button primary">{tr!("Swipe them!")}</A>
             <Show when=move || state::ctx().keep.get().is_some_and(|k| k.is_admin)>
                 <A href="/settings/admin" attr:class="button">{tr!("Admin")}</A>
             </Show>
@@ -704,7 +704,7 @@ pub fn Triage() -> impl IntoView {
     });
     view! {
         <div class="triage">
-            <h1>{tr!("One by one")}</h1>
+            <h1>{tr!("Swipe them!")}</h1>
             {move || {
                 let left = queue.with(|q| q.as_ref().map_or(0, Vec::len)) as u32;
                 let total = left + done.get();

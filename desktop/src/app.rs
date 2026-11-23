@@ -1346,6 +1346,13 @@ impl App {
                         RequestStatus::Failed => tr!("Failed"),
                         RequestStatus::Completed => tr!("Available"),
                     };
+                    // A show has one request per batch of seasons: which ones this card is.
+                    let seasons = alwywatch_core::request_seasons_label(r.seasons.clone());
+                    let status = if seasons.is_empty() {
+                        status
+                    } else {
+                        format!("{seasons} · {status}")
+                    };
                     (
                         format!("{:?}:{}", r.media_type, r.tmdb_id),
                         r.title.unwrap_or_else(|| format!("TMDB {}", r.tmdb_id)),

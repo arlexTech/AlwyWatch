@@ -705,12 +705,15 @@ pub fn Requests() -> impl IntoView {
                             let show = r.media_type == SeerrMediaType::Tv;
                             let day = r.created_at.chars().take(10).collect::<String>();
                             let by = who && !r.requested_by.is_empty();
+                            // A show has one request per batch of seasons: which ones this one is.
+                            let seasons = seerr::request_seasons_label(&r.seasons);
                             let line = match (show, by) {
                                 (true, true) => tr!("Show · requested {date} by {name}", date = day, name = r.requested_by),
                                 (true, false) => tr!("Show · requested {date}", date = day),
                                 (false, true) => tr!("Movie · requested {date} by {name}", date = day, name = r.requested_by),
                                 (false, false) => tr!("Movie · requested {date}", date = day),
                             };
+                            let line = if seasons.is_empty() { line } else { format!("{seasons} · {line}") };
                             view! {
                                 <A href=title_href(r.media_type, r.tmdb_id) attr:class="leaving-row">
                                     {r.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}

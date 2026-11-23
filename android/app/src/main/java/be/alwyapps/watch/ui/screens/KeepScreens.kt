@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -39,9 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -189,6 +186,116 @@ fun KeepActions(
     }
 }
 
+/**
+ * A Leaving soon title's choices in a panel (from the home's row and the list): what it is, when
+ * it goes, and one row per choice, the current one ticked.
+ */
+@Composable
+fun KeepSheet(
+    item: LeavingItem,
+    onVoted: (LeavingItem) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val core = LocalCore.current
+    val scope = rememberCoroutineScope()
+    var error by remember(item.key) { mutableStateOf<String?>(null) }
+    var busy by remember(item.key) { mutableStateOf(false) }
+
+    fun send(r: VoteRequest?) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                onVoted(if (r == null) core.keepUnvote(item.key) else core.keepVote(item.key, r))
+                onDismiss()
+            } catch (e: CoreException) {
+                error = e.message
+            } finally {
+                busy = false
+            }
+        }
+    }
+    val mine = item.myVote
+    val days = mine?.until?.let { ((it - System.currentTimeMillis() / 1000) / 86_400).toInt() }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = be.alwyapps.watch.ui.Background,
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    UrlImage(item.posterUrl, 80.dp, Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)))
+                    Column(Modifier.padding(start = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(item.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            listOfNotNull(item.year?.toString(), item.kind.replaceFirstChar { it.uppercase() }).joinToString(" · "),
+                            color = Muted,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        val (label, urgent) = item.shortLabel()
+                        be.alwyapps.watch.ui
+                            .Badge(label, color = if (urgent) Danger else be.alwyapps.watch.ui.SurfaceHigh)
+                    }
+                }
+                val tick: @Composable (Boolean) -> Unit = { on ->
+                    if (on) {
+                        androidx.compose.material3.Icon(be.alwyapps.watch.ui.Icons.Check, null, tint = Accent)
+                    }
+                }
+                be.alwyapps.watch.ui.ListRow(
+                    tr("Until I watch it"),
+                    Modifier.initialFocus(),
+                    subtitle = tr("Kept until you've seen it"),
+                    icon = be.alwyapps.watch.ui.Icons.Schedule,
+                    onClick = { send(req(VoteKind.KEEP_UNTIL_WATCHED, reminder = 7u)) },
+                    trailing = { tick(mine?.kind == VoteKind.KEEP_UNTIL_WATCHED) },
+                )
+                be.alwyapps.watch.ui.ListRow(
+                    tr("Keep forever"),
+                    subtitle = tr("It's a keeper"),
+                    icon = be.alwyapps.watch.ui.Icons.FavoriteFilled,
+                    onClick = { send(req(VoteKind.KEEP_FOREVER)) },
+                    trailing = { tick(mine?.kind == VoteKind.KEEP_FOREVER) },
+                )
+                for (n in listOf(30u, 7u)) {
+                    be.alwyapps.watch.ui.ListRow(
+                        trn("Keep {n} more day", "Keep {n} more days", n.toLong()),
+                        icon = be.alwyapps.watch.ui.Icons.Hourglass,
+                        onClick = { send(req(VoteKind.KEEP_DAYS, days = n)) },
+                        trailing = { tick(mine?.kind == VoteKind.KEEP_DAYS && days != null && days in (n.toInt() - 2)..(n.toInt())) },
+                    )
+                }
+                be.alwyapps.watch.ui.ListRow(
+                    tr("Fine to delete"),
+                    subtitle = tr("It only goes if nobody else keeps it"),
+                    icon = be.alwyapps.watch.ui.Icons.Delete,
+                    onClick = { send(req(VoteKind.DONT_CARE)) },
+                    trailing = { tick(mine?.kind == VoteKind.DONT_CARE) },
+                )
+                if (mine != null) {
+                    be.alwyapps.watch.ui.ListRow(
+                        tr("Remove my choice"),
+                        icon = be.alwyapps.watch.ui.Icons.Close,
+                        onClick = { send(null) },
+                    )
+                }
+                val c = item.counts
+                val others = (c.forever + c.untilWatched + c.days).toInt() - if (mine != null && mine.kind != VoteKind.DONT_CARE) 1 else 0
+                Text(
+                    listOfNotNull(
+                        if (others > 0) trn("{n} other person keeps it.", "{n} other people keep it.", others) else null,
+                        tr("Everyone's choices count and the longest one wins."),
+                    ).joinToString(" "),
+                    Modifier.padding(top = 8.dp),
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                error?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = { ActionButton(tr("Close"), onDismiss) },
+    )
+}
+
 /** Compact rail for the home screen. */
 @Composable
 fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
@@ -202,56 +309,18 @@ fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
             ?.take(15)
             .orEmpty()
     if (items.isEmpty()) return
-    // Up from the cards goes to the header's button: at the far right, a geometric search
-    // from a card on the left found the row above first and the button was out of reach.
-    val sort = remember { FocusRequester() }
-    // TV: the home pins the focused element just under the hero. For this header button that
-    // left a thin strip of the row above showing; instead the whole row (header and cards) is
-    // placed where a focused card would put it.
-    val cards =
-        remember {
-            androidx.compose.foundation.relocation
-                .BringIntoViewRequester()
-        }
-    val scope = rememberCoroutineScope()
-    val rowPad = with(androidx.compose.ui.platform.LocalDensity.current) { 12.dp.toPx() }
+    var open by remember { mutableStateOf<LeavingItem?>(null) }
+    open?.let { o -> KeepSheet(o, onVoted = { list.reload() }, onDismiss = { open = null }) }
     Column(Modifier.padding(top = if (d.isTv) 18.dp else 24.dp)) {
         Row(Modifier.padding(horizontal = d.gutter), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(tr("Leaving soon"), style = MaterialTheme.typography.titleMedium)
                 Text(tr("Keep what you still want to watch"), style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            ActionButton(
-                // A phone's row is narrow: the long label squeezed the title into a column.
-                if (d.isTv) tr("Go through them one by one") else tr("One by one"),
-                { nav.push(Route.Triage) },
-                Modifier
-                    .focusRequester(sort)
-                    .then(
-                        if (d.isTv) {
-                            Modifier.onFocusChanged { f ->
-                                if (f.isFocused) {
-                                    scope.launch {
-                                        // After the button's own scroll request (this one wins).
-                                        androidx.compose.runtime.withFrameNanos { }
-                                        // The cards' top (inside the row's padding): where a focused card goes.
-                                        runCatching {
-                                            cards.bringIntoView(
-                                                androidx.compose.ui.geometry
-                                                    .Rect(0f, rowPad, 1f, rowPad + 1f),
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            Modifier
-                        },
-                    ),
-                primary = true,
-                icon = be.alwyapps.watch.ui.Icons.Favorite,
-            )
+            // TV: no button here. Between two rows it caught the focus on every move up or
+            // down; "Swipe them!" is a tile at the end of the row instead.
             if (!d.isTv) {
+                ActionButton(tr("Swipe them!"), { nav.push(Route.Triage) }, primary = true, icon = be.alwyapps.watch.ui.Icons.Favorite)
                 be.alwyapps.watch.ui
                     .IconAction(be.alwyapps.watch.ui.Icons.ChevronRight, tr("See all"), { nav.push(Route.LeavingSoon) })
             }
@@ -259,15 +328,13 @@ fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
         // Like the other rows on TV: the focused card at a fixed spot, clear of the side menu.
         be.alwyapps.watch.ui.TvScrollSpec(leading = d.gutter) {
             LazyRow(
-                Modifier.bringIntoViewRequester(cards),
                 contentPadding = PaddingValues(horizontal = d.gutter, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(d.railSpacing),
             ) {
                 items(items, key = { it.key }) { item ->
                     Column(Modifier.width(d.posterWidth)) {
                         FocusCard(
-                            onClick = { nav.push(Route.LeavingSoon) },
-                            Modifier.focusProperties { up = sort },
+                            onClick = { open = item },
                             // The home's hero follows it (title, year, when it leaves).
                             onFocus = onFocus?.let { f -> { f(item) } },
                         ) {
@@ -301,6 +368,18 @@ fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
                         }
                     }
                 }
+                if (d.isTv) {
+                    item(key = "swipe") {
+                        FocusCard(onClick = { nav.push(Route.Triage) }, modifier = Modifier.size(d.posterWidth, d.posterWidth * 1.5f)) {
+                            Box(Modifier.fillMaxSize().background(Accent), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    androidx.compose.material3.Icon(be.alwyapps.watch.ui.Icons.Favorite, null, Modifier.size(36.dp), tint = Color.Black)
+                                    Text(tr("Swipe them!"), style = MaterialTheme.typography.titleSmall, color = Color.Black)
+                                }
+                            }
+                        }
+                    }
+                }
                 item(key = "see-all") {
                     be.alwyapps.watch.ui
                         .SeeAllTile(d.posterWidth, d.posterWidth * 1.5f) { nav.push(Route.LeavingSoon) }
@@ -328,6 +407,7 @@ fun LeavingSoonScreen() {
             "kept" -> all.filter { it.protection != Protection.NONE }
             else -> all
         }
+    all.firstOrNull { it.key == open }?.let { o -> KeepSheet(o, onVoted = { list.reload() }, onDismiss = { open = null }) }
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = d.gutter, vertical = 16.dp),
@@ -335,30 +415,28 @@ fun LeavingSoonScreen() {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(bottom = 6.dp)) {
-                be.alwyapps.watch.ui.PageTitle(
-                    tr("Leaving soon"),
-                    listOf(
-                        trn("{count} title", "{count} titles", all.size, "count" to "%,d".format(all.size)),
-                        tr("{count} with your choice", "count" to all.count { it.myVote != null }),
-                    ).joinToString(" · "),
-                )
-                Text(
-                    tr("What the server will delete, soonest first. Keep what you still want to watch or love."),
-                    color = Muted,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ActionButton(
-                        tr("Go through them one by one"),
-                        { nav.push(Route.Triage) },
-                        Modifier.initialFocus(),
-                        primary = true,
-                        icon = be.alwyapps.watch.ui.Icons.Favorite,
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) {
+                        be.alwyapps.watch.ui.PageTitle(
+                            tr("Leaving soon"),
+                            listOf(
+                                trn("{count} title", "{count} titles", all.size, "count" to "%,d".format(all.size)),
+                                tr("{count} with your choice", "count" to all.count { it.myVote != null }),
+                            ).joinToString(" · "),
+                        )
+                    }
                     if (core.keepConnection()?.isAdmin == true) {
-                        ActionButton(tr("Admin"), { nav.push(Route.KeepAdmin) }, icon = be.alwyapps.watch.ui.Icons.Settings)
+                        be.alwyapps.watch.ui
+                            .IconAction(be.alwyapps.watch.ui.Icons.Settings, tr("Admin"), { nav.push(Route.KeepAdmin) })
                     }
                 }
+                ActionButton(
+                    tr("Swipe them!"),
+                    { nav.push(Route.Triage) },
+                    Modifier.initialFocus().then(if (d.isTv) Modifier else Modifier.fillMaxWidth()),
+                    primary = true,
+                    icon = be.alwyapps.watch.ui.Icons.Favorite,
+                )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for ((key, label) in listOf("all" to tr("All"), "urgent" to tr("Within a week"), "mine" to tr("My choices"), "kept" to tr("Kept"))) {
                         item(key) { ActionButton(label, { filter = key }, selected = filter == key) }
@@ -371,7 +449,7 @@ fun LeavingSoonScreen() {
             item("paused") {
                 Text(
                     tr(
-                        "{count} of these are not scheduled: their date has passed but the server's owner hasn't turned deletion on yet. Your choices still count when it is.",
+                        "{count} aren't scheduled yet: deletion is off for now. Your choices count when it's on.",
                         "count" to "%,d".format(paused),
                     ),
                     Modifier
@@ -405,17 +483,16 @@ fun LeavingSoonScreen() {
             }
         }
         items(shown, key = { it.key }) { item ->
-            val expanded = open == item.key
             Column(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(d.radius + 4.dp))
-                    .background(if (expanded) be.alwyapps.watch.ui.SurfaceHigh else SurfaceColor),
+                    .background(SurfaceColor),
             ) {
                 // No zoom: inside the row's rounded clip a zoomed card lost its outline at the
                 // edges, the only focus cue left.
                 FocusCard(
-                    onClick = { open = if (expanded) null else item.key },
+                    onClick = { open = item.key },
                     glow = false,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(d.radius + 4.dp),
@@ -449,15 +526,12 @@ fun LeavingSoonScreen() {
                             }
                         }
                         androidx.compose.material3.Icon(
-                            if (expanded) be.alwyapps.watch.ui.Icons.Close else be.alwyapps.watch.ui.Icons.ChevronRight,
+                            be.alwyapps.watch.ui.Icons.ChevronRight,
                             null,
                             Modifier.padding(horizontal = 8.dp),
                             tint = be.alwyapps.watch.ui.Subtle,
                         )
                     }
-                }
-                if (expanded) {
-                    KeepActions(item, onVoted = { list.reload() }, Modifier.padding(start = 12.dp, end = 12.dp, bottom = 14.dp), focusFirst = true)
                 }
             }
         }
@@ -514,7 +588,7 @@ fun TriageScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(tr("One by one"), style = MaterialTheme.typography.headlineMedium)
+        Text(tr("Swipe them!"), style = MaterialTheme.typography.headlineMedium)
         if (total > 0) {
             Box(
                 Modifier
