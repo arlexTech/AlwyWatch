@@ -80,6 +80,13 @@ pub struct Account {
     pub is_admin: bool,
 }
 
+/// A movie or show on one of the signed-in servers.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct LibraryTitle {
+    pub account_id: String,
+    pub item_id: String,
+}
+
 /// Result of a sign-in: the platform stores `token` in secure storage (Android Keystore,
 /// OS keyring) and passes it back through `activate_account` on the next start.
 #[derive(Debug, Clone, uniffi::Record)]
@@ -2278,6 +2285,69 @@ impl AlwyWatch {
             .await
     }
 
+    /// The movie or show with this TMDB id on a signed-in server (`prefer` first), so a
+    /// request or a Seerr result opens the playable library page instead of Seerr's. None: on
+    /// no server (yet). Each server's TMDB index is cached a few hours and refetched once
+    /// when a title is missing from an index older than two minutes (it may have just
+    /// arrived).
+    pub async fn library_title(
+        &self,
+        media_type: SeerrMediaType,
+        tmdb_id: i64,
+        prefer: Option<String>,
+    ) -> Result<Option<LibraryTitle>> {
+        self.run(|c| async move {
+            let mut accounts: Vec<String> = c
+                .servers
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .keys()
+                .cloned()
+                .collect();
+            accounts.sort();
+            if let Some(p) = &prefer
+                && let Some(i) = accounts.iter().position(|a| a == p)
+            {
+                let a = accounts.remove(i);
+                accounts.insert(0, a);
+            }
+            let (kind, tag) = match media_type {
+                SeerrMediaType::Movie => (ItemKind::Movie, "movie"),
+                SeerrMediaType::Tv => (ItemKind::Series, "show"),
+            };
+            let tmdb = tmdb_id.to_string();
+            for account in accounts {
+                let key = format!("tmdb-index/{account}/{tag}");
+                let cached = c.store.cache_get::<HashMap<String, String>>(&key)?;
+                if let Some(id) = cached.as_ref().and_then(|x| x.value.get(&tmdb)) {
+                    return Ok(Some(LibraryTitle {
+                        account_id: account,
+                        item_id: id.clone(),
+                    }));
+                }
+                if cached.is_some_and(|x| x.age_secs() < TTL_LIST) {
+                    continue;
+                }
+                let Ok(items) = c.server(&account)?.provider_index(kind).await else {
+                    continue;
+                };
+                let index: HashMap<String, String> = items
+                    .into_iter()
+                    .filter_map(|i| Some((i.provider_ids.tmdb?, i.id)))
+                    .collect();
+                c.store.cache_put(&key, &index)?;
+                if let Some(id) = index.get(&tmdb) {
+                    return Ok(Some(LibraryTitle {
+                        account_id: account,
+                        item_id: id.clone(),
+                    }));
+                }
+            }
+            Ok(None)
+        })
+        .await
+    }
+
     /// A saga (TMDB collection) with its films.
     pub async fn seerr_collection(&self, id: i64) -> Result<SeerrCollection> {
         self.run(|c| async move { Ok(c.seerr()?.collection(id).await?) })
@@ -2328,7 +2398,7 @@ impl AlwyWatch {
             .core
             .store
             .cache_get::<Vec<SeerrRequest>>(requests_key(all))?
-            .map(|c| c.value))
+            .map(|c| seerr::group_requests(c.value)))
     }
 
     pub async fn refresh_seerr_requests(

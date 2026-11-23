@@ -15,6 +15,67 @@ use seerr::{
 
 use crate::state;
 use crate::ui::{ErrorText, Loading};
+use media_api::{ItemKind, MediaServer};
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+/// TMDB id → item id, with when it was listed (ms).
+type TmdbIndex = (f64, HashMap<String, String>);
+
+thread_local! {
+    /// Each server's movies or shows by TMDB id ("acc/movie" → tmdb → item id), with when.
+    static TMDB_INDEX: RefCell<HashMap<String, TmdbIndex>> =
+        RefCell::new(HashMap::new());
+}
+
+/// The library pages of these titles (`kind/tmdb` → `/item/acc/id`) on the signed-in servers:
+/// a request opens the playable page when the title is there. Indexes are kept ten minutes.
+async fn library_hrefs(titles: Vec<(SeerrMediaType, i64)>) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let mut kinds: Vec<SeerrMediaType> = titles.iter().map(|t| t.0).collect();
+    kinds.dedup();
+    for (acc, srv) in state::ctx().servers() {
+        for &kind in [SeerrMediaType::Movie, SeerrMediaType::Tv]
+            .iter()
+            .filter(|k| kinds.contains(k))
+        {
+            let (item_kind, tag) = match kind {
+                SeerrMediaType::Movie => (ItemKind::Movie, "movie"),
+                SeerrMediaType::Tv => (ItemKind::Series, "show"),
+            };
+            let key = format!("{acc}/{tag}");
+            let fresh = TMDB_INDEX.with_borrow(|m| {
+                m.get(&key)
+                    .filter(|(at, _)| js_sys::Date::now() - at < 600_000.0)
+                    .is_some()
+            });
+            if !fresh {
+                let Ok(items) = srv.provider_index(item_kind).await else {
+                    continue;
+                };
+                let index = items
+                    .into_iter()
+                    .filter_map(|i| Some((i.provider_ids.tmdb?, i.id)))
+                    .collect();
+                TMDB_INDEX.with_borrow_mut(|m| m.insert(key.clone(), (js_sys::Date::now(), index)));
+            }
+            TMDB_INDEX.with_borrow(|m| {
+                let Some((_, index)) = m.get(&key) else {
+                    return;
+                };
+                for (k, tmdb) in titles.iter().filter(|t| t.0 == kind) {
+                    let place = format!("{k:?}/{tmdb}");
+                    if let (false, Some(id)) =
+                        (out.contains_key(&place), index.get(&tmdb.to_string()))
+                    {
+                        out.insert(place, format!("/item/{acc}/{id}"));
+                    }
+                }
+            });
+        }
+    }
+    out
+}
 
 fn no_seerr() -> String {
     tr!("Requests need an account on this AlwyWatch server: sign in with one in Settings.")
@@ -646,13 +707,30 @@ pub fn Requests() -> impl IntoView {
             state::REQUESTS_MINE
         }
     };
-    let list = RwSignal::new(state::load::<Vec<SeerrRequest>>(cache(false)).map(Ok));
+    let load = move |all: bool| {
+        state::load::<Vec<SeerrRequest>>(cache(all)).map(|l| Ok(seerr::group_requests(l)))
+    };
+    let list = RwSignal::new(load(false));
+    // Where each title is in the libraries: its card opens the page where it plays.
+    let places = RwSignal::new(HashMap::<String, String>::new());
+    Effect::new(move |_| {
+        let titles: Vec<(SeerrMediaType, i64)> = list.with(|l| match l {
+            Some(Ok(l)) => l.iter().map(|r| (r.media_type, r.tmdb_id)).collect(),
+            _ => Vec::new(),
+        });
+        if !titles.is_empty() {
+            spawn_local(async move {
+                let found = library_hrefs(titles).await;
+                places.try_update(|p| p.extend(found));
+            });
+        }
+    });
     let seq = StoredValue::new(0u32);
     Effect::new(move |_| {
         let all = all.get();
         seq.update_value(|s| *s += 1);
         let mine = seq.get_value();
-        list.set(state::load::<Vec<SeerrRequest>>(cache(all)).map(Ok));
+        list.set(load(all));
         spawn_local(async move {
             let Some(s) = state::ctx().seerr() else {
                 return list.set(Some(Err(no_seerr())));
@@ -705,17 +783,17 @@ pub fn Requests() -> impl IntoView {
                             let show = r.media_type == SeerrMediaType::Tv;
                             let day = r.created_at.chars().take(10).collect::<String>();
                             let by = who && !r.requested_by.is_empty();
-                            // A show has one request per batch of seasons: which ones this one is.
-                            let seasons = seerr::request_seasons_label(&r.seasons);
                             let line = match (show, by) {
                                 (true, true) => tr!("Show · requested {date} by {name}", date = day, name = r.requested_by),
                                 (true, false) => tr!("Show · requested {date}", date = day),
                                 (false, true) => tr!("Movie · requested {date} by {name}", date = day, name = r.requested_by),
                                 (false, false) => tr!("Movie · requested {date}", date = day),
                             };
-                            let line = if seasons.is_empty() { line } else { format!("{seasons} · {line}") };
                             view! {
-                                <A href=title_href(r.media_type, r.tmdb_id) attr:class="leaving-row">
+                                <A href={
+                                    let (seerr, place) = (title_href(r.media_type, r.tmdb_id), format!("{:?}/{}", r.media_type, r.tmdb_id));
+                                    move || places.with(|p| p.get(&place).cloned()).unwrap_or_else(|| seerr.clone())
+                                } attr:class="leaving-row">
                                     {r.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
                                     <div class="leaving-info">
                                         <strong>{r.title.clone().unwrap_or_else(|| format!("TMDB {}", r.tmdb_id))}</strong>

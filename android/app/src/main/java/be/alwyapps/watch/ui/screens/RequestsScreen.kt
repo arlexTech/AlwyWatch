@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.CoreException
+import be.alwyapps.watch.core.LibraryTitle
 import be.alwyapps.watch.core.seerr.Availability
 import be.alwyapps.watch.core.seerr.RequestStatus
 import be.alwyapps.watch.core.seerr.SeerrMediaType
@@ -86,6 +88,17 @@ fun RequestsScreen() {
     var all by rememberSaveable { mutableStateOf(false) }
     val list =
         rememberSwr("seerr-requests", all, cached = { core.cachedSeerrRequests(all) }, refresh = { core.refreshSeerrRequests(it, all) })
+    // Where each title is on the servers, looked up ahead (one cached index per server), so a
+    // tap opens the playable page at once.
+    val account = be.alwyapps.watch.ui.LocalAccount.current
+    val places = remember { mutableStateMapOf<String, LibraryTitle?>() }
+    LaunchedEffect(list.value) {
+        for (r in list.value.orEmpty()) {
+            if (r.placeKey() !in places) {
+                places[r.placeKey()] = runCatching { core.libraryTitle(r.mediaType, r.tmdbId, account) }.getOrNull()
+            }
+        }
+    }
     LazyVerticalGrid(
         if (d.isTv) GridCells.FixedSize(d.posterWidth) else GridCells.Adaptive(d.posterWidth + 8.dp),
         Modifier.fillMaxSize(),
@@ -125,24 +138,40 @@ fun RequestsScreen() {
                 )
             }
         }
-        items(items, key = { "req-${it.id}" }) { MyRequest(it, showWho = all) }
+        items(items, key = { "req-${it.id}" }) { MyRequest(it, showWho = all, place = places[it.placeKey()], known = it.placeKey() in places) }
     }
 }
+
+private fun SeerrRequest.placeKey() = "$mediaType/$tmdbId"
 
 @Composable
 private fun MyRequest(
     r: SeerrRequest,
     showWho: Boolean = false,
+    place: LibraryTitle? = null,
+    known: Boolean = false,
 ) {
     val d = LocalDimens.current
+    val core = LocalCore.current
+    val scope = rememberCoroutineScope()
+    val account = be.alwyapps.watch.ui.LocalAccount.current
     val nav = be.alwyapps.watch.ui.LocalNavigator.current
     Column(Modifier.width(d.posterWidth)) {
-        // A card (focusable with the remote) opening the title's page: its state, seasons, saga.
+        // A card (focusable with the remote): the title's page on the server when it is there
+        // (to play it), else Seerr's page (its state, seasons, saga).
         be.alwyapps.watch.ui.FocusCard(onClick = {
-            nav.push(
-                be.alwyapps.watch.ui.Route
-                    .SeerrTitle(if (r.mediaType == SeerrMediaType.TV) "tv" else "movie", r.tmdbId),
-            )
+            scope.launch {
+                val at = if (known) place else runCatching { core.libraryTitle(r.mediaType, r.tmdbId, account) }.getOrNull()
+                nav.push(
+                    if (at != null) {
+                        be.alwyapps.watch.ui.Route
+                            .Detail(at.itemId, account = at.accountId)
+                    } else {
+                        be.alwyapps.watch.ui.Route
+                            .SeerrTitle(if (r.mediaType == SeerrMediaType.TV) "tv" else "movie", r.tmdbId)
+                    },
+                )
+            }
         }) {
             UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
             val (bg, fg) =
@@ -162,15 +191,8 @@ private fun MyRequest(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        // A show has one request per batch of seasons: which ones this card is.
-        val seasons =
-            remember(r.seasons) {
-                be.alwyapps.watch.core
-                    .requestSeasonsLabel(r.seasons)
-            }
         Text(
             listOfNotNull(
-                seasons.takeIf { it.isNotEmpty() },
                 r.requestedBy.takeIf { showWho && it.isNotEmpty() },
                 r.createdAt.take(10),
             ).joinToString(" · "),

@@ -912,11 +912,12 @@ impl SeerrClient {
             path.push_str(&format!("&requestedBy={}", me.id));
         }
         let p: Page = net::send_json(self.req(Method::GET, &path)).await?;
-        let mut out: Vec<SeerrRequest> = p
+        let out: Vec<SeerrRequest> = p
             .results
             .iter()
             .filter_map(|v| self.convert_request(v))
             .collect();
+        let mut out = group_requests(out);
         // Titles and posters come from the details endpoints (cached by Seerr), a few at once.
         let details = join_bounded(
             out.iter()
@@ -1208,34 +1209,34 @@ pub fn seasons_requested_message(numbers: &[u32]) -> String {
     }
 }
 
-/// Which seasons a request is for, on its card: "Season 3", "Seasons 1–4", "Seasons 1, 3"
-/// ("Specials" for season 0). Empty when there are none (movies).
-pub fn request_seasons_label(numbers: &[u32]) -> String {
-    let mut n = numbers.to_vec();
-    n.sort_unstable();
-    n.dedup();
-    let specials = n.first() == Some(&0);
-    let real: Vec<u32> = n.into_iter().filter(|x| *x > 0).collect();
-    let main = match real.as_slice() {
-        [] => String::new(),
-        [one] => tr!("Season {number}", number = one),
-        [first, .., last] if (*last - *first) as usize + 1 == real.len() => {
-            tr!("Seasons {first}–{last}", first = first, last = last)
+/// One card per title: a show is often requested several times (a batch of seasons each),
+/// and several people may want the same film. Keeps the newest request's place (the list is
+/// newest first), names everyone who asked, joins the seasons, and stays "pending" while any
+/// request still waits for approval.
+pub fn group_requests(list: Vec<SeerrRequest>) -> Vec<SeerrRequest> {
+    let mut out: Vec<SeerrRequest> = Vec::with_capacity(list.len());
+    for r in list {
+        let Some(g) = out
+            .iter_mut()
+            .find(|g| g.media_type == r.media_type && g.tmdb_id == r.tmdb_id)
+        else {
+            out.push(r);
+            continue;
+        };
+        if r.status == RequestStatus::Pending {
+            g.status = RequestStatus::Pending;
         }
-        many => tr!(
-            "Seasons {numbers}",
-            numbers = many
-                .iter()
-                .map(u32::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-    };
-    match (main.is_empty(), specials) {
-        (true, true) => tr!("Specials"),
-        (false, true) => tr!("{seasons} and specials", seasons = main),
-        _ => main,
+        if !r.requested_by.is_empty() && !g.requested_by.split(", ").any(|n| n == r.requested_by) {
+            if !g.requested_by.is_empty() {
+                g.requested_by.push_str(", ");
+            }
+            g.requested_by.push_str(&r.requested_by);
+        }
+        g.seasons.extend(r.seasons);
+        g.seasons.sort_unstable();
+        g.seasons.dedup();
     }
+    out
 }
 
 #[cfg(test)]
@@ -1243,16 +1244,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_request_names_its_seasons() {
-        assert_eq!(request_seasons_label(&[]), "");
-        assert_eq!(request_seasons_label(&[3]), "Season 3");
-        assert_eq!(request_seasons_label(&[2, 1, 3]), "Seasons 1–3");
-        assert_eq!(request_seasons_label(&[1, 3]), "Seasons 1, 3");
-        assert_eq!(request_seasons_label(&[0]), "Specials");
-        assert_eq!(
-            request_seasons_label(&[0, 1, 2]),
-            "Seasons 1–2 and specials"
-        );
+    fn a_title_requested_several_times_is_one_card() {
+        let req = |id, tmdb, status, by: &str, seasons: Vec<u32>| SeerrRequest {
+            id,
+            status,
+            media_type: SeerrMediaType::Tv,
+            tmdb_id: tmdb,
+            availability: Availability::Processing,
+            requested_by: by.into(),
+            created_at: String::new(),
+            title: None,
+            poster_url: None,
+            seasons,
+        };
+        let g = group_requests(vec![
+            req(9, 1, RequestStatus::Approved, "Ann", vec![3]),
+            req(8, 2, RequestStatus::Approved, "Bob", vec![1]),
+            req(7, 1, RequestStatus::Pending, "Bob", vec![1, 2]),
+            req(6, 1, RequestStatus::Approved, "Ann", vec![2]),
+        ]);
+        assert_eq!(g.len(), 2);
+        assert_eq!((g[0].id, g[0].tmdb_id), (9, 1));
+        assert_eq!(g[0].status, RequestStatus::Pending);
+        assert_eq!(g[0].requested_by, "Ann, Bob");
+        assert_eq!(g[0].seasons, vec![1, 2, 3]);
+        assert_eq!(g[1].tmdb_id, 2);
     }
 
     #[test]

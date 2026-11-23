@@ -1346,13 +1346,6 @@ impl App {
                         RequestStatus::Failed => tr!("Failed"),
                         RequestStatus::Completed => tr!("Available"),
                     };
-                    // A show has one request per batch of seasons: which ones this card is.
-                    let seasons = alwywatch_core::request_seasons_label(r.seasons.clone());
-                    let status = if seasons.is_empty() {
-                        status
-                    } else {
-                        format!("{seasons} · {status}")
-                    };
                     (
                         format!("{:?}:{}", r.media_type, r.tmdb_id),
                         r.title.unwrap_or_else(|| format!("TMDB {}", r.tmdb_id)),
@@ -1369,6 +1362,15 @@ impl App {
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             let r = core.refresh_seerr_requests(false, false).await;
+            // Lists the servers' titles ahead, so opening a request is instant.
+            if let Some(first) = r.as_ref().ok().and_then(|l| l.first()) {
+                let (kind, tmdb) = (first.media_type, first.tmdb_id);
+                let core = core.clone();
+                slint::spawn_local(async move {
+                    let _ = core.library_title(kind, tmdb, None).await;
+                })
+                .ok();
+            }
             let Some(t) = this.upgrade() else { return };
             match r {
                 Ok(list) => render(&t, list),
@@ -1410,8 +1412,24 @@ impl App {
         .ok();
     }
 
+    /// A request or result: its library page when a server has it (to play it), else Seerr's.
     fn seerr_open(self: &Rc<Self>, key: String) {
-        self.navigate(Route::SeerrTitle(key));
+        let Some((kind, tmdb)) = Self::seerr_key(&key) else {
+            return self.navigate(Route::SeerrTitle(key));
+        };
+        let (core, this, prefer) = (self.core.clone(), Rc::downgrade(self), self.account());
+        slint::spawn_local(async move {
+            let found = core.library_title(kind, tmdb, prefer).await.ok().flatten();
+            let Some(t) = this.upgrade() else { return };
+            match found {
+                Some(at) => {
+                    t.own_ids(std::iter::once(&at.item_id), &at.account_id);
+                    t.navigate(Route::Detail(at.item_id));
+                }
+                None => t.navigate(Route::SeerrTitle(key)),
+            }
+        })
+        .ok();
     }
 
     /// "Movie:603" → (Movie, 603).
