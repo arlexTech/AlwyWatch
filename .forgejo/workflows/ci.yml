@@ -3,10 +3,11 @@
 # which already has Rust, the Android SDK/NDK, cargo-ndk, cargo-xwin, makensis and Docker.
 # Every job calls scripts/ci.sh so local runs and CI are identical.
 name: ci
+# Pushes to main only: this runner is the owner's workstation (Docker, signing keys), and a
+# pull request's code would run there. Pull requests get GitHub's hosted runners instead.
 on:
   push:
     branches: [main]
-  pull_request:
 
 jobs:
   rust:
