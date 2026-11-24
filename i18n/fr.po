@@ -4558,6 +4558,11 @@ msgstr "Le serveur a refusé : votre connexion a peut-être expiré. Reconnecte
 
 #: core/alwywatch-core/src/error.rs
 #: web/src/state.rs
+msgid "Your account on this server isn't allowed to do this (HTTP 403). Its administrator can change that."
+msgstr "Votre compte sur ce serveur n'a pas le droit de faire ceci (HTTP 403). Son administrateur peut le changer."
+
+#: core/alwywatch-core/src/error.rs
+#: web/src/state.rs
 msgid "This isn't on the server any more."
 msgstr "Ce titre n'est plus sur le serveur."
 

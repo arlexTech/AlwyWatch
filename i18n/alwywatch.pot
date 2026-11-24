@@ -4553,6 +4553,11 @@ msgstr ""
 
 #: core/alwywatch-core/src/error.rs
 #: web/src/state.rs
+msgid "Your account on this server isn't allowed to do this (HTTP 403). Its administrator can change that."
+msgstr ""
+
+#: core/alwywatch-core/src/error.rs
+#: web/src/state.rs
 msgid "This isn't on the server any more."
 msgstr ""
 

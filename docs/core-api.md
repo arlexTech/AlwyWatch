@@ -27,8 +27,12 @@ The web app links `media-api`, `seerr`, `keep-service` and `net` directly, witho
   UIs call both, never show a spinner when `cached_x` returned data.
 * **Async functions** run on the core's own tokio runtime (Kotlin: `suspend`), so callers never
   need a runtime.
-* **Errors**: `CoreError`: `Unauthorized`, `NotFound`, `Server{status}`, `Network{detail}`,
+* **Errors**: `CoreError`: `Unauthorized`, `Forbidden`, `NotFound`, `Server{status}`, `Network{detail}`,
   `Pending` (a poll is not done yet), `Invalid{detail}`, `NotSignedIn{account_id}`, `Storage{detail}`, `Internal{detail}`.
+  `Unauthorized` is a lost sign-in ("sign in again"). `Forbidden` is a Jellyfin/Plex server's 403:
+  signed in, but this account may not do it (downloads or playback turned off for the user).
+  Seerr and the AlwyWatch server keep 403 as `Unauthorized`: they use it for an expired session
+  or a server they don't serve (`net::send` vs `net::send_strict`).
 * **Secrets never live in the core's storage.** Sign-in returns tokens; the platform keeps them
   (Android Keystore, Windows DPAPI, Linux 0600 file) and hands them back with `activate_*` at
   start, which is offline.

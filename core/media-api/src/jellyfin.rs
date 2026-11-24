@@ -109,7 +109,7 @@ impl JellyfinAuth {
     /// Unauthenticated server identity; also validates that the address is a Jellyfin server.
     pub async fn public_info(&self, base_url: &str) -> Result<ServerInfo> {
         let info: PublicInfo =
-            net::send_json(self.req(Method::GET, base_url, "/System/Info/Public")).await?;
+            net::send_json_strict(self.req(Method::GET, base_url, "/System/Info/Public")).await?;
         Ok(ServerInfo {
             kind: ServerKind::Jellyfin,
             id: info.id,
@@ -119,20 +119,21 @@ impl JellyfinAuth {
     }
 
     pub async fn quick_connect_enabled(&self, base_url: &str) -> Result<bool> {
-        net::send_json(self.req(Method::GET, base_url, "/QuickConnect/Enabled")).await
+        net::send_json_strict(self.req(Method::GET, base_url, "/QuickConnect/Enabled")).await
     }
 
     pub async fn sign_in(&self, base_url: &str, username: &str, password: &str) -> Result<Session> {
         let req = self
             .req(Method::POST, base_url, "/Users/AuthenticateByName")
             .json(&json!({ "Username": username, "Pw": password }));
-        let res: AuthResult = net::send_json(req).await?;
+        let res: AuthResult = net::send_json_strict(req).await?;
         self.session(base_url, res).await
     }
 
     pub async fn quick_connect_start(&self, base_url: &str) -> Result<QuickConnectCode> {
         let r: QuickConnectResult =
-            net::send_json(self.req(Method::POST, base_url, "/QuickConnect/Initiate")).await?;
+            net::send_json_strict(self.req(Method::POST, base_url, "/QuickConnect/Initiate"))
+                .await?;
         Ok(QuickConnectCode {
             secret: r.secret,
             code: r.code,
@@ -141,7 +142,7 @@ impl JellyfinAuth {
 
     /// Returns [`Error::Pending`] until the code has been approved in another client.
     pub async fn quick_connect_poll(&self, base_url: &str, secret: &str) -> Result<Session> {
-        let state: QuickConnectResult = net::send_json(
+        let state: QuickConnectResult = net::send_json_strict(
             self.req(Method::GET, base_url, "/QuickConnect/Connect")
                 .query(&[("secret", secret)]),
         )
@@ -149,7 +150,7 @@ impl JellyfinAuth {
         if !state.authenticated {
             return Err(Error::Pending);
         }
-        let res: AuthResult = net::send_json(
+        let res: AuthResult = net::send_json_strict(
             self.req(
                 Method::POST,
                 base_url,
@@ -384,7 +385,7 @@ impl JellyfinClient {
     /// This user's preferences stored by an app on the server (`DisplayPreferences`, whose
     /// `CustomPrefs` hold free key/values): how AlwyWatch carries settings across devices.
     pub async fn app_prefs(&self, client: &str) -> Result<serde_json::Value> {
-        net::send_json(
+        net::send_json_strict(
             self.req(Method::GET, "/DisplayPreferences/alwywatch")
                 .query(&[("userId", self.uid()), ("client", client)]),
         )
@@ -393,7 +394,7 @@ impl JellyfinClient {
 
     /// Saves preferences read with `app_prefs` (the whole object, `CustomPrefs` changed).
     pub async fn set_app_prefs(&self, client: &str, prefs: &serde_json::Value) -> Result<()> {
-        net::send(
+        net::send_strict(
             self.req(Method::POST, "/DisplayPreferences/alwywatch")
                 .query(&[("userId", self.uid()), ("client", client)])
                 .json(prefs),
@@ -407,7 +408,7 @@ impl JellyfinClient {
     }
 
     async fn query(&self, path: &str, params: &[(&str, String)]) -> Result<QueryResult> {
-        net::send_json(self.req(Method::GET, path).query(params)).await
+        net::send_json_strict(self.req(Method::GET, path).query(params)).await
     }
 
     fn list_params(&self) -> Vec<(&'static str, String)> {
@@ -935,7 +936,7 @@ impl MediaServer for JellyfinClient {
     }
 
     async fn item(&self, id: &str) -> Result<Item> {
-        let d: BaseItemDto = net::send_json(
+        let d: BaseItemDto = net::send_json_strict(
             self.req(Method::GET, &format!("/Items/{}", net::percent_encode(id)))
                 .query(&[("userId", self.uid()), ("fields", ITEM_FIELDS)]),
         )
@@ -978,7 +979,7 @@ impl MediaServer for JellyfinClient {
         // season with nothing saying which): the apps group them per show with a label.
         p.push(("groupItems", "false".into()));
         let items: Vec<BaseItemDto> =
-            net::send_json(self.req(Method::GET, "/Items/Latest").query(&p)).await?;
+            net::send_json_strict(self.req(Method::GET, "/Items/Latest").query(&p)).await?;
         Ok(self.convert_all(items))
     }
 
@@ -1010,7 +1011,7 @@ impl MediaServer for JellyfinClient {
             "AutoOpenLiveStream": true,
         });
         apply_selection(&mut body, selection);
-        let r: PlaybackInfoResponse = net::send_json(
+        let r: PlaybackInfoResponse = net::send_json_strict(
             self.req(
                 Method::POST,
                 &format!("/Items/{}/PlaybackInfo", net::percent_encode(item_id)),
@@ -1057,7 +1058,9 @@ impl MediaServer for JellyfinClient {
             net::percent_encode(item_id),
             net::percent_encode(source_id),
         );
-        net::send(self.req(Method::GET, &path)).await.map(|_| ())
+        net::send_strict(self.req(Method::GET, &path))
+            .await
+            .map(|_| ())
     }
 
     async fn segments(&self, item_id: &str) -> Result<Vec<Segment>> {
@@ -1073,7 +1076,7 @@ impl MediaServer for JellyfinClient {
             // None detected (no provider installed): the file's own chapters, when they are
             // named like an intro or credits ("Opening", "Générique de fin"…).
             other => {
-                let d: ChaptersDto = net::send_json(
+                let d: ChaptersDto = net::send_json_strict(
                     self.req(
                         Method::GET,
                         &format!("/Items/{}", net::percent_encode(item_id)),
@@ -1112,12 +1115,12 @@ impl MediaServer for JellyfinClient {
             "AudioStreamIndex": r.audio_index,
             "SubtitleStreamIndex": r.subtitle_index,
         });
-        net::send(self.req(Method::POST, path).json(&body)).await?;
+        net::send_strict(self.req(Method::POST, path).json(&body)).await?;
         Ok(())
     }
 
     async fn people(&self, item_id: &str) -> Result<Vec<Person>> {
-        let d: PeopleDto = net::send_json(
+        let d: PeopleDto = net::send_json_strict(
             self.req(
                 Method::GET,
                 &format!("/Items/{}", net::percent_encode(item_id)),
@@ -1129,7 +1132,7 @@ impl MediaServer for JellyfinClient {
     }
 
     async fn trailers(&self, item_id: &str) -> Result<Vec<Trailer>> {
-        let local: Vec<BaseItemDto> = net::send_json(
+        let local: Vec<BaseItemDto> = net::send_json_strict(
             self.req(
                 Method::GET,
                 &format!("/Items/{}/LocalTrailers", net::percent_encode(item_id)),
@@ -1146,7 +1149,7 @@ impl MediaServer for JellyfinClient {
                 url: None,
             })
             .collect();
-        let item: RemoteTrailersDto = net::send_json(
+        let item: RemoteTrailersDto = net::send_json_strict(
             self.req(
                 Method::GET,
                 &format!("/Items/{}", net::percent_encode(item_id)),
@@ -1168,7 +1171,7 @@ impl MediaServer for JellyfinClient {
     }
 
     async fn theme_song(&self, item_id: &str) -> Result<Option<HttpRequest>> {
-        let r: QueryResult = net::send_json(
+        let r: QueryResult = net::send_json_strict(
             self.req(
                 Method::GET,
                 &format!("/Items/{}/ThemeSongs", net::percent_encode(item_id)),
@@ -1203,7 +1206,7 @@ impl MediaServer for JellyfinClient {
         _plex_tv_token: Option<&str>,
     ) -> Result<()> {
         let method = if on { Method::POST } else { Method::DELETE };
-        net::send(
+        net::send_strict(
             self.req(
                 method,
                 &format!("/UserFavoriteItems/{}", net::percent_encode(item_id)),
@@ -1216,7 +1219,7 @@ impl MediaServer for JellyfinClient {
 
     async fn set_played(&self, item_id: &str, played: bool) -> Result<()> {
         let method = if played { Method::POST } else { Method::DELETE };
-        net::send(
+        net::send_strict(
             self.req(
                 method,
                 &format!("/UserPlayedItems/{}", net::percent_encode(item_id)),
@@ -1228,7 +1231,7 @@ impl MediaServer for JellyfinClient {
     }
 
     async fn download_source(&self, item_id: &str) -> Result<DownloadSource> {
-        let d: BaseItemDto = net::send_json(
+        let d: BaseItemDto = net::send_json_strict(
             self.req(
                 Method::GET,
                 &format!("/Items/{}", net::percent_encode(item_id)),
@@ -1305,7 +1308,7 @@ impl MediaServer for JellyfinClient {
         if let Some(at) = state.last_played_at {
             body["LastPlayedDate"] = unix_to_iso(at).into();
         }
-        net::send(
+        net::send_strict(
             self.req(
                 Method::POST,
                 &format!("/UserItems/{}/UserData", net::percent_encode(item_id)),

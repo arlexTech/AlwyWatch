@@ -10,14 +10,28 @@ use net::Error as NetError;
 #[uniffi(flat_error)]
 pub enum CoreError {
     Unauthorized,
+    /// Signed in, but the media server doesn't allow this account to do it (HTTP 403).
+    Forbidden,
     NotFound,
-    Server { status: u16 },
-    Network { detail: String },
+    Server {
+        status: u16,
+    },
+    Network {
+        detail: String,
+    },
     Pending,
-    Invalid { detail: String },
-    NotSignedIn { account_id: String },
-    Storage { detail: String },
-    Internal { detail: String },
+    Invalid {
+        detail: String,
+    },
+    NotSignedIn {
+        account_id: String,
+    },
+    Storage {
+        detail: String,
+    },
+    Internal {
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for CoreError {
@@ -27,6 +41,9 @@ impl std::fmt::Display for CoreError {
             CoreError::Unauthorized => {
                 tr!("The server refused: your sign-in may have ended. Sign in again in Settings.")
             }
+            CoreError::Forbidden => tr!(
+                "Your account on this server isn't allowed to do this (HTTP 403). Its administrator can change that."
+            ),
             CoreError::NotFound => tr!("This isn't on the server any more."),
             CoreError::Server { status } => tr!(
                 "The server couldn't do this (HTTP {status}). Try again in a moment.",
@@ -68,6 +85,7 @@ impl From<NetError> for CoreError {
     fn from(e: NetError) -> Self {
         match e {
             NetError::Unauthorized => CoreError::Unauthorized,
+            NetError::Forbidden => CoreError::Forbidden,
             NetError::NotFound => CoreError::NotFound,
             NetError::Status { status } => CoreError::Server { status },
             NetError::Network { message } => CoreError::Network { detail: message },

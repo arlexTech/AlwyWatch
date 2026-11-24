@@ -395,6 +395,9 @@ pub fn plain(e: &Error) -> String {
         Error::Unauthorized => {
             tr!("The server refused: your session may have ended. Sign in again in Settings.")
         }
+        Error::Forbidden => tr!(
+            "Your account on this server isn't allowed to do this (HTTP 403). Its administrator can change that."
+        ),
         Error::NotFound => tr!("This isn't on the server any more."),
         Error::Network { .. } => tr!("Can't reach the server. Check your connection."),
         Error::Status { status } if *status >= 500 => {

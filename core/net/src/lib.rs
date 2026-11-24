@@ -22,6 +22,12 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     #[error("not signed in, or the session expired")]
     Unauthorized,
+    /// Signed in, but this account may not do this (HTTP 403 from a media server: downloads
+    /// or playback turned off for the user, a library it can't see). Only the `*_strict`
+    /// senders give it; elsewhere 403 stays `Unauthorized` (Seerr and the AlwyWatch server use
+    /// it for a lost sign-in or a server they don't serve).
+    #[error("not allowed for this account")]
+    Forbidden,
     #[error("not found")]
     NotFound,
     #[error("server returned HTTP {status}")]
@@ -78,6 +84,14 @@ impl From<reqwest::Error> for Error {
             source = cause.source();
         }
         Error::Network { message }
+    }
+}
+
+/// [`status_error`], with 403 as [`Error::Forbidden`] (media servers: 401 is the lost sign-in).
+pub fn strict_status_error(status: StatusCode) -> Error {
+    match status.as_u16() {
+        403 => Error::Forbidden,
+        _ => status_error(status),
     }
 }
 
@@ -233,12 +247,26 @@ pub fn transfer_client(user_agent: &str) -> Result<reqwest::Client> {
 
 /// Sends a request and maps non-success statuses to [`Error`].
 pub async fn send(req: RequestBuilder) -> Result<Response> {
+    send_mapped(req, status_error).await
+}
+
+/// [`send`] for a media server: 403 is [`Error::Forbidden`].
+pub async fn send_strict(req: RequestBuilder) -> Result<Response> {
+    send_mapped(req, strict_status_error).await
+}
+
+async fn send_mapped(req: RequestBuilder, map: fn(StatusCode) -> Error) -> Result<Response> {
     let res = req.send().await?;
     if res.status().is_success() {
         Ok(res)
     } else {
-        Err(status_error(res.status()))
+        Err(map(res.status()))
     }
+}
+
+/// [`send_json`] for a media server: 403 is [`Error::Forbidden`].
+pub async fn send_json_strict<T: DeserializeOwned>(req: RequestBuilder) -> Result<T> {
+    send_json_mapped(req, strict_status_error).await
 }
 
 /// Sends a request and decodes a JSON body.
@@ -247,12 +275,19 @@ pub async fn send(req: RequestBuilder) -> Result<Response> {
 /// only lets the LAN in typically redirects everyone else to another site, and a wrong address
 /// returns a web page.
 pub async fn send_json<T: DeserializeOwned>(req: RequestBuilder) -> Result<T> {
+    send_json_mapped(req, status_error).await
+}
+
+async fn send_json_mapped<T: DeserializeOwned>(
+    req: RequestBuilder,
+    map: fn(StatusCode) -> Error,
+) -> Result<T> {
     let (client, req) = req.build_split();
     let req = req?;
     let asked = req.url().host_str().map(str::to_owned);
     let res = client.execute(req).await?;
     if !res.status().is_success() {
-        return Err(status_error(res.status()));
+        return Err(map(res.status()));
     }
     let landed = res.url().host_str().map(str::to_owned);
     let html = res

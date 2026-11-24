@@ -671,7 +671,7 @@ impl PlexClient {
     }
 
     async fn get(&self, path: &str, params: &[(&str, String)]) -> Result<MediaContainer> {
-        let e: Envelope = net::send_json(self.req(Method::GET, path).query(params)).await?;
+        let e: Envelope = net::send_json_strict(self.req(Method::GET, path).query(params)).await?;
         Ok(e.mc)
     }
 
@@ -838,7 +838,7 @@ impl PlexClient {
         }
         query.push(("allParts", "1".into()));
         let saved = match part_id(part) {
-            Some(id) => net::send(
+            Some(id) => net::send_strict(
                 self.req(Method::PUT, &format!("/library/parts/{id}"))
                     .query(&query),
             )
@@ -1096,7 +1096,7 @@ impl MediaServer for PlexClient {
 
     async fn remove_from_continue_watching(&self, item_id: &str) -> Result<bool> {
         // Plex's own "Remove from Continue Watching" (in progress and on deck alike).
-        net::send(
+        net::send_strict(
             self.req(Method::PUT, "/actions/removeFromContinueWatching")
                 .query(&[("ratingKey", item_id)]),
         )
@@ -1319,7 +1319,7 @@ impl MediaServer for PlexClient {
         if let Some(media) = &r.media_source_id {
             p.push(("X-Plex-Session-Identifier", play_session(&r.item_id, media)));
         }
-        net::send(self.req(Method::GET, "/:/timeline").query(&p)).await?;
+        net::send_strict(self.req(Method::GET, "/:/timeline").query(&p)).await?;
         Ok(())
     }
 
@@ -1359,7 +1359,7 @@ impl MediaServer for PlexClient {
         let Some(token) = plex_tv_token else {
             return Ok(vec![]);
         };
-        let e: Envelope = net::send_json(
+        let e: Envelope = net::send_json_strict(
             self.discover_req(Method::GET, "/library/sections/watchlist/all", token)
                 .query(&[("includeCollections", "1"), ("includeExternalMedia", "1")]),
         )
@@ -1418,7 +1418,7 @@ impl MediaServer for PlexClient {
         } else {
             "/:/unscrobble"
         };
-        net::send(
+        net::send_strict(
             self.req(Method::GET, path)
                 .query(&[("key", item_id), ("identifier", LIBRARY_IDENTIFIER)]),
         )
@@ -1483,7 +1483,7 @@ impl MediaServer for PlexClient {
         if state.position_ms == 0 {
             return Ok(());
         }
-        net::send(self.req(Method::GET, "/:/progress").query(&[
+        net::send_strict(self.req(Method::GET, "/:/progress").query(&[
             ("key", item_id.to_owned()),
             ("identifier", LIBRARY_IDENTIFIER.to_owned()),
             ("time", state.position_ms.to_string()),

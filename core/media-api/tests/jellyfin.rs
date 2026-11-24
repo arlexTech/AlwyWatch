@@ -769,3 +769,28 @@ async fn preparing_a_subtitle_asks_for_its_file() {
         .await;
     assert!(c.prepare_subtitle("m1", "src1", 4).await.is_err());
 }
+
+#[tokio::test]
+async fn a_refusal_for_this_account_is_not_a_lost_sign_in() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Videos/m1/m1/Subtitles/1/0/Stream.srt"))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&s)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Videos/m1/m1/Subtitles/2/0/Stream.srt"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    // 403: signed in, not allowed (no "sign in again"); 401: the sign-in ended.
+    assert_eq!(
+        c.prepare_subtitle("m1", "m1", 1).await,
+        Err(net::Error::Forbidden)
+    );
+    assert_eq!(
+        c.prepare_subtitle("m1", "m1", 2).await,
+        Err(net::Error::Unauthorized)
+    );
+}
