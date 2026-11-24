@@ -7485,6 +7485,14 @@ msgid "Now: {}"
 msgstr ""
 
 #: desktop/ui/app.slint
+msgid "Leave full screen"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Full screen"
+msgstr ""
+
+#: desktop/ui/app.slint
 msgid "Nothing in progress or recently added."
 msgstr ""
 

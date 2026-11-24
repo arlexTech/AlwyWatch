@@ -541,6 +541,10 @@ component PlayerOverlay inherits Rectangle {
     property <bool> bubble-live;
     // The press on the picture is a finger (touch screen), not the mouse.
     property <bool> touched;
+    // The last single tap on the picture: when, which half, and the controls before it.
+    property <duration> tap-at: -1s;
+    property <bool> tap-right;
+    property <int> tap-idle;
 
     function seek-step(forward: bool) {
         root.cmd("rel", forward ? "30" : "-10");
@@ -580,7 +584,7 @@ component PlayerOverlay inherits Rectangle {
             if (e.text == Key.UpArrow) { root.cmd("volume", "5"); return accept; }
             if (e.text == Key.DownArrow) { root.cmd("volume", "-5"); return accept; }
             if (e.text == "m") { root.cmd("mute", ""); return accept; }
-            if (e.text == "f") { root.cmd("fullscreen", ""); return accept; }
+            if (e.text == "f" || e.text == Key.F11) { root.cmd("fullscreen", ""); return accept; }
             if (e.text == "s" && root.skip != "") { root.cmd("skip", ""); return accept; }
             if (e.text == "n" && root.has-next) { root.cmd("next", ""); return accept; }
             if (e.text == "c" && root.countdown > 0) { root.cmd("cancel", ""); return accept; }
@@ -611,9 +615,19 @@ component PlayerOverlay inherits Rectangle {
             if (root.tracks-open) {
                 root.tracks-open = false;
             } else if (root.touched) {
+                // Two taps on the same half, told by time and side only: fingers land too far
+                // apart for the toolkit's double click (it wants the same spot), so the second
+                // tap only showed or hid the controls. More taps while the bubble shows add up.
                 if (root.bubble-live && root.bubble-forward == (self.mouse-x > self.width / 2)) {
                     root.seek-step(self.mouse-x > self.width / 2);
+                } else if (animation-tick() - root.tap-at < 400ms && root.tap-right == (self.mouse-x > self.width / 2)) {
+                    root.idle = root.tap-idle; // (the first tap's show/hide is undone)
+                    root.tap-at = -1s;
+                    root.seek-step(self.mouse-x > self.width / 2);
                 } else {
+                    root.tap-at = animation-tick();
+                    root.tap-right = self.mouse-x > self.width / 2;
+                    root.tap-idle = root.idle;
                     root.idle = root.show && !root.paused ? 99 : 0;
                 }
             } else {
@@ -621,13 +635,16 @@ component PlayerOverlay inherits Rectangle {
             }
         }
         double-clicked => {
-            if (root.touched) {
-                // (Its two taps showed and hid the controls: they are as they were.)
-                if (!(root.bubble-live && root.bubble-forward == (self.mouse-x > self.width / 2))) {
-                    root.seek-step(self.mouse-x > self.width / 2);
+            // Mouse (and touch screens that send mouse clicks): the outer thirds seek like a
+            // double tap, the middle goes full screen. (Its two clicks paused and resumed.)
+            if (!root.touched) {
+                if (self.mouse-x < self.width / 3) {
+                    root.seek-step(false);
+                } else if (self.mouse-x > self.width * 2 / 3) {
+                    root.seek-step(true);
+                } else {
+                    root.cmd("fullscreen", "");
                 }
-            } else {
-                root.cmd("fullscreen", "");
             }
         }
     }
@@ -1784,6 +1801,9 @@ export component AppWindow inherits Window {
     in property <string> player-subtitle-label;
     in property <bool> player-fullscreen;
     callback player-cmd(string, string);
+    // The whole app full screen (the sidebar's button, F11), remembered across launches.
+    in property <bool> app-fullscreen;
+    callback app-fullscreen-toggle();
     // A row's "See all" (key from Rail.see-all, the row's title).
     callback rail-see-all(string, string);
     // The poster grid page's title when it isn't My list ("Continue watching").
@@ -1809,6 +1829,7 @@ export component AppWindow inherits Window {
     page-keys := FocusScope {
         visible: !root.profile-gate && !root.player-on;
         key-pressed(e) => {
+            if (e.text == Key.F11) { root.app-fullscreen-toggle(); return accept; }
             if (e.text == Key.Escape && root.profile-dialog != "") { root.profile-cancel(); return accept; }
             if (e.text == Key.Escape && root.crop-open) { root.crop-cancel(); return accept; }
             if (e.text == Key.Escape && root.mark-confirm != "") { root.mark-confirm-cancel(); return accept; }
@@ -1870,6 +1891,12 @@ export component AppWindow inherits Window {
                     if root.seerr-active && root.requests-available : NavItem { label: @tr("Requests"); icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
                     NavItem { label: @tr("Downloads"); icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
                     NavItem { label: @tr("Settings"); icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings || root.page == Page.profiles || root.page == Page.historycopy; clicked => { root.go(Page.settings); } }
+                    NavItem {
+                        label: root.app-fullscreen ? @tr("Leave full screen") : @tr("Full screen");
+                        icon: root.app-fullscreen ? @image-url("icons/fullscreen_exit.svg") : @image-url("icons/fullscreen.svg");
+                        selected: false;
+                        clicked => { root.app-fullscreen-toggle(); }
+                    }
                 }
             }
 

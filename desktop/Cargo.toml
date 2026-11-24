@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 alwywatch-core = { workspace = true }
-slint = { workspace = true, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software"] }
+slint = { workspace = true, features = ["std", "compat-1-2", "backend-winit", "unstable-winit-030", "renderer-femtovg", "renderer-software"] }
 # Decodes cached posters off the UI thread (same crate and version Slint uses internally); also
 # crops custom avatars (EXIF orientation, resize) and encodes them as JPEG (the `jpeg` feature
 # has both the decoder and the encoder).

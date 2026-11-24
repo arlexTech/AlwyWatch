@@ -5525,6 +5525,7 @@ impl App {
             }
         });
         on!(on_player_room_start, |a| a.player_room_start());
+        on!(on_app_fullscreen_toggle, |a| a.app_fullscreen_toggle());
         on!(on_player_room_cancel, |a| a.player_room_cancel());
         on!(on_rail_see_all, |a, key, title| {
             match key.as_str() {

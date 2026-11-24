@@ -5,6 +5,7 @@
 mod app;
 mod avatars;
 mod headless;
+mod instance;
 mod lang;
 mod localtime;
 mod mpv;
@@ -44,6 +45,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let paths = platform::paths();
+    // One AlwyWatch at a time (not for headless test runs): a second launch brings the running
+    // one forward instead.
+    let instance = if std::env::var_os("ALWYWATCH_SCREENSHOT").is_some() || driven {
+        None
+    } else {
+        match instance::acquire(&paths.data) {
+            Ok(i) => Some(i),
+            Err(instance::AlreadyRunning) => {
+                instance::ask_to_raise(&paths.data);
+                return Ok(());
+            }
+        }
+    };
     // Several people on one computer: each profile its own database and tokens (the original
     // profile's stay where they were); downloads are shared.
     // The language first: everything after may build text.
@@ -265,6 +279,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
         }),
     );
+    app.app_fullscreen_restore();
+    let raise = slint::Timer::default();
+    if let Some(instance) = instance {
+        let w = ui.as_weak();
+        raise.start(
+            slint::TimerMode::Repeated,
+            std::time::Duration::from_secs(1),
+            move || {
+                if instance.raise_requested()
+                    && let Some(ui) = w.upgrade()
+                {
+                    use slint::winit_030::WinitWindowAccessor;
+                    ui.window().set_minimized(false);
+                    ui.window().with_winit_window(|w| w.focus_window());
+                }
+            },
+        );
+    }
     ui.run()?;
     Ok(())
 }

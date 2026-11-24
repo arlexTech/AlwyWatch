@@ -13,6 +13,9 @@ use crate::PlayerTrack;
 use crate::mpv::Mpv;
 use crate::player::{PlayerView, TrackItem, ViewLink};
 
+/// Setting: the app full screen ("1").
+const APP_FULLSCREEN: &str = "desktop.fullscreen";
+
 impl App {
     /// The link a new player uses to show itself in the window with `title` on top.
     pub(super) fn player_view_link(title: String) -> ViewLink {
@@ -29,6 +32,8 @@ impl App {
                         ui.set_player_skip(SharedString::default());
                         ui.set_player_countdown(0);
                         ui.set_player_note(SharedString::default());
+                        // Already full screen (the app is): the player's button says so.
+                        ui.set_player_fullscreen(ui.window().is_fullscreen());
                         ui.set_player_on(true);
                     }
                 });
@@ -85,6 +90,34 @@ impl App {
         ui.set_player_subtitles(model(v.subtitles));
     }
 
+    /// The whole app full screen or not (the sidebar's button, F11), kept for the next launch.
+    pub(super) fn app_fullscreen_toggle(&self) {
+        let ui = self.ui();
+        let on = !ui.get_app_fullscreen();
+        ui.set_app_fullscreen(on);
+        ui.window().set_fullscreen(on);
+        let _ = self.core.set_setting(
+            APP_FULLSCREEN.to_owned(),
+            if on { "1" } else { "0" }.to_owned(),
+        );
+    }
+
+    /// At startup: full screen when it was left so.
+    pub(crate) fn app_fullscreen_restore(&self) {
+        if self
+            .core
+            .get_setting(APP_FULLSCREEN.to_owned())
+            .ok()
+            .flatten()
+            .as_deref()
+            == Some("1")
+        {
+            let ui = self.ui();
+            ui.set_app_fullscreen(true);
+            ui.window().set_fullscreen(true);
+        }
+    }
+
     /// A control was used (PlayerOverlay's `cmd`).
     pub(super) fn player_cmd(&self, cmd: &str, arg: &str) {
         if cmd == "fullscreen" {
@@ -130,10 +163,12 @@ impl App {
         let ui = self.ui();
         if ui.get_player_on() {
             ui.set_player_on(false);
-            if ui.get_player_fullscreen() {
-                ui.window().set_fullscreen(false);
-                ui.set_player_fullscreen(false);
+            // Back to the app as it was: full screen when it is set so (sidebar, F11).
+            let app = ui.get_app_fullscreen();
+            if ui.window().is_fullscreen() != app {
+                ui.window().set_fullscreen(app);
             }
+            ui.set_player_fullscreen(false);
         }
     }
 }
