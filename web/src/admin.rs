@@ -685,11 +685,17 @@ fn AddPlexForm(done: Callback<()>) -> impl IntoView {
             } else {
                 plex_tokens(&c).into_iter().next().unwrap_or_default()
             };
+            // The page may have gone during the sign-in window.
+            let (Some(url), Some(internal)) =
+                (url.try_get_untracked(), internal.try_get_untracked())
+            else {
+                return;
+            };
             let r = match admin_client(&c) {
                 Some(k) => {
                     k.admin_add_plex(&AddPlex {
-                        url: url.get_untracked().trim().to_owned(),
-                        internal_url: some(internal.get_untracked().trim().to_owned()),
+                        url: url.trim().to_owned(),
+                        internal_url: some(internal.trim().to_owned()),
                         token,
                     })
                     .await
@@ -1035,7 +1041,7 @@ pub fn Invitations() -> impl IntoView {
             };
             let r = k.account_invites().await;
             if let Ok(inv) = &r
-                && server.get_untracked().is_empty()
+                && server.try_get_untracked().is_some_and(|s| s.is_empty())
                 && let Some(t) = inv.jellyfin.first()
             {
                 server.try_set(t.server_id.clone());

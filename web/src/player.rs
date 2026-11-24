@@ -642,7 +642,9 @@ fn PlayerView(
         bubble.set(Some(next));
         set_timeout(
             move || {
-                if bubble.with_untracked(|b| b.as_ref().is_some_and(|b| b.n == n)) {
+                // The player may have gone meanwhile.
+                if bubble.try_with_untracked(|b| b.as_ref().is_some_and(|b| b.n == n)) == Some(true)
+                {
                     bubble.update(|b| {
                         if let Some(b) = b {
                             b.fading = true;

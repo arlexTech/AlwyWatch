@@ -285,10 +285,18 @@ pub fn Library() -> impl IntoView {
             }
         });
     };
-    Effect::new(move |_| {
-        let _ = (acc(), id(), sort.get(), unwatched.get(), genre.get());
+    Effect::new(move |prev: Option<(String, String)>| {
+        // Another library (the page stays, only its address changes): its own genres, and not
+        // the last library's titles while it loads.
+        let here = (acc(), id());
+        if prev.as_ref().is_some_and(|p| *p != here) {
+            genre.set(String::new());
+            items.set(Vec::new());
+        }
+        let _ = (sort.get(), unwatched.get(), genre.get());
         total.set(None);
         load(0);
+        here
     });
     view! {
         <div class="chips">

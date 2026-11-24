@@ -165,10 +165,14 @@ pub fn Setup() -> impl IntoView {
                     return;
                 }
             };
+            // The page may have gone during the sign-in window.
+            let Some(code) = code.try_get_untracked() else {
+                return;
+            };
             let r = KeepClient::setup_plex(
                 &c.http,
                 &Ctx::origin(),
-                &code.get_untracked(),
+                &code,
                 &AddPlex {
                     url: url.clone(),
                     internal_url: internal_url(),
