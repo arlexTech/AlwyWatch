@@ -3408,7 +3408,9 @@ impl App {
             };
             // The quality menu (a server file that can be converted, watching alone), and the
             // conversion at the picked size.
-            let menu = (src.transcode.is_some() && together == TogetherPlay::Alone)
+            // Any server file (not a download): the server converts on request, even when it
+            // lists no conversion (Jellyfin, for a file it thinks plays as is).
+            let menu = (src.direct.url.starts_with("http") && together == TogetherPlay::Alone)
                 .then(|| alwywatch_core::quality_choices(src.clone()));
             let mut converted = None;
             if let Some(q) = quality.filter(|_| menu.is_some()) {

@@ -1434,7 +1434,9 @@ fn PlayerView(
                 // Quality: what plays now, and a menu to pick another size.
                 {move || {
                     let src = original.get().and_then(|i| i.sources.into_iter().next());
-                    match src.filter(|s| s.transcode.is_some()) {
+                    // Any server file: the server converts on request (Jellyfin lists no
+                    // conversion for a file it thinks plays as is).
+                    match src {
                         Some(src) => {
                             let converted = transcoding.get();
                             let chosen = quality.get();

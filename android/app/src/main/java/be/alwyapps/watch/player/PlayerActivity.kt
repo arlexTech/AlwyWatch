@@ -290,18 +290,19 @@ class PlayerActivity : ComponentActivity() {
         info = pi
         source = src
         original = src
-        if (chosenQuality != null && src.transcode != null) {
+        if (chosenQuality != null && src.streamed()) {
             startConversion(src, startMs, null)
         } else if (DeviceProfiles.canDirectPlay(src, profile) || src.transcode == null) {
             startPlayer(src.direct, src, transcoding = false, startMs)
             // Some Matroska releases list their tracks after the picture: Media3 then waits
             // for ever, with no error. Checked meanwhile (two small reads, remembered per
             // file); such a file plays through the server's conversion.
-            if (src.transcode != null) {
+            // (Jellyfin only offers a conversion when it thinks one is needed: it is asked for one.)
+            if (src.streamed()) {
                 lifecycleScope.launch {
                     if (core.originalNeedsConversion(src) && itemId == id && source === src && !transcoding) {
                         android.util.Log.i(TAG, "tracks after the picture: playing the conversion")
-                        startConversion(src, startMs, null)
+                        startConversion(src, startMs, null, force = true)
                     }
                 }
             }
@@ -321,6 +322,7 @@ class PlayerActivity : ComponentActivity() {
         startMs: Long,
         selection: TrackSelection?,
         rewind: Boolean = true,
+        force: Boolean = false,
     ) {
         val id = itemId
         val sel =
@@ -330,7 +332,7 @@ class PlayerActivity : ComponentActivity() {
                     trackRules(PlayerSettings(core, services.isTv), null),
                     src,
                 )
-            ).copy(quality = chosenQuality)
+            ).copy(quality = chosenQuality ?: FULL_SIZE.takeIf { force })
         val pi =
             runCatching { core.playbackInfoWith(account, id, DeviceProfiles.get(this), sel) }
                 .onFailure { android.util.Log.w(TAG, "conversion with tracks: ${it.javaClass.simpleName}") }
@@ -357,7 +359,7 @@ class PlayerActivity : ComponentActivity() {
      */
     private fun pickQuality(q: be.alwyapps.watch.core.media.Quality?) {
         val src = original ?: return
-        if (q == chosenQuality || src.transcode == null) return
+        if (q == chosenQuality || !src.streamed()) return
         chosenQuality = q
         val position = player?.currentPosition?.coerceAtLeast(0) ?: 0L
         lifecycleScope.launch {
@@ -416,7 +418,7 @@ class PlayerActivity : ComponentActivity() {
         this.transcoding = transcoding
         // The quality menu: what plays now, and the sizes the server can convert to.
         ui.quality =
-            original?.takeIf { it.transcode != null }?.let { o ->
+            original?.takeIf { it.streamed() }?.let { o ->
                 QualityInfo(
                     be.alwyapps.watch.core
                         .qualityLabel(src, transcoding, chosenQuality.takeIf { transcoding }),
@@ -1698,3 +1700,11 @@ class PlayerActivity : ComponentActivity() {
             .putExtra(EXTRA_MEMBER, member)
     }
 }
+
+/** A file streamed from a server (not a download): the server can convert it. */
+private fun MediaSource.streamed() = direct.url.startsWith("http")
+
+/** A conversion that keeps the original's size (asked when the original can't play here). */
+private val FULL_SIZE =
+    be.alwyapps.watch.core.media
+        .Quality(maxBitrate = 120_000_000uL, maxHeight = 2160u)
