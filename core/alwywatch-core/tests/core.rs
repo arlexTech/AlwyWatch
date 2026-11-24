@@ -475,10 +475,17 @@ fn keep_service_connect_list_vote_and_reminders() {
             .is_some(),
         "cache patched in place"
     );
-    // Reminder due exactly every 7 days, not before.
+    // Reminder due every 7 days, not before, once per period.
     assert!(app.keep_due_reminders(created + 3 * 86_400).is_empty());
     assert_eq!(app.keep_due_reminders(created + 7 * 86_400 + 60).len(), 1);
-    assert_eq!(app.keep_due_reminders(created + 14 * 86_400 + 60).len(), 1);
+    assert!(
+        app.keep_due_reminders(created + 7 * 86_400 + 3600)
+            .is_empty(),
+        "not twice the same period"
+    );
+    // A check that comes late (the phone in Doze through the due day) still reminds.
+    assert_eq!(app.keep_due_reminders(created + 15 * 86_400 + 60).len(), 1);
+    assert!(app.keep_due_reminders(created + 16 * 86_400).is_empty());
     app.keep_disconnect().unwrap();
     assert!(!app.keep_active());
 }

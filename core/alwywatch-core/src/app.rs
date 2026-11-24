@@ -3068,21 +3068,45 @@ impl AlwyWatch {
         .await
     }
 
-    /// Until-watched keeps of mine whose reminder is due today (for local notifications).
+    /// Until-watched keeps of mine whose reminder is due (for local notifications): every
+    /// `reminder_days` after the vote, once per period. What was reminded is remembered here,
+    /// so a check that comes late (a phone in Doze, a computer started days later) still
+    /// reminds, and a second check the same period doesn't repeat it.
     pub fn keep_due_reminders(&self, now: i64) -> Vec<LeavingItem> {
         let Ok(Some(list)) = self.cached_leaving_soon() else {
             return vec![];
         };
+        let store = &self.core.store;
         list.into_iter()
             .filter(|i| {
-                i.my_vote.as_ref().is_some_and(|v| {
-                    v.kind == VoteKind::KeepUntilWatched
-                        && v.reminder_days.is_some_and(|d| {
-                            let period = i64::from(d.max(1)) * 86_400;
-                            let age = now - v.created_at;
-                            age >= period && age % period < 86_400
-                        })
-                })
+                let Some(v) = i.my_vote.as_ref() else {
+                    return false;
+                };
+                let Some(d) = v
+                    .reminder_days
+                    .filter(|_| v.kind == VoteKind::KeepUntilWatched)
+                else {
+                    return false;
+                };
+                let n = (now - v.created_at) / (i64::from(d.max(1)) * 86_400);
+                if n < 1 {
+                    return false;
+                }
+                // Per vote (a new vote starts over): "<created_at>:<period>".
+                let key = format!("keep.reminded.{}", i.key);
+                let last = store
+                    .setting(&key)
+                    .ok()
+                    .flatten()
+                    .and_then(|s| {
+                        let (at, p) = s.split_once(':')?;
+                        (at.parse::<i64>().ok()? == v.created_at).then(|| p.parse::<i64>().ok())?
+                    })
+                    .unwrap_or(0);
+                n > last
+                    && store
+                        .set_setting(&key, &format!("{}:{n}", v.created_at))
+                        .is_ok()
             })
             .collect()
     }
