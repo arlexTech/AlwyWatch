@@ -1987,6 +1987,14 @@ export component AppWindow inherits Window {
                             property <int> cols: max(1, floor((self.visible-width - 10px) / 176px));
                             content-height: ceil(root.grid.length / self.cols) * 312px + 20px;
                             init => { self.viewport-y = root.grid-y; }
+                            // Pages load on scrolling: when they don't fill the view (a large
+                            // screen), there is no scroll, so the next page is asked here.
+                            changed content-height => {
+                                if self.content-height <= self.visible-height + 312px { root.grid-scrolled(1.0); }
+                            }
+                            changed visible-height => {
+                                if self.content-height <= self.visible-height + 312px { root.grid-scrolled(1.0); }
+                            }
                             scrolled => {
                                 root.grid-y = self.viewport-y;
                                 root.grid-scrolled(-self.content-y / max(1px, self.content-height - self.visible-height));
