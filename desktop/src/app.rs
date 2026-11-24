@@ -382,7 +382,6 @@ impl App {
         app.refresh_seerr_settings();
         app.refresh_keep_settings();
         app.check_services();
-        app.show_reminders();
         app.start_download_runner();
         let first = if app.state.borrow().account.is_some() {
             Route::Home
@@ -390,6 +389,8 @@ impl App {
             Route::Add
         };
         app.navigate(first);
+        // After the first page: a page change clears the banner.
+        app.show_reminders();
         app.render_profiles();
         if gate {
             app.show_gate();
@@ -2113,6 +2114,9 @@ impl App {
     fn show(self: &Rc<Self>, route: Route) {
         let ui = self.ui();
         ui.set_error(SharedString::new());
+        // Its notes (a vote that failed, a reminder) are about the page left: one stayed on
+        // every page until the app closed.
+        ui.set_keep_message(SharedString::new());
         ui.set_can_go_back(self.state.borrow().stack.len() > 1);
         match route {
             Route::Home => {
