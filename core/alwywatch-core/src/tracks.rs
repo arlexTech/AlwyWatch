@@ -230,6 +230,14 @@ fn audio_like<'a>(tracks: &'a [TrackInfo], lang: &str) -> Vec<&'a TrackInfo> {
         .collect()
 }
 
+/// A remembered subtitle without a language: tracks that have none.
+const UNTAGGED: &str = "und";
+
+/// A remembered subtitle language as `lang3` gives it (None for an untagged track).
+fn remembered_lang(lang: &str) -> Option<&str> {
+    (lang != UNTAGGED).then_some(lang)
+}
+
 fn subs_like<'a>(tracks: &'a [TrackInfo], lang: Option<&str>, forced: bool) -> Vec<&'a TrackInfo> {
     of_kind(tracks, TrackKind::Subtitle)
         .filter(|t| lang3(t.language.clone()).as_deref() == lang && t.forced == forced)
@@ -291,10 +299,11 @@ pub fn choose_tracks(
     choice.subtitle = match (pref.subs.as_deref(), rules.subtitle_mode.as_str()) {
         (Some("off"), _) => None,
         (Some(lang), _) => {
-            let same = subs_like(&tracks, Some(lang), pref.forced);
+            let lang = remembered_lang(lang);
+            let same = subs_like(&tracks, lang, pref.forced);
             like_remembered(&same, pref.subs_title.as_deref(), pref.subs_nth)
                 .map(|t| t.id)
-                .or_else(|| pick(Some(lang), pref.forced))
+                .or_else(|| pick(lang, pref.forced))
         }
         (None, "off") => None,
         (None, "always") => pick(sub_lang.as_deref(), false),
@@ -324,7 +333,7 @@ pub fn remembered_track(pref: TrackPref, kind: TrackKind, tracks: Vec<TrackInfo>
         TrackKind::Subtitle => {
             let lang = pref.subs.as_deref().filter(|s| *s != "off")?;
             like_remembered(
-                &subs_like(&tracks, Some(lang), pref.forced),
+                &subs_like(&tracks, remembered_lang(lang), pref.forced),
                 pref.subs_title.as_deref(),
                 pref.subs_nth,
             )
@@ -365,7 +374,8 @@ pub fn pick_track(
         },
         TrackKind::Subtitle => TrackPref {
             subs_nth: nth(subs_like(&tracks, lang.as_deref(), t.forced)),
-            subs: Some(lang.unwrap_or_else(|| "off".into())),
+            // A track without a language is remembered as such, not as "off".
+            subs: Some(lang.unwrap_or_else(|| UNTAGGED.into())),
             forced: t.forced,
             subs_title: t.title.clone(),
             ..old
@@ -537,6 +547,26 @@ mod tests {
             subtitle_language: "fr".into(),
             default_audio: Some(0),
         }
+    }
+
+    #[test]
+    fn an_untagged_subtitle_picked_stays_on_for_the_next_episode() {
+        let untagged = |id| TrackInfo {
+            id,
+            kind: Subtitle,
+            language: None,
+            title: Some("Signs & Songs".into()),
+            forced: false,
+        };
+        let tracks = vec![t(0, Audio, "jpn", "", false), untagged(1)];
+        let pref = pick_track(None, Subtitle, tracks.clone(), Some(1));
+        assert_ne!(pref.subs.as_deref(), Some("off"));
+        let next = vec![t(0, Audio, "jpn", "", false), untagged(3)];
+        assert_eq!(
+            choose_tracks(Some(pref.clone()), rules(), next.clone()).subtitle,
+            Some(3)
+        );
+        assert_eq!(remembered_track(pref, Subtitle, next), Some(3));
     }
 
     #[test]
