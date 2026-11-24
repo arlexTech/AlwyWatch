@@ -294,6 +294,17 @@ class PlayerActivity : ComponentActivity() {
             startConversion(src, startMs, null)
         } else if (DeviceProfiles.canDirectPlay(src, profile) || src.transcode == null) {
             startPlayer(src.direct, src, transcoding = false, startMs)
+            // Some Matroska releases list their tracks after the picture: Media3 then waits
+            // for ever, with no error. Checked meanwhile (two small reads, remembered per
+            // file); such a file plays through the server's conversion.
+            if (src.transcode != null) {
+                lifecycleScope.launch {
+                    if (core.originalNeedsConversion(src) && itemId == id && source === src && !transcoding) {
+                        android.util.Log.i(TAG, "tracks after the picture: playing the conversion")
+                        startConversion(src, startMs, null)
+                    }
+                }
+            }
         } else {
             startConversion(src, startMs, null)
         }

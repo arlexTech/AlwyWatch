@@ -9,6 +9,7 @@
 uniffi::setup_scaffolding!();
 
 pub mod jellyfin;
+pub mod mkv;
 pub mod model;
 pub mod plex;
 pub mod quality;

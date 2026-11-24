@@ -1650,6 +1650,35 @@ impl AlwyWatch {
             .await
     }
 
+    /// True when this original is a Matroska file whose tracks come after its first cluster:
+    /// Android's player waits for ever on it (no error), so the app plays the server's
+    /// conversion instead. Two small range reads the first time, then remembered per file.
+    /// False when it can't tell (not Matroska, offline): play the original as usual.
+    pub async fn original_needs_conversion(&self, source: MediaSource) -> bool {
+        let mkv = |s: &str| {
+            let s = s.to_ascii_lowercase();
+            s.contains("mkv") || s.contains("matroska") || s.ends_with(".mkv")
+        };
+        let is_mkv = source.container.as_deref().is_some_and(mkv)
+            || source.file_name.as_deref().is_some_and(mkv);
+        if !is_mkv || !source.direct.url.starts_with("http") {
+            return false;
+        }
+        self.run(|c| async move {
+            let key = format!("mkv-layout/{}", source.id);
+            if let Some(v) = c.store.cache_get::<bool>(&key)? {
+                return Ok(v.value);
+            }
+            let found = media_api::mkv::tracks_after_clusters(&c.http, &source.direct).await;
+            if let Some(v) = found {
+                c.store.cache_put(&key, &v)?;
+            }
+            Ok(found.unwrap_or(false))
+        })
+        .await
+        .unwrap_or(false)
+    }
+
     /// Fire-and-forget warm-up of `playback_info` (focused item, next episode).
     pub fn prefetch_playback_info(
         &self,
