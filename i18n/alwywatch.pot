@@ -5604,6 +5604,10 @@ msgid "No invitation needed."
 msgstr ""
 
 #: web/src/account.rs
+msgid "This sign-in link wasn't started here: sign in again."
+msgstr ""
+
+#: web/src/account.rs
 msgid "This code was already used."
 msgstr ""
 

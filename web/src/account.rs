@@ -136,6 +136,25 @@ fn go(to: &str) {
     }
 }
 
+/// Set when this tab starts a Pocket ID sign-in: `/account/signed-in` only takes a session
+/// that comes back to a tab that asked for one.
+const POCKET_ID_STARTED: &str = "pocketid-started";
+/// The server's own limit on a Pocket ID round trip.
+const POCKET_ID_MS: f64 = 600_000.0;
+
+/// Starts a Pocket ID sign-in in this tab.
+fn start_pocket_id(to: &str) {
+    state::tab_save(POCKET_ID_STARTED, Some(&js_sys::Date::now()));
+    go(to);
+}
+
+/// Whether this tab started a Pocket ID sign-in a moment ago (forgotten once asked).
+fn pocket_id_was_started() -> bool {
+    let at: Option<f64> = state::tab_load(POCKET_ID_STARTED);
+    state::tab_save::<f64>(POCKET_ID_STARTED, None);
+    at.is_some_and(|at| (0.0..POCKET_ID_MS).contains(&(js_sys::Date::now() - at)))
+}
+
 /// Signing in to an AlwyWatch account: password, passkey, Pocket ID. On the sign-in page and
 /// on the Quick Connect page (`next` is where to go afterwards).
 #[component]
@@ -218,7 +237,7 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
                     let to = format!("/v1/account/oidc/start?next={}", pct(&next3));
                     view! {
                         {passkeys.then(|| view! { <button type="button" on:click=with_passkey.clone()>{tr!("Use a passkey")}</button> })}
-                        {pocket.then(|| view! { <button type="button" on:click=move |_| go(&to)>{tr!("Sign in with Pocket ID")}</button> })}
+                        {pocket.then(|| view! { <button type="button" on:click=move |_| start_pocket_id(&to)>{tr!("Sign in with Pocket ID")}</button> })}
                     }
                 }}
             </div>
@@ -410,7 +429,7 @@ fn JoinForm(invite: Option<(String, account::InviteInfo)>) -> impl IntoView {
                 let invite_needed = o.registration == "invite";
                 view! {
                     {pocket.then(|| view! {
-                        <p><button class="primary" on:click=move |_| go("/v1/account/oidc/start?next=/signin")>{tr!("Continue with Pocket ID")}</button>
+                        <p><button class="primary" on:click=move |_| start_pocket_id("/v1/account/oidc/start?next=/signin")>{tr!("Continue with Pocket ID")}</button>
                             " "<span class="muted small">{tr!("No invitation needed.")}</span></p>
                     })}
                     {closed.then(|| view! { <p class="muted">{tr!("This server doesn't accept new accounts without an invitation. Ask its owner for one, or sign in with your Jellyfin or Plex login.")}</p> })}
@@ -451,7 +470,19 @@ pub fn SignedInPage() -> impl IntoView {
             }
         }
     }
+    // A link made by someone else (with their own session in it) must not sign this browser in
+    // to their account: the next Jellyfin/Plex sign-in here would join it, and they would act
+    // as this person. Only a Pocket ID sign-in this tab started comes back here legitimately.
+    if !pocket_id_was_started() {
+        token.clear();
+    }
     spawn_local(async move {
+        if token.is_empty() {
+            error.set(Some(tr!(
+                "This sign-in link wasn't started here: sign in again."
+            )));
+            return;
+        }
         let k = KeepClient::account(c.http.clone(), &Ctx::origin(), &token);
         match k.account_me().await {
             Ok(a) => {

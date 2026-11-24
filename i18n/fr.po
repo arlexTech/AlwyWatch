@@ -5609,6 +5609,10 @@ msgid "No invitation needed."
 msgstr "Pas besoin d'invitation."
 
 #: web/src/account.rs
+msgid "This sign-in link wasn't started here: sign in again."
+msgstr "Cette connexion n'a pas été lancée ici : reconnectez-vous."
+
+#: web/src/account.rs
 msgid "This code was already used."
 msgstr "Ce code a déjà été utilisé."
 
