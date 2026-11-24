@@ -3305,7 +3305,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
-#: web/src/request.rs
+#: desktop/src/app.rs
 msgid "Requesting…"
 msgstr ""
 

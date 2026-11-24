@@ -124,6 +124,9 @@ struct State {
     search_results: Option<(String, Vec<Item>, bool)>,
     seerr_url: String,
     seerr_selected: Option<SeerrResult>,
+    /// A request is on its way: a second click would send it twice (Seerr refuses the
+    /// second, whose error then replaced "Requested").
+    seerr_requesting: bool,
     seerr_seasons: Vec<(SeerrSeason, bool)>,
     triage: Vec<LeavingItem>,
     /// A swipe card's page is open: Back shows the same card instead of reloading.
@@ -295,6 +298,7 @@ impl App {
             state: RefCell::new(State {
                 account,
                 stack: vec![],
+                seerr_requesting: false,
                 player_starting: false,
                 scroll: vec![],
                 grid: None,
@@ -1750,10 +1754,15 @@ impl App {
                 .set_seerr_message(sstr(tr!("Pick at least one season.")));
             return;
         }
+        if std::mem::replace(&mut self.state.borrow_mut().seerr_requesting, true) {
+            return;
+        }
+        self.ui().set_seerr_message(sstr(tr!("Requesting…")));
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             let res = core.seerr_request(r.media_type, r.tmdb_id, seasons).await;
             let Some(t) = this.upgrade() else { return };
+            t.state.borrow_mut().seerr_requesting = false;
             t.ui().set_seerr_message(sstr(match res {
                 Ok(_) => tr!("Requested: {title}", title = r.title),
                 Err(e) => tr!(
