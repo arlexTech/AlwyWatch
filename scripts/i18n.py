@@ -99,11 +99,13 @@ def collect():
                     plural = unescape(m.group(2), lang) if m.lastindex == 2 else None
                     if not msgid.strip():
                         continue
-                    line = text.count("\n", 0, m.start()) + 1
                     e = found.setdefault(msgid, {"plural": plural, "refs": []})
                     if plural and not e["plural"]:
                         e["plural"] = plural
-                    e["refs"].append(f"{rel}:{line}")
+                    # The file only, no line: moving code must not make the template stale
+                    # (CI checks it is up to date).
+                    if rel not in e["refs"]:
+                        e["refs"].append(rel)
     return found
 
 
