@@ -21,7 +21,7 @@ X-AlwyWatch-Server: <allow-listed server id>
 The server id must be in the allow-list (the media servers in Server settings, the same list
 `/v1/servers` returns). An [AlwyWatch account](#alwywatch-accounts) session is the other way
 in (`Bearer aws_…`, no `X-AlwyWatch-Server`), for the account itself, the profile, settings and
-Quick Connect only. Media-server results are cached 10
+Quick Connect only. Media-server results are cached 2
 minutes under a keyed hash of (server, token); tokens are never stored or logged. The user key is
 `jellyfin:<server>:<user id>` or `plex:<server>:<plex user id>`. Too many rejected tokens from
 one address (20 in 10 minutes) get 429 before the media server is asked.

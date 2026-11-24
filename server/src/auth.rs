@@ -15,7 +15,9 @@ use serde::Deserialize;
 
 use crate::config::ServerConf;
 
-const TTL: Duration = Duration::from_secs(600);
+/// How long a checked media token is trusted without asking its server again: a token revoked
+/// on Jellyfin/Plex (signed out, user disabled) stops working here within this time.
+const TTL: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Identity {
