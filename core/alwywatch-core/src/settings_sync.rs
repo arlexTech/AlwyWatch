@@ -188,8 +188,13 @@ impl Core {
                 Step::Pull => {
                     let (t, v) = remote_v.unwrap_or_default();
                     self.store.set_setting(&k, v)?;
+                    // Per-title choices are read when the player opens: screens needn't
+                    // reload for them (that rebuilt every screen, losing scroll and TV focus,
+                    // each time a title was watched on another device).
+                    if !k.starts_with("tracks.") && !k.starts_with("version.") {
+                        pulled += 1;
+                    }
                     meta.insert(k, t);
-                    pulled += 1;
                 }
                 Step::Push => {
                     let (t, v) = local.unwrap_or_default();
@@ -240,7 +245,8 @@ impl Core {
 #[uniffi::export]
 impl AlwyWatch {
     /// Takes the settings changed on other devices and shares this device's (via the Jellyfin
-    /// user). Call at start and when the app comes back; > 0: settings changed, reload them.
+    /// user). Call at start and when the app comes back; > 0: settings screens show changed,
+    /// reload them (per-title track and version choices are taken but not counted).
     pub async fn sync_settings(&self) -> Result<u32> {
         self.run(|c| async move { c.sync_settings().await }).await
     }

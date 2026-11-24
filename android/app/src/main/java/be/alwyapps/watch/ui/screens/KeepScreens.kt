@@ -562,8 +562,8 @@ fun TriageScreen() {
     val nav = be.alwyapps.watch.ui.LocalNavigator.current
     val account = be.alwyapps.watch.ui.LocalAccount.current
     // Back from a title's page: the same card, where it was.
-    val back = TriageMemory.saved
-    TriageMemory.saved = null
+    // Taken once (a recomposition must not read the slot again).
+    val back = remember { TriageMemory.saved.also { TriageMemory.saved = null } }
     var queue by remember { mutableStateOf(back?.first) }
     var error by remember { mutableStateOf<String?>(null) }
     var done by remember { mutableIntStateOf(back?.second ?: 0) }
@@ -642,6 +642,7 @@ fun TriageScreen() {
         }
         error?.let { Text(it, color = Danger) }
         when {
+            queue == null && error != null -> {}
             queue == null -> Text(tr("Loading…"), color = Muted)
             item == null -> Text(if (done > 0) tr("All done, thanks! {count} sorted.", "count" to done) else tr("Nothing to sort right now."), color = Muted)
             else -> {

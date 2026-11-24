@@ -106,6 +106,9 @@ class PlayerActivity : ComponentActivity() {
     private var original: MediaSource? = null
     private var chosenQuality: be.alwyapps.watch.core.media.Quality? = null
 
+    /** Network errors retried in a row (reset once playing again). */
+    private var networkRetries = 0
+
     /** The file that only plays converted though the server sees no need (tracks after the picture). */
     private var mustConvert: String? = null
     private val ui = PlayerUi()
@@ -625,6 +628,7 @@ class PlayerActivity : ComponentActivity() {
 
             override fun onPlaybackStateChanged(state: Int) {
                 ui.buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
+                if (state == Player.STATE_READY) networkRetries = 0
                 if (state == Player.STATE_ENDED) {
                     report(PlaybackEvent.STOP)
                     val next = nextEpisodeId
@@ -641,7 +645,6 @@ class PlayerActivity : ComponentActivity() {
 
             override fun onPlayerError(error: PlaybackException) {
                 val src = source ?: return
-                val fallback = src.transcode
                 val decoderProblem =
                     error.errorCode in
                         setOf(
@@ -650,15 +653,42 @@ class PlayerActivity : ComponentActivity() {
                             PlaybackException.ERROR_CODE_DECODING_FAILED,
                             PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
                             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+                            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+                            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+                            PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED,
                         )
-                if (!transcoding && fallback != null && decoderProblem) {
+                val networkProblem =
+                    error.errorCode in
+                        setOf(
+                            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                            PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+                            PlaybackException.ERROR_CODE_TIMEOUT,
+                        )
+                val p = player
+                if (!transcoding && src.streamed() && decoderProblem) {
                     // Direct play first; the server's conversion only when this device fails.
-                    val position = player?.currentPosition ?: 0L
+                    // Jellyfin offers none for a file it thinks plays here: asked for one then.
+                    val position = p?.currentPosition ?: 0L
                     val text = tr("This device can't decode this file: using the server's converted version")
                     Toast.makeText(this@PlayerActivity, text, Toast.LENGTH_LONG).show()
-                    lifecycleScope.launch { startConversion(src, position, null) }
+                    lifecycleScope.launch { startConversion(src, position, null, force = src.transcode == null) }
+                } else if (networkProblem && p != null && networkRetries < MAX_NETWORK_RETRIES) {
+                    // Wi-Fi dropped, the server restarted: try again where it stopped instead of
+                    // leaving a spinner that never ends.
+                    networkRetries++
+                    val position = p.currentPosition
+                    lifecycleScope.launch {
+                        delay(2000L * networkRetries)
+                        if (player !== p) return@launch
+                        p.seekTo(position)
+                        p.prepare()
+                    }
                 } else {
                     Toast.makeText(this@PlayerActivity, tr("Playback failed: {error}", "error" to error.errorCodeName), Toast.LENGTH_LONG).show()
+                    // Not a spinner for ever: the controls, to go back or try another version.
+                    ui.buffering = false
+                    ui.poke()
                 }
             }
 
@@ -1745,6 +1775,8 @@ class PlayerActivity : ComponentActivity() {
 
 /** A file streamed from a server (not a download): the server can convert it. */
 private fun MediaSource.streamed() = direct.url.startsWith("http")
+
+private const val MAX_NETWORK_RETRIES = 3
 
 /** How long a conversion waits for its subtitle before starting without it. */
 private const val SUBTITLE_WAIT_MS = 3000L

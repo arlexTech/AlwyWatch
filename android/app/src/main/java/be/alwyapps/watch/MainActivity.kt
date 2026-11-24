@@ -120,6 +120,14 @@ class MainActivity : ComponentActivity() {
         /** Away this long, the screens refresh on return. */
         private const val AWAY_MS = 30_000L
 
+        /** The launcher's intent: brings the running app forward instead of stacking a new screen. */
+        fun bringToFront(ctx: android.content.Context) =
+            android.content
+                .Intent(ctx, MainActivity::class.java)
+                .setAction(android.content.Intent.ACTION_MAIN)
+                .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+
         /** Brings the app to the front on a watch together room. */
         fun openRoom(
             ctx: android.content.Context,

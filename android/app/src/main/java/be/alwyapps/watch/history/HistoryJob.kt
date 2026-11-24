@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.compose.runtime.getValue
@@ -105,6 +104,9 @@ class HistoryWorker(
             runCatching { setForeground(info(tr("Copy watch history"), tr("Starting…"), 0, 0)) }
             val progress =
                 launch {
+                    // Posted again only when it changes: a repost every second made the
+                    // notification jump in the shade (and woke the screen on some phones).
+                    var last: Any? = null
                     while (true) {
                         val p = runCatching { core.historyCopyProgress() }.getOrNull()
                         if (p != null && p.running) {
@@ -116,7 +118,11 @@ class HistoryWorker(
                                 } else {
                                     tr("{step}…", "step" to p.step)
                                 }
-                            runCatching { setForeground(info(tr("Copy watch history"), text, done, total)) }
+                            val shown = Triple(text, done, total)
+                            if (shown != last) {
+                                last = shown
+                                runCatching { setForeground(info(tr("Copy watch history"), text, done, total)) }
+                            }
                         }
                         delay(1000)
                     }
@@ -167,7 +173,8 @@ class HistoryWorker(
         PendingIntent.getActivity(
             applicationContext,
             0,
-            Intent(applicationContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            // As the launcher does: the running app comes to the front (no second copy).
+            MainActivity.bringToFront(applicationContext),
             PendingIntent.FLAG_IMMUTABLE,
         )
 

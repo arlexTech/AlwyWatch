@@ -36,13 +36,19 @@ class DownloadWorker(
             runCatching { setForeground(foregroundInfo(tr("Starting downloads…"), 0, 0)) }
             val progress =
                 launch {
+                    // Posted again only when it changes (a repost every second made it jump).
+                    var last: Any? = null
                     while (true) {
                         val running = core.downloads().firstOrNull { it.state == DownloadState.RUNNING }
                         if (running != null) {
                             val total = running.total?.toLong() ?: 0L
                             val done = running.downloaded.toLong()
                             val pct = if (total > 0) (done * 100 / total).toInt() else 0
-                            runCatching { setForeground(foregroundInfo(running.title, pct, if (total > 0) 100 else 0)) }
+                            val shown = running.title to pct
+                            if (shown != last) {
+                                last = shown
+                                runCatching { setForeground(foregroundInfo(running.title, pct, if (total > 0) 100 else 0)) }
+                            }
                         }
                         delay(1000)
                     }
@@ -71,7 +77,16 @@ class DownloadWorker(
                 .Builder(applicationContext, CHANNEL)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle(title)
-                .setOngoing(true)
+                .setContentIntent(
+                    android.app.PendingIntent.getActivity(
+                        applicationContext,
+                        0,
+                        // As the launcher does: the running app comes to the front (no second copy).
+                        be.alwyapps.watch.MainActivity
+                            .bringToFront(applicationContext),
+                        android.app.PendingIntent.FLAG_IMMUTABLE,
+                    ),
+                ).setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setProgress(max, progress, max == 0)
                 .build()

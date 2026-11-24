@@ -49,6 +49,9 @@ class SyncWorker(
             runCatching { setForeground(info(tr("Syncing watch history…"), 0, 0)) }
             val progress =
                 launch {
+                    // Posted again only when it changes: a repost every second made the
+                    // notification jump in the shade (and woke the screen on some phones).
+                    var last: Any? = null
                     while (true) {
                         val p = runCatching { core.historyCopyProgress() }.getOrNull()
                         if (p != null && p.running) {
@@ -58,7 +61,11 @@ class SyncWorker(
                                 } else {
                                     tr("{step}…", "step" to p.step)
                                 }
-                            runCatching { setForeground(info(text, p.done.toInt(), p.total.toInt())) }
+                            val shown = Triple(text, p.done, p.total)
+                            if (shown != last) {
+                                last = shown
+                                runCatching { setForeground(info(text, p.done.toInt(), p.total.toInt())) }
+                            }
                         }
                         delay(1000)
                     }
