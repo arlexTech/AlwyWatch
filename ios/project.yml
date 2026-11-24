@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# XcodeGen spec of the iPhone/iPad app (scripts/ios.sh generates AlwyWatch.xcodeproj from it).
+# The Rust core is linked as a static library; Generated/ (bindings + library) comes from the
+# build script and is not committed.
+name: AlwyWatch
+options:
+  bundleIdPrefix: be.alwyapps
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  AlwyWatch:
+    type: application
+    platform: iOS
+    sources:
+      - path: AlwyWatch
+      - path: Generated/swift
+        group: Generated
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: be.alwyapps.watch
+        PRODUCT_NAME: AlwyWatch
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: AlwyWatch/Info.plist
+        SWIFT_INCLUDE_PATHS: $(SRCROOT)/Generated/include
+        HEADER_SEARCH_PATHS: $(SRCROOT)/Generated/include
+        LIBRARY_SEARCH_PATHS: $(SRCROOT)/Generated/lib
+        OTHER_LDFLAGS: -lalwywatch_core -lresolv
+        ENABLE_BITCODE: NO
+        # Unsigned: Impactor, SideStore or AltStore sign it with the user's Apple ID.
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: ""
+    dependencies:
+      - sdk: Security.framework
+      - sdk: SystemConfiguration.framework
+      - sdk: AVKit.framework
+      - sdk: AVFoundation.framework

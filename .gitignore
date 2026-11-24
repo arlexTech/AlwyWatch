@@ -34,3 +34,7 @@ web/dist/
 # Private notes (real hostnames)
 CLAUDE.local.md
 .claude/worktrees/
+
+# iOS: bindings and library from scripts/ios.sh, project from ios/project.yml (XcodeGen).
+/ios/Generated/
+/ios/AlwyWatch.xcodeproj/

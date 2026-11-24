@@ -1,0 +1,138 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import Foundation
+import SwiftUI
+import UIKit
+
+/// The Rust core (one per process) and the app-wide state the screens share. Like Android's
+/// `Services`: nothing here touches the network at startup; screens render from the core's
+/// cache, then refresh.
+@MainActor
+final class AppModel: ObservableObject {
+    let core: AlwyWatch
+    /// The account the screens show ("current_account" in the core settings, as on Android).
+    @Published var account: String?
+    @Published var accounts: [Account] = []
+
+    init() {
+        I18n.apply()
+        core = try! AlwyWatch(config: AppModel.config())
+        Self.activate(core)
+        reload()
+        Task.detached { [core] in
+            _ = try? await core.flushPendingProgress()
+            _ = try? await core.syncSettings()
+        }
+    }
+
+    func reload() {
+        accounts = (try? core.accounts()) ?? []
+        let saved = (try? core.getSetting(key: "current_account")) ?? nil
+        account = accounts.first { $0.id == saved }?.id ?? accounts.first?.id
+    }
+
+    func use(_ id: String) {
+        try? core.setSetting(key: "current_account", value: id)
+        reload()
+    }
+
+    var current: Account? { accounts.first { $0.id == account } }
+
+    /// After a sign-in: the tokens to the Keychain, the account opened, the AlwyWatch server
+    /// (leaving soon, Seerr) connected through it when the user started from one.
+    func finish(_ s: SignedIn, plexHomeToken: String? = nil) {
+        Keychain.put(s.account.id, s.token)
+        if let t = plexHomeToken { Keychain.put("\(s.account.id):plexhome", t) }
+        if let t = s.plexAccountToken { Keychain.put("\(s.account.id):plextv", t) }
+        if let t = plexHomeToken ?? s.plexAccountToken { core.setPlexAccountToken(accountId: s.account.id, token: t) }
+        use(s.account.id)
+        let keepToken = s.plexAccountToken ?? s.token
+        Task.detached { [core] in
+            _ = try? await core.keepOnboard(accountId: s.account.id, token: keepToken)
+            _ = try? await core.accountLinkMedia(accountId: s.account.id, token: keepToken)
+        }
+    }
+
+    func signOut(_ id: String) {
+        try? core.removeAccount(accountId: id)
+        for k in [id, "\(id):plextv", "\(id):plexhome"] { Keychain.remove(k) }
+        reload()
+    }
+
+    /// Attaches stored accounts and connections to their tokens (Keychain). At startup, and
+    /// after accounts arrive from another device.
+    nonisolated static func activate(_ core: AlwyWatch) {
+        let accounts = (try? core.accounts()) ?? []
+        for a in accounts {
+            if let t = Keychain.get(a.id) { try? core.activateAccount(accountId: a.id, token: t) }
+            if let t = Keychain.get("\(a.id):plexhome") ?? Keychain.get("\(a.id):plextv") {
+                core.setPlexAccountToken(accountId: a.id, token: t)
+            }
+        }
+        if let k = core.keepConnection() {
+            let plex = accounts.first { $0.id == k.accountId }?.kind == .plex
+            if let t = plex ? Keychain.get("\(k.accountId):plextv") : Keychain.get(k.accountId) {
+                try? core.keepActivate(token: t)
+            }
+        }
+        if core.account() != nil, let t = Keychain.get(accountTokenKey) { try? core.accountActivate(token: t) }
+        if let seerr = core.seerrConnection() {
+            if let bridge = seerr.bridgeAccount, let a = accounts.first(where: { $0.id == bridge }) {
+                if let t = a.kind == .plex ? Keychain.get("\(a.id):plextv") : Keychain.get(a.id) {
+                    try? core.seerrActivateBridge(token: t)
+                }
+            } else if let t = Keychain.get("seerr") {
+                try? core.seerrActivate(cookie: t)
+            }
+        }
+    }
+
+    private static func config() -> CoreConfig {
+        let fm = FileManager.default
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let downloads = support.appendingPathComponent("downloads")
+        for d in [support, caches, downloads] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
+        let defaults = UserDefaults.standard
+        let id = defaults.string(forKey: "device.id") ?? {
+            let new = UUID().uuidString
+            defaults.set(new, forKey: "device.id")
+            return new
+        }()
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        let pad = UIDevice.current.userInterfaceIdiom == .pad
+        return CoreConfig(
+            dataDir: support.path,
+            cacheDir: caches.path,
+            client: ClientInfo(
+                product: "AlwyWatch",
+                version: version,
+                deviceName: UIDevice.current.name,
+                deviceId: id,
+                platform: pad ? "iPadOS" : "iOS"
+            ),
+            imageCacheMb: 300,
+            downloadsDir: downloads.path,
+            profile: nil,
+            downloadsDb: nil
+        )
+    }
+}
+
+/// The AlwyWatch account token, in the Keychain like media tokens (Android's ACCOUNT_TOKEN).
+let accountTokenKey = "alwywatch_account"
+
+/// An error's sentence for the screen (the core's are already translated).
+func message(_ error: Error) -> String {
+    guard let e = error as? CoreError else { return error.localizedDescription }
+    switch e {
+    case let .Unauthorized(m), let .Forbidden(m), let .NotFound(m), let .Server(m), let .Network(m),
+         let .Pending(m), let .Invalid(m), let .NotSignedIn(m), let .Storage(m), let .Internal(m):
+        return m
+    }
+}
+
+/// True for "not approved yet" while polling a sign-in.
+func isPending(_ error: Error) -> Bool {
+    if case .Pending = error as? CoreError { return true }
+    return false
+}

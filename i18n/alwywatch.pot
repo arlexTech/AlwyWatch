@@ -512,6 +512,7 @@ msgid "{minutes} min"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: ios/AlwyWatch/Items.swift
 msgid "{time} left"
 msgstr ""
 
@@ -635,6 +636,7 @@ msgid "Sign in"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/I18n.kt
+#: ios/AlwyWatch/I18n.swift
 msgid "Leaves in {days} days"
 msgstr ""
 
@@ -847,6 +849,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Your Jellyfin and Plex, fast and beautiful."
 msgstr ""
 
@@ -868,6 +871,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Sign in with a code"
 msgstr ""
 
@@ -890,11 +894,13 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Quick Connect or password"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Sign in on plex.tv"
 msgstr ""
 
@@ -917,6 +923,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: web/src/account.rs
+#: ios/AlwyWatch/SignInView.swift
 msgid "Signing in…"
 msgstr ""
 
@@ -968,11 +975,13 @@ msgid "Jellyfin or Plex by its address"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Server address"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Your Jellyfin server's address, as you use it in a browser."
 msgstr ""
 
@@ -984,40 +993,49 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "QUICK CONNECT"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "In a Jellyfin app where you're signed in, open your profile → Quick Connect and enter this code."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Waiting for approval…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Or with your password"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Sign in on plex.tv in your browser, then come back here."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Open plex.tv"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Or, on any device"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "PLEX.TV/LINK"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Go to plex.tv/link and enter this code."
 msgstr ""
 
@@ -1029,18 +1047,22 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Choose a server"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "This Plex account has no servers."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Your server"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Shared with you"
 msgstr ""
 
@@ -1049,6 +1071,7 @@ msgid "Type the AlwyWatch address the person who runs your server gave you with 
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Type the AlwyWatch address the person who runs your server gave you."
 msgstr ""
 
@@ -1175,14 +1198,17 @@ msgid "From your AlwyWatch server"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Wrong PIN."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Which Plex user?"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Account owner"
 msgstr ""
 
@@ -1194,6 +1220,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "PIN for {name}"
 msgstr ""
 
@@ -1805,15 +1832,18 @@ msgid "Open the show"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: ios/AlwyWatch/DetailView.swift
 msgid "Resume {episode} from {time}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: web/src/browse.rs
+#: ios/AlwyWatch/DetailView.swift
 msgid "Resume from {time}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: ios/AlwyWatch/DetailView.swift
 msgid "Play {episode}"
 msgstr ""
 
@@ -2538,6 +2568,7 @@ msgid "New in {library}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
+#: ios/AlwyWatch/HomeView.swift
 msgid "Recently added in {library}"
 msgstr ""
 
@@ -3025,6 +3056,7 @@ msgid "A–Z"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt
+#: ios/AlwyWatch/LibraryView.swift
 msgid "Release date"
 msgstr ""
 
@@ -3286,6 +3318,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
 #: core/seerr/src/lib.rs
+#: ios/AlwyWatch/DetailView.swift
 msgid "Specials"
 msgstr ""
 
@@ -3758,6 +3791,7 @@ msgid "On the new phone, tablet or TV, choose “Sign in with a code”, then ty
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsView.swift
 msgid "Sign out of {server}?"
 msgstr ""
 
@@ -4136,6 +4170,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/signin.rs
+#: ios/AlwyWatch/SettingsView.swift
 msgid "Storage"
 msgstr ""
 
@@ -4145,6 +4180,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SettingsView.swift
 msgid "Image cache"
 msgstr ""
 
@@ -4437,24 +4473,29 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/SignInView.swift
 msgid "Nothing to copy: that device has no accounts."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "SIGN IN WITH A CODE"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Or on a device where you're signed in: Settings → This device → Sign in another device, and type this code."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Check number: {number}. It must match if the other device shows one."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Waiting for the other device…"
 msgstr ""
 
@@ -6537,6 +6578,7 @@ msgid "Couldn't load the episodes."
 msgstr ""
 
 #: web/src/browse.rs
+#: ios/AlwyWatch/SearchView.swift
 msgid "Nothing found."
 msgstr ""
 
@@ -8053,4 +8095,56 @@ msgstr ""
 
 #: server/src/invites.rs
 msgid "Not expecting this? You can ignore this email."
+msgstr ""
+
+#: ios/AlwyWatch/DetailView.swift
+msgid "Play from the start"
+msgstr ""
+
+#: ios/AlwyWatch/LibraryView.swift
+msgid "Sort"
+msgstr ""
+
+#: ios/AlwyWatch/LibraryView.swift
+msgid "Title"
+msgstr ""
+
+#: ios/AlwyWatch/LibraryView.swift
+msgid "Date added"
+msgstr ""
+
+#: ios/AlwyWatch/LibraryView.swift
+msgid "Rating"
+msgstr ""
+
+#: ios/AlwyWatch/LibraryView.swift
+msgid "Unwatched only"
+msgstr ""
+
+#: ios/AlwyWatch/PlayerView.swift
+msgid "Nothing to play."
+msgstr ""
+
+#: ios/AlwyWatch/PlayerView.swift
+msgid "This file can't be played on this device."
+msgstr ""
+
+#: ios/AlwyWatch/SearchView.swift
+msgid "Movies, shows, episodes"
+msgstr ""
+
+#: ios/AlwyWatch/SettingsView.swift
+msgid "System"
+msgstr ""
+
+#: ios/AlwyWatch/SettingsView.swift
+msgid "Clear the image cache"
+msgstr ""
+
+#: ios/AlwyWatch/SignInView.swift
+msgid "Approve on a device where you're signed in"
+msgstr ""
+
+#: ios/AlwyWatch/SignInView.swift
+msgid "AlwyWatch address"
 msgstr ""

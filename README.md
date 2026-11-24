@@ -6,7 +6,8 @@ A lightweight, open source media client for **Jellyfin** and **Plex**, with **Se
 and a **"keep"** system on top of **Maintainerr**: see what is about to be deleted from the
 server and ask to keep it for N days, until you have watched it, or forever.
 
-Platforms: Android phones and tablets, Android TV, Linux and Windows desktop, and a web app.
+Platforms: Android phones and tablets, Android TV, Linux and Windows desktop, a web app, and
+(early) iPhone and iPad.
 
 * **Without `alwywatch-server`**: a plain Jellyfin/Plex client with downloads, and Seerr
   requests if you give it your Seerr address.
@@ -27,6 +28,10 @@ Platforms: Android phones and tablets, Android TV, Linux and Windows desktop, an
   `scripts/package.sh linux` for an AppImage in `dist/`.
 * **Windows**: `scripts/package.sh windows` builds an installer in `dist/`.
 * **Web**: nothing to install; it is served by `alwywatch-server` at its address.
+* **iPhone, iPad** (early: sign-in, browsing, playback): CI publishes an unsigned
+  [`AlwyWatch-ios-unsigned.ipa`](https://github.com/arlexTech/alwywatch/releases/download/ios/AlwyWatch-ios-unsigned.ipa);
+  sign and install it with Impactor, SideStore or AltStore and a free Apple ID (re-sign every
+  7 days). On a Mac: `scripts/ios.sh`.
 
 First launch: "Sign in to AlwyWatch" with the address the person who runs your server gave
 you, "Create an AlwyWatch account" with an invitation, or "Jellyfin or Plex only". A TV or
@@ -73,8 +78,9 @@ tablets and TV a side rail, desktop a sidebar. Web limitations are listed in
 | `android/` | Android phone/tablet/TV app (Kotlin, Jetpack Compose, Media3), core through UniFFI |
 | `desktop/` | Linux and Windows app (Rust, Slint, libmpv) |
 | `web/` | Web app (Rust to wasm, Leptos), served by the server |
+| `ios/` | iPhone/iPad app (SwiftUI, AVPlayer), core through UniFFI, Xcode project from XcodeGen |
 | `server/` | `alwywatch-server`: keep votes, Seerr bridge, watch together, device transfer, web app |
-| `tools/uniffi-bindgen` | Kotlin bindings generator used by Gradle |
+| `tools/uniffi-bindgen` | Kotlin and Swift bindings generator (Gradle, `scripts/ios.sh`) |
 | `scripts/`, `packaging/` | CI, dev loop and packaging scripts |
 | `docs/` | Server setup, build, decisions, APIs, performance |
 
@@ -89,6 +95,7 @@ cargo run -p alwywatch-desktop          # desktop app
 desktop/packaging/install.sh            # per-user install after `cargo build --release -p alwywatch-desktop`
 scripts/package.sh linux|windows        # AppImage / Windows installer in dist/
 web/build.sh                            # web app into web/dist (wasm32 target + wasm-bindgen-cli)
+scripts/ios.sh                          # unsigned iPhone/iPad .ipa in dist/ (macOS, Xcode, xcodegen)
 docker build -f server/Dockerfile -t alwywatch-server .   # server image, web app included
 ```
 

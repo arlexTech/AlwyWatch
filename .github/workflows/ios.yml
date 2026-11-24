@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Unsigned iPhone/iPad build (no paid Apple account): an .ipa that Impactor, SideStore or
+# AltStore sign with a free Apple ID. macOS runners are free for public repositories.
+# Published on the public "ios" pre-release (artifacts need a GitHub sign-in to download).
+name: ios
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - "core/**"
+      - "i18n/**"
+      - "tools/**"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "scripts/ios.sh"
+      - ".github/workflows/ios.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal && rustup default stable && rustup target add aarch64-apple-ios
+      - run: brew install xcodegen
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ios-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Build
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! scripts/ios.sh 2>&1 | tee "$RUNNER_TEMP/ios.log"; then
+            # Logs need a GitHub sign-in to read; annotations are public: the errors go there.
+            grep -E "(error|fatal error|error\[E[0-9]+\]):" "$RUNNER_TEMP/ios.log" | sed 's/\x1b\[[0-9;]*m//g' | sort -u | head -40 \
+              | sed -E 's#^.*/ios/#ios/#' | cut -c1-400 | while IFS= read -r l; do echo "::error title=ios build::$l"; done
+            tail -n 25 "$RUNNER_TEMP/ios.log" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-300 \
+              | awk 'BEGIN{ORS="%0A"} {print}' | sed 's/^/::warning title=ios build tail::/'
+            echo
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AlwyWatch-ios-unsigned
+          path: dist/AlwyWatch-ios-unsigned.ipa
+      - name: Publish on the "ios" pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view ios >/dev/null 2>&1 || gh release create ios --prerelease --target "$GITHUB_SHA" \
+            --title "iPhone and iPad (unsigned, to sign with your Apple ID)" \
+            --notes "Unsigned build of the latest main: sign and install it with Impactor, SideStore or AltStore and a free Apple ID (it has to be re-signed every 7 days)."
+          gh release upload ios dist/AlwyWatch-ios-unsigned.ipa --clobber
+          echo "::notice title=iPhone build::https://github.com/${GITHUB_REPOSITORY}/releases/download/ios/AlwyWatch-ios-unsigned.ipa"

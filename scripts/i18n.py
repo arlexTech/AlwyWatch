@@ -30,6 +30,8 @@ SOURCES = [
     ("web/src", ".rs", "rust"),
     ("desktop/ui", ".slint", "slint"),
     ("server/src", ".rs", "rust"),
+    # Swift's tr("…", [...]) / trn("…", "…", n) read like Kotlin's.
+    ("ios/AlwyWatch", ".swift", "kotlin"),
 ]
 SKIP = {"core/i18n"}
 
