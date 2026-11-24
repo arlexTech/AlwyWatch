@@ -738,9 +738,11 @@ fn jellyfin_profile(p: &DeviceProfile) -> serde_json::Value {
     if !size.is_empty() {
         codec_profiles.push(json!({ "Type": "Video", "Conditions": size }));
     }
-    // Transcode to HEVC only when the device decodes HEVC at 10 bits too (HDR sources stay HDR);
-    // otherwise H.264 first.
-    let transcode_codecs = if p.video_10bit_codecs.iter().any(|c| c == "hevc") {
+    // Transcode to HEVC only when the device decodes HEVC at 10 bits too (HDR sources stay HDR)
+    // and plays MPEG-TS itself (Apple's players take HEVC only in fMP4, not in TS); otherwise
+    // H.264 first.
+    let ts = p.containers.iter().any(|c| c == "ts" || c == "mpegts");
+    let transcode_codecs = if ts && p.video_10bit_codecs.iter().any(|c| c == "hevc") {
         "hevc,h264"
     } else {
         "h264,hevc"
@@ -1611,5 +1613,26 @@ mod profile_tests {
         assert_eq!(cps[1]["Conditions"][0]["Property"], "VideoBitDepth");
         assert_eq!(cps[2]["Conditions"][0]["Value"], "1920");
         assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "h264,hevc");
+    }
+
+    #[test]
+    fn hevc_conversions_only_where_mpeg_ts_plays() {
+        let mut p = DeviceProfile {
+            max_bitrate: None,
+            containers: vec!["mp4".into(), "mov".into()],
+            video_codecs: vec!["h264".into(), "hevc".into()],
+            video_10bit_codecs: vec!["hevc".into()],
+            audio_codecs: vec!["aac".into()],
+            subtitle_codecs: vec![],
+            max_width: None,
+            max_height: None,
+            hdr: vec![],
+        };
+        // Apple's player: HEVC never in TS.
+        let j = jellyfin_profile(&p);
+        assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "h264,hevc");
+        p.containers.push("ts".into());
+        let j = jellyfin_profile(&p);
+        assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "hevc,h264");
     }
 }
