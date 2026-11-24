@@ -38,6 +38,7 @@ static NO_SELECTION: TrackSelection = TrackSelection {
     audio_index: None,
     subtitle: SubtitleSelection::Default,
     quality: None,
+    reencode: false,
 };
 
 /// The read and playback surface every supported server implements.

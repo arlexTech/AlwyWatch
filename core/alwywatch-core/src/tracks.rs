@@ -443,6 +443,7 @@ pub fn conversion_tracks(
             None => SubtitleSelection::Off,
         },
         quality: None,
+        reencode: false,
     }
 }
 

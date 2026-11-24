@@ -799,6 +799,9 @@ fn apply_selection(body: &mut serde_json::Value, selection: &TrackSelection) {
     if let Some(a) = selection.audio_index {
         body["AudioStreamIndex"] = json!(a);
     }
+    if selection.reencode {
+        body["AllowVideoStreamCopy"] = json!(false);
+    }
     match selection.subtitle {
         SubtitleSelection::Default => {}
         SubtitleSelection::Off => body["SubtitleStreamIndex"] = json!(-1),
@@ -1615,6 +1618,19 @@ mod profile_tests {
         assert_eq!(cps[1]["Conditions"][0]["Property"], "VideoBitDepth");
         assert_eq!(cps[2]["Conditions"][0]["Value"], "1920");
         assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "h264,hevc");
+    }
+
+    #[test]
+    fn reencode_forbids_the_stream_copy() {
+        let mut body = json!({});
+        apply_selection(&mut body, &TrackSelection::default());
+        assert!(body.get("AllowVideoStreamCopy").is_none());
+        let sel = TrackSelection {
+            reencode: true,
+            ..Default::default()
+        };
+        apply_selection(&mut body, &sel);
+        assert_eq!(body["AllowVideoStreamCopy"], false);
     }
 
     #[test]

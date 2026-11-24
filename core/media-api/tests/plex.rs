@@ -327,6 +327,7 @@ async fn chosen_tracks_are_selected_on_the_part_only_when_asked() {
                 audio_index: Some(3),
                 subtitle: SubtitleSelection::Stream { index: 5 },
                 quality: None,
+                reencode: false,
             },
         )
         .await
@@ -386,6 +387,7 @@ async fn chosen_tracks_are_selected_on_the_part_only_when_asked() {
         audio_index: Some(3),
         subtitle: SubtitleSelection::Off,
         quality: None,
+        reencode: false,
     };
     let info = c.playback_info_with("77", &profile, &other).await.unwrap();
     assert!(

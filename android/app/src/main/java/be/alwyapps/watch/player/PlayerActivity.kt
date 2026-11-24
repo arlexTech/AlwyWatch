@@ -340,7 +340,11 @@ class PlayerActivity : ComponentActivity() {
                     trackRules(PlayerSettings(core, services.isTv), null),
                     src,
                 )
-            ).copy(quality = chosenQuality ?: FULL_SIZE.takeIf { mustConvert == src.id })
+            ).copy(
+                quality = chosenQuality ?: FULL_SIZE.takeIf { mustConvert == src.id },
+                // The server can't cut a copy of this file where its playlist says.
+                reencode = mustConvert == src.id,
+            )
         // A subtitle to burn in that the server must first extract (Jellyfin reads the whole
         // file once: 30 s or more for a film, a black screen meanwhile): the picture starts
         // without it, the subtitle comes when ready.

@@ -329,6 +329,13 @@ record! {
         /// plays as is. None: the original when it plays, else the server's choice.
         #[serde(default)]
         pub quality: Option<Quality>,
+        /// The picture is re-encoded, never copied: a stream copy is cut into segments only
+        /// at the original's keyframes, which the server's playlist doesn't follow when it
+        /// can't read them from the file (a Matroska original with its tracks after the
+        /// picture), and the player then gets pieces that don't match the timeline.
+        #[serde(default)]
+        #[cfg_attr(feature = "uniffi", uniffi(default = false))]
+        pub reencode: bool,
     }
 }
 

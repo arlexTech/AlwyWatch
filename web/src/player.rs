@@ -805,6 +805,7 @@ fn PlayerView(
             quality: quality
                 .get_untracked()
                 .or(force.then_some(media_api::quality::FULL_SIZE)),
+            reencode: false,
         };
         let stop_old = restart.then(|| build_report(PlaybackEvent::Stop)).flatten();
         transcoding.set(true);

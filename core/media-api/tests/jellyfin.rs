@@ -426,6 +426,7 @@ async fn chosen_tracks_go_into_the_playback_info_request() {
                 audio_index: Some(2),
                 subtitle: SubtitleSelection::Stream { index: 4 },
                 quality: None,
+                reencode: false,
             },
         )
         .await
