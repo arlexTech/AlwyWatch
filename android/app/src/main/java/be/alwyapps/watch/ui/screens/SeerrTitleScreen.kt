@@ -340,6 +340,18 @@ fun SeerrPoster(
     Column(Modifier.width(d.posterWidth)) {
         FocusCard(onClick = onClick, modifier = cardModifier) {
             UrlImage(r.posterUrl, d.posterWidth, Modifier.fillMaxWidth().aspectRatio(2f / 3f))
+            // No poster on TMDB: the title in its place (the one below scrolls off on TV rows).
+            if (r.posterUrl == null) {
+                Text(
+                    r.title,
+                    Modifier.align(Alignment.Center).padding(12.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Muted,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             r.stateLabel()?.let {
                 Badge(
                     it,
