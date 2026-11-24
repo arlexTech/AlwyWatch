@@ -249,7 +249,10 @@ fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoV
                 None => k.unvote(&key).await,
             };
             match res {
-                Ok(updated) => on_voted.run(updated),
+                Ok(updated) => {
+                    // The page may have gone meanwhile.
+                    let _ = on_voted.try_run(updated);
+                }
                 Err(e) => {
                     error.try_set(Some(state::plain_keep(&e)));
                 }

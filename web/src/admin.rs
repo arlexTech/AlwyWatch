@@ -610,7 +610,7 @@ fn AddJellyfinForm(url: String, done: Callback<()>) -> impl IntoView {
             };
             match r {
                 Ok(a) => {
-                    done.run(());
+                    let _ = done.try_run(());
                     f.restarting(tr!(
                         "{name} is set. The server is starting again with it…",
                         name = a.name
@@ -704,7 +704,7 @@ fn AddPlexForm(done: Callback<()>) -> impl IntoView {
             };
             match r {
                 Ok(a) => {
-                    done.run(());
+                    let _ = done.try_run(());
                     f.restarting(tr!(
                         "{name} is set. The server is starting again with it…",
                         name = a.name
