@@ -2,7 +2,7 @@
 import SwiftUI
 
 /// Settings: the signed-in servers (switch, add, sign out), language, cache, about.
-struct SettingsView: View {
+struct SettingsScreen: View {
     @EnvironmentObject var model: AppModel
     @State private var language = I18n.choice
     @State private var cacheBytes: UInt64 = 0

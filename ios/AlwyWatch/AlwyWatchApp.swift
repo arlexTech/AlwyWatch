@@ -44,7 +44,7 @@ struct RootView: View {
                     NavigationStack { SearchView().withRoutes() }
                         .tabItem { Label(tr("Search"), systemImage: "magnifyingglass") }
                         .tag(1)
-                    NavigationStack { SettingsView().withRoutes() }
+                    NavigationStack { SettingsScreen().withRoutes() }
                         .tabItem { Label(tr("Settings"), systemImage: "gearshape") }
                         .tag(2)
                 }
