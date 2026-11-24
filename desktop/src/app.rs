@@ -97,6 +97,8 @@ struct GridState {
 struct State {
     account: Option<String>,
     stack: Vec<Route>,
+    /// Scroll positions (home, grid, title page) of the pages under the top of `stack`.
+    scroll: Vec<(f32, f32, f32)>,
     grid: Option<GridState>,
     grid_model: Rc<VecModel<Card>>,
     episodes_model: Rc<VecModel<Card>>,
@@ -117,6 +119,9 @@ struct State {
     series: Option<String>,
     season: Option<String>,
     search_gen: u64,
+    /// The last search's results (text, titles, server badges): Back from a result shows
+    /// them again instead of an empty page under the same text.
+    search_results: Option<(String, Vec<Item>, bool)>,
     seerr_url: String,
     seerr_selected: Option<SeerrResult>,
     seerr_seasons: Vec<(SeerrSeason, bool)>,
@@ -144,6 +149,8 @@ struct State {
     /// What the player plays (account, item) and its link for watch together (every player
     /// has one, so a room can start from it without reloading).
     player_item: Option<(String, String)>,
+    /// A title is being started (asking the server): another Play press waits for it.
+    player_starting: bool,
     /// The size picked in the player's quality menu (None: the original file), kept for
     /// the next titles, and the menu's choices for the title playing.
     quality: Option<Quality>,
@@ -191,6 +198,17 @@ pub struct App {
     images: RefCell<HashMap<String, Image>>,
     /// Custom avatars by (user, version); None while loading or after a failure.
     faces: RefCell<HashMap<(String, u32), Option<Image>>>,
+}
+
+/// Clears `State::player_starting` when a start ends, however it ends.
+struct Starting(std::rc::Weak<App>);
+
+impl Drop for Starting {
+    fn drop(&mut self) {
+        if let Some(t) = self.0.upgrade() {
+            t.state.borrow_mut().player_starting = false;
+        }
+    }
 }
 
 fn sstr(s: impl AsRef<str>) -> SharedString {
@@ -277,6 +295,8 @@ impl App {
             state: RefCell::new(State {
                 account,
                 stack: vec![],
+                player_starting: false,
+                scroll: vec![],
                 grid: None,
                 grid_model: Rc::new(VecModel::default()),
                 episodes_model: Rc::new(VecModel::default()),
@@ -292,6 +312,7 @@ impl App {
                 series: None,
                 season: None,
                 search_gen: 0,
+                search_results: None,
                 seerr_url: String::new(),
                 seerr_selected: None,
                 seerr_seasons: vec![],
@@ -2014,10 +2035,21 @@ impl App {
     // ----- navigation -----------------------------------------------------------------------
 
     fn navigate(self: &Rc<Self>, route: Route) {
+        let ui = self.ui();
         {
             let mut st = self.state.borrow_mut();
             if st.stack.last() != Some(&route) {
+                // Where the page left was scrolled to, for Back; the new one starts at the top.
+                if !st.stack.is_empty() {
+                    let at = (ui.get_home_y(), ui.get_grid_y(), ui.get_detail_y());
+                    let depth = st.stack.len() - 1;
+                    st.scroll.truncate(depth);
+                    st.scroll.push(at);
+                }
                 st.stack.push(route.clone());
+                ui.set_home_y(0.0);
+                ui.set_grid_y(0.0);
+                ui.set_detail_y(0.0);
             }
         }
         self.show(route);
@@ -2030,6 +2062,13 @@ impl App {
                 return;
             }
             st.stack.pop();
+            let depth = st.stack.len() - 1;
+            let (home, grid, detail) = st.scroll.get(depth).copied().unwrap_or_default();
+            st.scroll.truncate(depth);
+            let ui = self.ui();
+            ui.set_home_y(home);
+            ui.set_grid_y(grid);
+            ui.set_detail_y(detail);
             st.stack.last().cloned()
         };
         if let Some(r) = route {
@@ -2038,7 +2077,11 @@ impl App {
     }
 
     fn reset(self: &Rc<Self>, route: Route) {
-        self.state.borrow_mut().stack.clear();
+        {
+            let mut st = self.state.borrow_mut();
+            st.stack.clear();
+            st.scroll.clear();
+        }
         self.navigate(route);
     }
 
@@ -2080,7 +2123,17 @@ impl App {
             }
             Route::Search => {
                 ui.set_page(Page::Search);
-                self.state.borrow().grid_model.set_vec(vec![]);
+                let model = self.state.borrow().grid_model.clone();
+                model.set_vec(vec![]);
+                let text = ui.get_search_text().to_string();
+                let kept = self.state.borrow().search_results.clone();
+                match kept {
+                    Some((t, items, badges)) if t == text => {
+                        self.fill(&model, &items, ImageKind::Primary, POSTER_PX, 0, badges);
+                    }
+                    _ if !text.is_empty() => self.search(text),
+                    _ => {}
+                }
             }
             Route::MyList => {
                 ui.set_page(Page::Mylist);
@@ -3331,6 +3384,16 @@ impl App {
         start: Option<u64>,
         together: TogetherPlay,
     ) {
+        // One player at a time: a second press while the first starts (the server answers in
+        // a second or two; a double tap) would open two, both playing.
+        {
+            let mut st = self.state.borrow_mut();
+            if st.player_starting || st.player_item.is_some() {
+                return;
+            }
+            st.player_starting = true;
+        }
+        let starting = Starting(Rc::downgrade(self));
         let item = self.state.borrow().items.get(&id).cloned();
         let start_ms =
             start.unwrap_or_else(|| item.as_ref().map(|i| i.user.position_ms).unwrap_or(0));
@@ -3366,6 +3429,7 @@ impl App {
             .filter(|_| together == TogetherPlay::Alone);
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
+            let _starting = starting;
             // Downloaded: play the local original (works offline, progress is queued).
             let info = if let Some(path) = local {
                 PlaybackInfo {
@@ -3404,6 +3468,9 @@ impl App {
                 }
             };
             let Some(src) = info.sources.into_iter().next() else {
+                if let Some(t) = this.upgrade() {
+                    t.ui().set_error(sstr(tr!("Nothing to play")));
+                }
                 return;
             };
             // The quality menu (a server file that can be converted, watching alone), and the
@@ -4111,7 +4178,9 @@ impl App {
             st.search_gen
         };
         if text.chars().count() < 2 {
-            self.state.borrow().grid_model.set_vec(vec![]);
+            let mut st = self.state.borrow_mut();
+            st.search_results = None;
+            st.grid_model.set_vec(vec![]);
             return;
         }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
@@ -4152,6 +4221,7 @@ impl App {
             let model = this.state.borrow().grid_model.clone();
             model.set_vec(vec![]);
             this.fill(&model, &items, ImageKind::Primary, POSTER_PX, 0, badges);
+            this.state.borrow_mut().search_results = Some((text, items, badges));
         })
         .ok();
     }

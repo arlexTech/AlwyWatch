@@ -137,6 +137,7 @@ msgid "You left watch together"
 msgstr "Vous avez quitté Regarder ensemble"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerActivity.kt
+#: desktop/src/app.rs
 msgid "Nothing to play"
 msgstr "Rien à lire"
 

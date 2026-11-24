@@ -1416,6 +1416,11 @@ export component AppWindow inherits Window {
     in property <bool> together-play: true;
     in property <bool> together-seek: true;
     in-out property <string> search-text;
+    // Scroll positions of the home, the grids and the title page: kept per page of the back
+    // stack by the app (pages are rebuilt when shown, which would start them at the top).
+    in-out property <length> home-y;
+    in-out property <length> grid-y;
+    in-out property <length> detail-y;
     in property <[DownloadRow]> downloads;
     // Seerr
     in property <bool> seerr-active;
@@ -1784,8 +1789,17 @@ export component AppWindow inherits Window {
     // The poster grid page's title when it isn't My list ("Continue watching").
     in property <string> list-title: @tr("My list");
 
+    // A page opened with the mouse or a touch removes the focused card or button with the page
+    // it was on: nothing had focus then, so Escape, Backspace and the arrows did nothing until a
+    // click or Tab. Pages that focus something themselves (search box, room, swipe cards) keep it.
+    changed page => {
+        if root.page != Page.search && root.page != Page.room && root.page != Page.triage {
+            page-keys.focus();
+        }
+    }
+
     // Arrow keys and Escape not consumed by a focused element end up here.
-    FocusScope {
+    page-keys := FocusScope {
         visible: !root.profile-gate && !root.player-on;
         key-pressed(e) => {
             if (e.text == Key.Escape && root.profile-dialog != "") { root.profile-cancel(); return accept; }
@@ -1871,6 +1885,8 @@ export component AppWindow inherits Window {
 
                     // Home: the rails (no artwork banner: like the phone, the page is for browsing).
                     if root.page == Page.home : ScrollView {
+                        init => { self.viewport-y = root.home-y; }
+                        scrolled => { root.home-y = self.viewport-y; }
                         VerticalLayout {
                             spacing: 18px;
                             VerticalLayout {
@@ -1970,7 +1986,9 @@ export component AppWindow inherits Window {
                         if root.page == Page.search || root.page == Page.mylist || root.library-tab == "browse" || root.library-tab == "collections" || root.library-tab == "" : grid := ScrollView {
                             property <int> cols: max(1, floor((self.visible-width - 10px) / 176px));
                             content-height: ceil(root.grid.length / self.cols) * 312px + 20px;
+                            init => { self.viewport-y = root.grid-y; }
                             scrolled => {
+                                root.grid-y = self.viewport-y;
                                 root.grid-scrolled(-self.content-y / max(1px, self.content-height - self.visible-height));
                             }
                             for c[i] in root.grid : PosterCard {
@@ -1984,6 +2002,8 @@ export component AppWindow inherits Window {
                     }
 
                     if root.page == Page.detail : ScrollView {
+                        init => { self.viewport-y = root.detail-y; }
+                        scrolled => { root.detail-y = self.viewport-y; }
                         VerticalLayout {
                             spacing: 18px;
                             Rectangle {

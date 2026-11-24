@@ -132,6 +132,7 @@ msgid "You left watch together"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerActivity.kt
+#: desktop/src/app.rs
 msgid "Nothing to play"
 msgstr ""
 
