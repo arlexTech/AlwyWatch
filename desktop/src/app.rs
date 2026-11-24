@@ -3423,7 +3423,13 @@ impl App {
             st.player_starting = true;
         }
         let starting = Starting(Rc::downgrade(self));
-        let item = self.state.borrow().items.get(&id).cloned();
+        let item = self.state.borrow().items.get(&id).cloned().or_else(|| {
+            self.core
+                .cached_item(account.clone(), id.clone())
+                .ok()
+                .flatten()
+                .map(|r| r.item)
+        });
         let start_ms =
             start.unwrap_or_else(|| item.as_ref().map(|i| i.user.position_ms).unwrap_or(0));
         let title = item.as_ref().map(|i| i.title.clone()).unwrap_or_default();
@@ -3563,6 +3569,16 @@ impl App {
                 .adjacent_episodes(account.clone(), id.clone())
                 .await
                 .ok();
+            // Known by id for when they play (Next, the end of this one): their title on top
+            // of the player and where the viewer left them.
+            if let (Some(a), Some(t)) = (&adjacent, this.upgrade()) {
+                let around: Vec<Item> = a.previous.iter().chain(&a.next).cloned().collect();
+                t.own(&around, &account);
+                let mut st = t.state.borrow_mut();
+                for i in around {
+                    st.items.entry(i.id.clone()).or_insert(i);
+                }
+            }
             let segments = core.segments(account.clone(), id.clone()).await;
             let next = adjacent
                 .as_ref()
