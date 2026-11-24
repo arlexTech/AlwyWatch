@@ -738,14 +738,16 @@ fn jellyfin_profile(p: &DeviceProfile) -> serde_json::Value {
     if !size.is_empty() {
         codec_profiles.push(json!({ "Type": "Video", "Conditions": size }));
     }
-    // Transcode to HEVC only when the device decodes HEVC at 10 bits too (HDR sources stay HDR)
-    // and plays MPEG-TS itself (Apple's players take HEVC only in fMP4, not in TS); otherwise
-    // H.264 first.
-    let ts = p.containers.iter().any(|c| c == "ts" || c == "mpegts");
-    let transcode_codecs = if ts && p.video_10bit_codecs.iter().any(|c| c == "hevc") {
-        "hevc,h264"
+    // Transcode to HEVC only when the device decodes HEVC at 10 bits too (HDR sources stay HDR),
+    // otherwise H.264 first. HEVC goes in fMP4 segments, never MPEG-TS: Apple's players refuse
+    // it there, and Media3 reads a copied 10-bit HEVC stream in TS with broken frames (a
+    // Matroska original converted for its track layout flickered with artefacts on a
+    // Chromecast). H.264 stays in TS, which every player reads.
+    let hevc = p.video_10bit_codecs.iter().any(|c| c == "hevc");
+    let (transcode_codecs, segments) = if hevc {
+        ("hevc,h264", "mp4")
     } else {
-        "h264,hevc"
+        ("h264,hevc", "ts")
     };
     let subs: Vec<_> = p
         .subtitle_codecs
@@ -773,7 +775,7 @@ fn jellyfin_profile(p: &DeviceProfile) -> serde_json::Value {
         }],
         "TranscodingProfiles": [{
             "Type": "Video",
-            "Container": "ts",
+            "Container": segments,
             "Protocol": "hls",
             "Context": "Streaming",
             "VideoCodec": transcode_codecs,
@@ -1616,23 +1618,26 @@ mod profile_tests {
     }
 
     #[test]
-    fn hevc_conversions_only_where_mpeg_ts_plays() {
+    fn hevc_conversions_in_fmp4() {
         let mut p = DeviceProfile {
             max_bitrate: None,
-            containers: vec!["mp4".into(), "mov".into()],
+            containers: vec!["mp4".into(), "ts".into()],
             video_codecs: vec!["h264".into(), "hevc".into()],
-            video_10bit_codecs: vec!["hevc".into()],
+            video_10bit_codecs: vec![],
             audio_codecs: vec!["aac".into()],
             subtitle_codecs: vec![],
             max_width: None,
             max_height: None,
             hdr: vec![],
         };
-        // Apple's player: HEVC never in TS.
+        // No 10-bit HEVC: H.264 first, in MPEG-TS.
         let j = jellyfin_profile(&p);
         assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "h264,hevc");
-        p.containers.push("ts".into());
+        assert_eq!(j["TranscodingProfiles"][0]["Container"], "ts");
+        // HEVC first, in fMP4 segments (never TS).
+        p.video_10bit_codecs.push("hevc".into());
         let j = jellyfin_profile(&p);
         assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "hevc,h264");
+        assert_eq!(j["TranscodingProfiles"][0]["Container"], "mp4");
     }
 }
