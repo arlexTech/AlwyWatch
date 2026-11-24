@@ -102,6 +102,11 @@ impl Auth {
             #[serde(default)]
             is_administrator: bool,
         }
+        // The token goes inside a quoted field of Jellyfin's header: a quote in it would add
+        // fields of the caller's choosing (Jellyfin tokens are plain hex).
+        if token.contains(['"', '\\']) || token.chars().any(char::is_control) {
+            return Err(AuthError::Denied);
+        }
         let req = self
             .http
             .get(format!("{}/Users/Me", server.internal()))
@@ -183,5 +188,26 @@ fn map(e: net::Error) -> AuthError {
         AuthError::Unavailable
     } else {
         AuthError::Denied
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_jellyfin_token_cannot_add_header_fields() {
+        let server = ServerConf {
+            id: "s1".into(),
+            kind: ServerType::Jellyfin,
+            name: "HomeJelly".into(),
+            // Nothing listens there: a token that got through would fail as unreachable.
+            public_url: "http://127.0.0.1:9".into(),
+            internal_url: None,
+        };
+        let auth = Auth::new(net::api_client("test").unwrap(), "http://127.0.0.1:9");
+        for t in ["abc\", UserId=\"x", "abc\\", "abc\r\nX: y"] {
+            assert_eq!(auth.identify(&server, t).await, Err(AuthError::Denied));
+        }
     }
 }
