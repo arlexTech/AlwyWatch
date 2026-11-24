@@ -490,7 +490,23 @@ impl App {
                 }
             })
             .collect();
-        self.ui().set_downloads(ModelRc::new(VecModel::from(rows)));
+        // Refreshed every second while shown: rows change in place, so the buttons under the
+        // pointer stay (a new list each time rebuilt them, losing clicks mid-press).
+        let ui = self.ui();
+        let model = ui.get_downloads();
+        if let Some(vm) = model.as_any().downcast_ref::<VecModel<DownloadRow>>() {
+            if vm.row_count() == rows.len() {
+                for (i, r) in rows.into_iter().enumerate() {
+                    if vm.row_data(i).as_ref() != Some(&r) {
+                        vm.set_row_data(i, r);
+                    }
+                }
+            } else {
+                vm.set_vec(rows);
+            }
+            return;
+        }
+        ui.set_downloads(ModelRc::new(VecModel::from(rows)));
     }
 
     fn download(self: &Rc<Self>, id: String) {
