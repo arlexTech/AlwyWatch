@@ -1798,6 +1798,13 @@ export component AppWindow inherits Window {
         }
     }
 
+    // The same when the player closes (its keys went with it).
+    changed player-on => {
+        if !root.player-on && root.page != Page.search {
+            page-keys.focus();
+        }
+    }
+
     // Arrow keys and Escape not consumed by a focused element end up here.
     page-keys := FocusScope {
         visible: !root.profile-gate && !root.player-on;
