@@ -691,7 +691,16 @@ impl Downloads {
         self.set_state(id, DownloadState::Running, None, &[])?;
         let mut failures = 0u32;
         let result = loop {
-            match self.attempt(id, &flag).await {
+            let before = self.row(id)?.offset;
+            let outcome = self.attempt(id, &flag).await;
+            // Counted while nothing moves: a long download on a shaky network that keeps
+            // advancing between drops must not give up after a dozen of them.
+            if matches!(outcome, Err(Error::Transient(_)))
+                && self.row(id).map(|r| r.offset > before).unwrap_or(false)
+            {
+                failures = 0;
+            }
+            match outcome {
                 Ok(()) => break Ok(DownloadState::Completed),
                 Err(Error::Paused) => break Ok(DownloadState::Paused),
                 Err(Error::NoSpace) => {
@@ -799,10 +808,16 @@ impl Downloads {
             }
             StatusCode::OK => {
                 if offset > 0 {
-                    // If-Range mismatch (file changed on the server) or no range support.
+                    // If-Range mismatch (file changed on the server) or no range support: a
+                    // new whole file, whose size and validator replace the old ones even when
+                    // missing (an old validator would make every resume restart from zero, an
+                    // old size would never be reached).
                     offset = 0;
                     let _ = std::fs::remove_file(&part);
-                    self.save_progress(id, 0, None, None)?;
+                    lock(&self.db).execute(
+                        "UPDATE downloads SET offset = 0, total = ?2, validator = ?3 WHERE id = ?1",
+                        params![id, res.content_length().map(|t| t as i64), validator],
+                    )?;
                 }
                 res.content_length()
             }

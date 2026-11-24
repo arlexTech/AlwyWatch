@@ -595,3 +595,88 @@ async fn shared_downloads_stay_until_no_profile_wants_them() {
     assert!(!Path::new(&file).exists());
     assert!(m.list().unwrap().is_empty());
 }
+
+/// Drops the connection after `cut` bytes of every response (resuming properly), so a download
+/// advances a little at each try.
+async fn dripping_server(data: Vec<u8>, cut: usize) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let len = sock.read(&mut buf).await.unwrap();
+            let req = String::from_utf8_lossy(&buf[..len]).to_string();
+            let start = req
+                .lines()
+                .find_map(|l| {
+                    l.to_ascii_lowercase()
+                        .strip_prefix("range: bytes=")
+                        .map(|r| r.trim_end_matches('-').parse::<usize>().unwrap())
+                })
+                .unwrap_or(0);
+            let (status, range) = if start == 0 {
+                ("200 OK", String::new())
+            } else {
+                (
+                    "206 Partial Content",
+                    format!(
+                        "Content-Range: bytes {start}-{}/{}\r\n",
+                        data.len() - 1,
+                        data.len()
+                    ),
+                )
+            };
+            let head = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{range}ETag: \"e\"\r\nConnection: close\r\n\r\n",
+                data.len() - start
+            );
+            sock.write_all(head.as_bytes()).await.unwrap();
+            let end = (start + cut).min(data.len());
+            sock.write_all(&data[start..end]).await.unwrap();
+            sock.flush().await.unwrap();
+        }
+    });
+    format!("http://{addr}/file")
+}
+
+#[tokio::test]
+async fn drops_with_progress_in_between_do_not_use_up_the_retries() {
+    // 10 drops, each after some progress: more than the 5 failed attempts allowed in a row.
+    let data = body(100_000);
+    let url = dripping_server(data.clone(), 10_000).await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), file_sink());
+    let id = m.enqueue(request(url, None)).unwrap();
+    assert_eq!(m.run(id).await.unwrap(), DownloadState::Completed);
+    assert_eq!(read_file(&m, id), data);
+}
+
+#[tokio::test]
+async fn a_changed_file_without_validator_forgets_the_old_one() {
+    let s = MockServer::start().await;
+    let new_data = body(30_000);
+    // The new version comes without ETag or Last-Modified.
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(new_data.clone()))
+        .mount(&s)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let m = manager(dir.path(), file_sink());
+    let id = m.enqueue(request(format!("{}/f", s.uri()), None)).unwrap();
+    let final_path = PathBuf::from(m.get(id).unwrap().file_path);
+    std::fs::create_dir_all(final_path.parent().unwrap()).unwrap();
+    std::fs::write(part_path(&final_path), vec![0xAA; 50_000]).unwrap();
+    seed_progress(dir.path(), id, 50_000, "\"old\"");
+    let db = rusqlite::Connection::open(dir.path().join("dl.sqlite")).unwrap();
+    db.execute("UPDATE downloads SET total = 90000 WHERE id = ?1", [id])
+        .unwrap();
+    assert_eq!(m.run(id).await.unwrap(), DownloadState::Completed);
+    assert_eq!(read_file(&m, id), new_data);
+    let validator: Option<String> = db
+        .query_row("SELECT validator FROM downloads WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(validator, None, "the old version's validator is gone");
+}
