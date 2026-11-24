@@ -620,7 +620,7 @@ fn PlayerView(
     // when the browser plays it), and a switch in progress (resumes where it was).
     let original = RwSignal::new(None::<PlaybackInfo>);
     let quality = RwSignal::new(None::<Quality>);
-    let switching = StoredValue::new(false);
+    let quality_switch = StoredValue::new(false);
     // ←/→ and double taps on the picture: −10 s / +30 s, added up in a bubble on that side.
     let bubble = RwSignal::new(None::<SeekBubble>);
     let bubble_shape = Memo::new(move |_| bubble.with(|b| b.map(|b| (b.forward, b.seconds, b.n))));
@@ -793,11 +793,16 @@ fn PlayerView(
         else {
             return;
         };
+        // Jellyfin lists no conversion for a file it thinks plays as is (the browser disagreed,
+        // or failed on it): one is asked for at full size (the server copies what it can).
+        let force = fallback.1.is_none();
         let sel = TrackSelection {
             source_id: Some(fallback.0),
             audio_index: None,
             subtitle: server_subtitle(&l, pick),
-            quality: quality.get_untracked(),
+            quality: quality
+                .get_untracked()
+                .or(force.then_some(media_api::quality::FULL_SIZE)),
         };
         let stop_old = restart.then(|| build_report(PlaybackEvent::Stop)).flatten();
         transcoding.set(true);
@@ -879,7 +884,7 @@ fn PlayerView(
             }
             destroy_hls(hls);
             transcoding.set(false);
-            switching.set_value(true);
+            quality_switch.set_value(true);
             burned.set_value(SubtitleSelection::Default);
             loaded.update(|x| {
                 if let Some(Ok(x)) = x {
@@ -922,14 +927,12 @@ fn PlayerView(
                 sub_pick.set(i);
                 spawn_local(async move { show_subtitle(&l, &v, i, sub_pick).await });
             }
-        } else if src.transcode.is_some() {
+        } else {
             // Converted: the server must know the subtitles before it starts (it would add
             // its own pick otherwise).
             let pick = start_subtitle(&l, &prefs, true).unwrap_or(-1);
             sub_pick.set(pick);
             convert(v, pick, false);
-        } else {
-            cant_play();
         }
     });
 
@@ -939,7 +942,7 @@ fn PlayerView(
         if !alive() {
             return;
         }
-        let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else {
+        let (Some(Ok(_)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else {
             return;
         };
         // An emptied source (leaving) is no failure.
@@ -947,14 +950,6 @@ fn PlayerView(
             return;
         }
         if transcoding.get_untracked() {
-            return cant_play();
-        }
-        if l.info
-            .sources
-            .first()
-            .and_then(|s| s.transcode.as_ref())
-            .is_none()
-        {
             return cant_play();
         }
         convert(v, sub_pick.get_untracked(), false);
@@ -1001,7 +996,9 @@ fn PlayerView(
         };
         let first = !started.get_value();
         started.set_value(true);
-        let switched = switching.try_update_value(std::mem::take).unwrap_or(false);
+        let switched = quality_switch
+            .try_update_value(std::mem::take)
+            .unwrap_or(false);
         let at = if (transcoding.get_untracked() || switched) && pos.get_untracked() > 0 {
             pos.get_untracked()
         } else {

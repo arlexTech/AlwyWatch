@@ -15,6 +15,13 @@ pub struct QualityChoice {
     pub quality: Option<Quality>,
 }
 
+/// A conversion that keeps the original's size: asked when the original can't play on the
+/// device though the server sees no need to convert (Jellyfin then lists no conversion).
+pub const FULL_SIZE: Quality = Quality {
+    max_bitrate: 120_000_000,
+    max_height: 2160,
+};
+
 /// Conversions offered, from the largest: (height, bits per second).
 const PRESETS: [(u32, u64); 6] = [
     (2160, 40_000_000),
