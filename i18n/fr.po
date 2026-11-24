@@ -3796,7 +3796,7 @@ msgid "On the new phone, tablet or TV, choose “Sign in with a code”, then ty
 msgstr "Sur le nouveau téléphone, la tablette ou la TV, choisissez “Se connecter avec un code”, puis saisissez son code ici"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Sign out of {server}?"
 msgstr "Se déconnecter de {server} ?"
 
@@ -4175,7 +4175,7 @@ msgstr "Comme l'appareil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/signin.rs
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Storage"
 msgstr "Stockage"
 
@@ -4185,7 +4185,7 @@ msgstr "Affiches et fonds gardés pour afficher les pages instantanément ; ils
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: desktop/ui/app.slint
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Image cache"
 msgstr "Cache des images"
 
@@ -8138,11 +8138,11 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 msgid "Movies, shows, episodes"
 msgstr "Films, séries, épisodes"
 
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "System"
 msgstr "Système"
 
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Clear the image cache"
 msgstr "Vider le cache des images"
 

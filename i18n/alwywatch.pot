@@ -3791,7 +3791,7 @@ msgid "On the new phone, tablet or TV, choose “Sign in with a code”, then ty
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Sign out of {server}?"
 msgstr ""
 
@@ -4170,7 +4170,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/signin.rs
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Storage"
 msgstr ""
 
@@ -4180,7 +4180,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: desktop/ui/app.slint
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Image cache"
 msgstr ""
 
@@ -8133,11 +8133,11 @@ msgstr ""
 msgid "Movies, shows, episodes"
 msgstr ""
 
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "System"
 msgstr ""
 
-#: ios/AlwyWatch/SettingsView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Clear the image cache"
 msgstr ""
 
