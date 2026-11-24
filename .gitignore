@@ -33,3 +33,4 @@ web/dist/
 
 # Private notes (real hostnames)
 CLAUDE.local.md
+.claude/worktrees/
