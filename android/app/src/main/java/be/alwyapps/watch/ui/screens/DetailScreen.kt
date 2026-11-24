@@ -1416,7 +1416,7 @@ private fun SeasonPicker(
             items(list, key = { it.id }) { s ->
                 val isSelected = s.id == selected.id
                 ActionButton(
-                    s.title,
+                    s.seasonLabel(),
                     { onSelected(s) },
                     if (isSelected) Modifier.focusRequester(selectedChip) else Modifier,
                     selected = isSelected,
@@ -1433,7 +1433,7 @@ private fun SeasonPicker(
         // under the seasons (a lone ✓ next to them read as one more season, or as "selected").
         Row(Modifier.padding(start = d.gutter, end = d.gutter, top = 10.dp)) {
             ActionButton(
-                tr("Mark {title} watched or unwatched", "title" to selected.title),
+                tr("Mark {title} watched or unwatched", "title" to selected.seasonLabel()),
                 { onMark(selected) },
                 Modifier.focusRequester(markFocus),
                 icon = Icons.Check,
@@ -1687,3 +1687,6 @@ private fun keepDetail(e: be.alwyapps.watch.core.keep.LeavingItem): String? {
 /** "Saga · Alien", or the name alone when it already says so ("Very Bad Trip - Saga"). */
 private fun sagaLabel(name: String): String =
     if (listOf("saga", "collection").any { name.contains(it, ignoreCase = true) }) name else tr("Saga · {name}", "name" to name)
+
+/** A season's name in the app's language when the server's is only "Season N" (see [seasonLabel]). */
+private fun be.alwyapps.watch.core.media.Item.seasonLabel(): String = seasonNumber?.let { seasonLabel(it, title) } ?: title
