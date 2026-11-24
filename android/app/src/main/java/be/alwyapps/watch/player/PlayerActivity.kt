@@ -733,9 +733,35 @@ class PlayerActivity : ComponentActivity() {
                 if (ratio.roundToInt() < 1) Float.MAX_VALUE else err + m.refreshRate / 1000f
             } ?: return
         val ratio = best.refreshRate / fps
-        if (abs(ratio - ratio.roundToInt()) > 0.01f || best.modeId == current.modeId) return
+        if (abs(ratio - ratio.roundToInt()) > 0.01f) return
+        // The TV goes black while it resyncs to the new rate (seconds, menus included): the
+        // video waits instead of playing unseen, also a player started meanwhile (the
+        // conversion replacing the original). Watching together, the room keeps the pace.
+        val p = player ?: return
+        val holding = modeHold?.isActive == true
+        if (best.modeId == current.modeId && !holding) return
+        if (!together && p.playWhenReady) {
+            p.playWhenReady = false
+            heldStart = true
+        }
+        if (holding) return
         window.attributes = window.attributes.apply { preferredDisplayModeId = best.modeId }
+        modeHold =
+            lifecycleScope.launch {
+                kotlinx.coroutines.withTimeoutOrNull(3000) {
+                    while (display.mode.modeId != best.modeId) delay(100)
+                }
+                delay(DISPLAY_RESYNC_MS)
+                if (heldStart) player?.playWhenReady = true
+                heldStart = false
+            }
     }
+
+    /** True while the start waits for the TV (the player then plays when it is back). */
+    private var heldStart = false
+
+    /** Holds the start while the TV resyncs to a new refresh rate. */
+    private var modeHold: Job? = null
 
     /** Previous and next episodes (across seasons), for the buttons and auto-play. */
     private fun findAdjacent(id: String) {
@@ -1784,6 +1810,9 @@ private const val MAX_NETWORK_RETRIES = 3
 
 /** How long a conversion waits for its subtitle before starting without it. */
 private const val SUBTITLE_WAIT_MS = 3000L
+
+/** How long a TV stays black after a refresh rate change (HDMI resync; ~5 s on an LG TV). */
+private const val DISPLAY_RESYNC_MS = 5000L
 
 /** A conversion that keeps the original's size (asked when the original can't play here). */
 private val FULL_SIZE =
