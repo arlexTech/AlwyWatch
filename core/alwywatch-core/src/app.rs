@@ -653,6 +653,29 @@ impl Core {
             .await?)
     }
 
+    /// See `AlwyWatch::prepare_subtitle`.
+    async fn prepare_subtitle(
+        &self,
+        account: &str,
+        item_id: &str,
+        source: &MediaSource,
+        index: i64,
+    ) -> Result<()> {
+        let embedded_text = source.streams.iter().any(|s| {
+            s.kind == StreamKind::Subtitle
+                && s.index == index
+                && !s.is_external
+                && media_api::model::is_text_subtitle(&s.codec)
+        });
+        if !embedded_text {
+            return Ok(());
+        }
+        Ok(self
+            .server(account)?
+            .prepare_subtitle(item_id, &source.id, index)
+            .await?)
+    }
+
     async fn report_progress(&self, account: &str, report: ProgressReport) -> Result<()> {
         let result = match self.server(account) {
             Ok(srv) => srv.report_progress(&report).await.map_err(CoreError::from),
@@ -1510,6 +1533,24 @@ impl AlwyWatch {
     ) -> Result<PlaybackInfo> {
         self.run(|c| async move {
             c.playback_info_with(&account_id, &item_id, &profile, &selection)
+                .await
+        })
+        .await
+    }
+
+    /// Gets the server ready to burn the source's subtitle `index` into a conversion, so the
+    /// conversion doesn't wait (Jellyfin first extracts embedded text subtitles, once per file:
+    /// 30 s or more for a film). Returns at once for anything else. An error (read timeout)
+    /// while the server still works on it: asking again waits for the same work.
+    pub async fn prepare_subtitle(
+        &self,
+        account_id: String,
+        item_id: String,
+        source: MediaSource,
+        index: i64,
+    ) -> Result<()> {
+        self.run(|c| async move {
+            c.prepare_subtitle(&account_id, &item_id, &source, index)
                 .await
         })
         .await

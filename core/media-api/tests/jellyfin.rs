@@ -747,3 +747,25 @@ async fn a_chosen_quality_asks_for_a_conversion() {
             .ends_with("VideoBitrate=3800000&MaxHeight=720")
     );
 }
+
+#[tokio::test]
+async fn preparing_a_subtitle_asks_for_its_file() {
+    let s = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Videos/m1/src1/Subtitles/3/0/Stream.srt"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("1\n00:00:01,000 --> 00:00:02,000\nHi\n"),
+        )
+        .expect(1)
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    c.prepare_subtitle("m1", "src1", 3).await.unwrap();
+    // Still extracting when the read gave up: an error, asked again later.
+    Mock::given(method("GET"))
+        .and(path("/Videos/m1/src1/Subtitles/4/0/Stream.srt"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&s)
+        .await;
+    assert!(c.prepare_subtitle("m1", "src1", 4).await.is_err());
+}

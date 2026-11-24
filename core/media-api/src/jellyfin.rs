@@ -1050,6 +1050,16 @@ impl MediaServer for JellyfinClient {
         })
     }
 
+    async fn prepare_subtitle(&self, item_id: &str, source_id: &str, index: i64) -> Result<()> {
+        // The answer comes once every text subtitle of the file is extracted (then cached).
+        let path = format!(
+            "/Videos/{}/{}/Subtitles/{index}/0/Stream.srt",
+            net::percent_encode(item_id),
+            net::percent_encode(source_id),
+        );
+        net::send(self.req(Method::GET, &path)).await.map(|_| ())
+    }
+
     async fn segments(&self, item_id: &str) -> Result<Vec<Segment>> {
         // Jellyfin 10.10+: filled by a segment provider (e.g. the Intro Skipper plugin).
         let found = net::send_json::<SegmentsDto>(self.req(

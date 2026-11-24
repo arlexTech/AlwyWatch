@@ -156,6 +156,17 @@ same position through `playback_info_with`, which then always converts:
 it). The pick holds for the next titles of the session. Desktop doesn't offer it in a watch
 together room (everyone plays the same file).
 
+### Burned-in subtitles
+
+A conversion burns the chosen subtitle into the picture. Jellyfin first extracts a file's text
+subtitles (one read of the whole file, 30 s to over a minute for a film, then cached), and the
+conversion waits for it. `prepare_subtitle(account, item, source, index)` asks for that
+subtitle (`GET /Videos/{item}/{source}/Subtitles/{index}/0/Stream.srt`) and returns once it is
+ready; it returns at once for picture subtitles, separate files and Plex (which burns in from the
+file). Jellyfin finishes the extraction even when the request times out, and asking again waits
+for the same work. Android waits 3 s for it; past that the conversion starts without the
+subtitle and restarts with it, at the same position, once it is ready.
+
 ## Skippable segments
 
 `segments(id)` returns `Segment { kind: Intro|Credits|Recap|Preview|Commercial, start_ms, end_ms }`.

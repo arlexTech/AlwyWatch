@@ -51,6 +51,7 @@ import be.alwyapps.watch.ui.trn
 import io.github.peerless2012.ass.media.kt.buildWithAssSupport
 import io.github.peerless2012.ass.media.type.AssRenderType
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -104,6 +105,9 @@ class PlayerActivity : ComponentActivity() {
     /** The file as the server has it (the quality menu's "Original"), and the size picked. */
     private var original: MediaSource? = null
     private var chosenQuality: be.alwyapps.watch.core.media.Quality? = null
+
+    /** The file that only plays converted though the server sees no need (tracks after the picture). */
+    private var mustConvert: String? = null
     private val ui = PlayerUi()
 
     // ----- watch together: the room this player follows (null: alone) -----
@@ -325,6 +329,7 @@ class PlayerActivity : ComponentActivity() {
         force: Boolean = false,
     ) {
         val id = itemId
+        if (force) mustConvert = src.id
         val sel =
             (
                 selection ?: be.alwyapps.watch.core.conversionTracks(
@@ -332,7 +337,28 @@ class PlayerActivity : ComponentActivity() {
                     trackRules(PlayerSettings(core, services.isTv), null),
                     src,
                 )
-            ).copy(quality = chosenQuality ?: FULL_SIZE.takeIf { force })
+            ).copy(quality = chosenQuality ?: FULL_SIZE.takeIf { mustConvert == src.id })
+        // A subtitle to burn in that the server must first extract (Jellyfin reads the whole
+        // file once: 30 s or more for a film, a black screen meanwhile): the picture starts
+        // without it, the subtitle comes when ready.
+        val burn = (sel.subtitle as? SubtitleSelection.Stream)?.index
+        if (burn != null) {
+            val ready = lifecycleScope.async { prepareSubtitle(src, burn) }
+            if (kotlinx.coroutines.withTimeoutOrNull(SUBTITLE_WAIT_MS) { ready.await() } != true) {
+                val bare = sel.copy(subtitle = SubtitleSelection.Off)
+                android.util.Log.i(TAG, "subtitle not extracted yet: the picture first")
+                startConversion(src, startMs, bare, rewind)
+                if (itemId != id || conversion != bare) return
+                Toast.makeText(this, tr("Subtitles in a moment: the server is preparing them"), Toast.LENGTH_LONG).show()
+                lifecycleScope.launch {
+                    if (!ready.await() || itemId != id || conversion != bare) return@launch
+                    val position = player?.currentPosition?.coerceAtLeast(0) ?: startMs
+                    report(PlaybackEvent.STOP)?.join()
+                    startConversion(src, position, sel, rewind = false)
+                }
+                return
+            }
+        }
         val pi =
             runCatching { core.playbackInfoWith(account, id, DeviceProfiles.get(this), sel) }
                 .onFailure { android.util.Log.w(TAG, "conversion with tracks: ${it.javaClass.simpleName}") }
@@ -353,6 +379,20 @@ class PlayerActivity : ComponentActivity() {
         startPlayer(req, converted, transcoding = true, startMs, rewind = rewind)
     }
 
+    /** Asks the server to get [index] ready to burn in, again while it works on it (up to 5 min). */
+    private suspend fun prepareSubtitle(
+        src: MediaSource,
+        index: Long,
+    ): Boolean {
+        val id = itemId
+        repeat(10) {
+            if (itemId != id) return false
+            if (runCatching { core.prepareSubtitle(account, id, src, index) }.isSuccess) return true
+            delay(1000)
+        }
+        return false
+    }
+
     /**
      * A size picked in the quality menu (None: the original file, or the server's own
      * conversion when this device can't play it): playback restarts with it, here.
@@ -364,7 +404,7 @@ class PlayerActivity : ComponentActivity() {
         val position = player?.currentPosition?.coerceAtLeast(0) ?: 0L
         lifecycleScope.launch {
             if (transcoding) report(PlaybackEvent.STOP)?.join()
-            if (q == null && DeviceProfiles.canDirectPlay(src, DeviceProfiles.get(this@PlayerActivity))) {
+            if (q == null && mustConvert != src.id && DeviceProfiles.canDirectPlay(src, DeviceProfiles.get(this@PlayerActivity))) {
                 source = src
                 startPlayer(src.direct, src, transcoding = false, position, rewind = false)
             } else {
@@ -1648,10 +1688,12 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         // Watched episode: its download may be due for deletion, the next one for download.
-        if (!services.isTv) {
+        // Left before the core was ready (cold start, screen locked): nothing was played.
+        if (!services.isTv && ::core.isInitialized) {
+            val c = core
             services.scope.launch {
                 kotlinx.coroutines.delay(1500)
-                services.syncDownloads(core)
+                services.syncDownloads(c)
             }
         }
         exitRoomPlayer()
@@ -1703,6 +1745,9 @@ class PlayerActivity : ComponentActivity() {
 
 /** A file streamed from a server (not a download): the server can convert it. */
 private fun MediaSource.streamed() = direct.url.startsWith("http")
+
+/** How long a conversion waits for its subtitle before starting without it. */
+private const val SUBTITLE_WAIT_MS = 3000L
 
 /** A conversion that keeps the original's size (asked when the original can't play here). */
 private val FULL_SIZE =

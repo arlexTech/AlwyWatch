@@ -104,6 +104,20 @@ pub trait MediaServer: Send + Sync {
     ) -> impl Future<Output = Result<PlaybackInfo>> + MaybeSend;
     /// Skippable intro/credits spans, by start time. Empty when the server has not detected any.
     fn segments(&self, item_id: &str) -> impl Future<Output = Result<Vec<Segment>>> + MaybeSend;
+    /// Gets an embedded text subtitle ready to be burned into a conversion. Jellyfin extracts
+    /// a file's text subtitles the first time one is asked for (a read of the whole file: 30 s
+    /// to over a minute for a film) and a conversion that burns one in waits for that; asked
+    /// first, the picture can start meanwhile. Returns once ready; an error (a read timeout)
+    /// while the server still works on it, which it finishes anyway. Plex burns in from the
+    /// file itself: nothing to prepare.
+    fn prepare_subtitle(
+        &self,
+        _item_id: &str,
+        _source_id: &str,
+        _index: i64,
+    ) -> impl Future<Output = Result<()>> + MaybeSend {
+        async { Ok(()) }
+    }
     fn report_progress(
         &self,
         report: &ProgressReport,
@@ -240,6 +254,9 @@ impl MediaServer for AnyServer {
     }
     async fn segments(&self, item_id: &str) -> Result<Vec<Segment>> {
         dispatch!(self, c => c.segments(item_id).await)
+    }
+    async fn prepare_subtitle(&self, item_id: &str, source_id: &str, index: i64) -> Result<()> {
+        dispatch!(self, c => c.prepare_subtitle(item_id, source_id, index).await)
     }
     async fn report_progress(&self, report: &ProgressReport) -> Result<()> {
         dispatch!(self, c => c.report_progress(report).await)

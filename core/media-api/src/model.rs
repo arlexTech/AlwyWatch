@@ -341,6 +341,14 @@ record! {
     }
 }
 
+/// A subtitle made of text (as opposed to pictures: PGS, VobSub), by codec name.
+pub fn is_text_subtitle(codec: &str) -> bool {
+    matches!(
+        codec.to_ascii_lowercase().as_str(),
+        "srt" | "subrip" | "vtt" | "webvtt" | "ass" | "ssa" | "mov_text" | "tx3g" | "text"
+    )
+}
+
 impl TrackSelection {
     /// Nothing chosen: the server decides, and asking has no side effect.
     pub fn is_default(&self) -> bool {
