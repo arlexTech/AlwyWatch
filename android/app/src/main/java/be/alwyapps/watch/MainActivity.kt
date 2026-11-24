@@ -73,8 +73,16 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    /** When the app went to the background (0: hasn't). */
+    private var stoppedAt = 0L
+
     override fun onStart() {
         super.onStart()
+        if (stoppedAt != 0L && android.os.SystemClock.elapsedRealtime() - stoppedAt > AWAY_MS) {
+            be.alwyapps.watch.ui.ItemsChanged
+                .bumpAfterAway()
+        }
+        stoppedAt = 0L
         be.alwyapps.watch.together.TogetherInbox
             .activityStarted(null, player = false)
         val core = services.core
@@ -88,6 +96,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
+        stoppedAt = android.os.SystemClock.elapsedRealtime()
         be.alwyapps.watch.together.TogetherInbox
             .activityStopped(player = false)
     }
@@ -107,6 +116,9 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_ROOM = "open_room"
+
+        /** Away this long, the screens refresh on return. */
+        private const val AWAY_MS = 30_000L
 
         /** Brings the app to the front on a watch together room. */
         fun openRoom(

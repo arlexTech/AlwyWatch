@@ -183,9 +183,20 @@ private fun Item.menuable(open: () -> Unit): (() -> Unit)? = if (kind == ItemKin
 object ItemsChanged {
     var version by androidx.compose.runtime.mutableIntStateOf(0)
         private set
+    private var at = 0L
 
     fun bump() {
+        at = android.os.SystemClock.elapsedRealtime()
         version++
+    }
+
+    /**
+     * Back to the app after a while: progress may have moved on another device (or another
+     * app), and the screens only refreshed when they opened. Skipped when something just
+     * asked for the same (the player, when it closes).
+     */
+    fun bumpAfterAway() {
+        if (android.os.SystemClock.elapsedRealtime() - at > 3_000) bump()
     }
 }
 
