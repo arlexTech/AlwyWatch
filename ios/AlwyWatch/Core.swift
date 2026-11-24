@@ -58,6 +58,51 @@ final class AppModel: ObservableObject {
         reload()
     }
 
+    /// The token the AlwyWatch server (and Seerr through it) accepts for a login: plex.tv's
+    /// for Plex, the server's own for Jellyfin (Android's keepToken).
+    nonisolated static func keepToken(_ a: Account) -> String? {
+        a.kind == .plex ? Keychain.get("\(a.id):plextv") : Keychain.get(a.id)
+    }
+
+    /// Connects (or switches) the AlwyWatch server as [account], then Seerr through it if unset.
+    @discardableResult
+    func connectKeep(url: String, account: Account) async throws -> KeepConnection {
+        guard let token = Self.keepToken(account) else {
+            throw CoreError.Invalid(message: tr("Sign in to {server} again first.", ["server": account.serverName]))
+        }
+        let conn = try await core.keepConnect(url: url, accountId: account.id, token: token)
+        lastAlwyWatchUrl = conn.baseUrl
+        let off = (try? core.getSetting(key: "seerr.off")) ?? nil
+        if core.seerrConnection() == nil, off != "1" { await connectSeerrThroughKeep() }
+        return conn
+    }
+
+    /// Seerr through the AlwyWatch server, trying each login it serves (Plex first: Seerr
+    /// usually runs in Plex mode). The first that works is kept.
+    func connectSeerrThroughKeep() async {
+        guard let keep = core.keepConnection() else { return }
+        let served = (try? await core.keepServers(url: keep.baseUrl)).map { Set($0.map(\.id)) }
+        let candidates = ((try? core.accounts()) ?? [])
+            .filter { served == nil || served!.contains($0.serverId) }
+            .sorted { ($0.kind == .plex ? 0 : 1) < ($1.kind == .plex ? 0 : 1) }
+        for a in candidates {
+            guard let token = Self.keepToken(a) else { continue }
+            if (try? await core.seerrConnectBridgeAs(accountId: a.id, token: token)) != nil { return }
+        }
+    }
+
+    /// Connect to AlwyWatch with a login this device already has: no new sign-in.
+    func useExistingLogin(url: String, account: Account) async throws {
+        try await connectKeep(url: url, account: account)
+        if let t = Self.keepToken(account) { _ = try? await core.accountLinkMedia(accountId: account.id, token: t) }
+    }
+
+    /// The AlwyWatch address typed last (prefilled next time).
+    var lastAlwyWatchUrl: String? {
+        get { UserDefaults.standard.string(forKey: "alwywatch.last_url") }
+        set { UserDefaults.standard.set(newValue, forKey: "alwywatch.last_url") }
+    }
+
     /// Attaches stored accounts and connections to their tokens (Keychain). At startup, and
     /// after accounts arrive from another device.
     nonisolated static func activate(_ core: AlwyWatch) {

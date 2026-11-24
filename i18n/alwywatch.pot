@@ -883,6 +883,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Your servers"
 msgstr ""
 
@@ -906,6 +907,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Your AlwyWatch account keeps your profile, settings and server list. To watch, you then sign in to your server."
 msgstr ""
 
@@ -935,6 +937,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/SignInView.swift
 msgid "Type your username or email first, then choose “Forgot password?”."
 msgstr ""
 
@@ -945,32 +948,39 @@ msgid "If this account has an email address, a link to set a new password is on 
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "I don't have a password"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Sign in with your Jellyfin or Plex login instead, or with a code approved on your phone (passkey, Pocket ID)."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/SignInView.swift
 msgid "Signed in as {name}. Now sign in to the server you watch on."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Signed in as you. Now sign in to the server you watch on."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "{kind} · from your other devices"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Another server"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Jellyfin or Plex by its address"
 msgstr ""
 
@@ -1067,6 +1077,7 @@ msgid "Shared with you"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Type the AlwyWatch address the person who runs your server gave you with your invitation."
 msgstr ""
 
@@ -1076,44 +1087,54 @@ msgid "Type the AlwyWatch address the person who runs your server gave you."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "AlwyWatch found"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "AlwyWatch found · {servers}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Scan a QR code with your phone, or approve on a device where you're signed in"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "With your Jellyfin or Plex login"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Or"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "Username and password"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Your AlwyWatch account's"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Passkey or Pocket ID? Choose “Sign in with a code” and approve it on your phone."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "This AlwyWatch server doesn't take new accounts. Ask the person who runs it."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: web/src/account.rs
+#: ios/AlwyWatch/SignInView.swift
 msgid "{name} invited you"
 msgstr ""
 
@@ -1124,6 +1145,7 @@ msgid "This username and password will also be your {server} (Jellyfin) login."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Your AlwyWatch account keeps your name, settings and server list. To watch, you then add your Jellyfin or Plex login."
 msgstr ""
 
@@ -1134,6 +1156,7 @@ msgid "Invitation code"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "{problem} Ask the person who invited you for a new one."
 msgstr ""
 
@@ -1156,25 +1179,30 @@ msgid "Create the account"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Prefer a passkey or Pocket ID? Create the account on {address}, then come back and choose “Sign in with a code”."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Use your login {name}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/SignInView.swift
 msgid "Plex · sign in on plex.tv"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/SignInView.swift
 msgid "Jellyfin · Quick Connect or password"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: web/src/signin.rs
+#: ios/AlwyWatch/SignInView.swift
 msgid "Your name, settings and servers come with you"
 msgstr ""
 
@@ -1185,15 +1213,18 @@ msgid "If someone invited you"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "No account: nothing synced, no Leaving soon or watch together"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Checking your AlwyWatch server…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SignInView.swift
 msgid "From your AlwyWatch server"
 msgstr ""
 
@@ -1662,6 +1693,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Core.swift
 msgid "Sign in to {server} again first."
 msgstr ""
 
@@ -8139,12 +8171,4 @@ msgstr ""
 
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Clear the image cache"
-msgstr ""
-
-#: ios/AlwyWatch/SignInView.swift
-msgid "Approve on a device where you're signed in"
-msgstr ""
-
-#: ios/AlwyWatch/SignInView.swift
-msgid "AlwyWatch address"
 msgstr ""

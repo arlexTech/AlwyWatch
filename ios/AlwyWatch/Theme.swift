@@ -41,9 +41,10 @@ struct ChoiceCard: View {
         Button(action: action) {
             HStack(spacing: 16) {
                 Image(systemName: icon)
-                    .font(.title2)
+                    .font(.title3)
                     .foregroundStyle(Palette.accent)
-                    .frame(width: 32)
+                    .frame(width: 48, height: 48)
+                    .background(Palette.surfaceHigh, in: RoundedRectangle(cornerRadius: 14))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.headline).foregroundStyle(Palette.onSurface)
                     Text(subtitle).font(.subheadline).foregroundStyle(Palette.muted)
