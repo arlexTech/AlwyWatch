@@ -768,7 +768,7 @@ private struct RegisterStep: View {
 }
 
 /// "Which Plex user?" for a Plex Home, with the PIN of protected users.
-private struct PlexUsers: View {
+struct PlexUsers: View {
     @EnvironmentObject var model: AppModel
     let token: String
     let users: [PlexHomeUser]
@@ -900,6 +900,89 @@ struct QrImage: View {
             }
             .padding(10)
             .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+}
+
+/// Settings → Servers → a Plex login → switch to another user of its Plex Home (Android's
+/// PlexSwitchScreen): the same server, signed in as that user.
+struct PlexSwitchSheet: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    let account: Account
+    @State private var users: [PlexHomeUser]?
+    @State private var error: String?
+    @State private var busy = false
+
+    /// The Plex Home's own token (kept at sign-in), else this user's: both can list and switch.
+    private var homeToken: String? { Keychain.get("\(account.id):plexhome") ?? Keychain.get("\(account.id):plextv") }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(tr("{name} on {server}", ["name": account.userName, "server": account.serverName])).foregroundStyle(Palette.muted)
+                    if users == nil, error == nil {
+                        Text(tr("Loading…")).foregroundStyle(Palette.subtle)
+                    } else if let list = users, list.count < 2 {
+                        Text(tr("This Plex account has no other users (it is not a Plex Home).")).foregroundStyle(Palette.muted)
+                    } else if let list = users, let token = homeToken {
+                        PlexUsers(token: token, users: list) { userToken in
+                            guard !busy else { return }
+                            Task { await switchTo(userToken, home: token) }
+                        }
+                    }
+                    ErrorText(text: error)
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Palette.background.ignoresSafeArea())
+            .navigationTitle(tr("Switch Plex user"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(tr("Cancel")) { dismiss() } }
+            }
+        }
+        .task {
+            guard let token = homeToken else {
+                error = tr("Sign in to Plex again to switch user.")
+                return
+            }
+            do {
+                users = try await model.core.plexHomeUsers(accountToken: token)
+            } catch {
+                self.error = message(error)
+            }
+        }
+    }
+
+    private func switchTo(_ userToken: String, home: String) async {
+        busy = true
+        defer { busy = false }
+        let core = model.core
+        let old = account
+        do {
+            guard let server = try await core.plexServers(accountToken: userToken).first(where: { $0.machineId == old.serverId }) else {
+                throw CoreError.Invalid(message: tr("This user has no access to {server}.", ["server": old.serverName]))
+            }
+            let s = try await core.plexConnect(accountToken: userToken, server: server, preferredUrl: nil)
+            Keychain.put(s.account.id, s.token)
+            if let t = s.plexAccountToken { Keychain.put("\(s.account.id):plextv", t) }
+            Keychain.put("\(s.account.id):plexhome", home)
+            core.setPlexAccountToken(accountId: s.account.id, token: home)
+            // The AlwyWatch server followed the old user: follow the new one.
+            if let keep = core.keepConnection(), keep.accountId == old.id {
+                _ = try? await core.keepConnect(url: keep.baseUrl, accountId: s.account.id, token: s.plexAccountToken ?? s.token)
+            }
+            if s.account.id != old.id {
+                try? core.removeAccount(accountId: old.id)
+                for k in [old.id, "\(old.id):plextv", "\(old.id):plexhome"] { Keychain.remove(k) }
+            }
+            model.use(s.account.id)
+            dismiss()
+        } catch {
+            self.error = message(error)
         }
     }
 }

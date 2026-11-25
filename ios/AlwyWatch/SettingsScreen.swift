@@ -227,6 +227,8 @@ private struct ServersSettings: View {
     @EnvironmentObject var model: AppModel
     @State private var together = true
     @State private var removing: Account?
+    @State private var switching: Account?
+    @ObservedObject private var identity = Identity.shared
 
     var body: some View {
         let accounts = model.accounts
@@ -248,13 +250,34 @@ private struct ServersSettings: View {
                         if a.id == main {
                             Text(together && many ? tr("Preferred") : tr("Showing now")).font(.footnote).foregroundStyle(Palette.accent)
                         }
+                        if a.kind == .plex {
+                            Button { switching = a } label: {
+                                Image(systemName: "person.crop.circle").font(.title3).foregroundStyle(Palette.muted)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(tr("Switch Plex user"))
+                        }
                     }
                 }
                 .swipeActions {
                     Button(tr("Sign out"), role: .destructive) { removing = a }
                 }
                 .contextMenu {
+                    if a.kind == .plex {
+                        Button { switching = a } label: { Label(tr("Switch Plex user"), systemImage: "person.crop.circle") }
+                    }
                     Button(tr("Sign out of {server}", ["server": a.serverName]), role: .destructive) { removing = a }
+                }
+            }
+            // Logins linked to the AlwyWatch account but not signed in on this device: a way to.
+            ForEach((identity.links ?? []).filter { l in !accounts.contains { $0.serverId == l.serverId } }, id: \.userKey) { l in
+                NavigationLink(value: Route.addServer) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus").foregroundStyle(Palette.accent).frame(width: 34)
+                        TitledLabel(title: tr("{name} on {server}", ["name": l.mediaName, "server": l.serverName]), subtitle: tr("Linked to your account, not signed in on this device"))
+                        Spacer()
+                        Text(tr("Sign in")).font(.footnote).foregroundStyle(Palette.muted)
+                    }
                 }
             }
             NavigationLink(value: Route.addServer) {
@@ -266,6 +289,8 @@ private struct ServersSettings: View {
             if many, model.core.keepConnection() != nil { Text(tr("AlwyWatch uses the login showing now.")) }
         }
         .onAppear { together = ((try? model.core.getSetting(key: combinedKey)) ?? nil) != "0" }
+        .task { if model.core.keepActive() { await identity.refreshLinks(model.core) } }
+        .sheet(item: $switching) { PlexSwitchSheet(account: $0).environmentObject(model) }
         .confirmationDialog(
             tr("Sign out of {server}?", ["server": removing?.serverName ?? ""]),
             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
