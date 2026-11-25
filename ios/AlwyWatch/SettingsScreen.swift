@@ -492,6 +492,7 @@ private struct DeviceSettings: View {
             Text(tr("Posters and backdrops kept to show pages instantly; they come back when needed."))
         }
         .onAppear { cacheBytes = model.core.imageCacheBytes() }
+        ProfilesGroup()
         OtherDevicesGroup()
         Section {
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""

@@ -10,6 +10,8 @@ struct HomeView: View {
     @State private var player: PlayRequest?
     /// Downloads mode: the home made of what is on this phone (the top bar toggles it).
     @State private var offline = false
+    /// "Settings" from the profile switcher.
+    @State private var goSettings = false
 
     var body: some View {
         let account = model.account ?? ""
@@ -23,11 +25,12 @@ struct HomeView: View {
         }
         .background(Palette.background.ignoresSafeArea())
         .safeAreaInset(edge: .top, spacing: 0) {
-            HomeTopBar(offline: offline) {
+            HomeTopBar(offline: offline, goSettings: $goSettings) {
                 offline.toggle()
                 try? model.core.setSetting(key: "ui.downloads_mode", value: offline ? "1" : "0")
             }
         }
+        .navigationDestination(isPresented: $goSettings) { SettingsScreen() }
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await refresh(force: true) }
         .onAppear { offline = model.core.getSettingOr("ui.downloads_mode", "0") == "1" }
@@ -165,7 +168,10 @@ struct ItemMenu: View {
 private struct HomeTopBar: View {
     @EnvironmentObject var model: AppModel
     let offline: Bool
+    @EnvironmentObject var host: ProfileHost
+    @Binding var goSettings: Bool
     let toggleOffline: () -> Void
+    @State private var switching = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -187,20 +193,38 @@ private struct HomeTopBar: View {
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel(offline ? tr("Leave downloads") : tr("Downloads"))
-            NavigationLink(value: Route.settings) {
-                Text(String(model.current?.userName.prefix(1) ?? "?").uppercased())
-                    .font(.headline)
-                    .foregroundStyle(Color.black)
-                    .frame(width: 38, height: 38)
-                    .background(LinearGradient(colors: [Palette.accent, Color(red: 1, green: 0x6A / 255, blue: 0x3D / 255)], startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
+            // You: with several profiles on the device, who's watching (one tap to switch, and
+            // the settings); else straight to the settings.
+            if ProfileStore.list().count > 1 {
+                Button { switching = true } label: { avatar }
+                    .accessibilityLabel(tr("Switch profile, settings"))
+                    .padding(.leading, 6)
+            } else {
+                NavigationLink(value: Route.settings) { avatar }
+                    .accessibilityLabel(tr("Settings"))
+                    .padding(.leading, 6)
             }
-            .accessibilityLabel(tr("Settings"))
-            .padding(.leading, 6)
         }
         .foregroundStyle(Palette.onSurface)
         .padding(.leading, 16)
         .padding(.trailing, 10)
         .padding(.vertical, 6)
         .background(Palette.background)
+        .sheet(isPresented: $switching) {
+            ProfileSwitcherSheet {
+                switching = false
+                goSettings = true
+            }
+            .environmentObject(host)
+            .environmentObject(model)
+        }
+    }
+
+    private var avatar: some View {
+        Text(String(model.current?.userName.prefix(1) ?? "?").uppercased())
+            .font(.headline)
+            .foregroundStyle(Color.black)
+            .frame(width: 38, height: 38)
+            .background(LinearGradient(colors: [Palette.accent, Color(red: 1, green: 0x6A / 255, blue: 0x3D / 255)], startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
     }
 }

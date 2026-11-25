@@ -149,6 +149,17 @@ final class TogetherSession: ObservableObject {
         }
     }
 
+    /// Another profile takes over: this one's seat is forgotten here (the room drops it).
+    func reset() {
+        clear()
+        core = nil
+        ended = nil
+        problem = nil
+        show = nil
+        startAt = 0
+        handledRound = 0
+    }
+
     /// Leaves for good (a new invitation is needed to come back).
     func leave() {
         guard let s = seat else { return }
@@ -270,6 +281,17 @@ final class TogetherInbox: ObservableObject {
     func stop() {
         job?.cancel()
         job = nil
+    }
+
+    /// Another profile takes over: its rooms and invitations aren't this one's.
+    func reset() {
+        stop()
+        core = nil
+        rooms = nil
+        prompt = nil
+        unreachable = false
+        known = []
+        gone = []
     }
 
     /// Left or declined: no prompt for it again.

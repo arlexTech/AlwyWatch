@@ -11,20 +11,34 @@ import UIKit
 @MainActor
 final class DownloadRunner: ObservableObject {
     private let core: AlwyWatch
-    private var running = false
+    /// One queue per device (the profiles share it): never two runs at once, even across a
+    /// profile switch.
+    private static var running = false
+    /// The runner of the profile in use (the last made).
+    private static weak var current: DownloadRunner?
     private var retry: Task<Void, Never>?
     /// Items (or shows) whose download was just asked for: buttons spin at once.
     @Published private(set) var pending = Set<String>()
     /// Bumped when downloads change here (lists re-read at once).
     @Published private(set) var version = 0
 
+    private var stopped = false
+
     init(core: AlwyWatch) {
         self.core = core
+        Self.current = self
+    }
+
+    /// Another profile takes over: a run in progress ends on its own (the new profile's runner
+    /// takes the queue over then); nothing starts here again.
+    func stop() {
+        stopped = true
+        retry?.cancel()
     }
 
     func start() {
-        guard !running, core.hasPendingDownloads() else { return }
-        running = true
+        guard !stopped, !Self.running, core.hasPendingDownloads() else { return }
+        Self.running = true
         retry?.cancel()
         var task = UIBackgroundTaskIdentifier.invalid
         task = UIApplication.shared.beginBackgroundTask(withName: "downloads") {
@@ -34,8 +48,12 @@ final class DownloadRunner: ObservableObject {
         let core = core
         Task {
             _ = try? await Task.detached { try await core.runDownloads() }.value
-            running = false
+            Self.running = false
             if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
+            if stopped {
+                Self.current?.start()
+                return
+            }
             changed()
             // Left waiting for the network: try again in a while (the core backs off too).
             if core.hasPendingDownloads() {

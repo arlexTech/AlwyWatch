@@ -25,6 +25,11 @@ final class MyAccount: ObservableObject {
         await refresh(core)
     }
 
+    func reset() {
+        me = nil
+        welcomeClosed = false
+    }
+
     /// The welcome step is on screen (other prompts wait).
     var welcomeShowing: Bool { me.map { !$0.profileSet && !welcomeClosed } ?? false }
 }
@@ -53,6 +58,14 @@ final class Identity: ObservableObject {
     @Published var offer: Account?
     private var looked = false
     private var served: (base: String, ids: Set<String>)?
+
+    func reset() {
+        links = nil
+        linkableNow = []
+        offer = nil
+        looked = false
+        served = nil
+    }
 
     func refreshLinks(_ core: AlwyWatch) async {
         guard core.keepActive() else { links = nil; return }
@@ -115,7 +128,10 @@ final class Identity: ObservableObject {
     }
 
     // "Not now", remembered on this device per pair.
-    private static let declinedKey = "identity.declined"
+    /// Per profile, as on Android.
+    private static var declinedKey: String {
+        Keychain.profile == ProfileStore.defaultId ? "identity.declined" : "identity.declined.\(Keychain.profile)"
+    }
 
     func declined(_ myKey: String, _ account: Account) -> Bool {
         (UserDefaults.standard.stringArray(forKey: Self.declinedKey) ?? []).contains("\(myKey)|\(account.id)")

@@ -4,7 +4,8 @@ import SwiftUI
 
 @main
 struct AlwyWatchApp: App {
-    @StateObject private var model = AppModel()
+    /// The profile in use and its core (Profiles.swift).
+    @StateObject private var host = ProfileHost()
     @Environment(\.scenePhase) private var phase
 
     init() {
@@ -14,18 +15,26 @@ struct AlwyWatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(model)
-                .preferredColorScheme(.dark)
-                .tint(Palette.accent)
-                .onChange(of: phase) { p in
-                    if p == .active { model.foreground() }
-                    if p == .background { TogetherInbox.shared.stop() }
+            Group {
+                if host.open {
+                    // A new profile: every screen anew, on its core.
+                    RootView().id(host.model.profile)
+                } else {
+                    WhoIsWatchingView()
                 }
+            }
+            .environmentObject(host.model)
+            .environmentObject(host)
+            .preferredColorScheme(.dark)
+            .tint(Palette.accent)
+            .onChange(of: phase) { p in
+                if p == .active { host.model.foreground() }
+                if p == .background { TogetherInbox.shared.stop() }
+            }
         }
         // Every 6 hours when iOS allows it: the watch-state sync (Android's periodic SyncWorker).
         .backgroundTask(.appRefresh(SyncJobs.refreshId)) {
-            await model.sync.backgroundRefresh()
+            await host.model.sync.backgroundRefresh()
         }
     }
 }

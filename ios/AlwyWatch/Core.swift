@@ -8,6 +8,8 @@ import UIKit
 /// cache, then refresh.
 @MainActor
 final class AppModel: ObservableObject {
+    /// The device profile this model runs for (Profiles.swift).
+    let profile: String
     let core: AlwyWatch
     /// The account the screens show ("current_account" in the core settings, as on Android).
     @Published var account: String?
@@ -22,16 +24,28 @@ final class AppModel: ObservableObject {
 
     func chooseForRoom() { tabRequest = 0 }
 
-    init() {
+    private var ended: NSObjectProtocol?
+
+    /// Another profile takes over: this one's downloads and observers stop.
+    func stop() {
+        downloads.stop()
+        if let ended { NotificationCenter.default.removeObserver(ended) }
+        ended = nil
+    }
+
+    init(profile: String = ProfileStore.defaultId) {
+        self.profile = profile
+        // Before anything reads a token.
+        Keychain.profile = profile
         I18n.apply()
-        core = try! AlwyWatch(config: AppModel.config())
+        core = try! AlwyWatch(config: AppModel.config(profile))
         sync = SyncJobs(core: core)
         downloads = DownloadRunner(core: core)
         services = core.keepServices()
         Self.activate(core)
         reload()
         // A playback closed: watched downloads may go, "next episodes" may come.
-        NotificationCenter.default.addObserver(forName: .playbackEnded, object: nil, queue: .main) { [weak self] _ in
+        ended = NotificationCenter.default.addObserver(forName: .playbackEnded, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.downloads.sync() }
         }
         Task.detached { [core] in
@@ -169,12 +183,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private static func config() -> CoreConfig {
+    private static func config(_ profile: String) -> CoreConfig {
         let fm = FileManager.default
         let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let downloads = support.appendingPathComponent("downloads")
-        for d in [support, caches, downloads] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
+        // Each profile its own database; the original one stays where it was.
+        let data = ProfileStore.dataDir(profile)
+        let isDefault = profile == ProfileStore.defaultId
+        for d in [support, caches, downloads, data] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
         // Downloads can be fetched again: not in the phone's backups.
         var noBackup = URLResourceValues()
         noBackup.isExcludedFromBackup = true
@@ -189,19 +206,21 @@ final class AppModel: ObservableObject {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
         let pad = UIDevice.current.userInterfaceIdiom == .pad
         return CoreConfig(
-            dataDir: support.path,
+            dataDir: data.path,
             cacheDir: caches.path,
             client: ClientInfo(
                 product: "AlwyWatch",
                 version: version,
                 deviceName: UIDevice.current.name,
-                deviceId: id,
+                // Per profile: Jellyfin signs a device's previous user out at sign-in.
+                deviceId: isDefault ? id : "\(id)-\(profile)",
                 platform: pad ? "iPadOS" : "iOS"
             ),
             imageCacheMb: 300,
             downloadsDir: downloads.path,
-            profile: nil,
-            downloadsDb: nil
+            profile: isDefault ? nil : profile,
+            // Downloads are shared by the device's profiles (the original database).
+            downloadsDb: support.appendingPathComponent("downloads.sqlite").path
         )
     }
 }
