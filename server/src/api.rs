@@ -44,6 +44,9 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/admin/seerr-users", get(admin_seerr_users))
         .route("/v1/admin/forever", get(admin_forever))
         .route("/v1/admin/status", get(admin_status))
+        .route("/v1/admin/dashboard/live", get(dashboard_live))
+        .route("/v1/admin/dashboard/stats", get(dashboard_stats))
+        .route("/v1/admin/dashboard/image", get(dashboard_image))
         .route("/v1/setup", get(crate::server_settings::setup_state))
         .route(
             "/v1/setup/jellyfin",
@@ -1182,6 +1185,70 @@ async fn unvote(
 
 async fn admin_users(State(s): State<Shared>, Admin(_): Admin) -> Result<impl IntoResponse, Error> {
     Ok(Json(s.db.users().map_err(internal)?))
+}
+
+#[derive(Deserialize)]
+struct DashQuery {
+    #[serde(default)]
+    server: Option<String>,
+    #[serde(default)]
+    days: Option<u32>,
+    /// The viewer's offset from UTC in minutes (east positive), for the days of the history.
+    #[serde(default)]
+    tz: Option<i32>,
+    #[serde(default)]
+    img: Option<String>,
+}
+
+/// `GET /v1/admin/dashboard/live?server=`: what plays now and the last minutes' graphs.
+async fn dashboard_live(
+    State(s): State<Shared>,
+    Admin(_): Admin,
+    Query(q): Query<DashQuery>,
+) -> Json<keep_service::dashboard::Live> {
+    Json(s.dash_live(q.server.as_deref().unwrap_or("all")).await)
+}
+
+/// `GET /v1/admin/dashboard/stats?server=&days=&tz=`: plays, top people and titles.
+async fn dashboard_stats(
+    State(s): State<Shared>,
+    Admin(_): Admin,
+    Query(q): Query<DashQuery>,
+) -> Json<keep_service::dashboard::Stats> {
+    let tz = q.tz.unwrap_or(0).clamp(-14 * 60, 14 * 60);
+    Json(
+        s.dash_stats(
+            q.server.as_deref().unwrap_or("all"),
+            q.days.unwrap_or(30),
+            tz,
+        )
+        .await,
+    )
+}
+
+/// `GET /v1/admin/dashboard/image?server=&img=`: a poster or avatar the dashboard shows.
+async fn dashboard_image(
+    State(s): State<Shared>,
+    Admin(_): Admin,
+    Query(q): Query<DashQuery>,
+) -> Response {
+    let (Some(server), Some(img)) = (q.server, q.img) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    match s.dash_image(&server, &img).await {
+        Some((mime, bytes)) => (
+            [
+                (axum::http::header::CONTENT_TYPE, mime),
+                (
+                    axum::http::header::CACHE_CONTROL,
+                    "private, max-age=3600".into(),
+                ),
+            ],
+            bytes,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// `GET /v1/admin/status`: what this server is connected to, for the apps' admin page.

@@ -10,6 +10,7 @@
 uniffi::setup_scaffolding!();
 
 pub mod account;
+pub mod dashboard;
 pub mod identity;
 pub mod profile;
 pub mod settings;
@@ -1261,6 +1262,50 @@ impl KeepClient {
     /// Admins: what the server is connected to.
     pub async fn admin_status(&self) -> Result<ServerStatus> {
         net::send_json(self.req(Method::GET, "/admin/status")).await
+    }
+
+    /// Admins: what plays now and the live graphs (`server`: an id or "all").
+    pub async fn admin_dashboard_live(&self, server: &str) -> Result<dashboard::Live> {
+        net::send_json(self.req(
+            Method::GET,
+            &format!(
+                "/admin/dashboard/live?server={}",
+                net::percent_encode(server)
+            ),
+        ))
+        .await
+    }
+
+    /// Admins: who watched what over the last `days` days (`tz`: the viewer's offset from
+    /// UTC in minutes, east positive, for the dates of the history).
+    pub async fn admin_dashboard_stats(
+        &self,
+        server: &str,
+        days: u32,
+        tz: i32,
+    ) -> Result<dashboard::Stats> {
+        net::send_json(self.req(
+            Method::GET,
+            &format!(
+                "/admin/dashboard/stats?server={}&days={days}&tz={tz}",
+                net::percent_encode(server)
+            ),
+        ))
+        .await
+    }
+
+    /// The URL of a dashboard image (fetch it with [`Self::auth_headers`]); public https
+    /// references come back as they are.
+    pub fn admin_dashboard_image_url(&self, server: &str, img: &str) -> String {
+        if img.starts_with("https://") {
+            return img.to_owned();
+        }
+        format!(
+            "{}/v1/admin/dashboard/image?server={}&img={}",
+            self.base,
+            net::percent_encode(server),
+            net::percent_encode(img)
+        )
     }
 
     /// Admins: keep-forever counts per person and their overlaps.

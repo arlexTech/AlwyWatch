@@ -608,6 +608,11 @@ pub fn Settings() -> impl IntoView {
                     ("admin", Some("server")) => view! { <crate::admin::ServerSettingsPage /> }.into_any(),
                     ("admin", _) => view! {
                         <section class="group">
+                            <leptos_router::components::A href="/dashboard" attr:class="row link-row">
+                                <div><strong>{tr!("Dashboard")}</strong>
+                                    <div class="muted small">{tr!("What plays now, direct play or converted, bandwidth, CPU, RAM and who watched what")}</div></div>
+                                <span>"›"</span>
+                            </leptos_router::components::A>
                             <leptos_router::components::A href="/settings/admin/server" attr:class="row link-row">
                                 <div><strong>{tr!("Server settings")}</strong>
                                     <div class="muted small">{tr!("Media servers, Maintainerr, Seerr, Tautulli, email, sign-up")}</div></div>

@@ -396,6 +396,7 @@ msgstr "Piste {number}"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: web/src/dashboard.rs
 msgid "Audio"
 msgstr "Audio"
 
@@ -1990,6 +1991,7 @@ msgid "Duration"
 msgstr "Durée"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: web/src/dashboard.rs
 msgid "Video"
 msgstr "Vidéo"
 
@@ -2293,6 +2295,7 @@ msgid "Downloaded"
 msgstr "Téléchargé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: web/src/dashboard.rs
 msgid "Paused"
 msgstr "En pause"
 
@@ -2339,6 +2342,7 @@ msgid "Shows"
 msgstr "Séries"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: web/src/dashboard.rs
 msgid "Movies"
 msgstr "Films"
 
@@ -6627,6 +6631,141 @@ msgstr "série"
 msgid "Nothing in progress."
 msgstr "Rien en cours."
 
+#: web/src/dashboard.rs
+msgid "{n} stream"
+msgid_plural "{n} streams"
+msgstr[0] "{n} flux"
+msgstr[1] "{n} flux"
+
+#: web/src/dashboard.rs
+msgid "{n} converted"
+msgid_plural "{n} converted"
+msgstr[0] "{n} converti"
+msgstr[1] "{n} convertis"
+
+#: web/src/dashboard.rs
+msgid "{n} play"
+msgid_plural "{n} plays"
+msgstr[0] "{n} lecture"
+msgstr[1] "{n} lectures"
+
+#: web/src/dashboard.rs
+msgid "Transcode"
+msgstr "Transcodage"
+
+#: web/src/dashboard.rs
+msgid "Direct stream"
+msgstr "Direct stream"
+
+#: web/src/dashboard.rs
+msgid "Direct play"
+msgstr "Lecture directe"
+
+#: web/src/dashboard.rs
+msgid "Plex is read through Tautulli: set it up in Server settings."
+msgstr "Plex est lu via Tautulli : configurez-le dans les réglages du serveur."
+
+#: web/src/dashboard.rs
+msgid "Needs this server's API key in Server settings."
+msgstr "Il faut la clé API de ce serveur dans les réglages du serveur."
+
+#: web/src/dashboard.rs
+msgid "Unreachable right now."
+msgstr "Injoignable pour le moment."
+
+#: web/src/dashboard.rs
+msgid "Buffering"
+msgstr "Mise en mémoire tampon"
+
+#: web/src/dashboard.rs
+msgid "Playing"
+msgstr "En lecture"
+
+#: web/src/dashboard.rs
+msgid "Local"
+msgstr "Local"
+
+#: web/src/dashboard.rs
+msgid "Remote"
+msgstr "Distant"
+
+#: web/src/dashboard.rs
+msgid "last {n} min"
+msgstr "{n} dernières min"
+
+#: web/src/dashboard.rs
+msgid "Nothing is playing."
+msgstr "Rien en lecture."
+
+#: web/src/dashboard.rs
+msgid "all direct"
+msgstr "tout en direct"
+
+#: web/src/dashboard.rs
+msgid "Now playing"
+msgstr "En cours de lecture"
+
+#: web/src/dashboard.rs
+msgid "Bandwidth"
+msgstr "Bande passante"
+
+#: web/src/dashboard.rs
+msgid "CPU"
+msgstr "CPU"
+
+#: web/src/dashboard.rs
+msgid "Server"
+msgstr "Serveur"
+
+#: web/src/dashboard.rs
+msgid "RAM"
+msgstr "RAM"
+
+#: web/src/dashboard.rs
+msgid "TV"
+msgstr "Séries"
+
+#: web/src/dashboard.rs
+msgid "Nothing yet."
+msgstr "Rien pour l’instant."
+
+#: web/src/dashboard.rs
+msgid "Over the last days"
+msgstr "Ces derniers jours"
+
+#: web/src/dashboard.rs
+msgid "{server}: history since {date}"
+msgstr "{server} : historique depuis le {date}"
+
+#: web/src/dashboard.rs
+msgid "Top users"
+msgstr "Meilleurs utilisateurs"
+
+#: web/src/dashboard.rs
+msgid "Play history"
+msgstr "Historique de lecture"
+
+#: web/src/dashboard.rs
+msgid "{direct} direct play · {transcodes} converted (Plex)"
+msgstr "{direct} en lecture directe · {transcodes} convertis (Plex)"
+
+#: web/src/dashboard.rs
+msgid "Top played"
+msgstr "Les plus regardés"
+
+#: web/src/dashboard.rs
+msgid "Sign in with an admin account first."
+msgstr "Connectez-vous d’abord avec un compte administrateur."
+
+#: web/src/dashboard.rs
+#: web/src/signin.rs
+msgid "Dashboard"
+msgstr "Tableau de bord"
+
+#: web/src/dashboard.rs
+msgid "All servers"
+msgstr "Tous les serveurs"
+
 #: web/src/extra.rs
 msgid "✓ Watched · mark unwatched"
 msgstr "✓ Vu · marquer comme non vu"
@@ -7332,6 +7471,10 @@ msgstr "Impossible de joindre le serveur. Vérifiez l'adresse et votre connexion
 #: web/src/signin.rs
 msgid "Settings sections"
 msgstr "Sections des paramètres"
+
+#: web/src/signin.rs
+msgid "What plays now, direct play or converted, bandwidth, CPU, RAM and who watched what"
+msgstr "Ce qui est en lecture, en direct ou converti, bande passante, CPU, RAM et qui a regardé quoi"
 
 #: web/src/signin.rs
 msgid "Media servers, Maintainerr, Seerr, Tautulli, email, sign-up"

@@ -11,6 +11,7 @@ mod accounts;
 mod api;
 mod auth;
 mod config;
+mod dashboard;
 mod db;
 mod invites;
 mod jellyfin_admin;

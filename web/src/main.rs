@@ -5,6 +5,7 @@
 mod account;
 mod admin;
 mod browse;
+mod dashboard;
 mod extra;
 mod icons;
 mod keep;
@@ -133,6 +134,7 @@ fn App() -> impl IntoView {
                 <Route path=path!("/leaving/sort") view=|| view! { <Shell><keep::Triage /></Shell> } />
                 // Admin is a section of Settings now.
                 <Route path=path!("/admin") view=|| view! { <MovedTo to="/settings/admin" /> } />
+                <Route path=path!("/dashboard") view=|| view! { <Shell><dashboard::Dashboard /></Shell> } />
                 <Route path=path!("/admin/forever") view=|| view! { <Shell><keep::Forever /></Shell> } />
                 <Route path=path!("/settings") view=|| view! { <Shell><signin::Settings /></Shell> } />
                 <Route path=path!("/settings/:section") view=|| view! { <Shell><signin::Settings /></Shell> } />

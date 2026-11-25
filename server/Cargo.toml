@@ -11,6 +11,8 @@ publish.workspace = true
 [dependencies]
 axum = { workspace = true, features = ["http1", "tokio", "json", "query"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "net", "macros", "signal", "sync", "time", "fs"] }
+# Reads every media server at once for the dashboard (already built in through reqwest).
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

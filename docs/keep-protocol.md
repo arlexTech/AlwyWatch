@@ -184,6 +184,27 @@ database changes. With `dry_run` on, bridged writes get 403.
 `titles`: distinct titles someone keeps forever; `shared`: of those, kept by two people or more.
 `people` is sorted by most titles, `overlaps` by most titles in common, `items` by most keepers.
 
+## Dashboard (admins)
+
+What plays now and who watched what, per media server or merged (`server=all`). Types in
+`keep_service::dashboard`. Read only: Plex through Tautulli (`get_activity`, `get_history`; no
+Plex token or Plex Pass), Jellyfin through its API key (`/Sessions`, the activity log's
+`VideoPlayback`/`VideoPlaybackStopped` entries, kept about a month, and `/Items?Ids=`). CPU and RAM
+are the host the AlwyWatch server runs on (`/proc`).
+
+- `GET /v1/admin/dashboard/live?server={id|all}` → `Live`: the servers (with `problem`:
+  `no_tautulli`, `no_key`, `unreachable`), the streams playing now with each track's decision
+  (`direct_play`, `direct_stream`, `transcode` and what it becomes), and readings of the last
+  15 minutes (bandwidth local/remote, CPU %, RAM %). The server reads every 30 s on its own and at
+  most every 4 s while someone asks.
+- `GET /v1/admin/dashboard/stats?server=&days=1..90&tz={minutes east of UTC}` → `Stats`: plays per
+  day (movies, episodes), top users (merged across servers by linked identity), top movies and
+  shows, direct play vs converted (Plex only), and `since` when a server's history is shorter
+  than the period. Cached 5 minutes.
+- `GET /v1/admin/dashboard/image?server=&img=` → the image bytes. `img` is a reference the two
+  calls above returned: `plex:/library/metadata/…` (through Tautulli's image proxy),
+  `jf:item:{id}` or `jf:user:{id}`; anything else is 404.
+
 ## Watch together
 
 People on different servers (Plex or Jellyfin) watch the same title in sync, in a **private

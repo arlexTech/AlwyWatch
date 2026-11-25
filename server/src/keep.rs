@@ -62,6 +62,8 @@ pub struct State {
     pub setup_failures: std::sync::atomic::AtomicU32,
     /// Why Maintainerr is not used although it is set up (an unsupported version).
     pub maintainerr_problem: std::sync::Mutex<Option<String>>,
+    /// The admin dashboard's live readings and stats cache.
+    pub dashboard: crate::dashboard::Dash,
 }
 
 pub struct Limits {
@@ -180,6 +182,7 @@ impl State {
             setup_code: None,
             setup_failures: Default::default(),
             maintainerr_problem: Default::default(),
+            dashboard: Default::default(),
             write_lock: tokio::sync::Mutex::new(()),
         }
     }
@@ -1023,15 +1026,25 @@ impl State {
 
 /// Starts the background jobs; the handles stop them when the settings change.
 pub fn spawn_jobs(state: Shared) -> Vec<tokio::task::JoinHandle<()>> {
+    let d = state.clone();
+    // The dashboard's graphs: a reading every 30 s even while nobody looks (cheap: one
+    // Tautulli call, one Jellyfin call, /proc), so they are never empty when opened.
+    let mut jobs = vec![tokio::spawn(async move {
+        loop {
+            if d.dashboard.idle_due().await {
+                d.dash_refresh().await;
+            }
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    })];
     if !state.config.keep_on() {
         // No Maintainerr: nothing to read, apply or release. The apps hide Leaving soon.
         state
             .maintainerr_state
             .store(2, std::sync::atomic::Ordering::Relaxed);
-        return vec![];
+        return jobs;
     }
     let s = state.clone();
-    let mut jobs = vec![];
     jobs.push(tokio::spawn(async move {
         loop {
             let ok = match s.sync().await {

@@ -391,6 +391,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: web/src/dashboard.rs
 msgid "Audio"
 msgstr ""
 
@@ -1985,6 +1986,7 @@ msgid "Duration"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: web/src/dashboard.rs
 msgid "Video"
 msgstr ""
 
@@ -2288,6 +2290,7 @@ msgid "Downloaded"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: web/src/dashboard.rs
 msgid "Paused"
 msgstr ""
 
@@ -2334,6 +2337,7 @@ msgid "Shows"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: web/src/dashboard.rs
 msgid "Movies"
 msgstr ""
 
@@ -6622,6 +6626,141 @@ msgstr ""
 msgid "Nothing in progress."
 msgstr ""
 
+#: web/src/dashboard.rs
+msgid "{n} stream"
+msgid_plural "{n} streams"
+msgstr[0] ""
+msgstr[1] ""
+
+#: web/src/dashboard.rs
+msgid "{n} converted"
+msgid_plural "{n} converted"
+msgstr[0] ""
+msgstr[1] ""
+
+#: web/src/dashboard.rs
+msgid "{n} play"
+msgid_plural "{n} plays"
+msgstr[0] ""
+msgstr[1] ""
+
+#: web/src/dashboard.rs
+msgid "Transcode"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Direct stream"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Direct play"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Plex is read through Tautulli: set it up in Server settings."
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Needs this server's API key in Server settings."
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Unreachable right now."
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Buffering"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Playing"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Local"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Remote"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "last {n} min"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Nothing is playing."
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "all direct"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Now playing"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Bandwidth"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "CPU"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Server"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "RAM"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "TV"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Nothing yet."
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Over the last days"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "{server}: history since {date}"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Top users"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Play history"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "{direct} direct play · {transcodes} converted (Plex)"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Top played"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Sign in with an admin account first."
+msgstr ""
+
+#: web/src/dashboard.rs
+#: web/src/signin.rs
+msgid "Dashboard"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "All servers"
+msgstr ""
+
 #: web/src/extra.rs
 msgid "✓ Watched · mark unwatched"
 msgstr ""
@@ -7326,6 +7465,10 @@ msgstr ""
 
 #: web/src/signin.rs
 msgid "Settings sections"
+msgstr ""
+
+#: web/src/signin.rs
+msgid "What plays now, direct play or converted, bandwidth, CPU, RAM and who watched what"
 msgstr ""
 
 #: web/src/signin.rs
