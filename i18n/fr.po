@@ -3166,7 +3166,7 @@ msgstr "Gardé jusqu'à visionnage"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
-#: web/src/keep.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "No date"
 msgstr "Sans date"
 

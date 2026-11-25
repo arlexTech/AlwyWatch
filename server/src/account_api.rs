@@ -12,6 +12,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::{Deserialize, Serialize};
 
+use keep_service::ServerType;
 use keep_service::account::{
     AccountOptions, AccountView, Approved, EmailChange, ForgotRequest, LinkedView, PasskeyView,
     ResetRequest, SessionView, SignedIn,
@@ -434,7 +435,37 @@ pub async fn login(
             "wrong username or password".into(),
         ));
     };
-    signed_in(&s, &a, &r.device)
+    let mut out = signed_in(&s, &a, &r.device)?;
+    out.0.jellyfin = same_name_jellyfin(&s, &a, r.username.trim());
+    Ok(out)
+}
+
+/// The person's Jellyfin login with this account's username on one of this server's Jellyfin
+/// servers (an invitation makes it with the same username and password): a new device signs
+/// in to it with the password just typed, as right after sign-up. Only such a login: trying the
+/// password on any other could count failed sign-ins against it, and Jellyfin locks users out
+/// after a few.
+fn same_name_jellyfin(
+    s: &Shared,
+    a: &AccountRow,
+    username: &str,
+) -> Option<keep_service::account::NewJellyfinLogin> {
+    let ids = s.db.identities_of(&a.person).ok()?;
+    ids.iter()
+        .filter(|i| i.kind == ServerType::Jellyfin && i.media_name.eq_ignore_ascii_case(username))
+        .find_map(|i| {
+            let server = s
+                .config
+                .servers
+                .iter()
+                .find(|x| x.id == i.server_id && x.kind == ServerType::Jellyfin)?;
+            Some(keep_service::account::NewJellyfinLogin {
+                server_id: server.id.clone(),
+                name: server.name.clone(),
+                url: server.public_url.clone(),
+                username: i.media_name.clone(),
+            })
+        })
 }
 
 /// `POST /v1/account/logout`: ends this session.

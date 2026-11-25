@@ -4043,6 +4043,20 @@ async fn an_invitation_makes_the_jellyfin_login_too() {
         )
         .await;
     assert_eq!(st, StatusCode::NOT_FOUND);
+
+    // Signing in on another device: the same-name Jellyfin login is named, so the app signs
+    // in to it with the password just typed.
+    let (st, _, r) = e
+        .anon(
+            "POST",
+            "/v1/account/login",
+            None,
+            Some(json!({"username": "Newbie", "password": "password1", "device": "TV"})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(r["jellyfin"]["server_id"], "jfsrv");
+    assert_eq!(r["jellyfin"]["username"], "newbie");
 }
 
 #[tokio::test]

@@ -166,7 +166,11 @@ struct SignInView: View {
         case let .accountLogin(u):
             AccountLoginStep(url: u, busy: busy, attempt: attempt, onError: { error = $0 }) {
                 replaceLast(.known(url: u))
-            } onNoPassword: { back() }
+            } onNoPassword: { back() } onJellyfin: { signedIn in
+                // The Jellyfin login an invitation made, same password: on to the home.
+                try? core.keepSetPreset(url: u)
+                finish(signedIn)
+            }
 
         case let .known(u):
             KnownStep(url: u, busy: busy) { pick(u, $0) } onKnown: { k in
@@ -598,6 +602,7 @@ private struct AccountLoginStep: View {
     let onError: (String?) -> Void
     let onDone: () -> Void
     let onNoPassword: () -> Void
+    let onJellyfin: (SignedIn) -> Void
     @State private var user = ""
     @State private var pass = ""
     @State private var resetSent = false
@@ -644,7 +649,7 @@ private struct AccountLoginStep: View {
             Keychain.put(accountTokenKey, r.token)
             model.lastAlwyWatchUrl = r.account.baseUrl
             _ = try? await core.syncSettings()
-            onDone()
+            if let jellyfin = r.jellyfin { onJellyfin(jellyfin) } else { onDone() }
         }
     }
 }

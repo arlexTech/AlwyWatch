@@ -382,7 +382,15 @@ fun AddServerScreen(
                         ctx.services.tokens.put(ACCOUNT_TOKEN, r.token)
                         ctx.services.profiles.lastAlwyWatchUrl = r.account.baseUrl
                         runCatching { core.syncSettings() }
-                        history = history.dropLast(1) + Step.Known(s.url)
+                        // The Jellyfin login an invitation made, signed in with the same
+                        // password: straight to the home, as right after sign-up.
+                        val jellyfin = r.jellyfin
+                        if (jellyfin != null) {
+                            core.keepSetPreset(s.url)
+                            finish(jellyfin)
+                        } else {
+                            history = history.dropLast(1) + Step.Known(s.url)
+                        }
                     }
                 }
                 Text(

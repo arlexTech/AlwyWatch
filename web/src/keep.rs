@@ -83,7 +83,7 @@ pub fn LeavingRail() -> impl IntoView {
                             <A href=href attr:class="card">
                                 <div class="art">
                                     {i.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
-                                    <span class="when">{short_when(&i)}</span>
+                                    {short_when(&i).map(|w| view! { <span class="when">{w}</span> })}
                                 </div>
                                 <div class="title">{i.title.clone()}</div>
                                 <div class="sub">{i.year.map(|y| y.to_string()).unwrap_or_default()}</div>
@@ -97,18 +97,20 @@ pub fn LeavingRail() -> impl IntoView {
 }
 
 /// The badge on a Leaving soon poster: "No date" while nothing is scheduled, else how soon.
-fn short_when(i: &LeavingItem) -> String {
+/// When it goes, on its poster; nothing without a date (a paused rule): a row of "No date"
+/// badges read as broken.
+fn short_when(i: &LeavingItem) -> Option<String> {
     let now = (js_sys::Date::now() / 1000.0) as i64;
     match i.effective_deletion_date.or(i.deletion_date) {
         Some(d) if i.collection_active && d > now => {
             let days = (d - now) / 86_400;
-            match days {
+            Some(match days {
                 0 => tr!("Today"),
                 1 => tr!("Tomorrow"),
                 n => trn!("{n} day", "{n} days", n),
-            }
+            })
         }
-        _ => tr!("No date"),
+        _ => None,
     }
 }
 

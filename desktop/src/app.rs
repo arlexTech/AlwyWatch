@@ -4816,12 +4816,34 @@ impl App {
                             error = e
                         )));
                     }
-                    t.account_ready(url, s.account.name);
+                    // The Jellyfin login an invitation made, signed in with the same password:
+                    // straight to the library, as right after sign-up.
+                    t.account_or_library(url, s);
                 }
                 Err(e) => t.ui().set_transfer_status(sstr(e.to_string())),
             }
         })
         .ok();
+    }
+
+    /// After an AlwyWatch account sign-in or sign-up: the library when it brought a Jellyfin
+    /// login signed in on this device (an invitation's), else the account's next step.
+    fn account_or_library(self: &Rc<Self>, url: String, s: AccountSignedIn) {
+        match s.jellyfin {
+            Some(j) => {
+                self.ui().set_keep_address(sstr(&url));
+                self.profiles.set_last_address(&url);
+                let _ = self.core.keep_set_preset(url);
+                self.refresh_account_settings();
+                let core = self.core.clone();
+                slint::spawn_local(async move {
+                    let _ = core.sync_settings().await;
+                })
+                .ok();
+                self.signed_in(j);
+            }
+            None => self.account_ready(url, s.account.name),
+        }
     }
 
     /// "Forgot password?": asks the server to email a link (the web page sets the new one).
@@ -4963,23 +4985,9 @@ impl App {
                             error = e
                         )));
                     }
-                    match s.jellyfin {
-                        // The invitation made a Jellyfin login too, already signed in: straight
-                        // to the library, like after a Jellyfin sign-in from this server.
-                        Some(j) => {
-                            t.ui().set_keep_address(sstr(&url));
-                            t.profiles.set_last_address(&url);
-                            let _ = t.core.keep_set_preset(url);
-                            t.refresh_account_settings();
-                            let core = t.core.clone();
-                            slint::spawn_local(async move {
-                                let _ = core.sync_settings().await;
-                            })
-                            .ok();
-                            t.signed_in(j);
-                        }
-                        None => t.account_ready(url, s.account.name),
-                    }
+                    // The invitation made a Jellyfin login too, already signed in: straight to
+                    // the library, like after a Jellyfin sign-in from this server.
+                    t.account_or_library(url, s);
                 }
                 Err(e) => t.ui().set_transfer_status(sstr(e.to_string())),
             }

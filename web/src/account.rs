@@ -208,23 +208,41 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
         busy.set(true);
         error.set(None);
         spawn_local(async move {
+            let password = pass.get_untracked();
             let r = KeepClient::account_login(
                 &c.http,
                 &Ctx::origin(),
                 &LoginRequest {
                     username: user.get_untracked().trim().to_owned(),
-                    password: pass.get_untracked(),
+                    password: password.clone(),
                     device: DEVICE.into(),
                 },
             )
             .await;
-            busy.set(false);
             match r {
                 Ok(s) => {
                     c.set_account(&s.token, &s.account);
+                    // The Jellyfin login an invitation made (same username and password):
+                    // signed in here too, so this browser goes straight to the library.
+                    if let Some(j) = s.jellyfin
+                        && let Ok(session) = JellyfinAuth::new(c.http.clone(), c.client.clone())
+                            .sign_in(&j.url, &j.username, &password)
+                            .await
+                    {
+                        let served = KeepClient::servers(&c.http, &Ctx::origin())
+                            .await
+                            .unwrap_or_default();
+                        crate::signin::finish(&c, session, &served).await;
+                        busy.try_set(false);
+                        return navigate("/", Default::default());
+                    }
+                    busy.try_set(false);
                     navigate(&next, Default::default());
                 }
-                Err(e) => error.set(Some(account::explain(&e, true))),
+                Err(e) => {
+                    busy.set(false);
+                    error.set(Some(account::explain(&e, true)));
+                }
             }
         });
     };
@@ -311,10 +329,14 @@ pub fn Join() -> impl IntoView {
                 let (http, check) = (http.clone(), check.clone());
                 async move { KeepClient::account_invite_info(&http, &Ctx::origin(), &check).await }
             });
+            let account = c.account;
             view! {
                 {move || match info.get() {
                     None => view! { <crate::ui::Loading /> }.into_any(),
                     Some(Ok(i)) => view! { <JoinForm invite=Some((code.clone(), i)) /> }.into_any(),
+                    // Just used here: the page is redrawn for the new account while its
+                    // Jellyfin login signs in, and must not say "can't be used" meanwhile.
+                    Some(Err(net::Error::NotFound)) if account.get().is_some() => view! { <crate::ui::Loading /> }.into_any(),
                     Some(Err(net::Error::NotFound)) => view! {
                         <h1>{tr!("This invitation can't be used")}</h1>
                         <p class="muted">{tr!("It was already used, ended or expired. Ask the person who invited you for a new one.")}</p>

@@ -30,8 +30,9 @@ pub struct AlwyAccount {
 pub struct AccountSignedIn {
     pub account: AlwyAccount,
     pub token: String,
-    /// The invitation also made a Jellyfin login, already signed in on this device: store its
-    /// token like after any Jellyfin sign-in.
+    /// The Jellyfin login an invitation made (same username and password), already signed in
+    /// on this device, at sign-up or a later sign-in: store its token like after any Jellyfin
+    /// sign-in.
     pub jellyfin: Option<crate::app::SignedIn>,
 }
 
@@ -300,27 +301,38 @@ impl AlwyWatch {
         password: String,
         device: String,
     ) -> Result<AccountSignedIn> {
-        self.run(|c| async move {
-            let base = net::normalize_base_url(&url)?;
-            let s = KeepClient::account_login(
-                &c.http,
-                &base,
-                &account::LoginRequest {
-                    username: username.trim().to_owned(),
-                    password,
-                    device,
-                },
-            )
-            .await
-            .map_err(|e| explain(e, true))?;
-            let account = c.save_account(&base, &s.token, &s.account)?;
-            Ok(AccountSignedIn {
-                account,
-                token: s.token,
-                jellyfin: None,
+        let pw = password.clone();
+        let (mut out, login) = self
+            .run(|c| async move {
+                let base = net::normalize_base_url(&url)?;
+                let s = KeepClient::account_login(
+                    &c.http,
+                    &base,
+                    &account::LoginRequest {
+                        username: username.trim().to_owned(),
+                        password,
+                        device,
+                    },
+                )
+                .await
+                .map_err(|e| explain(e, true))?;
+                let account = c.save_account(&base, &s.token, &s.account)?;
+                Ok((
+                    AccountSignedIn {
+                        account,
+                        token: s.token,
+                        jellyfin: None,
+                    },
+                    s.jellyfin,
+                ))
             })
-        })
-        .await
+            .await?;
+        // The Jellyfin login an invitation made with this username and password: signed in
+        // too, so a new device goes straight to the library (quietly skipped if it fails).
+        if let Some(j) = login {
+            out.jellyfin = self.jellyfin_sign_in(j.url, j.username, pw).await.ok();
+        }
+        Ok(out)
     }
 
     /// Creates an AlwyWatch account (with an invitation code when the server asks for one) and
