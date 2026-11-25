@@ -1,3 +1,5 @@
+<img src="packaging/linux/alwywatch.png" width="96" alt="AlwyWatch logo" align="right" />
+
 # AlwyWatch
 
 [![License: AGPL v3+](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
@@ -6,9 +8,6 @@ A lightweight, open source media client for **Jellyfin** and **Plex**, with **Se
 and a **"keep"** system on top of **Maintainerr**: see what is about to be deleted from the
 server and ask to keep it for N days, until you have watched it, or forever.
 
-Platforms: Android phones and tablets, Android TV, Linux and Windows desktop, a web app, and
-(early) iPhone and iPad.
-
 * **Without `alwywatch-server`**: a plain Jellyfin/Plex client with downloads, and Seerr
   requests if you give it your Seerr address.
 * **With it** (one Docker container next to Maintainerr, [set up in a few steps](docs/deploy.md)):
@@ -16,22 +15,71 @@ Platforms: Android phones and tablets, Android TV, Linux and Windows desktop, a 
   devices, signing a new device in with a code, optional AlwyWatch accounts, and Seerr for
   both Jellyfin and Plex users.
 
-> Status: 0.1.0, not yet released: there are no downloads yet, the apps are built from source.
+> AlwyWatch is in beta. The first stable release isn't out yet, so take a **Beta** file for now.
 
-## Install
+## Which file do I download?
 
-* **Android phone, tablet, TV**: `cd android && ./gradlew assembleDebug`, then install
-  `android/app/build/outputs/apk/debug/app-universal-debug.apk` (`adb install`; on a TV, turn
-  on developer options and `adb connect <its address>` first). Requirements:
-  [docs/build.md](docs/build.md).
-* **Linux**: `desktop/packaging/install.sh` (needs `mpv`/libmpv from your distribution), or
-  `scripts/package.sh linux` for an AppImage in `dist/`.
-* **Windows**: `scripts/package.sh windows` builds an installer in `dist/`.
-* **Web**: nothing to install; it is served by `alwywatch-server` at its address.
-* **iPhone, iPad** (early: sign-in, browsing, playback): CI publishes an unsigned
-  [`AlwyWatch-ios-unsigned.ipa`](https://github.com/arlexTech/alwywatch/releases/download/ios/AlwyWatch-ios-unsigned.ipa);
-  sign and install it with Impactor, SideStore or AltStore and a free Apple ID (re-sign every
-  7 days). On a Mac: `scripts/ios.sh`.
+Find your device in the table and click the file next to it.
+
+| Your device | Stable | Beta |
+|---|---|---|
+| 📱 **Android** phone or tablet (Android 8 or newer) | Not yet | [.apk](https://github.com/arlexTech/alwywatch/releases/download/beta/AlwyWatch-android.apk) |
+| 📺 **Android TV**, Google TV, Fire TV | Not yet | [.apk](https://github.com/arlexTech/alwywatch/releases/download/beta/AlwyWatch-android.apk) |
+| 🐧 **Linux**, any distribution | Not yet | [.AppImage](https://github.com/arlexTech/alwywatch/releases/download/beta/AlwyWatch-linux-x86_64.AppImage) ¹ |
+| 🪟 **Windows** 10 / 11 | Not yet | [.exe](https://github.com/arlexTech/alwywatch/releases/download/beta/AlwyWatch-windows-x64-setup.exe) |
+| 🍏 **macOS** | Not yet | Not yet |
+| 🍎 **iPhone / iPad** | Not yet | [.ipa](https://github.com/arlexTech/alwywatch/releases/download/ios/AlwyWatch-ios-unsigned.ipa) ² |
+
+🌐 **Web browser**: nothing to install, the web app is served by `alwywatch-server` at its
+address. 🖥️ **The server** itself: [set it up](docs/deploy.md).
+
+**Which column?** **Stable:** tested releases. **Beta:** every change as soon as it's made, so
+it may have bugs. There is no automatic update yet: download new versions yourself.
+
+Smaller Android files, for one kind of device only: [64-bit phones and recent TVs](https://github.com/arlexTech/alwywatch/releases/download/beta/AlwyWatch-android-arm64-v8a.apk),
+[older 32-bit devices and many TVs](https://github.com/arlexTech/alwywatch/releases/download/beta/AlwyWatch-android-armeabi-v7a.apk),
+[x86_64 emulators and PCs](https://github.com/arlexTech/alwywatch/releases/download/beta/AlwyWatch-android-x86_64.apk). Not sure? Take the one in the table.
+
+¹ **Linux:** needs libmpv from your distribution (Debian/Ubuntu: `libmpv2`, elsewhere usually
+`mpv`).
+
+² **iPhone (early):** not on the App Store. Install the .ipa with
+[Plume Impactor](https://github.com/claration/impactor), SideStore or AltStore and a free Apple
+ID (with a free Apple ID it must be refreshed every 7 days).
+
+Older versions are on the [releases page](https://github.com/arlexTech/alwywatch/releases).
+
+### Installing
+
+**📱 Android**
+1. Download the `.apk` file on your phone.
+2. Open it. If Android asks, allow your browser or file manager to install apps.
+3. Tap **Install**, then open AlwyWatch.
+
+**📺 Android TV**
+1. On the TV, install a downloader app (for example *Downloader* by AFTVnews) and allow it to
+   install apps.
+2. Open the `.apk` link above in it, then **Install**.
+3. Or from a computer: turn on developer options on the TV, then `adb connect <TV address>` and
+   `adb install AlwyWatch-android.apk`.
+
+**🐧 Linux**
+1. Download the `.AppImage` file.
+2. Right-click it, open **Properties**, and tick **Allow executing file as program**.
+3. Double-click it to start AlwyWatch.
+
+Or in a terminal:
+```sh
+chmod +x AlwyWatch-linux-x86_64.AppImage
+./AlwyWatch-linux-x86_64.AppImage
+```
+
+**🪟 Windows**
+1. Download the `.exe` file and open it.
+2. Windows may say it protected your PC (the installer isn't signed by a paid certificate yet):
+   click **More info**, then **Run anyway**.
+
+Building it yourself instead: [docs/build.md](docs/build.md).
 
 First launch: "Sign in to AlwyWatch" with the address the person who runs your server gave
 you, "Create an AlwyWatch account" with an invitation, or "Jellyfin or Plex only". A TV or

@@ -72,11 +72,99 @@ jobs:
             target
           key: android-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'android/gradle/libs.versions.toml') }}
       - run: command -v cargo-ndk || cargo install --locked cargo-ndk
+      # The release key, when the repository has it (secrets ANDROID_KEYSTORE_BASE64,
+      # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD): the beta APKs then
+      # install over the maintainer's own builds. Without it they are unsigned and not published.
+      - name: Release key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        if: env.KEYSTORE != ''
+        run: |
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+          mkdir -p ~/.config/alwywatch
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/release.jks" "$STORE_PASSWORD" "$ALIAS" "${KEY_PASSWORD:-$STORE_PASSWORD}" \
+            > ~/.config/alwywatch/signing.properties
+          echo "SIGNED=true" >> "$GITHUB_ENV"
       - run: scripts/ci.sh android
+      - name: Beta files
+        if: env.SIGNED == 'true'
+        run: |
+          mkdir -p out
+          cd android/app/build/outputs/apk/release
+          cp app-universal-release.apk ../../../../../../out/AlwyWatch-android.apk
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            [ -f "app-$abi-release.apk" ] && cp "app-$abi-release.apk" "../../../../../../out/AlwyWatch-android-$abi.apk"
+          done
+          ls -l ../../../../../../out
+      - uses: actions/upload-artifact@v4
+        if: env.SIGNED == 'true'
+        with:
+          name: beta-android
+          path: out/*
       - uses: actions/upload-artifact@v4
         with:
           name: apks-unsigned
           path: android/app/build/outputs/apk/release/*.apk
+
+  # Linux AppImage and Windows installer (scripts/package.sh), for the beta release.
+  desktop:
+    runs-on: ubuntu-latest
+    needs: rust
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal && rustup default stable && rustup target add x86_64-pc-windows-msvc
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libfontconfig1-dev libwayland-dev libx11-dev libxcb1-dev libdbus-1-dev pkg-config squashfs-tools nsis p7zip-full clang lld llvm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            ~/.cache/alwywatch-build
+            target
+          key: desktop-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - run: command -v cargo-xwin || cargo install --locked cargo-xwin
+      - run: scripts/package.sh linux
+      - run: scripts/package.sh windows
+      - run: |
+          mkdir -p out
+          cp dist/AlwyWatch-*-x86_64.AppImage out/AlwyWatch-linux-x86_64.AppImage
+          cp dist/AlwyWatch-*-setup.exe out/AlwyWatch-windows-x64-setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: beta-desktop
+          path: out/*
+
+  # The rolling `beta` pre-release the README's download table links to
+  # (releases/download/beta/<name>): replaced by every push to main.
+  beta:
+    runs-on: ubuntu-latest
+    needs: [android, desktop, web]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    concurrency:
+      group: beta-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: beta-*
+          merge-multiple: true
+          path: out
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -l out
+          gh release view beta >/dev/null 2>&1 || gh release create beta --prerelease --title "Beta" --notes "Building…"
+          gh release upload beta out/* --clobber
+          gh release edit beta --prerelease --title "Beta" --notes "Every change as soon as it is made, so it may have bugs. Built from ${GITHUB_SHA::7}. Which file to take: see the README."
 
   server-image:
     runs-on: ubuntu-latest
