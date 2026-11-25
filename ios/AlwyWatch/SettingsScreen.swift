@@ -150,7 +150,8 @@ struct SettingsScreen: View {
         case .device:
             let lang = i18nLanguages().first { $0.code == I18n.language }?.name
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-            return [lang, "AlwyWatch \(version)"].compactMap { $0 }.joined(separator: " · ")
+            let profiles = trn("{n} profile", "{n} profiles", ProfileStore.list().count)
+            return [profiles, lang, "AlwyWatch \(version)"].compactMap { $0 }.joined(separator: " · ")
         case .admin:
             return tr("People, countdown, invitations, server status")
         }
