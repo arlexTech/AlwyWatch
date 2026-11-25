@@ -1294,6 +1294,20 @@ impl KeepClient {
         .await
     }
 
+    /// The bytes of a dashboard image (a poster or avatar reference from [`dashboard::Live`] or
+    /// [`dashboard::Stats`]); public https references (Plex avatars) are fetched as they are.
+    pub async fn admin_dashboard_image(&self, server: &str, img: &str) -> Result<Vec<u8>> {
+        let url = self.admin_dashboard_image_url(server, img);
+        let mut req = self.http.get(&url);
+        if !img.starts_with("https://") {
+            for (name, value) in self.auth_headers() {
+                req = req.header(name, value);
+            }
+        }
+        let res = net::send(req).await?;
+        Ok(res.bytes().await?.to_vec())
+    }
+
     /// The URL of a dashboard image (fetch it with [`Self::auth_headers`]); public https
     /// references come back as they are.
     pub fn admin_dashboard_image_url(&self, server: &str, img: &str) -> String {

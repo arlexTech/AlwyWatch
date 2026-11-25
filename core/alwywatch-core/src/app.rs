@@ -3186,6 +3186,34 @@ impl AlwyWatch {
             .await
     }
 
+    /// Admins: what plays now on the media servers (each track direct or converted) and the
+    /// last minutes' bandwidth, CPU and RAM. `server`: a server id or "all".
+    pub async fn keep_admin_dashboard_live(
+        &self,
+        server: String,
+    ) -> Result<keep_service::dashboard::Live> {
+        self.run(|c| async move { Ok(c.keep()?.admin_dashboard_live(&server).await?) })
+            .await
+    }
+
+    /// Admins: plays per day, top people and titles over the last `days` days (`tz`: minutes
+    /// east of UTC, for the dates).
+    pub async fn keep_admin_dashboard_stats(
+        &self,
+        server: String,
+        days: u32,
+        tz: i32,
+    ) -> Result<keep_service::dashboard::Stats> {
+        self.run(|c| async move { Ok(c.keep()?.admin_dashboard_stats(&server, days, tz).await?) })
+            .await
+    }
+
+    /// The bytes of a dashboard poster or avatar (`img` as the dashboard gave it).
+    pub async fn keep_admin_dashboard_image(&self, server: String, img: String) -> Result<Vec<u8>> {
+        self.run(|c| async move { Ok(c.keep()?.admin_dashboard_image(&server, &img).await?) })
+            .await
+    }
+
     /// Admins: what the AlwyWatch server is connected to (Maintainerr, Seerr, Tautulli…).
     pub async fn keep_admin_status(&self) -> Result<keep_service::ServerStatus> {
         self.run(|c| async move { Ok(c.keep()?.admin_status().await?) })

@@ -105,6 +105,48 @@ fn Img(server: String, img: Option<String>, #[prop(into)] class: String) -> impl
     }
 }
 
+/// The mark of a server type, as the Android app draws it: a chevron in Plex's yellow, a
+/// triangle in Jellyfin's purple-to-blue (simple shapes, not the brands' logo files).
+#[component]
+pub fn ServerMark(#[prop(into)] kind: String, #[prop(default = 22)] size: u32) -> impl IntoView {
+    // The shape fills the middle 54 % of the round badge, as on Android.
+    let p = |x: f64, y: f64| format!("{:.1},{:.1}", 23.0 + 54.0 * x, 23.0 + 54.0 * y);
+    let shape = if kind == "plex" {
+        let d = format!(
+            "M{} L{} L{} L{} L{} L{} Z",
+            p(0.22, 0.0),
+            p(0.52, 0.0),
+            p(0.86, 0.5),
+            p(0.52, 1.0),
+            p(0.22, 1.0),
+            p(0.56, 0.5)
+        );
+        view! { <path d=d fill="#E5A00D" /> }.into_any()
+    } else {
+        let outer = format!("M{} L{} L{} Z", p(0.5, 0.0), p(1.0, 1.0), p(0.0, 1.0));
+        let inner = format!("M{} L{} L{} Z", p(0.5, 0.42), p(0.72, 0.86), p(0.28, 0.86));
+        view! {
+            <defs>
+                <linearGradient id="jf-mark" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#AA5CC3" />
+                    <stop offset="1" stop-color="#00A4DC" />
+                </linearGradient>
+            </defs>
+            <path d=outer fill="url(#jf-mark)" />
+            <path d=inner fill="#000000b8" />
+        }
+        .into_any()
+    };
+    let label = if kind == "plex" { "Plex" } else { "Jellyfin" };
+    view! {
+        <svg class="server-mark" width=size height=size viewBox="0 0 100 100" role="img" aria-label=label>
+            <title>{label}</title>
+            <circle cx="50" cy="50" r="50" fill="#000000b8" />
+            {shape}
+        </svg>
+    }
+}
+
 fn clock(ms: i64) -> String {
     let s = (ms / 1000).max(0);
     let (h, m, s) = (s / 3600, s / 60 % 60, s % 60);
@@ -168,7 +210,7 @@ fn track_row(kind: String, t: Option<StreamTrack>) -> impl IntoView {
     })
 }
 
-fn stream_card(s: Stream, server: String, merged: bool) -> impl IntoView {
+fn stream_card(s: Stream, server: String, kind: String, merged: bool) -> impl IntoView {
     let pct = if s.duration_ms > 0 {
         (s.position_ms * 100 / s.duration_ms).clamp(0, 100)
     } else {
@@ -193,7 +235,10 @@ fn stream_card(s: Stream, server: String, merged: bool) -> impl IntoView {
     view! {
         <article class="stream" class:converted=converted>
             <div class="stream-head">
-                <Img server=sid.clone() img=s.image.clone() class="stream-poster" />
+                <div class="poster-wrap">
+                    <Img server=sid.clone() img=s.image.clone() class="stream-poster" />
+                    <span class="poster-mark"><ServerMark kind=kind.clone() size=24 /></span>
+                </div>
                 <div class="stream-title">
                     <strong>{s.title.clone()}</strong>
                     <span class="muted small">{s.subtitle.clone()}</span>
@@ -431,13 +476,10 @@ fn LivePanels(live: RwSignal<Option<Result<Live, String>>>, merged: Signal<bool>
             .streams
             .into_iter()
             .map(|s| {
-                let name = l
-                    .servers
-                    .iter()
-                    .find(|x| x.id == s.server_id)
-                    .map(|x| x.name.clone())
-                    .unwrap_or_default();
-                stream_card(s, name, m)
+                let found = l.servers.iter().find(|x| x.id == s.server_id);
+                let name = found.map(|x| x.name.clone()).unwrap_or_default();
+                let kind = found.map(|x| x.kind.clone()).unwrap_or_default();
+                stream_card(s, name, kind, m)
             })
             .collect();
         Some(view! {
@@ -714,7 +756,7 @@ pub fn Dashboard() -> impl IntoView {
                 let id = s.id.clone();
                 let id2 = s.id.clone();
                 view! {
-                    <button class="chip" role="tab" class:selected=move || server.get() == id on:click=move |_| pick(id2.clone())>{s.name.clone()}</button>
+                    <button class="chip with-mark" role="tab" class:selected=move || server.get() == id on:click=move |_| pick(id2.clone())><ServerMark kind=s.kind.clone() size=20 />{s.name.clone()}</button>
                 }
             }).collect_view()}
         </div>
