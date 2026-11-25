@@ -393,6 +393,7 @@ msgid "{count} ch"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
 msgid "Track {number}"
 msgstr ""
 
@@ -1235,7 +1236,6 @@ msgid "Jellyfin · Quick Connect or password"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
-#: web/src/signin.rs
 #: ios/AlwyWatch/SignInView.swift
 msgid "Your name, settings and servers come with you"
 msgstr ""
@@ -3102,6 +3102,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: web/src/keep.rs
 #: ios/AlwyWatch/Triage.swift
 msgid "Keep going ({n} more)"
 msgid_plural "Keep going ({n} more)"
@@ -3367,7 +3368,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
-#: desktop/ui/app.slint
+#: web/src/keep.rs
 msgid "Done"
 msgstr ""
 
@@ -4035,7 +4036,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt
 #: web/src/browse.rs
-#: desktop/ui/app.slint
+#: web/src/main.rs
 msgid "Movies, shows, episodes…"
 msgstr ""
 
@@ -5373,6 +5374,7 @@ msgid "This username is already taken."
 msgstr ""
 
 #: core/keep-service/src/account.rs
+#: web/src/account.rs
 msgid "Too many attempts. Try again in a few minutes."
 msgstr ""
 
@@ -6287,6 +6289,38 @@ msgid "Skip ad"
 msgstr ""
 
 #: web/src/account.rs
+msgid "Pocket ID isn't set up on this server."
+msgstr ""
+
+#: web/src/account.rs
+msgid "This sign-in took too long. Try again."
+msgstr ""
+
+#: web/src/account.rs
+msgid "Pocket ID can't be used right now. Try again later."
+msgstr ""
+
+#: web/src/account.rs
+msgid "Pocket ID refused the sign-in."
+msgstr ""
+
+#: web/src/account.rs
+msgid "Pocket ID's answer was incomplete. Try again."
+msgstr ""
+
+#: web/src/account.rs
+msgid "This sign-in was started in another browser. Start again here."
+msgstr ""
+
+#: web/src/account.rs
+msgid "This Pocket ID is already used by another account."
+msgstr ""
+
+#: web/src/account.rs
+msgid "Signing in with Pocket ID didn't work. Try again."
+msgstr ""
+
+#: web/src/account.rs
 msgid "This passkey isn't known here."
 msgstr ""
 
@@ -6411,10 +6445,6 @@ msgid "Sign in to your AlwyWatch account, then link Pocket ID again."
 msgstr ""
 
 #: web/src/account.rs
-msgid "This Pocket ID is already used by another account."
-msgstr ""
-
-#: web/src/account.rs
 msgid "Pocket ID could not be linked. Try again from this page."
 msgstr ""
 
@@ -6440,6 +6470,10 @@ msgstr ""
 
 #: web/src/account.rs
 msgid "added {date}"
+msgstr ""
+
+#: web/src/account.rs
+msgid "Remove this passkey? It can't sign you in any more."
 msgstr ""
 
 #: web/src/account.rs
@@ -6496,6 +6530,10 @@ msgstr ""
 
 #: web/src/account.rs
 msgid "last seen {date}"
+msgstr ""
+
+#: web/src/account.rs
+msgid "Sign this device out of your account?"
 msgstr ""
 
 #: web/src/account.rs
@@ -6601,6 +6639,10 @@ msgid "Ask for a new link"
 msgstr ""
 
 #: web/src/account.rs
+msgid "Your AlwyWatch account is deleted."
+msgstr ""
+
+#: web/src/account.rs
 msgid "The password is wrong."
 msgstr ""
 
@@ -6701,7 +6743,7 @@ msgid "Ways to sign in, devices signed in, deleting the account"
 msgstr ""
 
 #: web/src/account.rs
-msgid "Your name, settings and servers come with you, and you get Leaving soon and watch together."
+msgid "Your name and picture come with you, and you get Leaving soon and watch together. Settings stay in this browser."
 msgstr ""
 
 #: web/src/account.rs
@@ -6763,15 +6805,15 @@ msgid "When it can't use the public address, e.g. http://jellyfin:8096 when both
 msgstr ""
 
 #: web/src/admin.rs
+msgid "Sign in as an admin of this AlwyWatch server first."
+msgstr ""
+
+#: web/src/admin.rs
 msgid "Testing…"
 msgstr ""
 
 #: web/src/admin.rs
 msgid "Test"
-msgstr ""
-
-#: web/src/admin.rs
-msgid "Sign in as an admin of this AlwyWatch server first."
 msgstr ""
 
 #: web/src/admin.rs
@@ -7151,6 +7193,10 @@ msgid "The email could not be sent. Check Server settings → Email (its Test bu
 msgstr ""
 
 #: web/src/admin.rs
+msgid "End this invitation? Its link stops working, even for someone who already has it."
+msgstr ""
+
+#: web/src/admin.rs
 msgid "Invite someone: with one link they create an AlwyWatch account, and a Jellyfin login too if you want."
 msgstr ""
 
@@ -7268,12 +7314,19 @@ msgid "More"
 msgstr ""
 
 #: web/src/browse.rs
-#: web/src/ui.rs
-msgid "{series} · S{season} E{episode}"
+msgid "Episode {number}"
 msgstr ""
 
 #: web/src/browse.rs
 msgid "{season} of {show}"
+msgstr ""
+
+#: web/src/browse.rs
+msgid "Resume S{season} E{episode}"
+msgstr ""
+
+#: web/src/browse.rs
+msgid "Play S{season} E{episode}"
 msgstr ""
 
 #: web/src/browse.rs
@@ -7282,6 +7335,18 @@ msgstr ""
 
 #: web/src/browse.rs
 msgid "Couldn't load the episodes."
+msgstr ""
+
+#: web/src/browse.rs
+msgid "Search your servers, and what you could request."
+msgstr ""
+
+#: web/src/browse.rs
+msgid "Searching…"
+msgstr ""
+
+#: web/src/browse.rs
+msgid "Some of your servers didn't answer: their titles are missing here."
 msgstr ""
 
 #: web/src/browse.rs
@@ -7297,7 +7362,25 @@ msgid "Nothing in progress."
 msgstr ""
 
 #: web/src/dashboard.rs
+#: web/src/keep.rs
+msgid "{n} min"
+msgstr ""
+
+#: web/src/dashboard.rs
+#: web/src/keep.rs
+msgid "{n} h"
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "{h} h {m}"
+msgstr ""
+
+#: web/src/dashboard.rs
 msgid "Sign in with an admin account first."
+msgstr ""
+
+#: web/src/dashboard.rs
+msgid "Can't reach the server right now."
 msgstr ""
 
 #: web/src/extra.rs
@@ -7492,14 +7575,6 @@ msgid "Change deletion dates"
 msgstr ""
 
 #: web/src/keep.rs
-msgid "{n} min"
-msgstr ""
-
-#: web/src/keep.rs
-msgid "{n} h"
-msgstr ""
-
-#: web/src/keep.rs
 msgid "Off. Set up Maintainerr in Server settings."
 msgstr ""
 
@@ -7615,6 +7690,14 @@ msgid "Not found"
 msgstr ""
 
 #: web/src/main.rs
+msgid "Menu"
+msgstr ""
+
+#: web/src/main.rs
+msgid "Libraries"
+msgstr ""
+
+#: web/src/main.rs
 msgid "{name} on {server} was signed out by the server."
 msgstr ""
 
@@ -7646,6 +7729,15 @@ msgstr ""
 
 #: web/src/player.rs
 msgid "This video can't be played in this browser, even converted by the server."
+msgstr ""
+
+#: web/src/player.rs
+#: desktop/ui/app.slint
+msgid "Full screen"
+msgstr ""
+
+#: web/src/player.rs
+msgid "Full screen (F)"
 msgstr ""
 
 #: web/src/player.rs
@@ -7713,6 +7805,18 @@ msgstr ""
 
 #: web/src/profile.rs
 msgid "The server refused this name or picture."
+msgstr ""
+
+#: web/src/profile.rs
+msgid "The name can't contain line breaks or control characters."
+msgstr ""
+
+#: web/src/profile.rs
+msgid "The name can't be empty."
+msgstr ""
+
+#: web/src/profile.rs
+msgid "The name is too long ({max} characters at most)."
 msgstr ""
 
 #: web/src/profile.rs
@@ -7816,6 +7920,10 @@ msgstr ""
 
 #: web/src/request.rs
 msgid "Movie · not on your servers"
+msgstr ""
+
+#: web/src/request.rs
+msgid "Open on your server"
 msgstr ""
 
 #: web/src/request.rs
@@ -7923,6 +8031,10 @@ msgid "Sign in with Plex and set up"
 msgstr ""
 
 #: web/src/signin.rs
+msgid "Your name and picture, Leaving soon and watch together"
+msgstr ""
+
+#: web/src/signin.rs
 msgid "No AlwyWatch account: your logins and settings stay in this browser"
 msgstr ""
 
@@ -8011,11 +8123,19 @@ msgid "Media servers, Maintainerr, Seerr, Tautulli, email, sign-up"
 msgstr ""
 
 #: web/src/signin.rs
-msgid "Accounts and settings are kept in this browser only. Sign out on shared computers."
+msgid "Sign-ins and settings are kept in this browser, not synced with your other devices. Sign out on shared computers."
 msgstr ""
 
 #: web/src/signin.rs
 msgid "Your Jellyfin and Plex servers"
+msgstr ""
+
+#: web/src/signin.rs
+msgid "Sign out of {server}? AlwyWatch is used with this login: Leaving soon, requests and watch together go until you connect another one."
+msgstr ""
+
+#: web/src/signin.rs
+msgid "Sign out of {server} in this browser?"
 msgstr ""
 
 #: web/src/state.rs
@@ -8053,6 +8173,12 @@ msgstr ""
 #: web/src/state.rs
 msgid "Too many changes in a short time. Try again in a few minutes."
 msgstr ""
+
+#: web/src/together.rs
+msgid "You can invite up to {n} person at a time."
+msgid_plural "You can invite up to {n} people at a time."
+msgstr[0] ""
+msgstr[1] ""
 
 #: web/src/together.rs
 msgid "Invite {n} person"
@@ -8130,6 +8256,10 @@ msgstr ""
 
 #: web/src/together.rs
 msgid "This title isn't on your servers: you can be in the room but can't play it here."
+msgstr ""
+
+#: web/src/together.rs
+msgid "Finding it…"
 msgstr ""
 
 #: web/src/together.rs
@@ -8213,6 +8343,10 @@ msgstr ""
 msgid "Open the room"
 msgstr ""
 
+#: web/src/ui.rs
+msgid "{series} · S{season} E{episode}"
+msgstr ""
+
 #: desktop/ui/app.slint
 msgid "·  ends at {}"
 msgstr ""
@@ -8243,10 +8377,6 @@ msgstr ""
 
 #: desktop/ui/app.slint
 msgid "Leave full screen"
-msgstr ""
-
-#: desktop/ui/app.slint
-msgid "Full screen"
 msgstr ""
 
 #: desktop/ui/app.slint

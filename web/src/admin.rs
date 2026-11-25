@@ -345,6 +345,12 @@ fn Test(
         result.set(None);
         spawn_local(async move {
             let Some(k) = admin_client(&state::ctx()) else {
+                // Signed out meanwhile: the button comes back, with why.
+                testing.try_set(false);
+                result.try_set(Some((
+                    false,
+                    tr!("Sign in as an admin of this AlwyWatch server first."),
+                )));
                 return;
             };
             let r = k
@@ -744,13 +750,26 @@ fn Maintainerr(problem: Option<String>) -> impl IntoView {
     let f = form();
     let edit = f.edit;
     let on = on_of!(f, maintainerr);
+    // The text as typed: a stray letter stays visible instead of emptying the field. The
+    // setting follows it whenever it reads as a number (else: none, the default).
+    let typed = RwSignal::new(untrack(|| {
+        edit.with(|s| s.sync_minutes)
+            .map(|m| m.to_string())
+            .unwrap_or_default()
+    }));
+    // Changed elsewhere (undoing the edits): the field shows it.
+    Effect::new(move |_| {
+        let now = edit.with(|s| s.sync_minutes);
+        if typed.with_untracked(|t| t.trim().parse().ok()) != now {
+            typed.set(now.map(|m| m.to_string()).unwrap_or_default());
+        }
+    });
     let minutes = (
-        move || {
-            edit.with(|s| s.sync_minutes)
-                .map(|m| m.to_string())
-                .unwrap_or_default()
+        move || typed.get(),
+        move |v: String| {
+            edit.update(|s| s.sync_minutes = v.trim().parse().ok());
+            typed.set(v);
         },
-        move |v: String| edit.update(|s| s.sync_minutes = v.trim().parse().ok()),
     );
     let servers = Memo::new(move |_| edit.with(|e| e.servers.clone()));
     view! {
@@ -1119,6 +1138,12 @@ pub fn Invitations() -> impl IntoView {
         });
     };
     let end = move |id: i64| {
+        // The link stops working at once, for whoever already has it.
+        if !crate::account::confirm(&tr!(
+            "End this invitation? Its link stops working, even for someone who already has it."
+        )) {
+            return;
+        }
         spawn_local(async move {
             let Some(k) = admin_client(&state::ctx()) else {
                 return;

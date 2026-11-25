@@ -201,14 +201,22 @@ fn ensure_picture(user_key: &str, version: u32) {
     if asked == Some(version) {
         return;
     }
-    let Some(k) = state::ctx().keep_client() else {
+    // The account session too: a profile with only an AlwyWatch account sees pictures.
+    let Some(k) = state::ctx().person_client() else {
         return;
     };
     ASKED.with(|a| a.borrow_mut().insert(user_key.to_owned(), version));
     let key = user_key.to_owned();
     spawn_local(async move {
-        if let Some(url) = fetch_picture(&k, &key, version).await {
-            keep_picture(&key, version, url);
+        match fetch_picture(&k, &key, version).await {
+            Some(url) => keep_picture(&key, version, url),
+            // Failed (offline, signed out): asked again by the next avatar shown.
+            None => ASKED.with(|a| {
+                let mut a = a.borrow_mut();
+                if a.get(&key) == Some(&version) {
+                    a.remove(&key);
+                }
+            }),
         }
     });
 }
@@ -658,13 +666,19 @@ fn plain_profile(e: &Error) -> String {
     }
 }
 
-/// The name's problem, as the server would say it (None: fine).
+/// The name's problem, as the server would say it (None: fine). The core's message is English:
+/// its three cases are told apart here and said in the selected language.
 pub fn name_problem(name: &str) -> Option<String> {
-    kp::clean_display_name(name).err().map(|e| {
-        let mut c = e.chars();
-        c.next()
-            .map(|f| f.to_uppercase().collect::<String>() + c.as_str() + ".")
-            .unwrap_or_default()
+    kp::clean_display_name(name).err()?;
+    Some(if name.chars().any(char::is_control) {
+        tr!("The name can't contain line breaks or control characters.")
+    } else if name.trim().is_empty() {
+        tr!("The name can't be empty.")
+    } else {
+        tr!(
+            "The name is too long ({max} characters at most).",
+            max = kp::DISPLAY_NAME_MAX
+        )
     })
 }
 
@@ -1086,7 +1100,7 @@ mod tests {
         assert_eq!(name_problem("Ana"), None);
         assert_eq!(
             name_problem("  ").as_deref(),
-            Some("The name cannot be empty.")
+            Some("The name can't be empty.")
         );
         assert!(name_problem(&"x".repeat(33)).unwrap().contains("32"));
         assert_eq!(name_with_media("Ana", "ana.p"), "Ana (ana.p)");

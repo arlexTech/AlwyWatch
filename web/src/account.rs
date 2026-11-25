@@ -130,6 +130,41 @@ fn pct(s: &str) -> String {
         .collect()
 }
 
+/// The browser's own yes/no question (as "Sign out of AlwyWatch" asks): false when it can't
+/// be asked.
+pub fn confirm(question: &str) -> bool {
+    web_sys::window()
+        .and_then(|w| w.confirm_with_message(question).ok())
+        .unwrap_or(false)
+}
+
+/// What the server's Pocket ID round trip put in `?error=`, in the selected language. Only its
+/// own messages are recognized: anything else in the address (a crafted link) is not shown.
+fn oidc_error(raw: &str) -> String {
+    match raw.trim() {
+        "too many attempts, try again in a few minutes" => {
+            tr!("Too many attempts. Try again in a few minutes.")
+        }
+        "Pocket ID is not set up on this server" => tr!("Pocket ID isn't set up on this server."),
+        "this link has expired, try again" | "this sign-in took too long, try again" => {
+            tr!("This sign-in took too long. Try again.")
+        }
+        "Pocket ID can't be reached right now, try again later"
+        | "Pocket ID's answer could not be used, try again later" => {
+            tr!("Pocket ID can't be used right now. Try again later.")
+        }
+        "Pocket ID refused the sign-in" => tr!("Pocket ID refused the sign-in."),
+        "Pocket ID's answer was incomplete" => tr!("Pocket ID's answer was incomplete. Try again."),
+        "this sign-in was started in another browser, start again here" => {
+            tr!("This sign-in was started in another browser. Start again here.")
+        }
+        "this Pocket ID is already used by another account" => {
+            tr!("This Pocket ID is already used by another account.")
+        }
+        _ => tr!("Signing in with Pocket ID didn't work. Try again."),
+    }
+}
+
 fn go(to: &str) {
     if let Some(w) = web_sys::window() {
         let _ = w.location().set_href(to);
@@ -195,28 +230,35 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
     };
     let (c2, n2, next2) = (c.clone(), navigate.clone(), next.clone());
     let with_passkey = move |_| {
+        // One browser prompt at a time.
+        if busy.get_untracked() {
+            return;
+        }
         let (c, navigate, next) = (c2.clone(), n2.clone(), next2.clone());
+        busy.set(true);
         error.set(None);
         spawn_local(async move {
-            let base = Ctx::origin();
-            let start = match KeepClient::passkey_login_start(&c.http, &base).await {
-                Ok(s) => s,
-                Err(e) => return error.set(Some(account::explain(&e, true))),
-            };
-            let flow = start["flow_id"].as_str().unwrap_or_default().to_owned();
-            let cred = match crate::passkey::get(&start["options"]).await {
-                Ok(c) => c,
-                Err(e) => return error.set(Some(e)),
-            };
-            match KeepClient::passkey_login_finish(&c.http, &base, &flow, DEVICE, &cred).await {
-                Ok(s) => {
-                    c.set_account(&s.token, &s.account);
-                    navigate(&next, Default::default());
+            let r: Result<(), String> = async {
+                let base = Ctx::origin();
+                let start = KeepClient::passkey_login_start(&c.http, &base)
+                    .await
+                    .map_err(|e| account::explain(&e, true))?;
+                let flow = start["flow_id"].as_str().unwrap_or_default().to_owned();
+                let cred = crate::passkey::get(&start["options"]).await?;
+                match KeepClient::passkey_login_finish(&c.http, &base, &flow, DEVICE, &cred).await {
+                    Ok(s) => {
+                        c.set_account(&s.token, &s.account);
+                        navigate(&next, Default::default());
+                        Ok(())
+                    }
+                    Err(net::Error::Unauthorized) => Err(tr!("This passkey isn't known here.")),
+                    Err(e) => Err(account::explain(&e, true)),
                 }
-                Err(net::Error::Unauthorized) => {
-                    error.set(Some(tr!("This passkey isn't known here.")))
-                }
-                Err(e) => error.set(Some(account::explain(&e, true))),
+            }
+            .await;
+            busy.try_set(false);
+            if let Err(e) = r {
+                error.try_set(Some(e));
             }
         });
     };
@@ -236,7 +278,7 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
                     let pocket = o.as_ref().is_some_and(|o| o.pocketid);
                     let to = format!("/v1/account/oidc/start?next={}", pct(&next3));
                     view! {
-                        {passkeys.then(|| view! { <button type="button" on:click=with_passkey.clone()>{tr!("Use a passkey")}</button> })}
+                        {passkeys.then(|| view! { <button type="button" on:click=with_passkey.clone() disabled=move || busy.get()>{tr!("Use a passkey")}</button> })}
                         {pocket.then(|| view! { <button type="button" on:click=move |_| start_pocket_id(&to)>{tr!("Sign in with Pocket ID")}</button> })}
                     }
                 }}
@@ -601,10 +643,11 @@ pub fn PasswordAndPasskeys() -> impl IntoView {
     let c = state::ctx();
     let info = RwSignal::new(None::<AccountView>);
     let error = RwSignal::new(use_query_map().with_untracked(|q| q.get("error")).map(|e| {
-        js_sys::decode_uri_component(&e)
+        let e = js_sys::decode_uri_component(&e)
             .ok()
             .and_then(|s| s.as_string())
-            .unwrap_or(e)
+            .unwrap_or(e);
+        oidc_error(&e)
     }));
     let note = RwSignal::new(
         use_query_map()
@@ -724,6 +767,9 @@ pub fn PasswordAndPasskeys() -> impl IntoView {
                                         None => tr!("added {date}", date = day(p.created)),
                                     }}</span></div>
                                 <button on:click=move |_| {
+                                    if !confirm(&tr!("Remove this passkey? It can't sign you in any more.")) {
+                                        return;
+                                    }
                                     let (id, c) = (id.clone(), c.clone());
                                     page.run(Box::pin(async move {
                                         let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
@@ -797,6 +843,9 @@ pub fn PasswordAndPasskeys() -> impl IntoView {
                                 <div><strong>{if s.device.is_empty() { tr!("Device") } else { s.device.clone() }}</strong>
                                     <span class="muted small">" · "{if current { tr!("this browser") } else { tr!("last seen {date}", date = day(s.last_seen)) }}</span></div>
                                 {(!current).then(|| view! { <button on:click=move |_| {
+                                    if !confirm(&tr!("Sign this device out of your account?")) {
+                                        return;
+                                    }
                                     let (id, c) = (id.clone(), c.clone());
                                     page.run(Box::pin(async move {
                                         let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
@@ -808,7 +857,7 @@ pub fn PasswordAndPasskeys() -> impl IntoView {
                     }).collect_view()}
                     <p class="muted small">{tr!("To sign a TV or another device in, choose “Sign in with a code” on it and open the address it shows (or scan its QR code).")}</p>
                 </section>
-                <DeleteAccount info=i.clone() />
+                <DeleteAccount info=i.clone() page=page shown=info />
             }
         })}
     }
@@ -846,17 +895,25 @@ struct Page {
 
 impl Page {
     fn run(self, job: Job, ok: String) {
+        self.run_and(job, ok, || {});
+    }
+
+    /// [`Page::run`], then `done` on success only (a form closes once its answer is good).
+    fn run_and(self, job: Job, ok: String, done: impl FnOnce() + 'static) {
         self.error.set(None);
         self.note.set(None);
         spawn_local(async move {
             match job.await {
                 Ok(()) => {
+                    done();
                     if !ok.is_empty() {
-                        self.note.set(Some(ok));
+                        self.note.try_set(Some(ok));
                     }
-                    self.version.update(|v| *v += 1);
+                    self.version.try_update(|v| *v += 1);
                 }
-                Err(e) => self.error.set(Some(e)),
+                Err(e) => {
+                    self.error.try_set(Some(e));
+                }
             }
         });
     }
@@ -868,25 +925,38 @@ fn Password(info: AccountView, page: Page) -> impl IntoView {
     let current = RwSignal::new(String::new());
     let new = RwSignal::new(String::new());
     let open = RwSignal::new(false);
+    let busy = RwSignal::new(false);
     let has = info.has_password;
     let has_username = info.username.is_some();
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         let c = c.clone();
         let (cur, nw) = (current.get_untracked(), new.get_untracked());
-        page.run(
-            Box::pin(async move {
-                let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
-                k.account_set_password(has.then_some(cur.as_str()), &nw)
+        busy.set(true);
+        let job = Box::pin(async move {
+            let r = match c.account_client() {
+                Some(k) => k
+                    .account_set_password(has.then_some(cur.as_str()), &nw)
                     .await
                     .map_err(|e| match e {
-                        net::Error::Unauthorized => tr!("The current password is wrong."),
+                        net::Error::Unauthorized if has => tr!("The current password is wrong."),
                         e => account::explain(&e, false),
-                    })
-            }),
+                    }),
+                None => Err(tr!("Signed out.")),
+            };
+            busy.try_set(false);
+            r
+        });
+        // Open until the answer is good: a wrong password is fixed in place, not retyped.
+        page.run_and(
+            job,
             tr!("Password saved. Your other devices stay signed in only if they use a passkey or Pocket ID."),
+            move || {
+                open.try_set(false);
+                current.try_set(String::new());
+                new.try_set(String::new());
+            },
         );
-        open.set(false);
     };
     view! {
         <section class="group">
@@ -898,9 +968,9 @@ fn Password(info: AccountView, page: Page) -> impl IntoView {
                     <form class="form" on:submit=submit.clone()>
                         {has.then(|| view! { <label>{tr!("Current password")}<input type="password" autocomplete="current-password"
                             prop:value=move || current.get() on:input=move |ev| current.set(event_target_value(&ev)) /></label> })}
-                        <label>{tr!("New password")}<input type="password" autocomplete="new-password" minlength="8"
+                        <label>{tr!("New password")}<input type="password" autocomplete="new-password" minlength="8" required
                             prop:value=move || new.get() on:input=move |ev| new.set(event_target_value(&ev)) /></label>
-                        <div class="actions"><button class="primary" type="submit">{tr!("Save")}</button>
+                        <div class="actions"><button class="primary" type="submit" disabled=move || busy.get()>{tr!("Save")}</button>
                             <button type="button" on:click=move |_| open.set(false)>{tr!("Cancel")}</button></div>
                     </form>
                 }.into_any()
@@ -920,26 +990,34 @@ fn Email(info: AccountView, page: Page) -> impl IntoView {
     let open = RwSignal::new(false);
     let current = RwSignal::new(String::new());
     let email = RwSignal::new(info.email.clone().unwrap_or_default());
+    let busy = RwSignal::new(false);
     let has = info.has_password;
     let shown = info.email.clone();
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         let c = c.clone();
         let (cur, e) = (current.get_untracked(), email.get_untracked());
-        page.run(
-            Box::pin(async move {
-                let k = c.account_client().ok_or_else(|| tr!("Signed out."))?;
-                let e = e.trim();
-                k.account_set_email((!e.is_empty()).then_some(e), has.then_some(cur.as_str()))
+        busy.set(true);
+        let job = Box::pin(async move {
+            let e = e.trim();
+            let r = match c.account_client() {
+                Some(k) => k
+                    .account_set_email((!e.is_empty()).then_some(e), has.then_some(cur.as_str()))
                     .await
                     .map_err(|e| match e {
-                        net::Error::Status { status: 403 } => tr!("The current password is wrong."),
+                        // The server's 403 for a wrong password reaches here as Unauthorized.
+                        net::Error::Unauthorized if has => tr!("The current password is wrong."),
                         e => account::explain(&e, false),
-                    })
-            }),
-            tr!("Email saved."),
-        );
-        open.set(false);
+                    }),
+                None => Err(tr!("Signed out.")),
+            };
+            busy.try_set(false);
+            r
+        });
+        page.run_and(job, tr!("Email saved."), move || {
+            open.try_set(false);
+            current.try_set(String::new());
+        });
     };
     view! {
         <section class="group">
@@ -951,7 +1029,7 @@ fn Email(info: AccountView, page: Page) -> impl IntoView {
                             prop:value=move || email.get() on:input=move |ev| email.set(event_target_value(&ev)) /></label>
                         {has.then(|| view! { <label>{tr!("Current password")}<input type="password" autocomplete="current-password"
                             prop:value=move || current.get() on:input=move |ev| current.set(event_target_value(&ev)) /></label> })}
-                        <div class="actions"><button class="primary" type="submit">{tr!("Save")}</button>
+                        <div class="actions"><button class="primary" type="submit" disabled=move || busy.get()>{tr!("Save")}</button>
                             <button type="button" on:click=move |_| open.set(false)>{tr!("Cancel")}</button></div>
                     </form>
                 }.into_any()
@@ -1083,27 +1161,55 @@ pub fn Reset() -> impl IntoView {
 }
 
 /// Deleting the account, behind a confirmation (and the password when there is one).
+/// `shown`: the page's account, emptied once deleted (its sections go with it).
 #[component]
-fn DeleteAccount(info: AccountView) -> impl IntoView {
+fn DeleteAccount(
+    info: AccountView,
+    page: Page,
+    shown: RwSignal<Option<AccountView>>,
+) -> impl IntoView {
     let c = state::ctx();
     let open = RwSignal::new(false);
+    let busy = RwSignal::new(false);
     let password = RwSignal::new(String::new());
     let error = RwSignal::new(None::<String>);
     let has = info.has_password;
     let media = !info.linked.is_empty();
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
+        // Pressed twice: the second would hit an account already gone.
+        if busy.get_untracked() {
+            return;
+        }
         let c = c.clone();
         let pw = password.get_untracked();
+        busy.set(true);
+        error.set(None);
         spawn_local(async move {
-            let Some(k) = c.account_client() else { return };
+            let Some(k) = c.account_client() else {
+                busy.try_set(false);
+                error.try_set(Some(tr!("Signed out.")));
+                return;
+            };
             match k.account_delete(has.then_some(pw.as_str())).await {
-                Ok(()) => c.forget_account(),
-                Err(net::Error::Status { status: 403 }) => {
-                    error.set(Some(tr!("The password is wrong.")))
+                Ok(()) => {
+                    page.error.set(None);
+                    page.note
+                        .set(Some(tr!("Your AlwyWatch account is deleted.")));
+                    c.forget_account();
+                    // This component goes with it: nothing of it is touched after.
+                    shown.set(None);
+                    return;
                 }
-                Err(e) => error.set(Some(account::explain(&e, false))),
+                // The server's 403 for a wrong password reaches here as Unauthorized.
+                Err(net::Error::Unauthorized) if has => {
+                    error.try_set(Some(tr!("The password is wrong.")));
+                }
+                Err(e) => {
+                    error.try_set(Some(account::explain(&e, false)));
+                }
             }
+            busy.try_set(false);
         });
     };
     view! {
@@ -1121,7 +1227,7 @@ fn DeleteAccount(info: AccountView) -> impl IntoView {
                         {has.then(|| view! { <label>{tr!("Your password")}<input type="password" autocomplete="current-password"
                             prop:value=move || password.get() on:input=move |ev| password.set(event_target_value(&ev)) /></label> })}
                         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
-                        <div class="actions"><button class="danger" type="submit">{tr!("Delete my account")}</button>
+                        <div class="actions"><button class="danger" type="submit" disabled=move || busy.get()>{tr!("Delete my account")}</button>
                             <button type="button" on:click=move |_| open.set(false)>{tr!("Cancel")}</button></div>
                     </form>
                 }.into_any()
@@ -1332,7 +1438,7 @@ fn ConnectToAlwyWatch() -> impl IntoView {
         </section>
         <section class="group">
             <h2>{tr!("Connect to AlwyWatch")}</h2>
-            <p class="muted">{tr!("Your name, settings and servers come with you, and you get Leaving soon and watch together.")}</p>
+            <p class="muted">{tr!("Your name and picture come with you, and you get Leaving soon and watch together. Settings stay in this browser.")}</p>
             <div class="actions">
                 <button class="primary" on:click=sign_in>{tr!("Sign in")}</button>
                 <button on:click=move |_| navigate("/join", Default::default())>{tr!("Create an account")}</button>

@@ -109,6 +109,25 @@ pub fn return_after_sign_in(path: &str) {
     state::save(RETURN_TO, &(path.to_owned(), js_sys::Date::now()));
 }
 
+/// The page's address now (path and query).
+fn here() -> String {
+    web_sys::window()
+        .map(|w| {
+            let l = w.location();
+            l.pathname().unwrap_or_default() + &l.search().unwrap_or_default()
+        })
+        .unwrap_or_default()
+}
+
+/// After a sign-in that took a while: goes on only if the person is still on the page where
+/// it started (`from`, from [`here`]); having moved on meanwhile, they aren't pulled back.
+/// (The form itself may be gone even so: the first login redraws the page.)
+fn go_on_from(from: &str, navigate: impl Fn(&str, leptos_router::NavigateOptions)) {
+    if here() == from {
+        navigate(&after_sign_in(), Default::default());
+    }
+}
+
 fn after_sign_in() -> String {
     let kept = state::load::<(String, f64)>(RETURN_TO);
     state::remove(RETURN_TO);
@@ -129,7 +148,7 @@ pub fn StartCards(
         <div class="choices">
             <button class="choice" on:click=move |_| on_sign_in.run(())>
                 <strong>{tr!("Sign in to AlwyWatch")}</strong>
-                <span class="muted">{tr!("Your name, settings and servers come with you")}</span>
+                <span class="muted">{tr!("Your name and picture, Leaving soon and watch together")}</span>
             </button>
             <button class="choice" on:click=move |_| on_create.run(())>
                 <strong>{tr!("Create an AlwyWatch account")}</strong>
@@ -277,6 +296,7 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
         let (c, auth, served, navigate) = (c1.clone(), a1.clone(), s1.clone(), n1.clone());
         busy.set(true);
         error.set(None);
+        let from = here();
         spawn_local(async move {
             let base = match net::normalize_base_url(&url.get_untracked()) {
                 Ok(b) => b,
@@ -291,17 +311,20 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
             {
                 Ok(s) => {
                     finish(&c, s, &served).await;
-                    navigate(&after_sign_in(), Default::default());
+                    go_on_from(&from, navigate);
                 }
-                Err(e) => error.set(Some(sign_in_error(&e, &base))),
+                Err(e) => {
+                    error.try_set(Some(sign_in_error(&e, &base)));
+                }
             }
-            busy.set(false);
+            busy.try_set(false);
         });
     };
     let quick = move |_| {
         let (c, auth, served, navigate) =
             (c.clone(), auth.clone(), served.clone(), navigate.clone());
         error.set(None);
+        let from = here();
         spawn_local(async move {
             let base = match net::normalize_base_url(&url.get_untracked()) {
                 Ok(b) => b,
@@ -336,7 +359,7 @@ fn JellyfinForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
                             return;
                         }
                         finish(&c, s, &served).await;
-                        return navigate(&after_sign_in(), Default::default());
+                        return go_on_from(&from, navigate);
                     }
                     Err(Error::Pending) => {}
                     Err(e) => {
@@ -391,6 +414,7 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
         error.set(None);
         waiting.set(true);
         let win = open_plex_tab();
+        let from = here();
         spawn_local(async move {
             let result: Result<Option<(Session, String)>, String> = async {
                 let Some(token) =
@@ -410,11 +434,13 @@ fn PlexForm(entry: ServerEntry, served: Vec<ServerEntry>) -> impl IntoView {
                     // The watchlist (My list) lives on plex.tv, under the account's own token.
                     c.set_plex_tv_token(&state::account_key(&s), &plex_tv);
                     finish(&c, s, &served).await;
-                    navigate(&after_sign_in(), Default::default());
+                    go_on_from(&from, navigate);
                 }
-                Err(e) => error.set(Some(e)),
+                Err(e) => {
+                    error.try_set(Some(e));
+                }
             }
-            waiting.set(false);
+            waiting.try_set(false);
         });
     };
     view! {
@@ -629,7 +655,7 @@ pub fn Settings() -> impl IntoView {
                         <crate::lang::LanguageSetting />
                         <section class="group">
                             <h2>{tr!("Storage")}</h2>
-                            <p class="muted small">{tr!("Accounts and settings are kept in this browser only. Sign out on shared computers.")}</p>
+                            <p class="muted small">{tr!("Sign-ins and settings are kept in this browser, not synced with your other devices. Sign out on shared computers.")}</p>
                         </section>
                         <section class="group">
                             <h2>{tr!("About")}</h2>
@@ -655,12 +681,25 @@ fn ServersSection() -> impl IntoView {
                     let key = state::account_key(&s);
                     let c = c.clone();
                     let kind = format!("{:?}", s.kind);
+                    let server = s.server_name.clone();
                     let (before, after) = crate::ui::around(&tr!("{name} on {server}", server = s.server_name.clone()), "{name}");
                     view! {
                         <div class="row">
                             <div>{before}<strong>{s.user_name.clone()}</strong>{after}
                                 <span class="muted">" · "{kind}</span></div>
-                            <button on:click=move |_| c.remove_account(&key)>{tr!("Sign out")}</button>
+                            <button on:click=move |_| {
+                                // The login AlwyWatch is used with: Leaving soon, requests and
+                                // rooms go with it, said before.
+                                let linked = c.keep.get_untracked().is_some_and(|k| k.account == key);
+                                let question = if linked {
+                                    tr!("Sign out of {server}? AlwyWatch is used with this login: Leaving soon, requests and watch together go until you connect another one.", server = server.clone())
+                                } else {
+                                    tr!("Sign out of {server} in this browser?", server = server.clone())
+                                };
+                                if crate::account::confirm(&question) {
+                                    c.remove_account(&key);
+                                }
+                            }>{tr!("Sign out")}</button>
                         </div>
                     }
                 }).collect_view()

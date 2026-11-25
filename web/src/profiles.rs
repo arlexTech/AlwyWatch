@@ -237,9 +237,28 @@ fn initial(name: &str) -> String {
 #[component]
 pub fn ProfilesSettings() -> impl IntoView {
     let version = RwSignal::new(0u32);
-    let adding = RwSignal::new(
-        leptos_router::hooks::use_query_map().with_untracked(|q| q.get("add").is_some()),
-    );
+    // "Add a profile" in the menu links to `?add=1`: followed while already on this page too.
+    let query = leptos_router::hooks::use_query_map();
+    let adding = RwSignal::new(query.with_untracked(|q| q.get("add").is_some()));
+    Effect::new(move |_| {
+        if query.with(|q| q.get("add").is_some()) {
+            adding.set(true);
+        }
+    });
+    let navigate = leptos_router::hooks::use_navigate();
+    // Cancel drops `?add` too, so the menu's link works again.
+    let cancel = move |_| {
+        adding.set(false);
+        if query.with_untracked(|q| q.get("add").is_some()) {
+            navigate(
+                "/settings/device",
+                leptos_router::NavigateOptions {
+                    replace: true,
+                    ..Default::default()
+                },
+            );
+        }
+    };
     let renaming = RwSignal::new(None::<(String, String)>);
     let me = current();
     // A new profile starts empty: its own sign-in, then it takes the person's name.
@@ -304,7 +323,7 @@ pub fn ProfilesSettings() -> impl IntoView {
                 view! {
                     <h3>{tr!("Add a profile")}</h3>
                     <crate::signin::StartCards on_sign_in=sign_in on_create=create on_media=media />
-                    <div class="actions"><button class="small subtle" on:click=move |_| adding.set(false)>{tr!("Cancel")}</button></div>
+                    <div class="actions"><button class="small subtle" on:click=cancel.clone()>{tr!("Cancel")}</button></div>
                 }.into_any()
             } else {
                 view! { <div class="actions"><button class="small" on:click=move |_| adding.set(true)>{tr!("Add a profile")}</button></div> }.into_any()

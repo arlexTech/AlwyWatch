@@ -120,7 +120,11 @@ AlwyWatch") opens on three cards:
 1. **Sign in to AlwyWatch**: "Your name, settings and servers come with you".
 2. **Create an AlwyWatch account**: "You have an invitation".
 3. **Jellyfin or Plex only**: "No account: nothing synced, no Leaving soon or watch together".
-   Not on the web (the web app lives on the AlwyWatch server).
+   On the web too: "No AlwyWatch account: your logins and settings stay in this browser" (the
+   profile is never linked to the AlwyWatch server by itself; "Connect to AlwyWatch" does it).
+
+The web doesn't sync settings, so its first card reads "Your name and picture, Leaving soon and
+watch together".
 
 Then:
 
