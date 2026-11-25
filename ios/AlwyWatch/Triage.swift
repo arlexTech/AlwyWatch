@@ -48,7 +48,7 @@ struct TriageView: View {
                         HStack(spacing: 12) {
                             if let next = more, !next.isEmpty {
                                 Button(trn("Keep going ({n} more)", "Keep going ({n} more)", next.count)) {
-                                    queue = next
+                                    self.queue = next
                                     more = nil
                                 }
                                 .buttonStyle(ActionButtonStyle(primary: true))
