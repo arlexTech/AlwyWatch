@@ -174,9 +174,12 @@ class PlayerSettings(
         get() = core.getSetting("player.tunneling") == "1"
         set(v) = core.setSetting("player.tunneling", if (v) "1" else "0")
 
-    /** Switch the TV display to the video's frame rate (no judder on 24p films). */
+    /**
+     * Switch the TV display to the video's frame rate (no judder on 24p films). Off unless
+     * chosen: the TV goes black for seconds at each switch (HDMI resync).
+     */
     var matchFrameRate: Boolean
-        get() = core.getSetting("player.match_rate")?.let { it == "1" } ?: isTv
+        get() = core.getSetting("player.match_rate") == "1"
         set(v) = core.setSetting("player.match_rate", if (v) "1" else "0")
 
     /** Jump over intros and recaps without asking (when the server marked them). */
