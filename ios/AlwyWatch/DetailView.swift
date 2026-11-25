@@ -20,6 +20,9 @@ struct DetailView: View {
     @State private var downloads: [Download] = []
     @State private var sheet: DownloadTarget?
     @State private var creatingRoom = false
+    /// The show's seasons in Seerr ("More seasons"), looked up once the page is shown.
+    @State private var seerrSeasons: [SeerrSeasonInfo]?
+    @State private var requestingSeasons = false
 
     var body: some View {
         ScrollView {
@@ -37,6 +40,13 @@ struct DetailView: View {
         .task(id: "\(itemId)\(changed)") { await load() }
         .pollDownloads($downloads)
         .sheet(item: $sheet) { DownloadSheet(target: $0).environmentObject(model) }
+        .task(id: showTmdb) { await lookUpSeerrSeasons() }
+        .sheet(isPresented: $requestingSeasons, onDismiss: { Task { await lookUpSeerrSeasons() } }) {
+            if let showTmdb, let info = seerrSeasons {
+                RequestSeasonsSheet(tmdbId: showTmdb, showTitle: item?.title ?? "", have: haveSeasons, info: info)
+                    .environmentObject(model)
+            }
+        }
         .onChange(of: player?.id) { _ in
             guard let request = player else { return }
             player = nil
@@ -257,6 +267,17 @@ struct DetailView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    // "More seasons" (Seerr): only when some season can be requested.
+                    if canRequestMore {
+                        Button { requestingSeasons = true } label: {
+                            Label(tr("More seasons"), systemImage: "plus")
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 16).padding(.vertical, 9)
+                                .foregroundStyle(Palette.onSurface)
+                                .overlay(Capsule().stroke(Palette.accent, lineWidth: 1.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.horizontal, 16)
             }
@@ -269,6 +290,30 @@ struct DetailView: View {
             }
             .padding(.horizontal, 16)
         }
+    }
+
+    private var showTmdb: Int64? {
+        guard let item, item.kind == .series else { return nil }
+        return item.providerIds.tmdb.flatMap { Int64($0) }
+    }
+
+    private var haveSeasons: [UInt32] { seasons.compactMap(\.seasonNumber) }
+
+    private var canRequestMore: Bool {
+        guard let info = seerrSeasons else { return false }
+        return !seasonPlan(seasons: info, have: haveSeasons).missing.isEmpty
+    }
+
+    /// Never delays the page; nothing shows while it loads or if Seerr can't be reached (it may
+    /// still be connecting at the start: waits up to 10 s).
+    private func lookUpSeerrSeasons() async {
+        guard let tmdb = showTmdb else { return }
+        for _ in 0 ..< 10 {
+            if model.core.seerrActive() { break }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        guard model.core.seerrActive() else { return }
+        if let info = try? await model.core.seerrSeasonInfo(tmdbId: tmdb) { seerrSeasons = info }
     }
 
     private func load() async {
