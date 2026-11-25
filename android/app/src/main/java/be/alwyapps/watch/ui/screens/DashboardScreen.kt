@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -352,8 +353,9 @@ private fun DashImage(
     val core = LocalCore.current
     val key = "$server|$img"
     val bitmap = DashImages.memory[key]
-    if (img != null && key !in DashImages.memory) {
-        LaunchedEffect(key) {
+    // The effect stays in the composition: writing "started" into the map must not cancel it.
+    LaunchedEffect(key) {
+        if (img != null && key !in DashImages.memory) {
             DashImages.memory[key] = null
             val bytes = runCatching { core.keepAdminDashboardImage(server, img) }.getOrNull()
             DashImages.memory[key] =
@@ -406,14 +408,17 @@ private fun NowPlaying(
                 mbps(total),
             ).joinToString(" · ")
         }
+    val d = LocalDimens.current
     Panel(tr("Now playing"), summary) {
         BoxWithConstraints {
-            val columns = (maxWidth / 320.dp).toInt().coerceIn(1, 4)
+            // Phones: two compact cards per row; TV and tablets: wide cards.
+            val columns =
+                if (d.isTv || maxWidth >= 600.dp) (maxWidth / 320.dp).toInt().coerceIn(1, 4) else 2
             val cardWidth = (maxWidth - 12.dp * (columns - 1)) / columns
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 l.streams.forEach { s ->
                     val server = l.servers.firstOrNull { it.id == s.serverId }
-                    StreamCard(s, server?.kind ?: "", server?.name?.takeIf { merged }, Modifier.width(cardWidth))
+                    StreamCard(s, server?.kind ?: "", server?.name?.takeIf { merged }, cardWidth < 260.dp, Modifier.width(cardWidth))
                 }
             }
         }
@@ -425,9 +430,12 @@ private fun StreamCard(
     s: Stream,
     kind: String,
     serverName: String?,
+    compact: Boolean,
     modifier: Modifier,
 ) {
     val d = LocalDimens.current
+    val pad = if (compact) 8.dp else 10.dp
+    val small = MaterialTheme.typography.bodySmall
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val edge = if (converted(s)) Accent else Success
@@ -440,24 +448,42 @@ private fun StreamCard(
             .border(if (focused) 2.dp else 0.dp, if (focused) Color.White else Color.Transparent, RoundedCornerShape(12.dp)),
     ) {
         Box(Modifier.fillMaxWidth().height(3.dp).background(edge))
-        Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.padding(pad), horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
             Box {
-                DashImage(s.serverId, s.image, Modifier.width(64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)))
-                ServerMark(kind, 22.dp, Modifier.padding(4.dp))
+                DashImage(
+                    s.serverId,
+                    s.image,
+                    Modifier.width(if (compact) 44.dp else 64.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)),
+                )
+                ServerMark(kind, if (compact) 16.dp else 22.dp, Modifier.padding(if (compact) 2.dp else 4.dp))
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(s.title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (s.subtitle.isNotEmpty()) Text(s.subtitle, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                Text(clock(s.durationMs), color = Muted, style = MaterialTheme.typography.bodySmall)
-                serverName?.let { Text(it, color = Subtle, style = MaterialTheme.typography.bodySmall) }
+                Text(
+                    s.title,
+                    fontWeight = FontWeight.SemiBold,
+                    style = if (compact) MaterialTheme.typography.bodyMedium else LocalTextStyle.current,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (s.subtitle.isNotEmpty()) {
+                    Text(s.subtitle, color = Muted, style = small, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Text(clock(s.durationMs), color = Muted, style = small)
+                serverName?.let { Text(it, color = Subtle, style = small, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
         val pct = if (s.durationMs > 0) (s.positionMs.toFloat() / s.durationMs).coerceIn(0f, 1f) else 0f
         Box(Modifier.fillMaxWidth().height(3.dp).background(SurfaceHigh)) {
             Box(Modifier.fillMaxWidth(pct).height(3.dp).background(Accent))
         }
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("${s.product} — ${s.device}", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+        Column(Modifier.padding(pad), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                "${s.product} — ${s.device}",
+                fontWeight = FontWeight.SemiBold,
+                style = if (compact) small else MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             val state =
                 when (s.state) {
                     "paused" -> tr("Paused")
@@ -468,19 +494,19 @@ private fun StreamCard(
             val where = if (s.local) tr("Local") else tr("Remote")
             val ip = if (s.ip.isNotEmpty()) " (${s.ip})" else ""
             val rate = if (s.kbps > 0u) " — ${mbps(s.kbps.toLong())}" else ""
-            Text("$where$ip$rate", color = Muted, style = MaterialTheme.typography.bodySmall)
-            Spacer(Modifier.height(4.dp))
-            TrackRow(tr("Video"), s.video)
-            TrackRow(tr("Audio"), s.audio)
-            TrackRow(tr("Subtitles"), s.subtitleTrack)
+            Text("$where$ip$rate", color = Muted, style = small)
+            Spacer(Modifier.height(if (compact) 2.dp else 4.dp))
+            TrackRow(tr("Video"), s.video, compact)
+            TrackRow(tr("Audio"), s.audio, compact)
+            TrackRow(tr("Subtitles"), s.subtitleTrack, compact)
         }
         Row(
-            Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.15f)).padding(10.dp),
+            Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.15f)).padding(pad),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
         ) {
-            Avatar(s.serverId, s.userAvatar, s.user, 32.dp)
-            Text(s.user)
+            Avatar(s.serverId, s.userAvatar, s.user, if (compact) 24.dp else 32.dp)
+            Text(s.user, style = if (compact) small else LocalTextStyle.current, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -506,6 +532,7 @@ private fun Avatar(
 private fun TrackRow(
     kind: String,
     t: StreamTrack?,
+    compact: Boolean,
 ) {
     t ?: return
     val (color, sign) =
@@ -514,18 +541,25 @@ private fun TrackRow(
             "direct_stream" -> DirectStreamColor to "⇄ "
             else -> Success to "✓ "
         }
+    val verdict = sign + decisionName(t.decision) + (t.to?.let { " → $it" } ?: "")
+    val weight = if (t.decision == "transcode") FontWeight.SemiBold else FontWeight.Normal
+    if (compact) {
+        // Narrow card: the kind above, no label column.
+        Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Outline))
+            Text(kind.uppercase(), color = Subtle, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 4.dp))
+            Text(t.label, style = MaterialTheme.typography.bodySmall)
+            Text(verdict, color = color, style = MaterialTheme.typography.bodySmall, fontWeight = weight)
+        }
+        return
+    }
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Outline))
         Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(kind, color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(70.dp))
             Column {
                 Text(t.label, style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    sign + decisionName(t.decision) + (t.to?.let { " → $it" } ?: ""),
-                    color = color,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = if (t.decision == "transcode") FontWeight.SemiBold else FontWeight.Normal,
-                )
+                Text(verdict, color = color, style = MaterialTheme.typography.bodySmall, fontWeight = weight)
             }
         }
     }
