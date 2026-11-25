@@ -18,7 +18,7 @@ use media_api::{
 };
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 
-use crate::prefs::{self, SubTrack};
+use crate::prefs;
 use crate::profile::Avatar;
 use crate::state::{self, fmt_time};
 use crate::together::{self, Room};
@@ -353,15 +353,13 @@ fn text_subtitles(l: &Loaded) -> Vec<(i64, String)> {
         .filter(|s| {
             matches!(
                 s.codec.to_lowercase().as_str(),
-                "srt" | "subrip" | "vtt" | "webvtt" | "ass" | "ssa" | "mov_text"
+                "srt" | "subrip" | "vtt" | "webvtt" | "mov_text"
             )
         })
         // Jellyfin converts any text track on request; Plex only hands out external files.
-        .filter(|s| {
-            jellyfin
-                || (s.external.is_some()
-                    && !matches!(s.codec.to_lowercase().as_str(), "ass" | "ssa"))
-        })
+        // Styled ones (ASS/SSA: signs placed on screen, songs) aren't here: as plain text they
+        // piled up in the middle of the picture, so the server burns them in instead.
+        .filter(|s| jellyfin || s.external.is_some())
         .map(|s| (s.index, sub_label(s)))
         .collect()
 }
@@ -511,33 +509,29 @@ async fn show_subtitle(
     }
 }
 
-/// The subtitle stream the settings choose at start, among those offered.
-fn start_subtitle(l: &Loaded, prefs: &prefs::PlayerPrefs, converting: bool) -> Option<i64> {
-    let src = l.info.sources.first()?;
-    let drawable = menu_subtitles(l, converting);
-    let subs: Vec<SubTrack> = src
-        .streams
-        .iter()
-        .filter(|s| s.kind == StreamKind::Subtitle && drawable.iter().any(|(i, _)| *i == s.index))
-        .map(|s| SubTrack {
-            index: s.index,
-            language: s.language.clone(),
-            forced: s.is_forced,
-        })
-        .collect();
-    let audio = src
-        .streams
-        .iter()
-        .filter(|s| s.kind == StreamKind::Audio)
-        .find(|s| s.is_default)
-        .or_else(|| src.streams.iter().find(|s| s.kind == StreamKind::Audio))
-        .and_then(|s| s.language.clone());
+/// The audio stream (None: the file's own) and subtitle stream (None: off) to start with: the
+/// title's remembered choice (made here or in any app), else the settings, by the apps' rules.
+fn start_tracks(l: &Loaded, prefs: &prefs::PlayerPrefs) -> (Option<i64>, Option<i64>) {
+    let Some(src) = l.info.sources.first() else {
+        return (None, None);
+    };
     let lang = if prefs.sub_lang.is_empty() {
         prefs::browser_language()
     } else {
         prefs.sub_lang.clone()
     };
-    prefs::pick_subtitle(&subs, audio.as_deref(), &prefs.sub_mode, &lang)
+    let pref = crate::tracks::pref(l.srv.session(), &l.item);
+    crate::tracks::start(pref, &prefs.sub_mode, &lang, src)
+}
+
+/// Remembers a track picked in the player for this movie or show (here and in the apps).
+fn remember_track(l: &Loaded, kind: crate::tracks::TrackKind, index: Option<i64>) {
+    let Some(src) = l.info.sources.first() else {
+        return;
+    };
+    let old = crate::tracks::pref(l.srv.session(), &l.item);
+    let new = crate::tracks::picked(old, kind, src, index);
+    crate::tracks::save(l.srv.session(), &l.item, &new);
 }
 
 /// Out of the player: back where the viewer came from, else to the title's page (a player
@@ -1024,21 +1018,33 @@ fn PlayerView(
         };
         original.set(Some(l.info.clone()));
         let session = l.srv.session().clone();
-        if src.supports_direct_play && can_direct(src, &l.profile) {
+        // The title's choice (or the settings'), once per title.
+        let (audio, sub) = if sub_pick.get_untracked() < 0 && audio_pick.get_untracked().is_none() {
+            start_tracks(&l, &prefs)
+        } else {
+            (
+                audio_pick.get_untracked(),
+                Some(sub_pick.get_untracked()).filter(|p| *p >= 0),
+            )
+        };
+        // Another audio track than the file's, or subtitles only the server can draw: the
+        // browser can't switch those in the file itself.
+        let drawable = sub.is_none_or(|i| text_subtitles(&l).iter().any(|(t, _)| *t == i));
+        if src.supports_direct_play && can_direct(src, &l.profile) && audio.is_none() && drawable {
             v.set_src(&state::media_url(&src.direct, &session));
             play(&v);
             watch_direct(v.clone());
-            // The settings' subtitles, once per title.
-            if sub_pick.get_untracked() < 0
-                && let Some(i) = start_subtitle(&l, &prefs, false)
-            {
+            if let Some(i) = sub {
                 sub_pick.set(i);
                 spawn_local(async move { show_subtitle(&l, &v, i, sub_pick).await });
             }
         } else {
-            // Converted: the server must know the subtitles before it starts (it would add
-            // its own pick otherwise).
-            let pick = start_subtitle(&l, &prefs, true).unwrap_or(-1);
+            // Converted: the server must know the tracks before it starts (it would add its
+            // own pick otherwise).
+            if audio.is_some() {
+                audio_pick.set(audio);
+            }
+            let pick = sub.unwrap_or(-1);
             sub_pick.set(pick);
             convert(v, pick, false);
         }
@@ -1661,6 +1667,9 @@ fn PlayerView(
                             on:change=move |ev| {
                                 let Ok(i) = event_target_value(&ev).parse::<i64>() else { return };
                                 audio_pick.set(Some(i));
+                                if let Some(Ok(l)) = loaded.get_untracked() {
+                                    remember_track(&l, crate::tracks::TrackKind::Audio, Some(i));
+                                }
                                 let Some(v) = video.get_untracked() else { return };
                                 // At the same place, from the server's conversion with this track.
                                 convert(v, sub_pick.get_untracked(), true);
@@ -1683,6 +1692,7 @@ fn PlayerView(
                             let pick: i64 = event_target_value(&ev).parse().unwrap_or(-1);
                             sub_pick.set(pick);
                             let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else { return };
+                            remember_track(&l, crate::tracks::TrackKind::Subtitle, Some(pick).filter(|p| *p >= 0));
                             // Converted and the server's part changes (burn another one, or stop
                             // burning): ask it again, at the same place.
                             if transcoding.get_untracked() && server_subtitle(&l, pick) != burned.get_value() {

@@ -18,6 +18,7 @@ msgid "You can turn this question off in Settings."
 msgstr "Vous pouvez désactiver cette question dans les paramètres."
 
 #: android/app/src/main/java/be/alwyapps/watch/MainActivity.kt
+#: desktop/ui/app.slint
 msgid "Quit"
 msgstr "Quitter"
 
@@ -3858,7 +3859,7 @@ msgstr "Le site de demandes a rencontré un problème. Réessayez dans un instan
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
 #: core/seerr/src/lib.rs
-#: ios/AlwyWatch/DetailView.swift
+#: desktop/src/app.rs
 msgid "Specials"
 msgstr "Épisodes spéciaux"
 
@@ -5984,6 +5985,10 @@ msgid "Released"
 msgstr "Date de sortie"
 
 #: desktop/src/app.rs
+msgid "Season {n}"
+msgstr "Saison {n}"
+
+#: desktop/src/app.rs
 msgid "Same as the computer ({name})"
 msgstr "Comme l'ordinateur ({name})"
 
@@ -7785,8 +7790,8 @@ msgid "Browser language ({language})"
 msgstr "Langue du navigateur ({language})"
 
 #: web/src/prefs.rs
-msgid "Only text subtitles can be shown in the browser. These settings are kept in this browser."
-msgstr "Seuls les sous-titres texte peuvent s'afficher dans le navigateur. Ces paramètres sont enregistrés dans ce navigateur."
+msgid "Subtitles the browser can't draw (styled or image ones) are added to the picture by the server. A movie's or show's own choice, made here or in the apps, comes first."
+msgstr "Les sous-titres que le navigateur ne sait pas afficher (stylés ou en image) sont incrustés dans l'image par le serveur. Le choix propre à un film ou une série, fait ici ou dans les applis, passe en premier."
 
 #: web/src/profile.rs
 msgid "This picture couldn't be prepared. Try another one."
@@ -8427,6 +8432,14 @@ msgid "Leave full screen"
 msgstr "Quitter le plein écran"
 
 #: desktop/ui/app.slint
+msgid "Minimize"
+msgstr "Réduire"
+
+#: desktop/ui/app.slint
+msgid "Maximize"
+msgstr "Agrandir"
+
+#: desktop/ui/app.slint
 msgid "Nothing in progress or recently added."
 msgstr "Rien en cours ni ajouté récemment."
 
@@ -9020,6 +9033,9 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "Only text subtitles can be shown in the browser. These settings are kept in this browser."
+#~ msgstr "Seuls les sous-titres texte peuvent s'afficher dans le navigateur. Ces paramètres sont enregistrés dans ce navigateur."
 
 #~ msgid "Your AlwyWatch session has expired or you're not allowed to do this. Sign in again in Settings."
 #~ msgstr "Votre session AlwyWatch a expiré ou vous n'avez pas le droit de faire ceci. Reconnectez-vous dans les Paramètres."

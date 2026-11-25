@@ -24,6 +24,8 @@ h2 { font-size: 1.15rem; margin: 1.4em 0 .6em; }
   border-bottom: 1px solid var(--outline); }
 .topbar .logo { font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; width: 196px; flex: none; }
 .topbar .logo span { color: var(--accent); }
+.topbar .back-btn { margin-left: -8px; }
+.topbar .back-btn + .logo { width: 152px; }
 .topbar:not(:has(.topsearch)) .logo { margin-right: auto; }
 .topsearch { flex: 1; max-width: 560px; margin-right: auto; display: flex; align-items: center; gap: 10px;
   background: var(--surface); border-radius: 999px; padding: 0 16px; border: 1px solid transparent; }

@@ -175,6 +175,8 @@ pub async fn sync() -> Result<Outcome, String> {
             ),
         );
     }
+    // Per-title audio/subtitle choices: the newer side wins, key by key.
+    push.extend(crate::tracks::merge(&remote));
     state::save(SERVERS, &list);
     state::save(META, &meta);
     let pushed = push.len() as u32;

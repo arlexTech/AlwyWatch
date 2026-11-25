@@ -13,6 +13,7 @@ msgid "You can turn this question off in Settings."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/MainActivity.kt
+#: desktop/ui/app.slint
 msgid "Quit"
 msgstr ""
 
@@ -3853,7 +3854,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
 #: core/seerr/src/lib.rs
-#: ios/AlwyWatch/DetailView.swift
+#: desktop/src/app.rs
 msgid "Specials"
 msgstr ""
 
@@ -5979,6 +5980,10 @@ msgid "Released"
 msgstr ""
 
 #: desktop/src/app.rs
+msgid "Season {n}"
+msgstr ""
+
+#: desktop/src/app.rs
 msgid "Same as the computer ({name})"
 msgstr ""
 
@@ -7780,7 +7785,7 @@ msgid "Browser language ({language})"
 msgstr ""
 
 #: web/src/prefs.rs
-msgid "Only text subtitles can be shown in the browser. These settings are kept in this browser."
+msgid "Subtitles the browser can't draw (styled or image ones) are added to the picture by the server. A movie's or show's own choice, made here or in the apps, comes first."
 msgstr ""
 
 #: web/src/profile.rs
@@ -8419,6 +8424,14 @@ msgstr ""
 
 #: desktop/ui/app.slint
 msgid "Leave full screen"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Minimize"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Maximize"
 msgstr ""
 
 #: desktop/ui/app.slint

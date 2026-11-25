@@ -22,6 +22,7 @@ mod signin;
 mod state;
 mod sync;
 mod together;
+mod tracks;
 mod ui;
 
 use i18n::tr;
@@ -194,6 +195,17 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
     let leaving_on = move || keep_on() && services().leaving_soon;
     use icons::Icon;
     state::mark_app_page();
+    let navigate_home = leptos_router::hooks::use_navigate();
+    // The first path is where the tab landed; any later one is a move inside the app.
+    let first = StoredValue::new(None::<String>);
+    Effect::new(move |_| {
+        let p = current_path();
+        match first.get_value() {
+            None => first.set_value(Some(p)),
+            Some(f) if f != p => MOVED.store(true, std::sync::atomic::Ordering::Relaxed),
+            _ => {}
+        }
+    });
     // The libraries the home found last (one request per server there, none here).
     let libs = StoredValue::new(
         state::load::<Vec<(String, String, String, String)>>(state::LIBS).unwrap_or_default(),
@@ -203,6 +215,21 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
             // One bar on every width: the search field in the middle (an icon on phones, where
             // the tab bar at the bottom takes the side menu's place).
             <header class="topbar">
+                // Pages under a tab (a title, an episode, the dashboard…): a way back.
+                <Show when=move || !top_level(&current_path())>
+                    {let navigate_home = navigate_home.clone(); move || { let n = navigate_home.clone(); view! {
+                    <button class="iconbtn back-btn" aria-label=tr!("Back") title=tr!("Back") on:click=move |_| {
+                        if MOVED.load(std::sync::atomic::Ordering::Relaxed) {
+                            let _ = leptos::prelude::window().history().map(|h| h.back());
+                        } else {
+                            // Opened straight on this page (a link): the home.
+                            n("/", Default::default());
+                        }
+                    }>
+                        <Icon path=icons::ARROW_BACK />
+                    </button>
+                    }}}
+                </Show>
                 <A href="/" attr:class="logo" attr:aria-label=tr!("Home")>"alwy"<span>"watch"</span></A>
                 <Show when=signed_in>
                     <TopSearch />
@@ -307,6 +334,18 @@ fn TopSearch() -> impl IntoView {
         </form>
     }
 }
+
+/// The pages the menu and tab bar lead to: no Back button there.
+fn top_level(path: &str) -> bool {
+    let p = path.trim_end_matches('/');
+    matches!(
+        p,
+        "" | "/list" | "/leaving" | "/requests" | "/together" | "/search" | "/settings" | "/signin"
+    ) || p.starts_with("/library/")
+}
+
+/// Whether this tab moved between pages of the app since it loaded (then Back goes back).
+static MOVED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn current_path() -> String {
     leptos_router::hooks::use_location().pathname.get()

@@ -24,6 +24,7 @@ mod playback;
 mod remote;
 mod settings_sync;
 mod sync;
+mod track_rules;
 mod tracks;
 
 pub use account::{
@@ -62,7 +63,7 @@ pub use seerr::{
     SeerrLogin, SeerrMediaType, SeerrRequest, SeerrResult, SeerrSeason, SeerrSeasonInfo,
 };
 pub use sync::{SyncPair, SyncStatus};
-pub use tracks::{
+pub use track_rules::{
     TrackChoice, TrackInfo, TrackKind, TrackPref, TrackRules, choose_tracks, conversion_tracks,
     lang3, pick_track, remembered_track, source_tracks, track_title_key,
 };

@@ -130,47 +130,6 @@ pub fn browser_language() -> String {
         .unwrap_or_default()
 }
 
-/// A subtitle track the player can show.
-#[derive(Clone, Debug)]
-pub struct SubTrack {
-    pub index: i64,
-    pub language: Option<String>,
-    pub forced: bool,
-}
-
-/// The subtitle track to show at start (None: off), by the same rules as the apps: "auto"
-/// shows subtitles in our language when the audio is in another one, else only forced ones
-/// (signs, foreign dialogue).
-pub fn pick_subtitle(
-    subs: &[SubTrack],
-    audio_lang: Option<&str>,
-    mode: &str,
-    sub_lang: &str,
-) -> Option<i64> {
-    let audio = audio_lang.and_then(lang3);
-    let ours = lang3(sub_lang);
-    let pick = |lang: Option<&String>, forced_only: bool| -> Option<i64> {
-        let is = |t: &SubTrack| t.language.as_deref().and_then(lang3).as_ref() == lang;
-        if forced_only {
-            subs.iter().find(|t| t.forced && (lang.is_none() || is(t)))
-        } else {
-            subs.iter()
-                .find(|t| !t.forced && is(t))
-                .or_else(|| subs.iter().find(|t| is(t)))
-        }
-        .map(|t| t.index)
-    };
-    match mode {
-        "off" => None,
-        "always" => pick(ours.as_ref(), false),
-        "forced" => pick(audio.as_ref(), true),
-        _ => match (&audio, &ours) {
-            (Some(a), Some(s)) if a != s => pick(Some(s), false).or_else(|| pick(Some(a), true)),
-            _ => pick(audio.as_ref(), true),
-        },
-    }
-}
-
 /// Seconds left of the next episode countdown, started when the credits showed at
 /// `from_ms` (playback time, so pausing pauses it too).
 pub fn countdown_left(countdown_s: u32, from_ms: u64, pos_ms: u64) -> u32 {
@@ -262,7 +221,7 @@ pub fn AudioSettings() -> impl IntoView {
                     {LANGUAGES.iter().map(|(code, ..)| view! { <option value=*code>{language_label(code)}</option> }).collect_view()}
                 </select>
             </div>
-            <p class="muted small">{tr!("Only text subtitles can be shown in the browser. These settings are kept in this browser.")}</p>
+            <p class="muted small">{tr!("Subtitles the browser can't draw (styled or image ones) are added to the picture by the server. A movie's or show's own choice, made here or in the apps, comes first.")}</p>
         </section>
     }
 }
@@ -270,14 +229,6 @@ pub fn AudioSettings() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn sub(index: i64, lang: &str, forced: bool) -> SubTrack {
-        SubTrack {
-            index,
-            language: Some(lang.into()),
-            forced,
-        }
-    }
 
     #[test]
     fn defaults_match_the_apps_and_old_values_load() {
@@ -296,29 +247,6 @@ mod tests {
         assert_eq!(lang3("ger").as_deref(), Some("deu"));
         assert_eq!(lang3("xyz").as_deref(), Some("xyz"));
         assert_eq!(lang3(""), None);
-    }
-
-    #[test]
-    fn subtitles_follow_the_mode() {
-        let subs = [
-            sub(3, "eng", true),
-            sub(4, "fre", false),
-            sub(5, "eng", false),
-        ];
-        // English film, French viewer: French subtitles.
-        assert_eq!(pick_subtitle(&subs, Some("eng"), "auto", "fr"), Some(4));
-        // French film: only forced French ones (none here).
-        assert_eq!(pick_subtitle(&subs, Some("fre"), "auto", "fra"), None);
-        // English viewer of an English film: the forced track.
-        assert_eq!(pick_subtitle(&subs, Some("eng"), "auto", "en"), Some(3));
-        assert_eq!(pick_subtitle(&subs, Some("eng"), "always", "en"), Some(5));
-        assert_eq!(pick_subtitle(&subs, Some("eng"), "forced", "fr"), Some(3));
-        assert_eq!(pick_subtitle(&subs, Some("eng"), "off", "fr"), None);
-        // No French subtitles: the forced ones of the audio's language.
-        assert_eq!(
-            pick_subtitle(&subs[..1], Some("eng"), "auto", "fr"),
-            Some(3)
-        );
     }
 
     #[test]

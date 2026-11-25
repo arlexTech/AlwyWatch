@@ -65,6 +65,8 @@ tempfile = "3"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
+# Set by the core's build script: the UniFFI derives in files the web app compiles too.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(alwywatch_ffi)"] }
 
 [workspace.lints.clippy]
 dbg_macro = "deny"
