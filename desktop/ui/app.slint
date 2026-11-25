@@ -65,6 +65,11 @@ export struct Detail {
     /// A movie's saga (TMDB collection, through Seerr): its id, and its button's label.
     saga-id: string,
     saga-label: string,
+    /// An episode's show and season, to go up to them.
+    series-id: string,
+    series-title: string,
+    season-id: string,
+    season-label: string,
 }
 
 /// Where a title stands in Leaving soon, on its page.
@@ -1826,6 +1831,8 @@ export component AppWindow inherits Window {
     callback seerr-request(bool); // all seasons?
     callback seerr-open-saga();
     callback detail-open-saga();
+    /// From an episode: its show's page, on the given season ("" for the show as is).
+    callback detail-open-series(string, string);
     callback transfer-receive(string); // AlwyWatch server address
     callback account-login(string, string, string); // AlwyWatch server address, username, password
     callback send-start();
@@ -2027,6 +2034,11 @@ export component AppWindow inherits Window {
     callback player-cmd(string, string);
     // The whole app full screen (the sidebar's button, F11), remembered across launches.
     in property <bool> app-fullscreen;
+    /// Wayland: the desktop's title bar doesn't take touch (winit), so the sidebar has its own.
+    in property <bool> window-controls;
+    callback window-minimize();
+    callback window-maximize();
+    callback window-close();
     callback app-fullscreen-toggle();
     // A row's "See all" (key from Rail.see-all, the row's title).
     callback rail-see-all(string, string);
@@ -2120,6 +2132,14 @@ export component AppWindow inherits Window {
                         icon: root.app-fullscreen ? @image-url("icons/fullscreen_exit.svg") : @image-url("icons/fullscreen.svg");
                         selected: false;
                         clicked => { root.app-fullscreen-toggle(); }
+                    }
+                    if root.window-controls && !root.app-fullscreen : HorizontalLayout {
+                        padding-top: 8px;
+                        spacing: 8px;
+                        alignment: start;
+                        IconButton { icon: @image-url("icons/minimize.svg"); tip: @tr("Minimize"); clicked => { root.window-minimize(); } }
+                        IconButton { icon: @image-url("icons/crop_square.svg"); tip: @tr("Maximize"); clicked => { root.window-maximize(); } }
+                        IconButton { icon: @image-url("icons/close.svg"); tip: @tr("Quit"); clicked => { root.window-close(); } }
                     }
                 }
             }
@@ -2290,6 +2310,21 @@ export component AppWindow inherits Window {
                                     padding-bottom: 32px;
                                     spacing: 12px;
                                     alignment: end;
+                                    // An episode: back up to its show or its season.
+                                    if root.detail.series-id != "" : HorizontalLayout {
+                                        spacing: 10px;
+                                        alignment: start;
+                                        Button {
+                                            label: root.detail.series-title;
+                                            has-icon: true;
+                                            icon: @image-url("icons/tv_gen.svg");
+                                            clicked => { root.detail-open-series(root.detail.series-id, ""); }
+                                        }
+                                        if root.detail.season-id != "" : Button {
+                                            label: root.detail.season-label;
+                                            clicked => { root.detail-open-series(root.detail.series-id, root.detail.season-id); }
+                                        }
+                                    }
                                     if root.detail.logo.width > 0 : Image {
                                         source: root.detail.logo;
                                         height: 120px;

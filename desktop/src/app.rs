@@ -2969,6 +2969,7 @@ impl App {
     /// Texts of a detail/hero panel (images are filled in asynchronously).
     fn detail_of(i: &Item) -> Detail {
         let playable = matches!(i.kind, ItemKind::Movie | ItemKind::Episode);
+        let episode = i.kind == ItemKind::Episode;
         let mut meta = vec![item_subtitle(i)];
         meta.extend(i.official_rating.clone());
         meta.extend(i.community_rating.map(|r| format!("★ {r:.1}")));
@@ -2998,6 +2999,29 @@ impl App {
             crew: SharedString::default(),
             saga_id: SharedString::default(),
             saga_label: SharedString::default(),
+            series_id: sstr(
+                episode
+                    .then_some(i.series_id.as_deref())
+                    .flatten()
+                    .unwrap_or(""),
+            ),
+            series_title: sstr(
+                episode
+                    .then_some(i.series_title.as_deref())
+                    .flatten()
+                    .unwrap_or_default(),
+            ),
+            season_id: sstr(
+                episode
+                    .then_some(i.season_id.as_deref())
+                    .flatten()
+                    .unwrap_or(""),
+            ),
+            season_label: match (episode, i.season_number) {
+                (true, Some(0)) => sstr(tr!("Specials")),
+                (true, Some(n)) => sstr(tr!("Season {n}", n = n)),
+                _ => SharedString::default(),
+            },
         }
     }
 
@@ -5504,6 +5528,11 @@ impl App {
         on!(on_toggle_watchlist, |a, id| a.toggle_watchlist(id.into()));
         on!(on_play_trailer, |a, id| a.play_trailer(id.into()));
         on!(on_select_season, |a, id| a.select_season(id.into()));
+        on!(on_detail_open_series, |a, series, season| {
+            a.state.borrow_mut().pending_season =
+                (!season.is_empty()).then(|| (series.to_string(), season.to_string()));
+            a.navigate(Route::Detail(series.into()));
+        });
         on!(on_search, |a, text| a.search(text.into()));
         on!(on_go, |a, page| a.navigate(match page {
             Page::Search => Route::Search,
@@ -5548,6 +5577,21 @@ impl App {
         });
         on!(on_player_room_start, |a| a.player_room_start());
         on!(on_app_fullscreen_toggle, |a| a.app_fullscreen_toggle());
+        on!(on_window_minimize, |a| a.ui().window().set_minimized(true));
+        on!(on_window_maximize, |a| {
+            let ui = a.ui();
+            let w = ui.window();
+            w.set_maximized(!w.is_maximized());
+        });
+        on!(on_window_close, |a| {
+            let _ = a.ui().hide();
+        });
+        // Wayland title bars (drawn by the app through winit) ignore touch.
+        self.ui().set_window_controls(
+            cfg!(target_os = "linux")
+                && std::env::var_os("WAYLAND_DISPLAY").is_some()
+                && std::env::var("SLINT_BACKEND").map_or(true, |b| !b.contains("x11")),
+        );
         on!(on_player_room_cancel, |a| a.player_room_cancel());
         on!(on_rail_see_all, |a, key, title| {
             match key.as_str() {
