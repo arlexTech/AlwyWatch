@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import AVFoundation
 import AVKit
+import Combine
 import SwiftUI
 
 /// What to play (a full-screen cover).
@@ -8,6 +9,10 @@ struct PlayRequest: Identifiable {
     let account: String
     let item: Item
     var fromStart = false
+    /// Where to start (a watch together room's position), instead of the resume point.
+    var startMs: UInt64?
+    /// The watch together seat this playback follows.
+    var room: TogetherSession.Seat?
     var id: String { item.id }
 }
 
@@ -92,10 +97,15 @@ final class PlayerPresenter: NSObject, AVPlayerViewControllerDelegate {
         self.playback = playback
         self.onClose = onClose
         Self.top()?.present(vc, animated: true)
-        Task { await playback.start(core: core, account: request.account, item: request.item, fromStart: request.fromStart) }
+        TogetherInbox.shared.playerVisible = true
+        Task { await playback.start(core: core, request: request) }
     }
 
+    /// A playback is showing (or in picture in picture).
+    var isOpen: Bool { playback != nil }
+
     private func finish() {
+        TogetherInbox.shared.playerVisible = false
         if playback != nil { NotificationCenter.default.post(name: .playbackEnded, object: nil) }
         playback?.stop()
         playback = nil
@@ -152,6 +162,21 @@ struct PlayerPrompt: View {
     @ObservedObject var playback: Playback
 
     var body: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            // Watch together: who did what, and what the start waits for.
+            if let note = playback.togetherWaiting ?? playback.togetherNote {
+                Text(note)
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Color.black.opacity(0.6), in: Capsule())
+            }
+            prompts
+        }
+        .foregroundStyle(.white)
+        .padding(2)
+    }
+
+    private var prompts: some View {
         HStack(spacing: 8) {
             if playback.nearEnd {
                 if playback.upNextIn != nil {
@@ -168,8 +193,6 @@ struct PlayerPrompt: View {
                 pill(label) { playback.skip() }
             }
         }
-        .foregroundStyle(.white)
-        .padding(2)
     }
 
     private func pill(_ text: String, _ action: @escaping () -> Void) -> some View {
@@ -195,6 +218,8 @@ final class Playback: ObservableObject {
     @Published private(set) var skipLabel: String?
     @Published private(set) var nearEnd = false
     @Published private(set) var upNextIn: Int?
+    @Published private(set) var togetherNote: String?
+    @Published private(set) var togetherWaiting: String?
     var onError: ((String) -> Void)?
     var onFinished: (() -> Void)?
     private var error: String? {
@@ -227,13 +252,16 @@ final class Playback: ObservableObject {
     private var shownSubtitle: AVMediaSelectionOption?
     private var tracksReady = false
 
-    func start(core: AlwyWatch, account: String, item: Item, fromStart: Bool) async {
+    func start(core: AlwyWatch, request: PlayRequest) async {
         self.core = core
-        self.account = account
-        var at = fromStart || item.user.played ? 0 : item.user.positionMs
+        account = request.account
+        let item = request.item
+        var at = request.fromStart || item.user.played ? 0 : item.user.positionMs
         // Resuming: play a few seconds again, to remember where you were.
         let rewind = UInt64(max(0, Int(core.getSettingOr("player.resume_rewind", "0")) ?? 0)) * 1000
         if at > 0 { at = at > rewind ? at - rewind : 0 }
+        if let s = request.startMs { at = s }
+        if let seat = request.room { joinRoom(seat) }
         await open(item, at: at)
     }
 
@@ -254,10 +282,11 @@ final class Playback: ObservableObject {
             resetPrompts()
             watch(playerItem, startMs: startMs)
             player.replaceCurrentItem(with: playerItem)
+            seekHoldUntil = Date().addingTimeInterval(2)
             if startMs > 0 {
                 _ = await player.seek(to: CMTime(value: CMTimeValue(startMs), timescale: 1000), toleranceBefore: .zero, toleranceAfter: .positiveInfinity)
             }
-            player.play()
+            if room == nil { player.play() }
             report(.start)
             loadExtras(item)
             return
@@ -283,10 +312,11 @@ final class Playback: ObservableObject {
             resetPrompts()
             watch(playerItem, startMs: startMs)
             player.replaceCurrentItem(with: playerItem)
+            seekHoldUntil = Date().addingTimeInterval(2)
             if startMs > 0 {
                 _ = await player.seek(to: CMTime(value: CMTimeValue(startMs), timescale: 1000), toleranceBefore: .zero, toleranceAfter: .positiveInfinity)
             }
-            player.play()
+            if room == nil { player.play() }
             report(.start)
             loadExtras(item)
         } catch {
@@ -390,7 +420,11 @@ final class Playback: ObservableObject {
         self.next = nil
         nearEnd = false
         upNextIn = nil
-        Task { await open(next, at: next.user.played ? 0 : next.user.positionMs) }
+        Task {
+            await open(next, at: next.user.played ? 0 : next.user.positionMs)
+            // In a room: the next episode for everyone.
+            if room != nil { sendRoom(newTitle: true) }
+        }
     }
 
     private func seekTo(_ ms: UInt64) {
@@ -532,6 +566,10 @@ final class Playback: ObservableObject {
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: playerItem, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.ended() }
         }
+        if let jumpObserver { NotificationCenter.default.removeObserver(jumpObserver) }
+        jumpObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.timeJumpedNotification, object: playerItem, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.timeJumped() }
+        }
         if tick == nil {
             tick = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 10, preferredTimescale: 1), queue: .main) { [weak self] _ in
                 Task { @MainActor in
@@ -568,12 +606,18 @@ final class Playback: ObservableObject {
 
     private func rateChanged(_ rate: Float) {
         defer { lastRate = rate }
+        // In a room: played or paused here (not by the room) goes to everyone.
+        if room != nil, let applied = appliedPlaying, (rate > 0) != applied, roomSending == 0, !stopped {
+            sendRoom()
+        }
         if rate == 0, lastRate > 0, !stopped { report(.pause) }
         if rate > 0, lastRate == 0, info != nil { report(.progress) }
     }
 
     private func ended() async {
         report(.stop)
+        // In a room, the host's next title comes to everyone; the others wait for it.
+        if room != nil, !TogetherSession.shared.isHost { return }
         guard let core, let item, item.kind == .episode,
               core.getSettingOr("player.auto_next", "1") != "0"
         else {
@@ -587,10 +631,12 @@ final class Playback: ObservableObject {
             return
         }
         await open(upNext, at: upNext.user.played ? 0 : upNext.user.positionMs)
+        if room != nil { sendRoom(newTitle: true) }
     }
 
     func stop() {
         guard !stopped else { return }
+        exitRoomPlayer()
         report(.stop)
         stopped = true
         player.pause()
@@ -600,7 +646,357 @@ final class Playback: ObservableObject {
         segmentTick = nil
         observers.removeAll()
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        if let jumpObserver { NotificationCenter.default.removeObserver(jumpObserver) }
         player.replaceCurrentItem(with: nil)
+    }
+
+    // ----- watch together ------------------------------------------------------------------
+
+    private var room: TogetherSession.Seat?
+    private var jumpObserver: NSObjectProtocol?
+    private var roomSubs: Set<AnyCancellable> = []
+    private var roomLoop: Task<Void, Never>?
+    private var roomRound: UInt64 = 0
+    private var roomMedia: TogetherMedia?
+    private var lastSeen: TogetherState?
+    /// Speed used to catch up with the room (1: normal).
+    private var roomRate: Float = 1
+    /// False once a speed change didn't close the gap: seeks only.
+    private var rateWorks = true
+    private var rateCheckAt = Date.distantPast
+    private var rateCheckDrift: Int64 = 0
+    /// No following before this: our own change, not echoed by the room yet.
+    private var ownHoldUntil = Date.distantPast
+    /// No corrections (and no "I moved" sent) before this: a seek landing.
+    private var seekHoldUntil = Date.distantPast
+    private var roomSending = 0
+    /// Playing or paused as the room last said (a different rate is the viewer's doing).
+    private var appliedPlaying: Bool?
+    private var scheduledStart: Int64?
+    private var startTask: Task<Void, Never>?
+    private var readySent: UInt64 = 0
+    private var readySince: Date?
+    private var noteTask: Task<Void, Never>?
+
+    private func note(_ text: String) {
+        togetherNote = text
+        noteTask?.cancel()
+        noteTask = Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if !Task.isCancelled { togetherNote = nil }
+        }
+    }
+
+    /// Follows the room (its long poll runs in TogetherSession: kept alive while playing).
+    private func joinRoom(_ seat: TogetherSession.Seat) {
+        guard let core else { return }
+        let session = TogetherSession.shared
+        room = seat
+        session.attach(core)
+        if let s = session.state {
+            lastSeen = s
+            roomMedia = s.media
+            roomRound = s.round
+            session.handledRound = max(session.handledRound, s.round)
+        }
+        session.updates
+            .filter { $0.code == seat.code }
+            .sink { [weak self] s in self?.onRoomState(s) }
+            .store(in: &roomSubs)
+        // The room closed, or this device moved to another one.
+        session.$seat
+            .dropFirst()
+            .sink { [weak self] now in
+                guard now?.code != seat.code else { return }
+                let why = session.ended
+                session.ended = nil
+                self?.leaveTogether(why ?? tr("You're no longer in this room"))
+            }
+            .store(in: &roomSubs)
+        // In step every half second (also while paused, waiting for a start).
+        roomLoop = Task { [weak self] in
+            while !Task.isCancelled {
+                if let self, let s = TogetherSession.shared.state, s.code == seat.code { self.syncToRoom(s) }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+    }
+
+    private func onRoomState(_ s: TogetherState) {
+        guard let room else { return }
+        let session = TogetherSession.shared
+        let before = lastSeen
+        lastSeen = s
+        // The host went back to the waiting room (to pick something else): so do we.
+        if !s.started {
+            if !session.isHost {
+                session.problem = nil
+                onFinished?()
+            }
+            return
+        }
+        let newRound = roomRound != 0 && s.round != roomRound
+        roomRound = s.round
+        session.handledRound = max(session.handledRound, s.round)
+        if s.by == room.memberId || roomSending > 0 {
+            roomMedia = s.media
+            if !s.loading.isEmpty { syncToRoom(s) }
+            return
+        }
+        let known = roomMedia
+        roomMedia = s.media
+        if newRound || (known != nil && known != s.media) {
+            followTitle(s)
+            return
+        }
+        // Someone else played, paused or moved: say who, then follow.
+        if let before, s.seq != before.seq {
+            if let who = s.members.first(where: { $0.id == s.by })?.name {
+                if before.playing && !s.playing {
+                    note(tr("{name} paused", ["name": who]))
+                } else if !before.playing && s.playing {
+                    note(tr("{name} resumed", ["name": who]))
+                } else {
+                    note(tr("{name} moved to {time}", ["name": who, "time": formatTime(s.positionMs)]))
+                }
+            } else if s.members.count > before.members.count {
+                let joined = s.members.filter { m in !before.members.contains { $0.id == m.id } }.map(\.name).joined(separator: ", ")
+                note(tr("{names} joined", ["names": joined]))
+            } else if s.members.count < before.members.count {
+                let left = before.members.filter { m in !s.members.contains { $0.id == m.id } }.map(\.name).joined(separator: ", ")
+                note(tr("{names} left", ["names": left]))
+            }
+        }
+        // Someone else's change wins over our own pending hold.
+        ownHoldUntil = .distantPast
+        syncToRoom(s)
+    }
+
+    /// Plays or pauses like the room and stays in step with it: small drifts by playing a
+    /// little faster or slower, a seek past 2 s (the core's `togetherCorrection`).
+    private func syncToRoom(_ s: TogetherState) {
+        guard let core, room != nil, roomSending == 0, !stopped, player.currentItem != nil else { return }
+        let now = Date()
+        let serverNow = core.togetherNowMs()
+        if !s.loading.isEmpty || togetherStartsIn(state: s, serverNowMs: serverNow) != nil {
+            waitForStart(s, serverNow)
+            return
+        }
+        togetherWaiting = nil
+        let expected = togetherPositionAt(state: s, serverNowMs: serverNow)
+        if now < ownHoldUntil { return }
+        if appliedPlaying != s.playing || (player.rate > 0) != s.playing {
+            appliedPlaying = s.playing
+            if s.playing { player.rate = roomRate } else { player.pause() }
+        }
+        guard now >= seekHoldUntil, player.currentItem?.status == .readyToPlay else { return }
+        let actual = positionMs
+        let drift = abs(Int64(actual) - Int64(expected))
+        let c = togetherCorrection(expectedMs: expected, actualMs: actual, playing: s.playing, currentRate: Double(roomRate), canChangeRate: rateWorks)
+        if let to = c.seekToMs {
+            seekHoldUntil = now.addingTimeInterval(2)
+            seekTo(to)
+        }
+        if Float(c.rate) != roomRate {
+            if roomRate == 1 {
+                rateCheckAt = now.addingTimeInterval(6)
+                rateCheckDrift = drift
+            }
+            roomRate = Float(c.rate)
+            if s.playing { player.rate = roomRate }
+        } else if roomRate != 1, now >= rateCheckAt {
+            // The speed doesn't close the gap: seek instead.
+            if drift > rateCheckDrift * 8 / 10 {
+                rateWorks = false
+                roomRate = 1
+                if s.playing { player.rate = 1 }
+            }
+            rateCheckAt = now.addingTimeInterval(6)
+            rateCheckDrift = drift
+        }
+    }
+
+    /// A start: every seat loads the title paused at the room's position and says when it has
+    /// enough; once all have, the room plays from a moment ahead and a timer presses play then.
+    private func waitForStart(_ s: TogetherState, _ serverNow: Int64) {
+        guard let core, let room else { return }
+        let now = Date()
+        let at = s.positionMs
+        appliedPlaying = false
+        if player.rate != 0 { player.pause() }
+        roomRate = 1
+        let ready = player.currentItem?.status == .readyToPlay
+        if now >= seekHoldUntil, ready, abs(Int64(positionMs) - Int64(at)) > 150 {
+            seekTo(at)
+            seekHoldUntil = now.addingTimeInterval(0.5)
+        }
+        if let startsIn = togetherStartsIn(state: s, serverNowMs: serverNow) {
+            togetherWaiting = tr("Starting…")
+            if scheduledStart != s.atMs {
+                scheduledStart = s.atMs
+                startTask?.cancel()
+                startTask = Task {
+                    try? await Task.sleep(nanoseconds: UInt64(max(0, startsIn)) * 1_000_000)
+                    guard !Task.isCancelled, let st = TogetherSession.shared.state, st.atMs == s.atMs, st.playing else { return }
+                    appliedPlaying = true
+                    player.rate = 1
+                    togetherWaiting = nil
+                }
+            }
+            return
+        }
+        let mine = togetherIsLoading(state: s, memberId: room.memberId)
+        if mine, readySent != s.round {
+            let here = ready && abs(Int64(positionMs) - Int64(at)) <= 500
+            if !here {
+                readySince = nil
+            } else if readySince == nil {
+                readySince = now
+            }
+            let enough = here && (bufferedAheadMs >= togetherReadyBufferMs() || bufferedToEnd || now.timeIntervalSince(readySince ?? now) > 8)
+            if enough {
+                let round = s.round
+                readySent = round
+                Task {
+                    do {
+                        TogetherSession.shared.accept(try await core.togetherReady(code: room.code, memberId: room.memberId, round: round))
+                    } catch {
+                        if readySent == round { readySent = 0 }
+                    }
+                }
+            }
+        }
+        let others = Array(Set(s.loading.filter { $0 != room.memberId }.compactMap { id in s.members.first { $0.id == id }?.name })).sorted()
+        if mine && readySent != s.round {
+            togetherWaiting = tr("Loading for everyone…")
+        } else if others.isEmpty {
+            togetherWaiting = tr("Starting…")
+        } else {
+            togetherWaiting = tr("Waiting for {names}…", ["names": others.joined(separator: ", ")])
+        }
+    }
+
+    /// How much is loaded past the current position.
+    private var bufferedAheadMs: UInt64 {
+        guard let item = player.currentItem else { return 0 }
+        let now = item.currentTime()
+        for r in item.loadedTimeRanges.map(\.timeRangeValue) where r.containsTime(now) {
+            let ahead = (r.end - now).seconds
+            return ahead.isFinite && ahead > 0 ? UInt64(ahead * 1000) : 0
+        }
+        return 0
+    }
+
+    private var bufferedToEnd: Bool {
+        guard let item = player.currentItem, let d = durationMs else { return false }
+        let end = item.loadedTimeRanges.map { $0.timeRangeValue.end.seconds }.max() ?? 0
+        return end * 1000 >= Double(d) - 1000
+    }
+
+    /// A seek here (not one of ours): everyone moves too.
+    private func timeJumped() {
+        guard room != nil, !stopped, Date() >= seekHoldUntil, roomSending == 0, appliedPlaying != nil else { return }
+        sendRoom()
+    }
+
+    /// The room moved to another title: find it on our servers and play it.
+    private func followTitle(_ s: TogetherState) {
+        guard let core else { return }
+        let m = s.media
+        Task {
+            let ids = ((try? core.accounts()) ?? []).map(\.id)
+            let pref = (try? core.getSetting(key: preferredKey)) ?? nil
+            let accounts = ids.filter { $0 == pref } + ids.filter { $0 != pref }
+            guard let found = (try? await core.togetherFind(accountIds: accounts, media: m)) ?? nil else {
+                note(tr("{title} isn't on your servers", ["title": m.label]))
+                appliedPlaying = false
+                player.pause()
+                return
+            }
+            var it = ((try? core.cachedItem(accountId: found.accountId, itemId: found.itemId)) ?? nil)?.item
+            if it == nil { it = try? await core.refreshItem(accountId: found.accountId, itemId: found.itemId, force: false).item }
+            guard let it else { return }
+            report(.stop)
+            account = found.accountId
+            appliedPlaying = nil
+            await open(it, at: togetherPositionAt(state: s, serverNowMs: core.togetherNowMs()))
+        }
+    }
+
+    /// Tells the room what we just did (play, pause, seek; with `newTitle`, the title too).
+    private func sendRoom(newTitle: Bool = false) {
+        guard let core, let room else { return }
+        let playing = player.rate > 0
+        let position = positionMs
+        let acct: String? = newTitle ? account : nil
+        let itemId: String? = newTitle ? item?.id : nil
+        appliedPlaying = playing
+        ownHoldUntil = Date().addingTimeInterval(2)
+        roomSending += 1
+        Task {
+            defer { roomSending -= 1 }
+            do {
+                let s = try await core.togetherUpdate(code: room.code, memberId: room.memberId, playing: playing, positionMs: position, accountId: acct, itemId: itemId)
+                TogetherSession.shared.accept(s)
+                lastSeen = s
+                roomMedia = s.media
+            } catch {
+                // The host doesn't allow it (HTTP 423): say so and go back to what the room plays.
+                guard message(error).contains("HTTP 423"), let s = TogetherSession.shared.state else { return }
+                if newTitle {
+                    note(tr("Only the host can change what's playing in this room"))
+                } else if s.playing != playing, playing {
+                    note(tr("Only the host can play in this room"))
+                } else if s.playing != playing {
+                    note(tr("Only the host can pause in this room"))
+                } else {
+                    note(tr("Only the host can move forward or back in this room"))
+                }
+                ownHoldUntil = .distantPast
+                roomSending -= 1
+                if newTitle { followTitle(s) } else { syncToRoom(s) }
+                roomSending += 1
+            }
+        }
+    }
+
+    private func leaveRoomLoop() {
+        roomSubs.removeAll()
+        roomLoop?.cancel()
+        roomLoop = nil
+        startTask?.cancel()
+        togetherWaiting = nil
+        TogetherSession.shared.detach()
+    }
+
+    private func leaveTogether(_ text: String) {
+        guard room != nil else { return }
+        room = nil
+        leaveRoomLoop()
+        roomMedia = nil
+        lastSeen = nil
+        note(text)
+    }
+
+    /// The player closes while in a room: we stay in it (the app shows the Room screen). The
+    /// host closing it takes everyone back to the waiting room, to pick something else.
+    private func exitRoomPlayer() {
+        guard let seat = room else { return }
+        let session = TogetherSession.shared
+        let s = session.state
+        let hosting = session.isHost
+        let pos = positionMs
+        room = nil
+        leaveRoomLoop()
+        guard let s, session.seat != nil else { return }
+        session.handledRound = max(session.handledRound, s.round)
+        if hosting && s.started, let core {
+            session.startAt = pos
+            Task {
+                if let st = try? await core.togetherLobby(code: seat.code, memberId: seat.memberId, positionMs: pos) { session.accept(st) }
+            }
+        }
+        session.show = seat.code
     }
 
     private var positionMs: UInt64 {

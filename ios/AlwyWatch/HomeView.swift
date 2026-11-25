@@ -60,7 +60,9 @@ struct HomeView: View {
                             }
                         }
                     }
-                    // After what the user is watching, before the "new" rows (as on Android).
+                    // After what the user is watching, before the "new" rows (as on Android):
+                    // invitations to watch together waiting for an answer, then Leaving soon.
+                    if model.core.keepActive() { TogetherRail() }
                     LeavingSoonRail()
                     if !home.libraries.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {

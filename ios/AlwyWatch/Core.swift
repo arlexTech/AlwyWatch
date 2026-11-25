@@ -17,6 +17,10 @@ final class AppModel: ObservableObject {
     let downloads: DownloadRunner
     /// What the AlwyWatch server offers (Leaving soon, requests): which tabs show.
     @Published var services: Services
+    /// A tab to bring to the front (the room's "Choose what to watch": Home).
+    @Published var tabRequest: Int?
+
+    func chooseForRoom() { tabRequest = 0 }
 
     init() {
         I18n.apply()
@@ -46,6 +50,8 @@ final class AppModel: ObservableObject {
         }
         sync.syncIfDue()
         sync.schedule()
+        // Invitations to watch together arrive while the app is in front.
+        TogetherInbox.shared.start(core)
         // Rules due, "next episodes" topped up, and the queue resumed where it stopped.
         downloads.sync()
         Task {

@@ -180,6 +180,7 @@ msgid "Skip"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerActivity.kt
+#: ios/AlwyWatch/PlayerView.swift
 msgid "You're no longer in this room"
 msgstr ""
 
@@ -212,11 +213,13 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerActivity.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/PlayerView.swift
 msgid "{names} joined"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerActivity.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/PlayerView.swift
 msgid "{names} left"
 msgstr ""
 
@@ -316,6 +319,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Watching now"
 msgstr ""
 
@@ -425,6 +429,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Selected"
 msgstr ""
 
@@ -436,6 +441,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/together/Together.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "{show} · S{season} · E{episode}"
 msgstr ""
 
@@ -447,23 +453,28 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/together/Together.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "This room has closed."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/together/Together.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Too many changes. Try again in a few minutes."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/together/Together.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "This room is full."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/together/Together.kt
+#: ios/AlwyWatch/Together.swift
 msgid "This picture is too big."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/together/Together.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Only the host can do that."
 msgstr ""
 
@@ -3579,6 +3590,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Remove {name}"
 msgstr ""
 
@@ -4670,12 +4682,14 @@ msgid "Core {version}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "{name} and {n} other"
 msgid_plural "{name} and {n} others"
 msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "on {n} device"
 msgid_plural "on {n} devices"
 msgstr[0] ""
@@ -4683,16 +4697,19 @@ msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Together.swift
 msgid "Send {n} invitation"
 msgid_plural "Send {n} invitations"
 msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "{title} isn't on your servers, so you can't watch it with them."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Rooms are private: only the people you invite can see them and join."
 msgstr ""
 
@@ -4716,6 +4733,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "Can't reach your AlwyWatch server right now. Trying again…"
 msgstr ""
 
@@ -4726,16 +4744,19 @@ msgid "No rooms yet. Start one here, or open a movie or an episode and choose Wa
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Your rooms"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "{name} invites you"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "Joining…"
 msgstr ""
 
@@ -4746,20 +4767,24 @@ msgid "Join"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Watching now · {time}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "Waiting room"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "You're the host"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "Hosted by {name}"
 msgstr ""
 
@@ -4770,42 +4795,52 @@ msgid "Open"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Invitations to watch together"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Join or answer later"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "{name} invites you to watch together"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "They're already watching: you'll join where they are."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "They're in the waiting room."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Leave this room?"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "You're the host: the room stays open for the others and one of them becomes the host."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "You're alone in it: the room closes, and the invitations you sent are withdrawn."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "To come back, you'll need a new invitation."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Opening the room…"
 msgstr ""
 
@@ -4817,30 +4852,37 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: desktop/src/app/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "Open a movie or an episode and choose Watch in your room. The people you invite can join in the meantime."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "{name} is choosing what to watch"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Start this again, or pick another title: open a movie or an episode and choose Watch in your room. Everyone stays here."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Invite people, then start when everyone is here. Play, pause and seeking follow everyone."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "{name} is picking what to watch next"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Waiting for {name} to start"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Watch with them"
 msgstr ""
 
@@ -4852,6 +4894,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: web/src/player.rs
+#: ios/AlwyWatch/Together.swift
 msgid "Start at {time}"
 msgstr ""
 
@@ -4862,6 +4905,7 @@ msgid "Start watching"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "From the beginning"
 msgstr ""
 
@@ -4873,20 +4917,24 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: web/src/player.rs
+#: ios/AlwyWatch/Together.swift
 msgid "In the room"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "In the room · {count}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "{name} (you)"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: desktop/src/app/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "Host"
 msgstr ""
 
@@ -4897,38 +4945,46 @@ msgid "Invited"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "They can join until they say no."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Hasn't joined yet"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Together.swift
 msgid "Search by name"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Nobody else uses this AlwyWatch server yet."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
+#: ios/AlwyWatch/Together.swift
 msgid "Everyone is already here or invited."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: desktop/src/app/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "Nobody by that name."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: web/src/together.rs
+#: ios/AlwyWatch/Together.swift
 msgid "Recent"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Together.swift
 msgid "Send invitations"
 msgstr ""
 
@@ -8615,6 +8671,7 @@ msgid "Nothing to play."
 msgstr ""
 
 #: ios/AlwyWatch/PlayerView.swift
+#: ios/AlwyWatch/Together.swift
 msgid "This file can't be played on this device."
 msgstr ""
 

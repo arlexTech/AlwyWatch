@@ -19,6 +19,7 @@ struct DetailView: View {
     @State private var listed = false
     @State private var downloads: [Download] = []
     @State private var sheet: DownloadTarget?
+    @State private var creatingRoom = false
 
     var body: some View {
         ScrollView {
@@ -98,7 +99,8 @@ struct DetailView: View {
 
     @ViewBuilder private func playButtons(_ item: Item) -> some View {
         let target: Item? = item.playable ? item : nextEp
-        HStack(spacing: 10) {
+        // Wraps on narrow phones: Play first, the icon actions after it (Android's row).
+        FlowLayout(spacing: 10) {
             if let target {
                 let resumable = target.user.positionMs > 0 && !target.user.played
                 let at = formatClock(Double(target.user.positionMs) / 1000)
@@ -117,6 +119,25 @@ struct DetailView: View {
                     Label(label, systemImage: "play.fill").lineLimit(1)
                 }
                 .buttonStyle(ActionButtonStyle(primary: true))
+                // Opens a private room with it (never the player): the host invites, then starts.
+                if model.core.keepActive() {
+                    Button {
+                        guard !creatingRoom else { return }
+                        creatingRoom = true
+                        Task {
+                            do {
+                                try await createRoom(model: model, account: account, itemId: target.id, resumeMs: target.user.positionMs)
+                            } catch {
+                                self.error = friendly(error)
+                            }
+                            creatingRoom = false
+                        }
+                    } label: {
+                        Image(systemName: "person.2")
+                    }
+                    .buttonStyle(ActionButtonStyle())
+                    .accessibilityLabel(TogetherSession.shared.seat != nil && TogetherSession.shared.isHost ? tr("Watch in your room") : tr("Watch together"))
+                }
                 if resumable {
                     Button {
                         player = PlayRequest(account: account, item: target, fromStart: true)

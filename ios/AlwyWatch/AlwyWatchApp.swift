@@ -20,6 +20,7 @@ struct AlwyWatchApp: App {
                 .tint(Palette.accent)
                 .onChange(of: phase) { p in
                     if p == .active { model.foreground() }
+                    if p == .background { TogetherInbox.shared.stop() }
                 }
         }
         // Every 6 hours when iOS allows it: the watch-state sync (Android's periodic SyncWorker).
@@ -48,11 +49,15 @@ enum Route: Hashable {
     case settingsSection(String)
     case manageDownloads
     case downloadedShow(id: String, title: String)
+    case room(code: String)
 }
 
 struct RootView: View {
     @EnvironmentObject var model: AppModel
+    @ObservedObject private var inbox = TogetherInbox.shared
+    @ObservedObject private var session = TogetherSession.shared
     @State private var tab = 0
+    @State private var togetherPath = NavigationPath()
 
     /// Android's phone tabs: Home, Leaving soon when the server has Maintainerr, Requests when
     /// Seerr answers (Search, My list and Settings are in the home's top bar). One tab: no bar.
@@ -61,11 +66,14 @@ struct RootView: View {
         model.core.seerrActive() && (model.core.seerrConnection()?.viaKeep != true || model.services.requests)
     }
 
+    /// Watch together goes through the AlwyWatch server.
+    private var together: Bool { model.core.keepActive() }
+
     var body: some View {
         Group {
             if model.account == nil {
                 NavigationStack { SignInView() }
-            } else if !leaving && !requests {
+            } else if !leaving && !requests && !together {
                 NavigationStack { HomeView().withRoutes() }
             } else {
                 TabView(selection: $tab) {
@@ -77,6 +85,11 @@ struct RootView: View {
                             .tabItem { Label(tr("Leaving"), systemImage: "hourglass") }
                             .tag(1)
                     }
+                    if together {
+                        NavigationStack(path: $togetherPath) { TogetherView().withRoutes() }
+                            .tabItem { Label(tr("Together"), systemImage: "person.2") }
+                            .tag(2)
+                    }
                     if requests {
                         NavigationStack { RequestsView().withRoutes() }
                             .tabItem { Label(tr("Requests"), systemImage: "plus") }
@@ -86,7 +99,32 @@ struct RootView: View {
             }
         }
         .background(Palette.background.ignoresSafeArea())
+        // A new invitation, wherever the user is.
+        .sheet(item: $inbox.prompt) { InvitationPrompt(room: $0).environmentObject(model) }
+        // A room to show: the Together tab, on that room.
+        .onReceive(session.$show) { code in
+            guard let code else { return }
+            session.show = nil
+            tab = 2
+            togetherPath = NavigationPath()
+            togetherPath.append(Route.room(code: code))
+        }
+        .onReceive(model.$tabRequest) { t in
+            guard let t else { return }
+            model.tabRequest = nil
+            tab = t
+        }
+        // Each start opens the player in sync, wherever the app is.
+        .onReceive(session.$state) { s in
+            guard let s, s.started, s.round > session.handledRound, session.seat != nil, !PlayerPresenter.shared.isOpen else { return }
+            session.handledRound = s.round
+            Task { session.problem = await openRoomPlayer(model: model) }
+        }
     }
+}
+
+extension TogetherRoom: Identifiable {
+    public var id: String { code }
 }
 
 extension View {
@@ -111,6 +149,7 @@ extension View {
             case let .settingsSection(id): SettingsSectionView(section: SettingsSection(rawValue: id) ?? .device)
             case .manageDownloads: ManageDownloadsView()
             case let .downloadedShow(id, title): DownloadedShowView(seriesId: id, title: title)
+            case let .room(code): RoomView(code: code)
             }
         }
     }
