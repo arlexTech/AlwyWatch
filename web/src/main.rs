@@ -116,7 +116,7 @@ fn App() -> impl IntoView {
     view! {
         <Show when=move || !setup.get() fallback=|| view! { <setup::Setup /> }>
         <Router>
-            <Routes fallback=|| view! { <main class="page"><h1>{tr!("Not found")}</h1></main> }>
+            <Routes fallback=|| view! { <Shell><h1>{tr!("Not found")}</h1><A href="/" attr:class="button primary">{tr!("Home")}</A></Shell> }>
                 <Route path=path!("/play/:acc/:id") view=player::Player />
                 <Route path=path!("/") view=|| view! { <Shell><browse::Home /></Shell> } />
                 <Route path=path!("/signin") view=|| view! { <Shell><signin::SignIn /></Shell> } />
@@ -189,19 +189,54 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
     let requests_on = move || keep_on() && services().requests;
     let leaving_on = move || keep_on() && services().leaving_soon;
     use icons::Icon;
+    state::mark_app_page();
+    // The libraries the home found last (one request per server there, none here).
+    let libs = StoredValue::new(
+        state::load::<Vec<(String, String, String, String)>>(state::LIBS).unwrap_or_default(),
+    );
     view! {
         <div class="shell">
-            // Phones: the apps' layout, a header and a tab bar at the bottom (the side menu is
-            // for wide screens; CSS shows one or the other).
+            // One bar on every width: the search field in the middle (an icon on phones, where
+            // the tab bar at the bottom takes the side menu's place).
             <header class="topbar">
-                <A href="/" attr:class="logo">"alwy"<span>"watch"</span></A>
+                <A href="/" attr:class="logo" attr:aria-label=tr!("Home")>"alwy"<span>"watch"</span></A>
                 <Show when=signed_in>
+                    <TopSearch />
+                    <A href="/search" attr:class="iconbtn search-icon" attr:aria-label=tr!("Search") attr:title=tr!("Search")><Icon path=icons::SEARCH /></A>
                     <A href="/list" attr:class="iconbtn" attr:aria-label=tr!("My list") attr:title=tr!("My list")><Icon path=icons::BOOKMARK /></A>
-                    <A href="/search" attr:class="iconbtn" attr:aria-label=tr!("Search") attr:title=tr!("Search")><Icon path=icons::SEARCH /></A>
                 </Show>
                 <A href="/settings" attr:class="iconbtn" attr:aria-label=tr!("Settings") attr:title=tr!("Settings")><Icon path=icons::SETTINGS /></A>
                 <profiles::ProfileMenu />
             </header>
+            <div class="body">
+                <Show when=signed_in>
+                    <nav class="menu" aria-label=tr!("Menu")>
+                        <A href="/" exact=true><Icon path=icons::HOME /><span>{tr!("Home")}</span></A>
+                        <A href="/list"><Icon path=icons::BOOKMARK /><span>{tr!("My list")}</span></A>
+                        <Show when=leaving_on><A href="/leaving"><Icon path=icons::HOURGLASS /><span>{tr!("Leaving soon")}</span></A></Show>
+                        <Show when=requests_on><A href="/requests"><Icon path=icons::ADD /><span>{tr!("Requests")}</span></A></Show>
+                        <Show when=keep_on><A href="/together"><Icon path=icons::GROUP /><span>{tr!("Together")}</span></A></Show>
+                        {libs.with_value(|l| !l.is_empty()).then(|| view! { <p class="menu-head">{tr!("Libraries")}</p> })}
+                        {libs.get_value().into_iter().map(|(acc, id, title, server)| view! {
+                            <A href=format!("/library/{acc}/{id}") attr:title=server><Icon path=icons::LIBRARY /><span>{title}</span></A>
+                        }).collect_view()}
+                    </nav>
+                </Show>
+                <main class="page">
+                    <Expired />
+                    <Show when=keep_on><together::InviteBanner /><together::SeatBanner /></Show>
+                    {move || (keep_on() && welcome.get()).then(|| view! { <profile::Welcome /> })}
+                    // After the welcome step; the player is its own page, so never over a video.
+                    {move || (keep_on() && !welcome.get()).then(|| link_dialog.get()).flatten().map(|(account, prompted)| {
+                        view! { <links::LinkDialog account=account prompted=prompted /> }
+                    })}
+                    {move || if signed_in() || open_page(&current_path()) {
+                        children().into_any()
+                    } else {
+                        view! { <signin::SignIn /> }.into_any()
+                    }}
+                </main>
+            </div>
             <Show when=signed_in>
                 <nav class="tabbar">
                     <A href="/" exact=true><Icon path=icons::HOME /><span>{tr!("Home")}</span></A>
@@ -210,34 +245,62 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                     <Show when=requests_on><A href="/requests"><Icon path=icons::ADD /><span>{tr!("Requests")}</span></A></Show>
                 </nav>
             </Show>
-            <nav class="menu">
-                <A href="/" attr:class="brand">"AlwyWatch"</A>
-                <profiles::ProfileMenu />
-                <Show when=signed_in>
-                    <A href="/">{tr!("Home")}</A>
-                    <A href="/search">{tr!("Search")}</A>
-                    <A href="/list">{tr!("My list")}</A>
-                    <Show when=requests_on><A href="/requests">{tr!("Requests")}</A></Show>
-                    <Show when=keep_on><A href="/together">{tr!("Together")}</A></Show>
-                    <Show when=leaving_on><A href="/leaving">{tr!("Leaving soon")}</A></Show>
-                </Show>
-                <A href="/settings">{tr!("Settings")}</A>
-            </nav>
-            <main class="page">
-                <Expired />
-                <Show when=keep_on><together::InviteBanner /><together::SeatBanner /></Show>
-                {move || (keep_on() && welcome.get()).then(|| view! { <profile::Welcome /> })}
-                // After the welcome step; the player is its own page, so never over a video.
-                {move || (keep_on() && !welcome.get()).then(|| link_dialog.get()).flatten().map(|(account, prompted)| {
-                    view! { <links::LinkDialog account=account prompted=prompted /> }
-                })}
-                {move || if signed_in() || open_page(&current_path()) {
-                    children().into_any()
-                } else {
-                    view! { <signin::SignIn /> }.into_any()
-                }}
-            </main>
         </div>
+    }
+}
+
+/// The search field of the top bar. The address holds the text (`/search?q=`): typing here
+/// opens the results page and updates it, Back leaves it, and the results page's own field
+/// (phones) is the same text. "/" anywhere puts the cursor in it, Escape leaves it.
+#[component]
+fn TopSearch() -> impl IntoView {
+    let loc = leptos_router::hooks::use_location();
+    let query = leptos_router::hooks::use_query_map();
+    let navigate = leptos_router::hooks::use_navigate();
+    let input = NodeRef::<leptos::html::Input>::new();
+    let on_results = move || loc.pathname.get() == "/search";
+    // The bar is drawn again on each page: back in the field when it was what opened them.
+    Effect::new(move |_| {
+        if let Some(i) = input.get()
+            && loc.pathname.get_untracked() == "/search"
+        {
+            let _ = i.focus();
+            let n = i.value().len() as u32;
+            let _ = i.set_selection_range(n, n);
+        }
+    });
+    let keys = window_event_listener(leptos::ev::keydown, move |ev| {
+        if ev.key() != "/" || ev.ctrl_key() || ev.meta_key() || ev.alt_key() {
+            return;
+        }
+        // Not while typing somewhere.
+        let typing = leptos::prelude::document()
+            .active_element()
+            .is_some_and(|e| {
+                matches!(e.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+                    || e.has_attribute("contenteditable")
+            });
+        if !typing && let Some(i) = input.get_untracked() {
+            ev.prevent_default();
+            let _ = i.focus();
+        }
+    });
+    on_cleanup(move || keys.remove());
+    view! {
+        <form class="topsearch" role="search" on:submit=|ev| ev.prevent_default()>
+            <icons::Icon path=icons::SEARCH />
+            <input type="search" node_ref=input placeholder=tr!("Movies, shows, episodes…") aria-label=tr!("Search")
+                prop:value=move || if on_results() { query.read().get("q").unwrap_or_default() } else { String::new() }
+                on:input=move |ev| {
+                    let q = event_target_value(&ev);
+                    navigate(&format!("/search?q={}", net::percent_encode(&q)), leptos_router::NavigateOptions {
+                        replace: loc.pathname.get_untracked() == "/search",
+                        scroll: false,
+                        ..Default::default()
+                    });
+                }
+                on:keydown=move |ev| if ev.key() == "Escape" && let Some(i) = input.get_untracked() { let _ = i.blur(); } />
+        </form>
     }
 }
 

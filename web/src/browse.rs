@@ -171,11 +171,19 @@ pub fn Home() -> impl IntoView {
     let rails = RwSignal::new(state::load::<Rails>(state::HOME));
     let libs = RwSignal::new(state::load::<Vec<LibLink>>(state::LIBS).unwrap_or_default());
     let offline = RwSignal::new(false);
+    // Only the latest load counts (an account added or removed meanwhile starts another).
+    let seq = StoredValue::new(0u32);
     Effect::new(move |_| {
         c.accounts.track();
         let c = c.clone();
+        seq.update_value(|s| *s += 1);
+        let mine = seq.get_value();
         spawn_local(async move {
-            match load_home(&c).await {
+            let res = load_home(&c).await;
+            if seq.try_get_value() != Some(mine) {
+                return;
+            }
+            match res {
                 Some((fresh, l)) => {
                     state::save(state::HOME, &fresh);
                     state::save(state::LIBS, &l);
@@ -215,6 +223,13 @@ pub fn Home() -> impl IntoView {
     }
 }
 
+thread_local! {
+    /// The library page left last: its address, titles, total and scroll position.
+    #[allow(clippy::type_complexity)]
+    static LIBRARY_MEMO: std::cell::RefCell<Option<(String, Vec<(String, Item)>, Option<u32>, f64)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 #[component]
 pub fn Library() -> impl IntoView {
     let params = use_params_map();
@@ -223,15 +238,76 @@ pub fn Library() -> impl IntoView {
     let items = RwSignal::new(Vec::<(String, Item)>::new());
     let total = RwSignal::new(None::<u32>);
     let error = RwSignal::new(None::<String>);
-    // The view: remembered per browser.
-    // A row's "See all" asks for an order (?sort=added) without changing the remembered one.
-    let asked = use_query_map().with_untracked(|q| q.get("sort"));
-    let sort =
-        RwSignal::new(asked.unwrap_or_else(|| {
-            state::load::<String>("aw.lib.sort").unwrap_or_else(|| "title".into())
-        }));
-    let unwatched = RwSignal::new(false);
-    let genre = RwSignal::new(String::new());
+    // The view is in the address (Back from a title comes back to it, a link keeps it); the
+    // order last picked is remembered per browser for libraries opened without one.
+    let query = use_query_map();
+    let sort = Memo::new(move |_| {
+        query
+            .read()
+            .get("sort")
+            .or_else(|| state::load::<String>("aw.lib.sort"))
+            .unwrap_or_else(|| "title".into())
+    });
+    let genre = Memo::new(move |_| query.read().get("genre").unwrap_or_default());
+    let unwatched = Memo::new(move |_| query.read().get("unwatched").as_deref() == Some("1"));
+    let navigate = leptos_router::hooks::use_navigate();
+    let set_view = move |sort: String, genre: String, unwatched: bool| {
+        let mut q = format!("?sort={}", net::percent_encode(&sort));
+        if !genre.is_empty() {
+            q += &format!("&genre={}", net::percent_encode(&genre));
+        }
+        if unwatched {
+            q += "&unwatched=1";
+        }
+        navigate(
+            &q,
+            leptos_router::NavigateOptions {
+                replace: true,
+                scroll: false,
+                ..Default::default()
+            },
+        );
+    };
+    let (set1, set2, set3) = (set_view.clone(), set_view.clone(), set_view);
+    // Back from a title: what was loaded ("More" included) and where the page was.
+    let view_key = move || {
+        format!(
+            "{}/{}|{}|{}|{}",
+            acc(),
+            id(),
+            sort.get(),
+            genre.get(),
+            unwatched.get()
+        )
+    };
+    let key = untrack(view_key);
+    let cur = StoredValue::new(key.clone());
+    let restored = LIBRARY_MEMO
+        .with(|m| m.borrow_mut().take())
+        .filter(|(k, ..)| *k == key);
+    let skip_first = StoredValue::new(restored.is_some());
+    if let Some((_, list, t, y)) = restored {
+        items.set(list);
+        total.set(t);
+        spawn_local(async move {
+            state::sleep(0).await;
+            if let Some(w) = web_sys::window() {
+                w.scroll_to_with_x_and_y(0.0, y);
+            }
+        });
+    }
+    on_cleanup(move || {
+        let y = web_sys::window()
+            .and_then(|w| w.scroll_y().ok())
+            .unwrap_or(0.0);
+        if let (Some(list), Some(t), Some(k)) = (
+            items.try_get_untracked(),
+            total.try_get_untracked(),
+            cur.try_get_value(),
+        ) {
+            LIBRARY_MEMO.with(|m| *m.borrow_mut() = Some((k, list, t, y)));
+        }
+    });
     // Only the latest load counts (a quick change of sort or filter overtakes the last one).
     let seq = StoredValue::new(0u32);
     let genres = LocalResource::new(move || {
@@ -286,14 +362,17 @@ pub fn Library() -> impl IntoView {
         });
     };
     Effect::new(move |prev: Option<(String, String)>| {
-        // Another library (the page stays, only its address changes): its own genres, and not
-        // the last library's titles while it loads.
+        // Another library (the page stays, only its address changes): not the last library's
+        // titles while it loads.
         let here = (acc(), id());
         if prev.as_ref().is_some_and(|p| *p != here) {
-            genre.set(String::new());
             items.set(Vec::new());
         }
-        let _ = (sort.get(), unwatched.get(), genre.get());
+        cur.set_value(view_key());
+        if skip_first.get_value() {
+            skip_first.set_value(false);
+            return here;
+        }
         total.set(None);
         load(0);
         here
@@ -303,7 +382,7 @@ pub fn Library() -> impl IntoView {
             <select class="chip" aria-label=tr!("Sort by") prop:value=move || sort.get() on:change=move |ev| {
                 let v = event_target_value(&ev);
                 state::save("aw.lib.sort", &v);
-                sort.set(v);
+                set1(v, genre.get_untracked(), unwatched.get_untracked());
             }>
                 <option value="title">{tr!("A to Z")}</option>
                 <option value="added">{tr!("Recently added")}</option>
@@ -311,13 +390,13 @@ pub fn Library() -> impl IntoView {
                 <option value="rating">{tr!("Best rated")}</option>
                 <option value="random">{tr!("Random")}</option>
             </select>
-            <select class="chip" aria-label=tr!("Genre") prop:value=move || genre.get() on:change=move |ev| genre.set(event_target_value(&ev))>
+            <select class="chip" aria-label=tr!("Genre") prop:value=move || genre.get() on:change=move |ev| set2(sort.get_untracked(), event_target_value(&ev), unwatched.get_untracked())>
                 <option value="">{tr!("All genres")}</option>
                 {move || genres.get().flatten().unwrap_or_default().into_iter().map(|g| view! {
                     <option value=g.id>{g.name}</option>
                 }).collect_view()}
             </select>
-            <button class="chip" class:selected=move || unwatched.get() on:click=move |_| unwatched.update(|u| *u = !*u)>{tr!("Not watched")}</button>
+            <button class="chip" class:selected=move || unwatched.get() on:click=move |_| set3(sort.get_untracked(), genre.get_untracked(), !unwatched.get_untracked())>{tr!("Not watched")}</button>
         </div>
         {move || total.get().is_none().then(|| view! { <Loading /> })}
         {move || (total.get() == Some(0) && error.with(Option::is_none)).then(|| view! { <p class="muted">{tr!("Nothing matches.")}</p> })}
@@ -355,10 +434,28 @@ pub fn Detail() -> impl IntoView {
             }
         }
     });
+    // A season is shown on its show's page, that season picked (the show, its other seasons
+    // and their episodes in one place, as in the apps).
+    let navigate = leptos_router::hooks::use_navigate();
+    Effect::new(move |_| {
+        if let Some(Ok((_, i))) = item.get()
+            && i.kind == ItemKind::Season
+            && let Some(show) = &i.series_id
+        {
+            navigate(
+                &format!("/item/{}/{show}?season={}", acc.get_untracked(), i.id),
+                leptos_router::NavigateOptions {
+                    replace: true,
+                    ..Default::default()
+                },
+            );
+        }
+    });
     view! {
         {move || match item.get() {
             None => view! { <Loading /> }.into_any(),
             Some(Err(e)) => view! { <ErrorText text=e.to_string() /> }.into_any(),
+            Some(Ok((_, i))) if i.kind == ItemKind::Season && i.series_id.is_some() => view! { <Loading /> }.into_any(),
             Some(Ok((srv, i))) => {
                 let acc = acc.get();
                 let backdrop = state::image(&srv, &i, &[ImageKind::Backdrop, ImageKind::Thumb], 960);
@@ -373,17 +470,38 @@ pub fn Detail() -> impl IntoView {
                 let playable = matches!(i.kind, ItemKind::Movie | ItemKind::Episode);
                 let pos = i.user.position_ms;
                 let base = format!("/play/{acc}/{}", i.id);
+                // Where an episode or a season belongs: the show, then the season, as links.
+                let show_href = i.series_id.as_ref().map(|sid| format!("/item/{acc}/{sid}"));
                 let heading = match i.kind {
-                    ItemKind::Episode => tr!("{series} · S{season} E{episode}", series = i.series_title.clone().unwrap_or_default(),
-                        season = i.season_number.unwrap_or(0), episode = i.episode_number.unwrap_or(0)),
-                    _ => String::new(),
+                    ItemKind::Episode | ItemKind::Season => {
+                        let show = i.series_title.clone().unwrap_or_default();
+                        let season = (i.kind == ItemKind::Episode).then(|| {
+                            let label = tr!("Season {number}", number = i.season_number.unwrap_or(0));
+                            match (&show_href, &i.season_id) {
+                                (Some(h), Some(sid)) => view! { " › "<A href=format!("{h}?season={sid}")>{label}</A> }.into_any(),
+                                _ => view! { " › "{label} }.into_any(),
+                            }
+                        });
+                        let episode = i.episode_number.filter(|_| i.kind == ItemKind::Episode)
+                            .map(|n| format!(" › {}", tr!("Episode {number}", number = n)));
+                        Some(view! {
+                            <nav class="crumbs" aria-label=tr!("Show")>
+                                {match show_href.clone() {
+                                    Some(h) => view! { <A href=h>{show}</A> }.into_any(),
+                                    None => view! { <span>{show}</span> }.into_any(),
+                                }}
+                                {season}{episode}
+                            </nav>
+                        })
+                    }
+                    _ => None,
                 };
                 view! {
                     <div class="hero" style=backdrop.map(|b| format!("background-image:{}", state::css_url(&b))).unwrap_or_default()>
                         <div class="hero-inner">
                             {poster.map(|p| view! { <img class="hero-poster" src=p alt="" /> })}
                             <div>
-                                <p class="muted">{heading}</p>
+                                {heading}
                                 <h1>{i.title.clone()}</h1>
                                 <p class="muted">{meta}</p>
                                 {playable.then(|| view! {
@@ -401,6 +519,7 @@ pub fn Detail() -> impl IntoView {
                                         })}
                                     </div>
                                 })}
+                                {(i.kind == ItemKind::Series).then(|| view! { <ShowPlay acc=acc.clone() series=i.id.clone() /> })}
                                 {(i.kind != ItemKind::Season).then(|| view! {
                                     <crate::extra::ItemActions acc=acc.clone() item=i.clone() />
                                 })}
@@ -421,12 +540,74 @@ pub fn Detail() -> impl IntoView {
                     {(i.kind == ItemKind::Season).then(|| view! {
                         <Episodes acc=acc.clone() series=i.series_id.clone().unwrap_or_default() season=i.id.clone() />
                     })}
+                    // The rest of the season under an episode, this one marked.
+                    {(i.kind == ItemKind::Episode).then(|| i.series_id.clone().zip(i.season_id.clone())).flatten().map(|(series, season)| view! {
+                        <h2>{tr!("Season {number}", number = i.season_number.unwrap_or(0))}</h2>
+                        <Episodes acc=acc.clone() series=series season=season current=i.id.clone() />
+                    })}
                     {matches!(i.kind, ItemKind::Movie | ItemKind::Series).then(|| view! {
                         <crate::extra::Cast acc=acc.clone() id=i.id.clone() />
                     })}
                 }.into_any()
             }
         }}
+    }
+}
+
+/// A show's Play: the episode in progress (the home's Continue watching), else the first one
+/// not watched, else the first.
+#[component]
+fn ShowPlay(acc: String, series: String) -> impl IntoView {
+    let a = acc.clone();
+    let next = LocalResource::new(move || {
+        let (acc, series) = (a.clone(), series.clone());
+        async move {
+            let started = state::load::<Rails>(state::HOME).and_then(|r| {
+                r.into_iter()
+                    .find(|(_, _, _, _, l)| l == "/continue")?
+                    .1
+                    .into_iter()
+                    .find(|(x, i)| *x == acc && i.series_id.as_deref() == Some(series.as_str()))
+            });
+            if let Some((_, e)) = started {
+                return Some(e);
+            }
+            let srv = state::ctx().server(&acc)?;
+            let seasons = srv.seasons(&series).await.ok()?;
+            // Specials (season 0) last.
+            let mut order: Vec<_> = seasons.iter().collect();
+            order.sort_by_key(|s| (s.season_number == Some(0), s.season_number));
+            let mut first = None;
+            for s in order
+                .into_iter()
+                .filter(|s| !s.user.played)
+                .chain(seasons.first())
+            {
+                let eps = srv.episodes(&series, &s.id).await.ok()?;
+                if first.is_none() {
+                    first = eps.first().cloned();
+                }
+                if let Some(e) = eps.into_iter().find(|e| !e.user.played) {
+                    return Some(e);
+                }
+            }
+            first
+        }
+    });
+    move || {
+        let e = next.get().flatten()?;
+        let (s, n) = (e.season_number.unwrap_or(0), e.episode_number.unwrap_or(0));
+        let pos = e.user.position_ms;
+        let label = if pos > 0 {
+            tr!("Resume S{season} E{episode}", season = s, episode = n)
+        } else {
+            tr!("Play S{season} E{episode}", season = s, episode = n)
+        };
+        Some(view! {
+            <div class="actions">
+                <A href=format!("/play/{acc}/{}?t={pos}", e.id) attr:class="button primary">{label}</A>
+            </div>
+        })
     }
 }
 
@@ -516,7 +697,14 @@ fn Seasons(acc: String, series: String, show: String, tmdb: Option<i64>) -> impl
 }
 
 #[component]
-fn Episodes(acc: String, series: String, season: String) -> impl IntoView {
+fn Episodes(
+    acc: String,
+    series: String,
+    season: String,
+    /// The episode whose page this is (marked, and scrolled to).
+    #[prop(optional)]
+    current: String,
+) -> impl IntoView {
     let a = acc.clone();
     let refresh = use_context::<crate::extra::Refresh>();
     let eps = LocalResource::new(move || {
@@ -535,7 +723,10 @@ fn Episodes(acc: String, series: String, season: String) -> impl IntoView {
             Some(None) => view! { <ErrorText text=tr!("Couldn't load the episodes.") /> }.into_any(),
             Some(Some(list)) => view! {
                 <div class="episodes">
-                    {list.into_iter().map(|e| view! { <Card acc=acc.clone() item=e wide=true /> }).collect_view()}
+                    {list.into_iter().map(|e| {
+                        let here = e.id == current;
+                        view! { <div class="episode" class:current=here><Card acc=acc.clone() item=e wide=true /></div> }
+                    }).collect_view()}
                 </div>
             }.into_any(),
         }}
@@ -545,26 +736,32 @@ fn Episodes(acc: String, series: String, season: String) -> impl IntoView {
 #[component]
 pub fn Search() -> impl IntoView {
     let query = use_query_map();
-    let text = RwSignal::new(query.read_untracked().get("q").unwrap_or_default());
+    // The address holds the text (the top bar's field writes it too).
+    let text = Memo::new(move |_| query.read().get("q").unwrap_or_default());
     let found = RwSignal::new(None::<Vec<(String, Item)>>);
     let others = RwSignal::new(Vec::<SeerrResult>::new());
+    let searching = RwSignal::new(false);
+    let unreachable = RwSignal::new(0usize);
     let seq = StoredValue::new(0u32);
     let navigate = leptos_router::hooks::use_navigate();
     let input = NodeRef::<leptos::html::Input>::new();
-    // `autofocus` only works when the page loads, not on a link inside the app.
+    // `autofocus` only works when the page loads, not on a link inside the app. (Hidden on
+    // wide screens, where the top bar's field is the one in use.)
     Effect::new(move |_| {
-        if let Some(i) = input.get() {
+        if let Some(i) = input.get()
+            && i.offset_parent().is_some()
+        {
             let _ = i.focus();
         }
     });
     Effect::new(move |_| {
         let q = text.get();
-        let navigate = navigate.clone();
         seq.update_value(|s| *s += 1);
         let mine = seq.get_value();
         if q.trim().len() < 2 {
             found.set(None);
             others.set(Vec::new());
+            searching.set(false);
             return;
         }
         spawn_local(async move {
@@ -574,15 +771,24 @@ pub fn Search() -> impl IntoView {
                 return;
             }
             let c = state::ctx();
+            searching.set(true);
             let found_on = state::join_all(c.servers().into_iter().map(|(acc, srv)| {
                 let q = q.clone();
                 async move {
-                    let l = srv.search(&q, 40).await.unwrap_or_default();
-                    l.into_iter().map(|i| (acc.clone(), i)).collect::<Vec<_>>()
+                    srv.search(&q, 40)
+                        .await
+                        .map(|l| l.into_iter().map(|i| (acc.clone(), i)).collect::<Vec<_>>())
                 }
             }))
             .await;
-            let all = dedupe(found_on.into_iter().flatten().collect());
+            let failed = found_on.iter().filter(|r| r.is_err()).count();
+            let all = dedupe(
+                found_on
+                    .into_iter()
+                    .filter_map(Result::ok)
+                    .flatten()
+                    .collect(),
+            );
             let have: HashSet<String> = all
                 .iter()
                 .filter_map(|(_, i)| i.provider_ids.tmdb.clone())
@@ -591,15 +797,9 @@ pub fn Search() -> impl IntoView {
                 return;
             }
             found.set(Some(all));
-            // In the address too: back from a title comes back to these results.
-            navigate(
-                &format!("/search?q={}", net::percent_encode(&q)),
-                leptos_router::NavigateOptions {
-                    replace: true,
-                    scroll: false,
-                    ..Default::default()
-                },
-            );
+            searching.set(false);
+            // "Nothing found" would be wrong when a server didn't answer.
+            unreachable.set(failed);
             if let Some(s) = c.seerr() {
                 let list = s.search(&q, 1).await.unwrap_or_default();
                 if seq.try_get_value() == Some(mine) {
@@ -615,10 +815,27 @@ pub fn Search() -> impl IntoView {
             }
         });
     });
+    let write = move |q: String| {
+        navigate(
+            &format!("/search?q={}", net::percent_encode(&q)),
+            leptos_router::NavigateOptions {
+                replace: true,
+                scroll: false,
+                ..Default::default()
+            },
+        )
+    };
     view! {
-        <input class="search" type="search" placeholder=tr!("Movies, shows, episodes…") aria-label=tr!("Search") node_ref=input
-            prop:value=move || text.get() on:input=move |ev| text.set(event_target_value(&ev)) />
-        {move || found.get().map(|f| if f.is_empty() && others.with(|o| o.is_empty()) {
+        <input class="search page-search" type="search" placeholder=tr!("Movies, shows, episodes…") aria-label=tr!("Search") node_ref=input
+            prop:value=move || text.get() on:input=move |ev| write(event_target_value(&ev)) />
+        {move || (text.with(|t| t.trim().len() < 2)).then(|| view! {
+            <p class="muted">{tr!("Search your servers, and what you could request.")}</p>
+        })}
+        {move || searching.get().then(|| view! { <p class="muted">{tr!("Searching…")}</p> })}
+        {move || (unreachable.get() > 0 && !searching.get()).then(|| view! {
+            <ErrorText text=tr!("Some of your servers didn't answer: their titles are missing here.") />
+        })}
+        {move || found.get().filter(|_| !searching.get()).map(|f| if f.is_empty() && others.with(|o| o.is_empty()) {
             view! { <p class="muted">{tr!("Nothing found.")}</p> }.into_any()
         } else {
             view! { {(!f.is_empty()).then(|| view! { <h2>{tr!("On your servers")}</h2> })}<Grid items=f /> }.into_any()
@@ -650,19 +867,35 @@ pub fn Requestable(r: SeerrResult) -> impl IntoView {
         }
 }
 
-/// Everything in Continue watching (its row's "See all"), from the home's last copy.
+/// Everything in Continue watching (its row's "See all"): the home's last copy at once, then
+/// the servers' (which also refreshes the home's copy).
 #[component]
 pub fn ContinueWatching() -> impl IntoView {
-    let items = state::load::<Rails>(state::HOME)
-        .and_then(|r| r.into_iter().find(|(_, _, _, _, l)| l == "/continue"))
-        .map(|(_, items, _, _, _)| items)
-        .unwrap_or_default();
+    fn watching(r: &Rails) -> Vec<(String, Item)> {
+        r.iter()
+            .find(|(_, _, _, _, l)| l == "/continue")
+            .map(|(_, items, _, _, _)| items.clone())
+            .unwrap_or_default()
+    }
+    let items = RwSignal::new(state::load::<Rails>(state::HOME).map(|r| watching(&r)));
+    spawn_local(async move {
+        let c = state::ctx();
+        if let Some((fresh, libs)) = load_home(&c).await {
+            state::save(state::HOME, &fresh);
+            state::save(state::LIBS, &libs);
+            items.try_set(Some(watching(&fresh)));
+        } else {
+            items.try_update(|i| {
+                i.get_or_insert_with(Vec::new);
+            });
+        }
+    });
     view! {
         <h1>{tr!("Continue watching")}</h1>
-        {if items.is_empty() {
-            view! { <p class="muted">{tr!("Nothing in progress.")}</p> }.into_any()
-        } else {
-            view! { <Grid items=items /> }.into_any()
+        {move || match items.get() {
+            None => view! { <Loading /> }.into_any(),
+            Some(l) if l.is_empty() => view! { <p class="muted">{tr!("Nothing in progress.")}</p> }.into_any(),
+            Some(l) => view! { <Grid items=l /> }.into_any(),
         }}
     }
 }

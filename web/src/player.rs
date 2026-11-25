@@ -536,7 +536,9 @@ fn start_subtitle(l: &Loaded, prefs: &prefs::PlayerPrefs, converting: bool) -> O
 fn leave(navigate: &impl Fn(&str, leptos_router::NavigateOptions), acc: &str, id: &str) {
     let history = web_sys::window().and_then(|w| w.history().ok());
     match history {
-        Some(h) if h.length().unwrap_or(0) > 1 => {
+        // Only when a page of this app came first (the browser's history also counts other
+        // sites: a player link opened in a used tab would go back to one of them).
+        Some(h) if state::came_from_app() => {
             let _ = h.back();
         }
         _ => navigate(
@@ -612,6 +614,9 @@ fn PlayerView(
     let failure = RwSignal::new(None::<String>);
     let pos = RwSignal::new(0u64);
     let transcoding = RwSignal::new(false);
+    // The audio track picked in the menu (None: the file's default). Browsers can't switch
+    // tracks of a file they play themselves: another one is asked of the server's conversion.
+    let audio_pick = RwSignal::new(None::<i64>);
     let hls: HlsSlot = StoredValue::new_local(None);
     let last_report = StoredValue::new(0f64);
     let start_sent = StoredValue::new(false);
@@ -655,6 +660,17 @@ fn PlayerView(
             std::time::Duration::from_millis(SEEK_BUBBLE_MS - 250),
         );
     };
+    // Fullscreen on the whole player (the video's own button would leave out Skip intro, the
+    // next-episode countdown, subtitles and Back).
+    let shell = NodeRef::<leptos::html::Div>::new();
+    let fullscreen = move || {
+        let doc = leptos::prelude::document();
+        if doc.fullscreen_element().is_some() {
+            doc.exit_fullscreen();
+        } else if let Some(p) = shell.get_untracked() {
+            let _ = p.request_fullscreen();
+        }
+    };
     let keys = window_event_listener(leptos::ev::keydown, move |ev| {
         let typing = ev
             .target()
@@ -666,6 +682,34 @@ fn PlayerView(
         let forward = match ev.key().as_str() {
             "ArrowRight" => true,
             "ArrowLeft" => false,
+            // Wherever the focus is on the page (the video's own keys need it focused).
+            k @ (" " | "k" | "K" | "m" | "M") => {
+                let Some(v) = video.get_untracked() else {
+                    return;
+                };
+                // A focused button or the video itself already answers Space.
+                let on_control = ev
+                    .target()
+                    .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
+                    .is_some_and(|e| matches!(e.tag_name().as_str(), "BUTTON" | "VIDEO" | "A"));
+                if k == " " && on_control {
+                    return;
+                }
+                ev.prevent_default();
+                if k.eq_ignore_ascii_case("m") {
+                    v.set_muted(!v.muted());
+                } else if v.paused() {
+                    let _ = v.play();
+                } else {
+                    let _ = v.pause();
+                }
+                return;
+            }
+            "f" | "F" => {
+                ev.prevent_default();
+                fullscreen();
+                return;
+            }
             _ => return,
         };
         // Instead of the browser's own 5 s.
@@ -756,7 +800,10 @@ fn PlayerView(
                         .is_finite()
                         .then(|| (v.duration() * 1000.0) as u64),
                     event,
-                    audio_index: src.and_then(|s| s.default_audio_index),
+                    audio_index: audio_pick
+                        .try_get_untracked()
+                        .flatten()
+                        .or(src.and_then(|s| s.default_audio_index)),
                     subtitle_index: (sub >= 0).then_some(sub),
                     play_method,
                 },
@@ -800,7 +847,7 @@ fn PlayerView(
         let force = fallback.1.is_none();
         let sel = TrackSelection {
             source_id: Some(fallback.0),
-            audio_index: None,
+            audio_index: audio_pick.get_untracked(),
             subtitle: server_subtitle(&l, pick),
             quality: quality
                 .get_untracked()
@@ -1301,9 +1348,16 @@ fn PlayerView(
                         room.announce.set_value(true);
                         together::play_href(&acc2, &n.id, 0, &code)
                     }
-                    None => format!("/play/{}/{}?t=0", acc2, n.id),
+                    None => format!("/play/{}/{}?t={}", acc2, n.id, n.user.position_ms),
                 };
-                nav2(&href, Default::default())
+                // In place of the one that ended: Back leaves the player instead of replaying it.
+                nav2(
+                    &href,
+                    leptos_router::NavigateOptions {
+                        replace: true,
+                        ..Default::default()
+                    },
+                )
             }
             // Watching together: stay with the others.
             None if joined() => {}
@@ -1387,9 +1441,13 @@ fn PlayerView(
         }
     });
 
+    // The tab closing or the page going away without the app's own Back: Stop all the same.
+    let gone = window_event_listener(leptos::ev::pagehide, move |_| stop());
+    on_cleanup(move || gone.remove());
     view! {
-        <div class="player">
-            <video node_ref=video controls autoplay playsinline on:touchend=on_touch_end
+        <div class="player" node_ref=shell>
+            <video node_ref=video controls autoplay playsinline controlslist="nofullscreen"
+                on:dblclick=move |_| fullscreen() on:touchend=on_touch_end
                 on:loadedmetadata=on_meta on:timeupdate=on_time on:error=on_error
                 on:playing=move |_| {
                     // Start once; later "playing" (after a pause or buffering) is a resume.
@@ -1399,7 +1457,11 @@ fn PlayerView(
                     report(if first { PlaybackEvent::Start } else { PlaybackEvent::Progress });
                 }
                 on:play=move |_| on_play()
-                on:seeked=move |_| if alive() { local_action() }
+                on:seeked=move |_| if alive() {
+                    local_action();
+                    // Closing the tab right after a seek keeps the new position.
+                    if start_sent.get_value() && !stopped.get_value() { report(PlaybackEvent::Progress) }
+                }
                 on:pause=move |_| if alive() && !stopped.get_value() { report(PlaybackEvent::Pause); local_action() }
                 on:ended=move |_| {
                     // The next episode only with the setting on and the countdown not cancelled.
@@ -1420,6 +1482,7 @@ fn PlayerView(
             })}
             <div class="player-top">
                 <button class="icon" on:click=back.clone() aria-label=tr!("Back")>"←"</button>
+                <button class="icon fullscreen" on:click=move |_| fullscreen() aria-label=tr!("Full screen") title=tr!("Full screen (F)")>"⛶"</button>
                 {move || match loaded.get() {
                     Some(Ok(l)) => {
                         let i = &l.item;
@@ -1504,9 +1567,38 @@ fn PlayerView(
                     }
                 }}
                 {move || {
+                    let tracks = loaded.with(|l| match l {
+                        Some(Ok(l)) => l.info.sources.first().map(|src| {
+                            let list: Vec<_> = src.streams.iter().filter(|s| s.kind == StreamKind::Audio)
+                                .map(|s| (s.index, s.display_title.clone().or(s.title.clone()).or(s.language.clone())
+                                    .unwrap_or_else(|| tr!("Track {number}", number = s.index))))
+                                .collect();
+                            (list, src.default_audio_index)
+                        }),
+                        _ => None,
+                    });
+                    let (list, default) = tracks?;
+                    (list.len() > 1).then(|| view! {
+                        <select class="chip subs" aria-label=tr!("Audio") title=tr!("Audio")
+                            prop:value=move || audio_pick.get().or(default).map(|i| i.to_string()).unwrap_or_default()
+                            on:change=move |ev| {
+                                let Ok(i) = event_target_value(&ev).parse::<i64>() else { return };
+                                audio_pick.set(Some(i));
+                                let Some(v) = video.get_untracked() else { return };
+                                // At the same place, from the server's conversion with this track.
+                                convert(v, sub_pick.get_untracked(), true);
+                            }>
+                            {list.into_iter().map(|(i, label)| view! { <option value=i.to_string()>{label}</option> }).collect_view()}
+                        </select>
+                    })
+                }}
+                {move || {
                     let converting = transcoding.get();
+                    // Every one: those the page can't draw (PGS, VobSub) are burned in by the
+                    // server's conversion when picked.
+                    let _ = converting;
                     let subs = loaded.with(|l| match l {
-                        Some(Ok(l)) => menu_subtitles(l, converting),
+                        Some(Ok(l)) => menu_subtitles(l, true),
                         _ => Vec::new(),
                     });
                     (!subs.is_empty()).then(|| view! {
@@ -1517,6 +1609,10 @@ fn PlayerView(
                             // Converted and the server's part changes (burn another one, or stop
                             // burning): ask it again, at the same place.
                             if transcoding.get_untracked() && server_subtitle(&l, pick) != burned.get_value() {
+                                return convert(v, pick, true);
+                            }
+                            // Playing the file itself, and this one only the server can draw.
+                            if !transcoding.get_untracked() && pick >= 0 && !text_subtitles(&l).iter().any(|(i, _)| *i == pick) {
                                 return convert(v, pick, true);
                             }
                             spawn_local(async move { show_subtitle(&l, &v, pick, sub_pick).await });

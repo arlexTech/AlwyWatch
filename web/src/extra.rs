@@ -29,8 +29,8 @@ pub fn ItemActions(acc: String, item: Item) -> impl IntoView {
             match srv.set_played(&id, want).await {
                 Ok(()) => {
                     played.set(want);
-                    // The home rails kept in the browser are now out of date.
-                    state::remove(state::HOME);
+                    // The home's copy is refreshed when it is shown next (kept meanwhile: the
+                    // home and Continue watching draw from it at once).
                 }
                 Err(e) => error.set(Some(state::plain(&e))),
             }
@@ -195,7 +195,7 @@ pub fn MarkAll(
                 Ok(()) => {
                     fully.try_set(played);
                     // The home rows kept in the browser are out of date now.
-                    state::remove(state::HOME);
+                    // The home's copy is refreshed when it is shown next.
                     if let Some(Refresh(r)) = refresh {
                         r.try_update(|n| *n += 1);
                     }

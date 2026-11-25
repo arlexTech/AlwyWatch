@@ -523,6 +523,19 @@ pub fn ctx() -> Ctx {
         .expect("app state installed at start")
 }
 
+thread_local! {
+    static FROM_APP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A page of the app (not the player) was shown in this tab: Back stays in the app.
+pub fn mark_app_page() {
+    FROM_APP.with(|f| f.set(true));
+}
+
+pub fn came_from_app() -> bool {
+    FROM_APP.with(std::cell::Cell::get)
+}
+
 /// Waits without blocking the page (setTimeout).
 pub async fn sleep(ms: i32) {
     let p = js_sys::Promise::new(&mut |resolve, _| {

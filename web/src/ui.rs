@@ -60,6 +60,8 @@ pub fn Card(
     } else {
         item.title.clone()
     };
+    // Under an episode shown as its show: the episode's own title too.
+    let sub2 = (as_show && item.title != title).then(|| item.title.clone());
     let (sub, href) = match note {
         Some(n) => {
             let season = n
@@ -87,6 +89,7 @@ pub fn Card(
                 {progress.map(|p| view! { <div class="bar"><div style=format!("width:{p}%") /></div> })}
             </div>
             <div class="title">{title}</div>
+            {sub2.map(|t| view! { <div class="sub">{t}</div> })}
             <div class="sub">{sub}</div>
         </A>
     }
