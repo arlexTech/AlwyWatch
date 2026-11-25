@@ -148,6 +148,8 @@ pub fn Leaving() -> impl IntoView {
                 Ok(l) => {
                     state::save(state::LEAVING, &l);
                     items.try_set(Some(keep_service::leaving_or_kept(l)));
+                    // A failure before (offline, say) is over.
+                    error.try_set(None);
                 }
                 Err(e) => {
                     error.try_set(Some(state::plain_keep(&e)));
@@ -189,8 +191,11 @@ pub fn Leaving() -> impl IntoView {
         {move || (items.with(|i| i.as_ref().is_some_and(Vec::is_empty))).then(|| view! {
             <p class="muted">{tr!("Nothing is leaving. Nothing to do.")}</p>
         })}
+        // Keyed rows: a vote updates its own row, the others (and the focus) stay put.
         <div class="leaving">
-            {move || shown().into_iter().take(limit.get()).map(|i| view! { <LeavingRow item=i items=items /> }).collect_view()}
+            <For each=move || shown().into_iter().take(limit.get()) key=|i| i.key.clone() let(i)>
+                <LeavingRow item=i items=items />
+            </For>
         </div>
         {move || {
             let total = shown().len();
@@ -203,32 +208,75 @@ pub fn Leaving() -> impl IntoView {
     }
 }
 
+/// A vote's result into the full list kept for Leaving soon (the page shows a filtered copy:
+/// saving that one would drop titles).
+fn remember_vote(updated: &LeavingItem) {
+    if let Some(mut l) = state::load::<Vec<LeavingItem>>(state::LEAVING) {
+        match l.iter_mut().find(|x| x.key == updated.key) {
+            Some(x) => *x = updated.clone(),
+            None => l.push(updated.clone()),
+        }
+        state::save(state::LEAVING, &l);
+    }
+}
+
 #[component]
 fn LeavingRow(item: LeavingItem, items: RwSignal<Option<Vec<LeavingItem>>>) -> impl IntoView {
-    let keepers = item.counts.forever + item.counts.until_watched + item.counts.days;
+    // This row's current state: a vote changes its texts, not the row (the focus stays).
+    let key = item.key.clone();
+    let now = Memo::new(move |_| {
+        items.with(|l| {
+            l.as_ref()
+                .and_then(|l| l.iter().find(|x| x.key == key).cloned())
+        })
+    });
     let on_voted = Callback::new(move |updated: LeavingItem| {
+        remember_vote(&updated);
         items.update(|l| {
-            if let Some(l) = l {
-                if let Some(x) = l.iter_mut().find(|x| x.key == updated.key) {
-                    *x = updated;
-                }
-                state::save(state::LEAVING, l);
+            if let Some(x) = l
+                .as_mut()
+                .and_then(|l| l.iter_mut().find(|x| x.key == updated.key))
+            {
+                *x = updated;
             }
         })
     });
+    let year = item.year.map(|y| y.to_string());
+    // To the title's page when the server knows it there (as the home's row).
+    let href = state::ctx()
+        .keep
+        .get_untracked()
+        .map(|k| k.account)
+        .zip(item.server_item_id.clone())
+        .map(|(acc, id)| format!("/item/{acc}/{id}"));
+    let poster = item
+        .poster_url
+        .clone()
+        .map(|p| view! { <img src=p loading="lazy" alt="" /> });
+    let title = view! { <strong>{item.title.clone()}</strong> };
+    let (poster, title) = match href {
+        Some(h) => (
+            view! { <A href=h.clone() attr:tabindex="-1" attr:aria-hidden="true">{poster}</A> }
+                .into_any(),
+            view! { <A href=h attr:class="leaving-title">{title}</A> }.into_any(),
+        ),
+        None => (poster.into_any(), title.into_any()),
+    };
     view! {
-            <div class="leaving-row">
-                {item.poster_url.clone().map(|p| view! { <img src=p loading="lazy" alt="" /> })}
-                <div class="leaving-info">
-                    <strong>{item.title.clone()}</strong>
-                    <span class="muted">{item.year.map(|y| y.to_string())}" · "{status(&item)}</span>
-                    {(keepers > 0).then(|| view! { <span class="muted small">{trn!("{n} keeps it", "{n} keep it", keepers)}
-    </span> })}
-                    {mine(&item).map(|m| view! { <span class="accent small">{m}</span> })}
-                    <KeepChoices item=item.clone() on_voted=on_voted />
-                </div>
+        <div class="leaving-row">
+            {poster}
+            <div class="leaving-info">
+                {title}
+                <span class="muted">{year}" · "{move || now.with(|i| i.as_ref().map(status))}</span>
+                {move || now.with(|i| {
+                    let keepers = i.as_ref().map_or(0, |i| i.counts.forever + i.counts.until_watched + i.counts.days);
+                    (keepers > 0).then(|| view! { <span class="muted small">{trn!("{n} keeps it", "{n} keep it", keepers)}</span> })
+                })}
+                {move || now.with(|i| i.as_ref().and_then(mine)).map(|m| view! { <span class="accent small">{m}</span> })}
+                <KeepChoices item=item.clone() on_voted=on_voted />
             </div>
-        }
+        </div>
+    }
 }
 
 /// The keep choices of a Leaving soon title (its row, and the title page's keep panel).
@@ -237,6 +285,8 @@ fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoV
     let key = item.key.clone();
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
+    // "Remove my choice" follows the votes made here (the row isn't rebuilt).
+    let voted = RwSignal::new(item.my_vote.is_some());
     let vote = move |req: Option<VoteRequest>| {
         let key = key.clone();
         let Some(k) = state::ctx().keep_client() else {
@@ -251,6 +301,7 @@ fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoV
             };
             match res {
                 Ok(updated) => {
+                    voted.try_set(updated.my_vote.is_some());
                     // The page may have gone meanwhile.
                     let _ = on_voted.try_run(updated);
                 }
@@ -282,8 +333,11 @@ fn KeepChoices(item: LeavingItem, on_voted: Callback<LeavingItem>) -> impl IntoV
             <button class="small" disabled=move || busy.get() on:click=move |_| v6(Some(req(VoteKind::KeepDays, Some(7))))>{tr!("Keep 7 days")}</button>
             <button class="small" disabled=move || busy.get() on:click=move |_| v2(Some(req(VoteKind::KeepForever, None)))>{tr!("Keep forever")}</button>
             <button class="small" disabled=move || busy.get() on:click=move |_| v4(Some(req(VoteKind::DontCare, None)))>{tr!("Fine to delete")}</button>
-            {item.my_vote.is_some().then(|| view! {
-                <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>{tr!("Remove my choice")}</button>
+            {move || voted.get().then(|| {
+                let v5 = v5.clone();
+                view! {
+                    <button class="small subtle" disabled=move || busy.get() on:click=move |_| v5(None)>{tr!("Remove my choice")}</button>
+                }
             })}
         </div>
         <p class="muted small">{tr!("Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it.")}</p>
@@ -628,17 +682,55 @@ fn vote_req(
 /// The swipe queue while one of its titles' page is open.
 const TRIAGE_BACK: &str = "aw.triage.back";
 
+/// What TRIAGE_BACK holds: the queue, how many are done, the keys decided during the visit.
+type Back = (Vec<LeavingItem>, u32, Vec<String>);
+
 /// "Sort them out": one undecided title at a time, decided with a button or an arrow key.
 #[component]
 pub fn Triage() -> impl IntoView {
     // Back from a title's page: the same card, where it was (kept for this tab only).
-    let back = state::tab_load::<(Vec<LeavingItem>, u32)>(TRIAGE_BACK);
-    state::tab_save::<(Vec<LeavingItem>, u32)>(TRIAGE_BACK, None);
+    let back = state::tab_load::<Back>(TRIAGE_BACK);
+    state::tab_save::<Back>(TRIAGE_BACK, None);
     let resumed = back.is_some();
-    let (back_queue, back_done) = back.map_or((None, 0), |(q, d)| (Some(q), d));
+    let (back_queue, back_done, back_sorted) = back.map_or((None, 0, vec![]), |(q, d, s)| {
+        // Decided meanwhile (on the title's page, or elsewhere): not asked again.
+        let decided: Vec<String> = state::load::<Vec<LeavingItem>>(state::LEAVING)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|i| i.my_vote.is_some())
+            .map(|i| i.key)
+            .collect();
+        let q = q
+            .into_iter()
+            .filter(|i| !decided.contains(&i.key))
+            .collect();
+        (Some(q), d, s)
+    });
     let queue = RwSignal::new(back_queue);
     let error = RwSignal::new(None::<String>);
     let done = RwSignal::new(back_done);
+    // Decided during this visit: the next batch from the server may not know yet.
+    let sorted = RwSignal::new(back_sorted);
+    // The next batch, once this one is done (the server hands out 50 at a time).
+    let more = RwSignal::new(None::<Vec<LeavingItem>>);
+    Effect::new(move |_| {
+        let empty = queue.with(|q| q.as_ref().is_some_and(Vec::is_empty));
+        if !empty || done.get() == 0 {
+            return;
+        }
+        spawn_local(async move {
+            // The last votes reach the server first.
+            state::sleep(800).await;
+            let Some(k) = state::ctx().keep_client() else {
+                return;
+            };
+            if let Ok(l) = k.triage(50).await {
+                let fresh: Vec<LeavingItem> = sorted
+                    .with_untracked(|s| l.into_iter().filter(|i| !s.contains(&i.key)).collect());
+                more.try_set(Some(fresh));
+            }
+        });
+    });
     spawn_local(async move {
         if resumed {
             return;
@@ -666,32 +758,28 @@ pub fn Triage() -> impl IntoView {
             }
         });
         done.update(|d| *d += 1);
+        sorted.update(|s| s.push(item.key.clone()));
         error.set(None);
         spawn_local(async move {
             match k.vote(&item.key, &r).await {
                 // The list kept for Leaving soon follows.
-                Ok(updated) => {
-                    if let Some(mut l) = state::load::<Vec<LeavingItem>>(state::LEAVING) {
-                        if let Some(x) = l.iter_mut().find(|x| x.key == updated.key) {
-                            *x = updated;
-                        }
-                        state::save(state::LEAVING, &l);
-                    }
-                }
+                Ok(updated) => remember_vote(&updated),
                 Err(e) => {
-                    error.set(Some(tr!(
+                    error.try_set(Some(tr!(
                         "{title} wasn't saved: {error}",
                         title = item.title,
                         error = state::plain_keep(&e)
                     )));
-                    queue.update(|q| {
+                    sorted.try_update(|s| s.retain(|k| *k != item.key));
+                    // At the end, not under the card being decided now.
+                    queue.try_update(|q| {
                         if let Some(q) = q
                             && !q.iter().any(|x| x.key == item.key)
                         {
-                            q.insert(0, item);
+                            q.push(item);
                         }
                     });
-                    done.update(|d| *d = d.saturating_sub(1));
+                    done.try_update(|d| *d = d.saturating_sub(1));
                 }
             }
         });
@@ -728,6 +816,13 @@ pub fn Triage() -> impl IntoView {
             let _ = c.focus();
         }
     });
+    // Same for "Keep going" when the next batch shows up.
+    let keep_going = NodeRef::<leptos::html::Button>::new();
+    Effect::new(move |_| {
+        if let Some(b) = keep_going.get() {
+            let _ = b.focus();
+        }
+    });
     view! {
         <div class="triage">
             <h1>{tr!("Swipe them!")}</h1>
@@ -746,7 +841,21 @@ pub fn Triage() -> impl IntoView {
                     let n = done.get();
                     view! {
                         <p class="muted">{if n > 0 { trn!("All done, thanks! {n} sorted.", "All done, thanks! {n} sorted.", n) } else { tr!("Nothing to sort right now.") }}</p>
-                        <A href="/leaving" attr:class="button">{tr!("Back to Leaving soon")}</A>
+                        {move || match more.get().filter(|m| !m.is_empty()) {
+                            Some(next) => {
+                                let count = next.len();
+                                view! {
+                                    <div class="actions">
+                                        <button class="primary" node_ref=keep_going on:click=move |_| {
+                                            more.set(None);
+                                            queue.set(Some(next.clone()));
+                                        }>{trn!("Keep going ({n} more)", "Keep going ({n} more)", count)}</button>
+                                        <A href="/leaving" attr:class="button">{tr!("Done")}</A>
+                                    </div>
+                                }.into_any()
+                            }
+                            None => view! { <A href="/leaving" attr:class="button">{tr!("Back to Leaving soon")}</A> }.into_any(),
+                        }}
                     }.into_any()
                 }
                 Some(q) => {
@@ -763,8 +872,9 @@ pub fn Triage() -> impl IntoView {
                                     (Some(acc), Some(id)) => {
                                         let remember = move |_| {
                                             let d = done.get_untracked();
+                                            let s = sorted.get_untracked();
                                             queue.with_untracked(|q| {
-                                                state::tab_save(TRIAGE_BACK, q.as_ref().map(|q| (q.clone(), d)).as_ref());
+                                                state::tab_save(TRIAGE_BACK, q.as_ref().map(|q| (q.clone(), d, s)).as_ref());
                                             });
                                         };
                                         view! {
@@ -801,7 +911,7 @@ pub fn Triage() -> impl IntoView {
 }
 
 /// Admin calls: a refusal means this account isn't an admin (any more).
-fn admin_error(e: &net::Error) -> String {
+pub(crate) fn admin_error(e: &net::Error) -> String {
     match e {
         net::Error::Unauthorized => tr!("Only admins of this AlwyWatch server can see this."),
         other => state::plain_keep(other),
@@ -835,6 +945,8 @@ pub fn Admin() -> impl IntoView {
     let users = RwSignal::new(None::<Result<Vec<AdminUser>, String>>);
     let seerr_users = RwSignal::new(Vec::<KeepSeerrUser>::new());
     let message = RwSignal::new(None::<String>);
+    // The countdown's result, shown in its own section (next to the buttons).
+    let countdown_result = RwSignal::new(None::<String>);
     let armed = RwSignal::new(None::<Armed>);
     let busy = RwSignal::new(false);
     let items = RwSignal::new(state::load::<Vec<LeavingItem>>(state::LEAVING).unwrap_or_default());
@@ -917,7 +1029,7 @@ pub fn Admin() -> impl IntoView {
         }
         let Some(k) = state::ctx().keep_client() else {
             armed.set(None);
-            return message.set(Some(no_keep()));
+            return countdown_result.set(Some(no_keep()));
         };
         busy.set(true);
         spawn_local(async move {
@@ -929,7 +1041,7 @@ pub fn Admin() -> impl IntoView {
                     },
                 )
                 .await;
-            message.set(Some(match r {
+            countdown_result.try_set(Some(match r {
                 Ok(r) => tr!(
                     "{title}: {restarted} restarted, {skipped} skipped",
                     title = title,
@@ -938,8 +1050,8 @@ pub fn Admin() -> impl IntoView {
                 ),
                 Err(e) => tr!("{title}: {error}", title = title, error = admin_error(&e)),
             }));
-            busy.set(false);
-            armed.set(None);
+            busy.try_set(false);
+            armed.try_set(None);
         });
     };
     view! {
@@ -1007,12 +1119,17 @@ pub fn Admin() -> impl IntoView {
                             {[0u32, 14, 30].map(|stagger| {
                                 let title = title.clone();
                                 let label = if stagger == 0 { tr!("Restart now") } else { trn!("Spread over {n} day", "Spread over {n} days", stagger) };
-                                view! { <button class="small" on:click=move |_| armed.set(Some((id, title.clone(), stagger)))>{label}</button> }
+                                // A new try: the last result no longer applies.
+                                view! { <button class="small" on:click=move |_| {
+                                    countdown_result.set(None);
+                                    armed.set(Some((id, title.clone(), stagger)));
+                                }>{label}</button> }
                             }).collect_view()}
                         </div>
                     </div>
                 }).collect_view().into_any()
             }}
+            {move || countdown_result.get().map(|m| view! { <p class="accent" role="status">{m}</p> })}
             <p class="muted small">{countdown_warning()}" "{tr!("You'll be asked to confirm.")}</p>
         </section>
         <section class="group">

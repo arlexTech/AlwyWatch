@@ -13,6 +13,7 @@ use keep_service::dashboard::{
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
+use crate::keep::admin_error;
 use crate::state;
 use crate::ui::{ErrorText, Loading};
 
@@ -169,9 +170,9 @@ fn hours(seconds: u64) -> String {
     let h = seconds / 3600;
     let m = seconds / 60 % 60;
     match (h, m) {
-        (0, m) => format!("{m} min"),
-        (h, 0) => format!("{h} h"),
-        (h, m) => format!("{h} h {m:02}"),
+        (0, m) => tr!("{n} min", n = m),
+        (h, 0) => tr!("{n} h", n = h),
+        (h, m) => tr!("{h} h {m}", h = h, m = format!("{m:02}")),
     }
 }
 
@@ -427,25 +428,13 @@ fn kbps_fmt(v: f64) -> String {
 }
 
 #[component]
-fn LivePanels(live: RwSignal<Option<Result<Live, String>>>, merged: Signal<bool>) -> impl IntoView {
+fn LivePanels(live: RwSignal<Option<Live>>, merged: Signal<bool>) -> impl IntoView {
     let samples = Signal::derive(move || {
-        live.with(|l| {
-            l.as_ref()
-                .and_then(|l| l.as_ref().ok())
-                .map(|l| l.samples.clone())
-                .unwrap_or_default()
-        })
+        live.with(|l| l.as_ref().map(|l| l.samples.clone()).unwrap_or_default())
     });
-    let ram_total = move || {
-        live.with(|l| {
-            l.as_ref()
-                .and_then(|l| l.as_ref().ok())
-                .map(|l| l.ram_total_mb)
-                .unwrap_or(0)
-        })
-    };
+    let ram_total = move || live.with(|l| l.as_ref().map_or(0, |l| l.ram_total_mb));
     let streams = move || {
-        let Some(Ok(l)) = live.get() else { return None };
+        let l = live.get()?;
         let n = l.streams.len();
         let transcodes = l
             .streams
@@ -631,7 +620,7 @@ fn StatsPanels(server: Signal<String>, servers: Signal<Vec<DashServer>>) -> impl
             let r = k
                 .admin_dashboard_stats(&asked, d, tz_minutes())
                 .await
-                .map_err(|e| e.to_string());
+                .map_err(|e| admin_error(&e));
             // Only if still asked for (and still on the page: try_ when it was left).
             if server.try_get_untracked().as_ref() == Some(&asked)
                 && days.try_get_untracked() == Some(d)
@@ -699,7 +688,11 @@ fn StatsPanels(server: Signal<String>, servers: Signal<Vec<DashServer>>) -> impl
 #[component]
 pub fn Dashboard() -> impl IntoView {
     let server = RwSignal::new(remembered_server());
-    let live = RwSignal::new(None::<Result<Live, String>>);
+    // The last good reading stays on screen when a poll fails (a note says so).
+    let live = RwSignal::new(None::<Live>);
+    let error = RwSignal::new(None::<String>);
+    // Kept apart from the readings: a failed poll or a new pick leaves the chips in place.
+    let servers = RwSignal::new(Vec::<DashServer>::new());
     // Leaving the page disposes these signals: the loop reads them with try_ and stops.
     let alive = RwSignal::new(true);
     on_cleanup(move || alive.set(false));
@@ -716,18 +709,37 @@ pub fn Dashboard() -> impl IntoView {
             };
             if !hidden || asked != now {
                 let Some(k) = state::ctx().keep_client() else {
-                    live.set(Some(Err(tr!("Sign in with an admin account first."))));
+                    error.set(Some(tr!("Sign in with an admin account first.")));
                     return;
                 };
-                let r = k
-                    .admin_dashboard_live(&now)
-                    .await
-                    .map_err(|e| e.to_string());
+                let r = k.admin_dashboard_live(&now).await;
                 if !open() {
                     return;
                 }
                 if server.try_get_untracked().as_ref() == Some(&now) {
-                    live.set(Some(r));
+                    match r {
+                        Ok(l) => {
+                            servers.update(|list| {
+                                if now == "all" {
+                                    *list = l.servers.clone();
+                                } else {
+                                    // One server's reading: refresh its entry, keep the others.
+                                    for s in &l.servers {
+                                        match list.iter_mut().find(|x| x.id == s.id) {
+                                            Some(x) => *x = s.clone(),
+                                            None => list.push(s.clone()),
+                                        }
+                                    }
+                                }
+                            });
+                            live.set(Some(l));
+                            error.set(None);
+                        }
+                        Err(e) => error.set(Some(match e {
+                            net::Error::Network { .. } => tr!("Can't reach the server right now."),
+                            e => admin_error(&e),
+                        })),
+                    }
                     asked = now;
                 }
             }
@@ -740,18 +752,12 @@ pub fn Dashboard() -> impl IntoView {
             }
         }
     });
-    let servers = Signal::derive(move || {
-        live.with(|l| {
-            l.as_ref()
-                .and_then(|l| l.as_ref().ok())
-                .map(|l| l.servers.clone())
-                .unwrap_or_default()
-        })
-    });
     let merged = Signal::derive(move || server.get() == "all");
     let pick = move |id: String| {
         remember_server(&id);
+        // Another server's readings: not shown under this one's chip.
         live.set(None);
+        error.set(None);
         server.set(id);
     };
     view! {
@@ -769,14 +775,16 @@ pub fn Dashboard() -> impl IntoView {
         {move || servers.get().into_iter().filter(|s| s.problem.is_some() && (server.get() == "all" || server.get() == s.id)).map(|s| view! {
             <p class="banner" role="status">{format!("{}: {}", s.name, problem_text(s.problem.as_deref().unwrap_or_default()))}</p>
         }).collect_view()}
-        {move || match live.get() {
-            None => view! { <Loading /> }.into_any(),
-            Some(Err(e)) => view! { <ErrorText text=e /> }.into_any(),
-            Some(Ok(_)) => ().into_any(),
+        {move || match (live.with(Option::is_some), error.get()) {
+            (false, None) => view! { <Loading /> }.into_any(),
+            (false, Some(e)) => view! { <ErrorText text=e /> }.into_any(),
+            // Still the last reading: a small note, not an empty page.
+            (true, Some(e)) => view! { <p class="muted small" role="status">{e}</p> }.into_any(),
+            (true, None) => ().into_any(),
         }}
-        <Show when=move || matches!(live.get(), Some(Ok(_)))>
+        <Show when=move || live.with(Option::is_some)>
             <LivePanels live=live merged=merged />
         </Show>
-        <StatsPanels server=server.into() servers=servers />
+        <StatsPanels server=server.into() servers=servers.into() />
     }
 }

@@ -333,6 +333,19 @@ fn TitleView(
     let label = availability_label(t.availability, t.download_progress);
     let available = t.availability == Availability::Available;
     let cast = t.cast.clone();
+    // (Partly) on a server: its library page, where what is there plays.
+    let on_server = RwSignal::new(None::<String>);
+    if matches!(
+        t.availability,
+        Availability::PartiallyAvailable | Availability::Available
+    ) {
+        let (kind, tmdb) = (t.media_type, t.tmdb_id);
+        spawn_local(async move {
+            let found = library_hrefs(vec![(kind, tmdb)]).await;
+            on_server.try_set(found.get(&format!("{kind:?}/{tmdb}")).cloned());
+        });
+    }
+    let saga = t.collection.clone();
     view! {
         <div class="hero" style=t.backdrop_url.clone().map(|b| format!("background-image:{}", state::css_url(&b))).unwrap_or_default()>
             <div class="hero-inner">
@@ -347,6 +360,15 @@ fn TitleView(
                     <h1>{t.title.clone()}</h1>
                     <p class="muted">{meta}</p>
                     {label.map(|l| view! { <span class="state" class:ok=available>{l}</span> })}
+                    {move || {
+                        let here = on_server.get();
+                        (here.is_some() || saga.is_some()).then(|| view! {
+                            <div class="actions title-links">
+                                {here.map(|h| view! { <A href=h attr:class="button primary">{tr!("Open on your server")}</A> })}
+                                {saga.clone().map(|c| view! { <A href=saga_href(c.id) attr:class="button">{saga_label(&c.name)}</A> })}
+                            </div>
+                        })
+                    }}
                     {can_request.then(|| view! { <RequestPanel t=t.clone() message=message reload=reload /> })}
                     {move || message.get().map(|m| view! { <p class="accent">{m}</p> })}
                     {t.tagline.clone().map(|x| view! { <p><strong>{x}</strong></p> })}
@@ -676,6 +698,15 @@ fn request_state(r: &SeerrRequest) -> String {
 
 use crate::state::REQUESTS_EVERYONE as EVERYONE;
 
+/// A request's date ("2026-11-03T…" from Seerr) in the browser's language, as Leaving soon.
+fn request_day(iso: &str) -> String {
+    let d = js_sys::Date::new(&wasm_bindgen::JsValue::from_str(iso));
+    if d.get_time().is_nan() {
+        return iso.chars().take(10).collect();
+    }
+    String::from(d.to_locale_date_string(i18n::language(), &wasm_bindgen::JsValue::UNDEFINED))
+}
+
 /// Seerr requests: mine, or everyone's for the people Seerr lets see them.
 #[component]
 pub fn Requests() -> impl IntoView {
@@ -749,8 +780,10 @@ pub fn Requests() -> impl IntoView {
                     everyone_ok.set(false);
                     Err(tr!("Only Seerr managers can see everyone's requests."))
                 }
-                // Offline: what was shown stays.
-                Err(_) if list.with_untracked(|l| matches!(l, Some(Ok(_)))) => return,
+                // Offline: what was shown stays (a refusal still says so).
+                Err(Error::Network { .. }) if list.with_untracked(|l| matches!(l, Some(Ok(_)))) => {
+                    return;
+                }
                 Err(Error::NotFound) => {
                     Err(tr!("Requests aren't available on this AlwyWatch server."))
                 }
@@ -781,7 +814,7 @@ pub fn Requests() -> impl IntoView {
                         {l.into_iter().map(|r| {
                             let state = request_state(&r);
                             let show = r.media_type == SeerrMediaType::Tv;
-                            let day = r.created_at.chars().take(10).collect::<String>();
+                            let day = request_day(&r.created_at);
                             let by = who && !r.requested_by.is_empty();
                             let line = match (show, by) {
                                 (true, true) => tr!("Show · requested {date} by {name}", date = day, name = r.requested_by),

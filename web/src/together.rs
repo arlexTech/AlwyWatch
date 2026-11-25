@@ -1388,9 +1388,18 @@ fn Lobby(room: Room) -> impl IntoView {
         nav2("/together", Default::default());
     };
     let nav3 = navigate.clone();
+    // Finding the title on the servers takes a moment: one search at a time, and it shows.
+    let opening = RwSignal::new(false);
     let watch = move |_| {
+        if opening.get_untracked() {
+            return;
+        }
+        opening.set(true);
         let nav = nav3.clone();
-        spawn_local(async move { go_play(room, nav, alive).await });
+        spawn_local(async move {
+            go_play(room, nav, alive).await;
+            opening.try_set(false);
+        });
     };
     view! {
         {move || room.state.get().map(|s| {
@@ -1420,7 +1429,11 @@ fn Lobby(room: Room) -> impl IntoView {
                 </div>
                 <div class="actions">
                     {match (s.started, hosting) {
-                        (true, _) => view! { <button class="primary" on:click=watch>{tr!("Open the player")}</button> }.into_any(),
+                        (true, _) => view! {
+                            <button class="primary" disabled=move || opening.get() on:click=watch>
+                                {move || if opening.get() { tr!("Finding it…") } else { tr!("Open the player") }}
+                            </button>
+                        }.into_any(),
                         (false, true) if untitled => view! {
                             <A href="/" attr:class="button primary">{tr!("Choose what to watch")}</A>
                         }.into_any(),
@@ -1505,6 +1518,8 @@ pub fn PeoplePicker(
     });
     let filter = RwSignal::new(String::new());
     let picked = RwSignal::new(Vec::<String>::new());
+    // A pick past MAX was refused: a short note says so.
+    let full = RwSignal::new(false);
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
     let close = on_close.clone();
@@ -1556,8 +1571,12 @@ pub fn PeoplePicker(
                 on:click=move |_| picked.update(|v| {
                     if let Some(i) = v.iter().position(|x| *x == k2) {
                         v.remove(i);
+                        full.set(false);
                     } else if v.len() < MAX {
                         v.push(k2.clone());
+                    } else {
+                        // Not a silent no: say why this one isn't ticked.
+                        full.set(true);
                     }
                 })>
                 <span class="check" aria-hidden="true">{move || if picked.with(|v| v.contains(&k3)) { "✓" } else { "" }}</span>
@@ -1608,6 +1627,9 @@ pub fn PeoplePicker(
                         }
                     }}
                 </div>
+                {move || full.get().then(|| view! {
+                    <p class="muted small" role="status">{trn!("You can invite up to {n} person at a time.", "You can invite up to {n} people at a time.", MAX)}</p>
+                })}
                 {move || error.get().map(|e| view! { <ErrorText text=e /> })}
                 <div class="actions">
                     <button on:click=move |_| close3()>{tr!("Cancel")}</button>
