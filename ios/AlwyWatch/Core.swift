@@ -66,6 +66,8 @@ final class AppModel: ObservableObject {
         sync.schedule()
         // Invitations to watch together arrive while the app is in front.
         TogetherInbox.shared.start(core)
+        // Play on the TV: my TVs with AlwyWatch open.
+        RemotePhone.shared.start(core)
         // Rules due, "next episodes" topped up, and the queue resumed where it stopped.
         downloads.sync()
         Task { await refreshServices() }

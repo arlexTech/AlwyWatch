@@ -72,7 +72,7 @@ struct DetailView: View {
             guard let request = player else { return }
             player = nil
             theme.stop()
-            PlayerPresenter.shared.play(request, core: model.core) { changed += 1 }
+            RemotePhone.shared.play(request, core: model.core) { changed += 1 }
         }
     }
 
@@ -431,7 +431,9 @@ struct DetailView: View {
         if let id = t.itemId {
             Task {
                 if let r = try? await model.core.refreshItem(accountId: account, itemId: id, force: false) {
-                    player = PlayRequest(account: account, item: r.item, fromStart: true)
+                    // A trailer plays here (never offered to the TV).
+                    theme.stop()
+                    PlayerPresenter.shared.play(PlayRequest(account: account, item: r.item, fromStart: true), core: model.core)
                 }
             }
         } else if let u = t.url.flatMap(URL.init(string:)) {

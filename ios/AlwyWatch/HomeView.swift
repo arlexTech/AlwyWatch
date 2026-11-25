@@ -46,7 +46,7 @@ struct HomeView: View {
         .onChange(of: player?.id) { _ in
             guard let request = player else { return }
             player = nil
-            PlayerPresenter.shared.play(request, core: model.core) { Task { await refresh(force: true) } }
+            RemotePhone.shared.play(request, core: model.core) { Task { await refresh(force: true) } }
         }
     }
 
@@ -222,12 +222,20 @@ private struct HomeTopBar: View {
     @Binding var goSettings: Bool
     let toggleOffline: () -> Void
     @State private var switching = false
+    @ObservedObject private var remote = RemotePhone.shared
 
     var body: some View {
         HStack(spacing: 4) {
             (Text("alwy") + Text("watch").foregroundColor(Palette.accent))
                 .font(.system(size: 28, weight: .heavy))
             Spacer()
+            // Play on the TV: while one of my TVs has AlwyWatch open.
+            if !remote.devices.isEmpty {
+                Button { remote.remote = RemoteTarget(deviceId: nil) } label: {
+                    Image(systemName: "tv").font(.title3).frame(width: 44, height: 44)
+                }
+                .accessibilityLabel(tr("Play on the TV"))
+            }
             NavigationLink(value: Route.watchlist) {
                 Image(systemName: "bookmark").font(.title3).frame(width: 44, height: 44)
             }

@@ -1933,7 +1933,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
-#: ios/AlwyWatch/Requests.swift
+#: ios/AlwyWatch/Remote.swift
 msgid "Connecting…"
 msgstr ""
 
@@ -3033,6 +3033,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: ios/AlwyWatch/HomeView.swift
 msgid "Play on the TV"
 msgstr ""
 
@@ -3840,34 +3841,42 @@ msgid "The camera could not start."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: ios/AlwyWatch/Remote.swift
 msgid "No TV here. Open AlwyWatch on the TV, with this profile, and it shows here."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: ios/AlwyWatch/Remote.swift
 msgid "Nothing playing"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: ios/AlwyWatch/Remote.swift
 msgid "This TV isn't there anymore: AlwyWatch was closed on it."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: ios/AlwyWatch/Remote.swift
 msgid "Nothing playing. Pick a title, then Play and this TV."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: ios/AlwyWatch/Remote.swift
 msgid "Back 10 seconds"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: ios/AlwyWatch/Remote.swift
 msgid "Forward 30 seconds"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: ios/AlwyWatch/Remote.swift
 msgid "Play on"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: ios/AlwyWatch/Remote.swift
 msgid "This phone"
 msgstr ""
 

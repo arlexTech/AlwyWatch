@@ -31,7 +31,10 @@ struct AlwyWatchApp: App {
             .task { host.model.foreground() }
             .onChange(of: phase) { p in
                 if p == .active { host.model.foreground() }
-                if p == .background { TogetherInbox.shared.stop() }
+                if p == .background {
+                    TogetherInbox.shared.stop()
+                    RemotePhone.shared.stop()
+                }
             }
         }
         // Every 6 hours when iOS allows it: the watch-state sync (Android's periodic SyncWorker).
@@ -119,6 +122,8 @@ struct RootView: View {
             }
         }
         .background(Palette.background.ignoresSafeArea())
+        // Play: "This phone" or one of my TVs; the mini remote.
+        .remoteChooser()
         // Once per account: how others see you (name and picture).
         .fullScreenCover(isPresented: Binding(get: { my.welcomeShowing }, set: { if !$0 { my.welcomeClosed = true } })) {
             if let me = my.me { WelcomeView(me: me).environmentObject(model) }
