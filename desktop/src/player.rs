@@ -252,6 +252,8 @@ fn open(req: &PlayRequest, embed: bool) -> Result<(Arc<Mpv>, bool), String> {
 }
 
 fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
+    // No dimming or suspend while the player is open.
+    let _awake = crate::awake::Awake::new();
     let (m, embedded) = open(&req, req.view.is_some())?;
     let view = req.view.as_ref().filter(|_| embedded);
     if let Some(v) = view {

@@ -372,6 +372,12 @@ tracks and versions, which servers the home shows and the one in use, theme musi
 menu libraries. Per device: refresh rate, tunneling, passthrough, subtitle size and raise, clock,
 scroll positions, downloads.
 
+Per-title track choices follow the title, not the sign-in: `track_title_key` is the item's id
+then, after `|`, the title as every server names it (`tmdb:`/`imdb:` id for a movie, else its
+name and year; `show:` and the show's name for a show and its episodes). `set_track_pref` saves
+both `tracks.<account>.<id>` and `tracks.title.<shared>`; `track_pref` takes whichever changed
+last, so subtitles chosen on Jellyfin apply on Plex and on every device of the person.
+
 `sync_settings()`: at start and when the app comes back (> 0: reload). Changing a synced setting
 with `set_setting` shares it a few seconds later.
 

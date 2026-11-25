@@ -45,8 +45,13 @@ tokio = { workspace = true, features = ["sync", "rt"] }
 ring = { version = "0.17", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
-# DPAPI for token storage.
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+# DPAPI for token storage; SetThreadExecutionState keeps the screen on while playing.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Power"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Keeps the screen on and the computer awake while playing (the desktop portal's Inhibit).
+# Already compiled in through Slint's winit backend; only its small blocking wrapper is added.
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 
 [build-dependencies]
 slint-build = { workspace = true }

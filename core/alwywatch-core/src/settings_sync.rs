@@ -84,7 +84,8 @@ fn decide(local: Option<(i64, &str)>, remote: Option<(i64, &str)>) -> Step {
 }
 
 impl Core {
-    fn settings_meta(&self) -> HashMap<String, i64> {
+    /// When each synced setting last changed (here, or on the device it was taken from).
+    pub(crate) fn settings_meta(&self) -> HashMap<String, i64> {
         self.store
             .setting(META)
             .ok()

@@ -821,3 +821,69 @@ fn accounts_move_to_a_new_device_sealed_end_to_end() {
         Some("1")
     );
 }
+
+#[test]
+fn a_track_choice_follows_the_title_to_other_servers() {
+    let env = Env::new();
+    let app = env.app();
+    let episode = |id: &str, show: &str, show_title: &str| Item {
+        id: id.into(),
+        kind: ItemKind::Episode,
+        title: "Maomao".into(),
+        sort_title: None,
+        overview: None,
+        year: None,
+        runtime_ms: None,
+        community_rating: None,
+        official_rating: None,
+        genres: vec![],
+        provider_ids: ProviderIds::default(),
+        series_id: Some(show.into()),
+        series_title: Some(show_title.into()),
+        season_id: None,
+        season_number: Some(1),
+        episode_number: Some(1),
+        child_count: None,
+        premiere_date: None,
+        images: vec![],
+        user: UserData::default(),
+    };
+    // The same show on Jellyfin and on Plex: other ids, same name (any case and punctuation).
+    let jf = track_title_key(episode("e1", "jf-show", "Les Carnets de l'apothicaire"));
+    let px = track_title_key(episode("901", "px-show", "Les carnets de l’apothicaire"));
+    assert_ne!(jf, px);
+    let subs_on = TrackPref {
+        audio: Some("jpn".into()),
+        audio_title: None,
+        subs: Some("fre".into()),
+        forced: false,
+        audio_nth: None,
+        subs_title: None,
+        subs_nth: None,
+    };
+    app.set_track_pref("jellyfin:s:u".into(), jf.clone(), subs_on.clone())
+        .unwrap();
+    // Chosen on Jellyfin, used on Plex.
+    assert_eq!(
+        app.track_pref("plex:p:u".into(), px.clone()).unwrap(),
+        Some(subs_on.clone())
+    );
+    // A later choice on Plex wins on Jellyfin too.
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let off = TrackPref {
+        subs: None,
+        ..subs_on
+    };
+    app.set_track_pref("plex:p:u".into(), px, off.clone())
+        .unwrap();
+    assert_eq!(
+        app.track_pref("jellyfin:s:u".into(), jf).unwrap(),
+        Some(off)
+    );
+    // A key from an older app (no shared part) still reads this sign-in's own choice.
+    let own = app
+        .track_pref("jellyfin:s:u".into(), "jf-show".into())
+        .unwrap()
+        .and_then(|p| p.subs);
+    assert_eq!(own.as_deref(), Some("fre"));
+}

@@ -4,6 +4,7 @@
 
 mod app;
 mod avatars;
+mod awake;
 mod headless;
 mod instance;
 mod lang;

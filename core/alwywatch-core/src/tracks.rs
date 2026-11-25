@@ -447,12 +447,63 @@ pub fn conversion_tracks(
     }
 }
 
-/// Episodes share their show's choice.
+/// Episodes share their show's choice. The key is opaque to the apps: the item's own id (the
+/// choice per sign-in, as before), then after `|` the title as every server names it, so a
+/// choice made on one server applies on the others too (and on every device of the person).
 #[uniffi::export]
 pub fn track_title_key(item: Item) -> String {
-    match item.kind {
+    let shared = shared_title_key(&item);
+    let id = match item.kind {
         ItemKind::Episode => item.series_id.unwrap_or(item.id),
         _ => item.id,
+    };
+    match shared {
+        Some(t) => format!("{id}{TITLE_SEP}{t}"),
+        None => id,
+    }
+}
+
+const TITLE_SEP: char = '|';
+
+/// A movie by its TMDB or IMDb id, else its name and year; a show by its name (an episode
+/// doesn't carry its show's ids).
+fn shared_title_key(item: &Item) -> Option<String> {
+    let name = |s: &str| -> String {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    match item.kind {
+        ItemKind::Episode => item
+            .series_title
+            .as_deref()
+            .map(name)
+            .filter(|n| !n.is_empty())
+            .map(|n| format!("show:{n}")),
+        ItemKind::Series => Some(name(&item.title))
+            .filter(|n| !n.is_empty())
+            .map(|n| format!("show:{n}")),
+        _ => {
+            let p = &item.provider_ids;
+            if let Some(t) = p.tmdb.as_deref().filter(|t| !t.is_empty()) {
+                Some(format!("tmdb:{t}"))
+            } else if let Some(i) = p.imdb.as_deref().filter(|i| !i.is_empty()) {
+                Some(format!("imdb:{i}"))
+            } else {
+                Some(name(&item.title))
+                    .filter(|n| !n.is_empty())
+                    .map(|n| format!("movie:{n}:{}", item.year.unwrap_or(0)))
+            }
+        }
+    }
+}
+
+/// The per-sign-in part and the shared part of a `track_title_key`.
+fn split_key(title_key: &str) -> (&str, Option<&str>) {
+    match title_key.split_once(TITLE_SEP) {
+        Some((id, shared)) => (id, Some(shared)),
+        None => (title_key, None),
     }
 }
 
@@ -494,22 +545,53 @@ fn decode(v: &str) -> Option<TrackPref> {
 
 #[uniffi::export]
 impl AlwyWatch {
-    /// The audio/subtitle choice of a movie or show (`title_key` from `track_title_key`).
+    /// The audio/subtitle choice of a movie or show (`title_key` from `track_title_key`): the
+    /// newest of the title's choice on any server (`tracks.title.…`) and this sign-in's own.
     pub fn track_pref(&self, account_id: String, title_key: String) -> Result<Option<TrackPref>> {
-        Ok(self
-            .store()
-            .setting(&format!("tracks.{account_id}.{title_key}"))?
-            .as_deref()
-            .and_then(decode))
+        let (id, shared) = split_key(&title_key);
+        let store = self.store();
+        let own_key = format!("tracks.{account_id}.{id}");
+        let own = store.setting(&own_key)?;
+        let Some(shared) = shared else {
+            return Ok(own.as_deref().and_then(decode));
+        };
+        let shared_key = format!("tracks.title.{shared}");
+        let title = store.setting(&shared_key)?;
+        // Both: the one changed last (a choice on another server is newer than this one's).
+        let pick = match (&own, &title) {
+            (Some(_), Some(_)) => {
+                let meta = self.core.settings_meta();
+                let at = |k: &str| meta.get(k).copied().unwrap_or(0);
+                if at(&shared_key) >= at(&own_key) {
+                    title
+                } else {
+                    own
+                }
+            }
+            (None, t) => t.clone(),
+            (Some(o), None) => {
+                // Chosen before choices followed the title: share it from now on.
+                self.set_setting(shared_key, o.clone())?;
+                own.clone()
+            }
+        };
+        Ok(pick.as_deref().and_then(decode))
     }
 
+    /// Saves the choice for this sign-in and for the title on every server.
     pub fn set_track_pref(
         &self,
         account_id: String,
         title_key: String,
         pref: TrackPref,
     ) -> Result<()> {
-        self.set_setting(format!("tracks.{account_id}.{title_key}"), encode(&pref))
+        let (id, shared) = split_key(&title_key);
+        let value = encode(&pref);
+        self.set_setting(format!("tracks.{account_id}.{id}"), value.clone())?;
+        if let Some(shared) = shared {
+            self.set_setting(format!("tracks.title.{shared}"), value)?;
+        }
+        Ok(())
     }
 }
 
