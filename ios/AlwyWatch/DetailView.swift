@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import AVFoundation
 import SwiftUI
+import UIKit
 
 /// A movie, show or episode (Android's DetailScreen): backdrop, Play/Resume (a show's episode
 /// to continue), overview, watched toggle, then a show's seasons and episodes.
@@ -23,6 +25,7 @@ struct DetailView: View {
     /// The show's seasons in Seerr ("More seasons"), looked up once the page is shown.
     @State private var seerrSeasons: [SeerrSeasonInfo]?
     @State private var requestingSeasons = false
+    @StateObject private var theme = ThemeMusic()
 
     var body: some View {
         ScrollView {
@@ -41,6 +44,13 @@ struct DetailView: View {
         .pollDownloads($downloads)
         .sheet(item: $sheet) { DownloadSheet(target: $0).environmentObject(model) }
         .task(id: showTmdb) { await lookUpSeerrSeasons() }
+        // A show's theme song, quietly, while its page is shown (setting).
+        .task(id: item?.kind == .series ? itemId : nil) {
+            guard item?.kind == .series, PlayerSettings(core: model.core).themeMusic,
+                  let req = (try? await model.core.themeSong(accountId: account, itemId: itemId)) ?? nil else { return }
+            theme.start(req)
+        }
+        .onDisappear { theme.stop() }
         .sheet(isPresented: $requestingSeasons, onDismiss: { Task { await lookUpSeerrSeasons() } }) {
             if let showTmdb, let info = seerrSeasons {
                 RequestSeasonsSheet(tmdbId: showTmdb, showTitle: item?.title ?? "", have: haveSeasons, info: info)
@@ -50,6 +60,7 @@ struct DetailView: View {
         .onChange(of: player?.id) { _ in
             guard let request = player else { return }
             player = nil
+            theme.stop()
             PlayerPresenter.shared.play(request, core: model.core) { changed += 1 }
         }
     }
@@ -399,5 +410,33 @@ private struct EpisodeRow: View {
             EpisodeDownloadButton(account: account, item: episode, dl: dl)
         }
         .contentShape(Rectangle())
+    }
+}
+
+/// A show's theme song at a quarter volume; paused when the app goes to the background.
+@MainActor
+final class ThemeMusic: ObservableObject {
+    private var player: AVPlayer?
+    private var background: NSObjectProtocol?
+
+    func start(_ req: HttpRequest) {
+        stop()
+        guard let url = URL(string: req.url) else { return }
+        var headers: [String: String] = [:]
+        for h in req.headers { headers[h.name] = h.value }
+        let p = AVPlayer(playerItem: AVPlayerItem(asset: AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])))
+        p.volume = 0.25
+        p.play()
+        player = p
+        background = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak p] _ in
+            p?.pause()
+        }
+    }
+
+    func stop() {
+        player?.pause()
+        player = nil
+        if let background { NotificationCenter.default.removeObserver(background) }
+        background = nil
     }
 }

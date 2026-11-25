@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The pages of Settings, in the same order on every app (Android's Section).
 enum SettingsSection: String, CaseIterable, Hashable {
-    case account, servers, requests, playback, audio, downloads, device, admin
+    case account, servers, requests, playback, audio, interface, downloads, device, admin
 
     var label: String {
         switch self {
@@ -12,6 +12,7 @@ enum SettingsSection: String, CaseIterable, Hashable {
         case .requests: return tr("Requests")
         case .playback: return tr("Playback")
         case .audio: return tr("Audio & subtitles")
+        case .interface: return tr("Menu & pages")
         case .downloads: return tr("Downloads")
         case .device: return tr("This device")
         case .admin: return tr("Admin")
@@ -25,6 +26,7 @@ enum SettingsSection: String, CaseIterable, Hashable {
         case .requests: return "plus"
         case .playback: return "play"
         case .audio: return "captions.bubble"
+        case .interface: return "house"
         case .downloads: return "arrow.down.circle"
         case .device: return "iphone"
         case .admin: return "gearshape"
@@ -56,6 +58,23 @@ struct PlayerSettings {
     var subtitleColor: String { get { get("player.sub_color") ?? "white" } nonmutating set { set("player.sub_color", newValue) } }
     var subtitleBackground: Bool { get { get("player.sub_bg") == "1" } nonmutating set { flag("player.sub_bg", newValue) } }
     var subtitleRaised: Bool { get { get("player.sub_raised") == "1" } nonmutating set { flag("player.sub_raised", newValue) } }
+    /// Show pages play the show's theme song quietly (like Plex); off by default on phones.
+    var themeMusic: Bool { get { get("ui.theme_music") == "1" } nonmutating set { flag("ui.theme_music", newValue) } }
+}
+
+private func capitalizedFirstWord(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
+
+/// Settings → Menu & pages.
+private struct InterfaceSettings: View {
+    let settings: PlayerSettings
+
+    var body: some View {
+        Section(tr("Pages and app")) {
+            SettingToggle(title: tr("Theme music on show pages"), subtitle: tr("Quietly, when the server has the show's theme."), value: settings.themeMusic) {
+                settings.themeMusic = $0
+            }
+        }
+    }
 }
 
 /// "French" for "fra"/"fre"/"fr", in the app's language.
@@ -124,6 +143,8 @@ struct SettingsScreen: View {
             }
             return [languageName(settings.audioLanguage) ?? tr("Original audio"), mode, sizeName(settings.subtitleSize).lowercased()]
                 .joined(separator: " · ")
+        case .interface:
+            return capitalizedFirstWord(tr("theme music"))
         case .downloads:
             return tr("When to delete, manage downloads")
         case .device:
@@ -165,6 +186,7 @@ struct SettingsSectionView: View {
             case .requests: RequestsSettings()
             case .playback: PlaybackSettings(settings: PlayerSettings(core: model.core))
             case .audio: AudioSettings(settings: PlayerSettings(core: model.core))
+            case .interface: InterfaceSettings(settings: PlayerSettings(core: model.core))
             case .downloads: DownloadSettings()
             case .device: DeviceSettings()
             case .admin: AdminSettings()
