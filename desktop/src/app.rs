@@ -23,6 +23,7 @@ mod invites;
 mod links;
 mod playback;
 mod profiles;
+mod remote;
 mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
 use crate::{
@@ -190,6 +191,8 @@ struct State {
     pending_season: Option<(String, String)>,
     /// The card whose actions are open, and the row it is in.
     card_menu: Option<(String, String)>,
+    /// Play on the TV: my TVs and the mini remote.
+    remote: remote::RemoteUi,
 }
 
 thread_local! {
@@ -365,6 +368,7 @@ impl App {
                 notes: HashMap::new(),
                 pending_season: None,
                 card_menu: None,
+                remote: Default::default(),
             }),
             images: RefCell::new(HashMap::new()),
             faces: RefCell::new(HashMap::new()),
@@ -4368,9 +4372,12 @@ impl App {
 
     fn card_menu_pick(self: &Rc<Self>, action: String) {
         self.ui().set_card_menu(CardMenu::default());
-        let Some((id, _)) = self.state.borrow_mut().card_menu.take() else {
+        let Some((id, row)) = self.state.borrow_mut().card_menu.take() else {
             return;
         };
+        if self.play_on_pick(&id, &row, &action) {
+            return;
+        }
         let Some(i) = self.state.borrow().items.get(&id).cloned() else {
             return;
         };
@@ -4378,7 +4385,12 @@ impl App {
             return;
         };
         match action.as_str() {
-            "start" => return self.play(id, true),
+            "start" => {
+                if !self.play_or_ask(id.clone(), true) {
+                    self.play(id, true);
+                }
+                return;
+            }
             "show" | "season" => {
                 let Some(series) = i.series_id.clone() else {
                     return;
@@ -5887,7 +5899,18 @@ impl App {
                 None,
             ));
         });
-        on!(on_play, |a, id, from_start| a.play(id.into(), from_start));
+        on!(on_play, |a, id, from_start| {
+            let id: String = id.into();
+            if !a.play_or_ask(id.clone(), from_start) {
+                a.play(id, from_start);
+            }
+        });
+        on!(on_remote_open, |a, id| a.remote_open(id.into()));
+        on!(on_remote_close, |a| a.remote_close());
+        on!(on_remote_action, |a, action| a.remote_action(action.into()));
+        on!(on_remote_seek, |a, ms| a.remote_seek(ms));
+        on!(on_remote_track, |a, kind, index| a
+            .remote_track(kind.into(), index.into()));
         on!(on_card_menu_open, |a, id, row| a
             .card_menu_open(id.into(), row.into()));
         on!(on_card_menu_pick, |a, action| a

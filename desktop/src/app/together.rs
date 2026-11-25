@@ -58,7 +58,7 @@ pub(super) struct Room {
 pub(super) struct Lists {
     rooms: Option<TogetherRooms>,
     /// Bumped to stop the list's long poll.
-    generation: u64,
+    pub(super) generation: u64,
     room_gen: u64,
     /// Invitations already announced, and rooms left or declined here (never announced again).
     shown: HashSet<String>,
@@ -74,7 +74,7 @@ pub(super) struct Lists {
 }
 
 /// Local clock in ms, only compared with itself (to move the room's position on).
-fn mono_ms() -> i64 {
+pub(super) fn mono_ms() -> i64 {
     thread_local! {
         static START: std::time::Instant = std::time::Instant::now();
     }
@@ -300,6 +300,8 @@ impl App {
         if !self.core.keep_active() {
             return;
         }
+        // Play on the TV: my TVs, asked alongside.
+        self.start_remote_poll(generation);
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         let live = move |this: &std::rc::Weak<App>| {
             this.upgrade()
@@ -347,6 +349,7 @@ impl App {
             st.lists.banner = None;
             st.lists.people.clear();
         }
+        self.stop_remote();
         let _ = self.core.set_setting(ROOMS_KEY.into(), String::new());
         self.render_banner();
     }

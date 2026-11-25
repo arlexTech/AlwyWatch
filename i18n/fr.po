@@ -1938,7 +1938,7 @@ msgstr "Désactivé : vous utilisez directement un site de demandes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
-#: ios/AlwyWatch/Remote.swift
+#: desktop/src/app/remote.rs
 msgid "Connecting…"
 msgstr "Connexion…"
 
@@ -2084,7 +2084,7 @@ msgstr "Films"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
-#: desktop/src/dashboard.rs
+#: desktop/src/app/remote.rs
 msgid "TV"
 msgstr "Séries"
 
@@ -3038,7 +3038,7 @@ msgstr "Rien ici pour l'instant."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
-#: ios/AlwyWatch/HomeView.swift
+#: desktop/src/app/remote.rs
 msgid "Play on the TV"
 msgstr "Lire sur la TV"
 
@@ -3846,6 +3846,7 @@ msgid "The camera could not start."
 msgstr "L'appareil photo n'a pas pu démarrer."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/src/app/remote.rs
 #: ios/AlwyWatch/Remote.swift
 msgid "No TV here. Open AlwyWatch on the TV, with this profile, and it shows here."
 msgstr "Aucune TV ici. Ouvrez AlwyWatch sur la TV, avec ce profil, et elle apparaîtra ici."
@@ -3856,21 +3857,25 @@ msgid "Nothing playing"
 msgstr "Rien en lecture"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/src/app/remote.rs
 #: ios/AlwyWatch/Remote.swift
 msgid "This TV isn't there anymore: AlwyWatch was closed on it."
 msgstr "Cette TV n'est plus là : AlwyWatch y a été fermé."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/src/app/remote.rs
 #: ios/AlwyWatch/Remote.swift
 msgid "Nothing playing. Pick a title, then Play and this TV."
 msgstr "Rien en lecture. Choisissez un titre, puis Lire et cette TV."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/ui/app.slint
 #: ios/AlwyWatch/Remote.swift
 msgid "Back 10 seconds"
 msgstr "Reculer de 10 secondes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/ui/app.slint
 #: ios/AlwyWatch/Remote.swift
 msgid "Forward 30 seconds"
 msgstr "Avancer de 30 secondes"
@@ -5721,6 +5726,14 @@ msgstr "Impossible de redémarrer AlwyWatch : {error}"
 #: desktop/src/app/profiles.rs
 msgid "The PIN is 4 digits."
 msgstr "Le code PIN fait 4 chiffres."
+
+#: desktop/src/app/remote.rs
+msgid "This computer"
+msgstr "Cet ordinateur"
+
+#: desktop/src/app/remote.rs
+msgid "Where to play {title}?"
+msgstr "Où lire {title} ?"
 
 #: desktop/src/app/together.rs
 #: web/src/together.rs

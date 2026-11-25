@@ -41,6 +41,28 @@ export struct NamedId {
     selected: bool,
 }
 
+/// Play on the TV: the mini remote (or, without a device, the list of my TVs).
+export struct RemotePanel {
+    shown: bool,
+    has-device: bool,
+    name: string,
+    /// "Connecting…", "Nothing playing…", an error.
+    status: string,
+    has-title: bool,
+    title: string,
+    subtitle: string,
+    playing: bool,
+    position-ms: float,
+    duration-ms: float,
+    elapsed: string,
+    duration: string,
+    audio: [NamedId],
+    subtitles: [NamedId],
+    subtitles-off: bool,
+    /// My TVs (id, "name · what it plays").
+    devices: [NamedId],
+}
+
 export struct CardMenu {
     shown: bool,
     title: string,
@@ -1836,6 +1858,18 @@ export component AppWindow inherits Window {
     /// A show's Download: the season shown, the whole show, or the next episodes kept.
     callback series-download-menu();
     in-out property <CardMenu> card-menu;
+    in-out property <RemotePanel> remote;
+    /// One of my TVs has AlwyWatch open (the side menu offers the remote).
+    in property <bool> remote-tvs;
+    /// The remote's slider (ms), set apart so dragging it isn't undone by the TV's reports.
+    in-out property <float> remote-position;
+    callback remote-open(string);
+    callback remote-close();
+    /// pause, resume, back10, fwd30, stop.
+    callback remote-action(string);
+    callback remote-seek(float);
+    /// "audio" or "subtitles", the track's index ("": subtitles off).
+    callback remote-track(string, string);
     callback prefetch(string);
     callback open-library(string, string);
     callback set-sort(string);
@@ -2191,6 +2225,7 @@ export component AppWindow inherits Window {
                             }
                             if root.seerr-active && root.requests-available : NavItem { label: @tr("Requests"); icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
                             NavItem { label: @tr("Downloads"); icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
+                            if root.remote-tvs : NavItem { label: @tr("Play on the TV"); icon: @image-url("icons/tv_gen.svg"); selected: root.remote.shown; clicked => { root.remote-open(""); } }
                             NavItem { label: @tr("Settings"); icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings || root.page == Page.profiles || root.page == Page.historycopy; clicked => { root.go(Page.settings); } }
                         }
                     }
@@ -4661,7 +4696,10 @@ export component AppWindow inherits Window {
                     Text { text: root.card-menu.title; color: Palette.text; font-size: 18px; font-weight: 800; overflow: elide; height: 40px; vertical-alignment: center; x: 12px; }
                     for a[i] in root.card-menu.actions : NavItem {
                         label: a.title;
-                        icon: a.id == "remove_cw" ? @image-url("icons/close.svg")
+                        // A "Play on" choice: a TV (`selected`) or here.
+                        icon: a.selected ? @image-url("icons/tv_gen.svg")
+                            : a.id == "\u{0}here" ? @image-url("icons/play_arrow_fill1.svg")
+                            : a.id == "remove_cw" ? @image-url("icons/close.svg")
                             : a.id == "start" ? @image-url("icons/play_arrow_fill1.svg")
                             : a.id == "show" || a.id == "season" ? @image-url("icons/tv_gen.svg")
                             : a.id == "list_add" ? @image-url("icons/bookmark.svg")
@@ -4673,6 +4711,109 @@ export component AppWindow inherits Window {
                         selected: false;
                         autofocus: i == 0;
                         clicked => { root.card-menu-pick(a.id); }
+                    }
+                }
+            }
+        }
+    }
+    if root.remote.shown : Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #000000b0;
+        TouchArea { clicked => { root.remote-close(); } }
+        FocusScope {
+            key-pressed(e) => {
+                if (e.text == Key.Escape || e.text == Key.Backspace) { root.remote-close(); return accept; }
+                if (e.text == Key.DownArrow) { root.move-focus(true); return accept; }
+                if (e.text == Key.UpArrow) { root.move-focus(false); return accept; }
+                return reject;
+            }
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: max(16px, (parent.height - self.height) / 2);
+                width: min(460px, root.width - 32px);
+                height: min(remote-col.preferred-height, root.height - 32px);
+                border-radius: 22px;
+                background: #1d1d24;
+                TouchArea { }
+                ScrollView {
+                    remote-col := VerticalLayout {
+                        padding: 18px;
+                        spacing: 12px;
+                        HorizontalLayout {
+                            spacing: 10px;
+                            Text { text: root.remote.name; color: Palette.text; font-size: 20px; font-weight: 800; overflow: elide; vertical-alignment: center; horizontal-stretch: 1; }
+                            IconButton { icon: @image-url("icons/close.svg"); tip: @tr("Close"); clicked => { root.remote-close(); } }
+                        }
+                        if root.remote.status != "" : Text { text: root.remote.status; color: Palette.muted; wrap: word-wrap; }
+                        if !root.remote.has-device : VerticalLayout {
+                            spacing: 4px;
+                            for d[i] in root.remote.devices : NavItem {
+                                label: d.title;
+                                icon: @image-url("icons/tv_gen.svg");
+                                selected: false;
+                                autofocus: i == 0;
+                                clicked => { root.remote-open(d.id); }
+                            }
+                        }
+                        if root.remote.has-title : VerticalLayout {
+                            spacing: 12px;
+                            Text { text: root.remote.title; color: Palette.text; font-size: 18px; font-weight: 700; wrap: word-wrap; }
+                            if root.remote.subtitle != "" : Text { text: root.remote.subtitle; color: Palette.muted; wrap: word-wrap; }
+                            Slider {
+                                minimum: 0;
+                                maximum: root.remote.duration-ms;
+                                value <=> root.remote-position;
+                                released(v) => { root.remote-seek(v); }
+                            }
+                            HorizontalLayout {
+                                Text { text: root.remote.elapsed; color: Palette.muted; font-size: 12px; }
+                                Rectangle { horizontal-stretch: 1; }
+                                Text { text: root.remote.duration; color: Palette.muted; font-size: 12px; }
+                            }
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 18px;
+                                IconButton { icon: @image-url("icons/seek_back.svg"); tip: @tr("Back 10 seconds"); clicked => { root.remote-action("back10"); } }
+                                IconButton {
+                                    icon: root.remote.playing ? @image-url("icons/pause.svg") : @image-url("icons/play_arrow_fill1.svg");
+                                    tip: root.remote.playing ? @tr("Pause") : @tr("Play");
+                                    autofocus: true;
+                                    clicked => { root.remote-action(root.remote.playing ? "pause" : "resume"); }
+                                }
+                                IconButton { icon: @image-url("icons/seek_forward.svg"); tip: @tr("Forward 30 seconds"); clicked => { root.remote-action("fwd30"); } }
+                            }
+                            if root.remote.audio.length > 1 : Text { text: @tr("Audio"); color: Palette.muted; font-size: 13px; }
+                            if root.remote.audio.length > 1 : VerticalLayout {
+                                spacing: 2px;
+                                for t in root.remote.audio : NavItem {
+                                    label: t.title;
+                                    icon: t.selected ? @image-url("icons/check.svg") : @image-url("");
+                                    selected: t.selected;
+                                    clicked => { root.remote-track("audio", t.id); }
+                                }
+                            }
+                            Text { text: @tr("Subtitles"); color: Palette.muted; font-size: 13px; }
+                            VerticalLayout {
+                                spacing: 2px;
+                                NavItem {
+                                    label: @tr("Off");
+                                    icon: root.remote.subtitles-off ? @image-url("icons/check.svg") : @image-url("");
+                                    selected: root.remote.subtitles-off;
+                                    clicked => { root.remote-track("subtitles", ""); }
+                                }
+                                for t in root.remote.subtitles : NavItem {
+                                    label: t.title;
+                                    icon: t.selected ? @image-url("icons/check.svg") : @image-url("");
+                                    selected: t.selected;
+                                    clicked => { root.remote-track("subtitles", t.id); }
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                Button { label: @tr("Stop"); clicked => { root.remote-action("stop"); } }
+                            }
+                        }
                     }
                 }
             }

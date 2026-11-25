@@ -47,6 +47,7 @@ final class RemotePhone: ObservableObject {
     }
 
     /// Play: here at once when no TV is there, else ask where.
+    @MainActor
     func play(_ request: PlayRequest, core: AlwyWatch, onClose: @escaping () -> Void = {}) {
         if devices.isEmpty {
             PlayerPresenter.shared.play(request, core: core, onClose: onClose)

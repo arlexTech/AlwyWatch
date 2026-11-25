@@ -1933,7 +1933,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
-#: ios/AlwyWatch/Remote.swift
+#: desktop/src/app/remote.rs
 msgid "Connecting…"
 msgstr ""
 
@@ -2079,7 +2079,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
-#: desktop/src/dashboard.rs
+#: desktop/src/app/remote.rs
 msgid "TV"
 msgstr ""
 
@@ -3033,7 +3033,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
-#: ios/AlwyWatch/HomeView.swift
+#: desktop/src/app/remote.rs
 msgid "Play on the TV"
 msgstr ""
 
@@ -3841,6 +3841,7 @@ msgid "The camera could not start."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/src/app/remote.rs
 #: ios/AlwyWatch/Remote.swift
 msgid "No TV here. Open AlwyWatch on the TV, with this profile, and it shows here."
 msgstr ""
@@ -3851,21 +3852,25 @@ msgid "Nothing playing"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/src/app/remote.rs
 #: ios/AlwyWatch/Remote.swift
 msgid "This TV isn't there anymore: AlwyWatch was closed on it."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/src/app/remote.rs
 #: ios/AlwyWatch/Remote.swift
 msgid "Nothing playing. Pick a title, then Play and this TV."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/ui/app.slint
 #: ios/AlwyWatch/Remote.swift
 msgid "Back 10 seconds"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+#: desktop/ui/app.slint
 #: ios/AlwyWatch/Remote.swift
 msgid "Forward 30 seconds"
 msgstr ""
@@ -5715,6 +5720,14 @@ msgstr ""
 
 #: desktop/src/app/profiles.rs
 msgid "The PIN is 4 digits."
+msgstr ""
+
+#: desktop/src/app/remote.rs
+msgid "This computer"
+msgstr ""
+
+#: desktop/src/app/remote.rs
+msgid "Where to play {title}?"
 msgstr ""
 
 #: desktop/src/app/together.rs
