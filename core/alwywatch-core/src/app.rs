@@ -1691,11 +1691,13 @@ impl AlwyWatch {
             .await
     }
 
-    /// True when this original is a Matroska file whose tracks come after its first cluster:
-    /// Android's player waits for ever on it (no error), so the app plays the server's
-    /// conversion instead. Two small range reads the first time, then remembered per file.
-    /// False when it can't tell (not Matroska, offline): play the original as usual.
-    pub async fn original_needs_conversion(&self, source: MediaSource) -> bool {
+    /// How this original plays on Android's player, which needs a Matroska file's tracks
+    /// before its first cluster (it waits for ever otherwise, with no error). A file with its
+    /// track list at the end usually has room for it in the padding before the picture: the
+    /// player then reads the original with a few patched bytes. Else the server's conversion.
+    /// A few small range reads the first time, then remembered per file. AsIs when it can't
+    /// tell (not Matroska, offline): play the original as usual.
+    pub async fn original_layout(&self, source: MediaSource) -> OriginalLayout {
         let mkv = |s: &str| {
             let s = s.to_ascii_lowercase();
             s.contains("mkv") || s.contains("matroska") || s.ends_with(".mkv")
@@ -1703,21 +1705,26 @@ impl AlwyWatch {
         let is_mkv = source.container.as_deref().is_some_and(mkv)
             || source.file_name.as_deref().is_some_and(mkv);
         if !is_mkv || !source.direct.url.starts_with("http") {
-            return false;
+            return OriginalLayout::AsIs;
         }
         self.run(|c| async move {
-            let key = format!("mkv-layout/{}", source.id);
-            if let Some(v) = c.store.cache_get::<bool>(&key)? {
+            let key = format!("mkv-fix/{}", source.id);
+            if let Some(v) = c.store.cache_get::<media_api::mkv::Fix>(&key)? {
                 return Ok(v.value);
             }
-            let found = media_api::mkv::tracks_after_clusters(&c.http, &source.direct).await;
-            if let Some(v) = found {
-                c.store.cache_put(&key, &v)?;
+            let found = media_api::mkv::fix(&c.http, &source.direct).await;
+            if let Some(v) = &found {
+                c.store.cache_put(&key, v)?;
             }
-            Ok(found.unwrap_or(false))
+            Ok(found.unwrap_or(media_api::mkv::Fix::AsIs))
         })
         .await
-        .unwrap_or(false)
+        .map(|f| match f {
+            media_api::mkv::Fix::AsIs => OriginalLayout::AsIs,
+            media_api::mkv::Fix::Patch(patches) => OriginalLayout::Patch { patches },
+            media_api::mkv::Fix::Convert => OriginalLayout::Convert,
+        })
+        .unwrap_or(OriginalLayout::AsIs)
     }
 
     /// Fire-and-forget warm-up of `playback_info` (focused item, next episode).
@@ -4027,4 +4034,18 @@ mod together_tests {
         // Received 500 ms after the stamp; 2 s later locally.
         assert_eq!(together_position(s, 50, 2_050), 62_500);
     }
+}
+
+/// How an original plays on a player that needs a Matroska file's tracks first (Android).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum OriginalLayout {
+    /// Plays as is.
+    AsIs,
+    /// Plays with these bytes shown in place of the file's own (the track list moved to the
+    /// front; same length, nothing shifts).
+    Patch {
+        patches: Vec<media_api::mkv::BytePatch>,
+    },
+    /// Only the server's conversion plays it.
+    Convert,
 }

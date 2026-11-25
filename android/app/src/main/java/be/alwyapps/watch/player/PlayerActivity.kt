@@ -30,6 +30,7 @@ import androidx.media3.ui.PlayerView
 import be.alwyapps.watch.BuildConfig
 import be.alwyapps.watch.core.AlwyWatch
 import be.alwyapps.watch.core.CoreException
+import be.alwyapps.watch.core.OriginalLayout
 import be.alwyapps.watch.core.media.HttpRequest
 import be.alwyapps.watch.core.media.ItemKind
 import be.alwyapps.watch.core.media.MediaSource
@@ -300,23 +301,59 @@ class PlayerActivity : ComponentActivity() {
         if (chosenQuality != null && src.streamed()) {
             startConversion(src, startMs, null)
         } else if (DeviceProfiles.canDirectPlay(src, profile) || src.transcode == null) {
-            startPlayer(src.direct, src, transcoding = false, startMs)
-            // Some Matroska releases list their tracks after the picture: Media3 then waits
-            // for ever, with no error. Checked meanwhile (two small reads, remembered per
-            // file); such a file plays through the server's conversion.
+            // Some Matroska releases list their tracks at the end: Media3 then waits for ever,
+            // with no error. Checked first (a few small reads, then remembered per file: known
+            // files answer at once); the track list is shown to the player in the padding
+            // before the picture, or, without room there, the server's conversion plays.
             // (Jellyfin only offers a conversion when it thinks one is needed: it is asked for one.)
-            if (src.streamed()) {
+            val layout =
+                if (src.streamed()) lifecycleScope.async { core.originalLayout(src) } else null
+            val early = layout?.let { kotlinx.coroutines.withTimeoutOrNull(LAYOUT_WAIT_MS) { it.await() } }
+            if (early != null) {
+                if (!playOriginal(src, early, startMs)) startConversion(src, startMs, null, force = true)
+                return
+            }
+            startPlayer(src.direct, src, transcoding = false, startMs)
+            if (layout != null) {
                 lifecycleScope.launch {
-                    if (core.originalNeedsConversion(src) && itemId == id && source === src && !transcoding) {
-                        android.util.Log.i(TAG, "tracks after the picture: playing the conversion")
-                        startConversion(src, startMs, null, force = true)
-                    }
+                    val l = layout.await()
+                    if (l is OriginalLayout.AsIs || itemId != id || source !== src || transcoding) return@launch
+                    val position = player?.currentPosition?.coerceAtLeast(0) ?: startMs
+                    if (!playOriginal(src, l, position)) startConversion(src, startMs, null, force = true)
                 }
             }
         } else {
             startConversion(src, startMs, null)
         }
     }
+
+    /**
+     * Plays the original [src] as [layout] allows: as is, or with the track list patched in
+     * (remembered for this file, so the quality menu's "Original" plays it the same way).
+     * False when only the conversion plays it.
+     */
+    private fun playOriginal(
+        src: MediaSource,
+        layout: OriginalLayout,
+        startMs: Long,
+    ): Boolean {
+        when (layout) {
+            is OriginalLayout.Convert -> {
+                android.util.Log.i(TAG, "tracks after the picture, no room to move them: playing the conversion")
+                return false
+            }
+            is OriginalLayout.Patch -> {
+                android.util.Log.i(TAG, "tracks after the picture: moved into the padding")
+                patched = src.direct.url to layout.patches
+            }
+            is OriginalLayout.AsIs -> {}
+        }
+        startPlayer(src.direct, src, transcoding = false, startMs)
+        return true
+    }
+
+    /** An original read with its track list moved (URL and patches), for [startPlayer]. */
+    private var patched: Pair<String, List<be.alwyapps.watch.core.media.BytePatch>>? = null
 
     /**
      * Plays the server's conversion of [src] carrying [selection], else the tracks the title's
@@ -489,7 +526,11 @@ class PlayerActivity : ComponentActivity() {
                 .setUserAgent("AlwyWatch/${BuildConfig.VERSION_NAME}")
                 .setAllowCrossProtocolRedirects(true)
                 .setDefaultRequestProperties(req.headers.associate { it.name to it.value })
-        val dataSource = DefaultDataSource.Factory(this, http)
+        val plain = DefaultDataSource.Factory(this, http)
+        val dataSource: androidx.media3.datasource.DataSource.Factory =
+            patched?.takeIf { !transcoding && it.first == req.url }?.let { (url, patches) ->
+                PatchedDataSource.Factory(plain, url, patches)
+            } ?: plain
         val renderers =
             DefaultRenderersFactory(this)
                 // Platform (hardware) decoders first; FFmpeg only when no platform decoder exists.
@@ -1810,6 +1851,9 @@ private const val MAX_NETWORK_RETRIES = 3
 
 /** How long a conversion waits for its subtitle before starting without it. */
 private const val SUBTITLE_WAIT_MS = 3000L
+
+/** How long the start waits for a file's layout check before playing it as is. */
+private const val LAYOUT_WAIT_MS = 400L
 
 /** How long a TV stays black after a refresh rate change (HDMI resync; ~5 s on an LG TV). */
 private const val DISPLAY_RESYNC_MS = 5000L
