@@ -13,6 +13,11 @@ struct TriageView: View {
     @State private var opening = false
     // The title opened from a card (the queue stays here underneath: back is the same card).
     @State private var opened: LibraryTitle?
+    /// Chosen during this visit: not offered again by the next batch (votes may be on the way).
+    @State private var sorted = Set<String>()
+    /// The next batch (the list comes 50 at a time).
+    @State private var more: [LeavingItem]?
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let total = (queue?.count ?? 0) + done
@@ -40,6 +45,25 @@ struct TriageView: View {
                     } else {
                         Text(done > 0 ? tr("All done, thanks! {count} sorted.", ["count": done]) : tr("Nothing to sort right now."))
                             .foregroundStyle(Palette.muted)
+                        HStack(spacing: 12) {
+                            if let next = more, !next.isEmpty {
+                                Button(trn("Keep going ({n} more)", "Keep going ({n} more)", next.count)) {
+                                    queue = next
+                                    more = nil
+                                }
+                                .buttonStyle(ActionButtonStyle(primary: true))
+                                Button { dismiss() } label: { Label(tr("Done"), systemImage: "checkmark") }
+                                    .buttonStyle(ActionButtonStyle())
+                            } else {
+                                Button { dismiss() } label: { Label(tr("Done"), systemImage: "checkmark") }
+                                    .buttonStyle(ActionButtonStyle(primary: true))
+                            }
+                        }
+                        .task(id: done) {
+                            guard done > 0 else { return }
+                            try? await Task.sleep(nanoseconds: 800_000_000)
+                            more = (try? await model.core.keepTriage(limit: 50))?.filter { !sorted.contains($0.key) }
+                        }
                     }
                 } else if error == nil {
                     Text(tr("Loading…")).foregroundStyle(Palette.muted)
@@ -136,6 +160,7 @@ struct TriageView: View {
             reason: nil
         )
         queue = Array(queue?.dropFirst() ?? [])
+        sorted.insert(item.key)
         done += 1
         Task {
             do {

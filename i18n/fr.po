@@ -3107,6 +3107,13 @@ msgstr[0] "{n} autre personne le garde"
 msgstr[1] "{n} autres personnes le gardent"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Triage.swift
+msgid "Keep going ({n} more)"
+msgid_plural "Keep going ({n} more)"
+msgstr[0] "Continuer ({n} de plus)"
+msgstr[1] "Continuer ({n} de plus)"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/ui/app.slint
 msgid "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever"
 msgid_plural "{n} left  ·  ← fine to delete   → keep until I watch it   ↑ keep forever"
@@ -3364,6 +3371,12 @@ msgid "Nothing to sort right now."
 msgstr "Rien à trier pour le moment."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
+#: desktop/ui/app.slint
+msgid "Done"
+msgstr "Terminé"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/ui/app.slint
 #: ios/AlwyWatch/Triage.swift
 msgid "Forever"
@@ -3498,12 +3511,6 @@ msgstr "Demande en tant que"
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 msgid "Automatic: their own Seerr account"
 msgstr "Automatique : son propre compte Seerr"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
-#: desktop/ui/app.slint
-msgid "Done"
-msgstr "Terminé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt

@@ -71,6 +71,7 @@ import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.SurfaceColor
 import be.alwyapps.watch.ui.UrlImage
 import be.alwyapps.watch.ui.ambientGlow
+import be.alwyapps.watch.ui.focusOnAppear
 import be.alwyapps.watch.ui.initialFocus
 import be.alwyapps.watch.ui.rememberSwr
 import be.alwyapps.watch.ui.tr
@@ -604,9 +605,14 @@ fun TriageScreen() {
         }
     }
 
+    // Chosen during this visit: not offered again by the next batch (their votes may still
+    // be on the way).
+    val sorted = remember { mutableSetOf<String>() }
+
     fun vote(r: VoteRequest) {
         val item = queue?.firstOrNull() ?: return
         queue = queue?.drop(1)
+        sorted += item.key
         done++
         scope.launch {
             try {
@@ -652,7 +658,30 @@ fun TriageScreen() {
         when {
             queue == null && error != null -> {}
             queue == null -> Text(tr("Loading…"), color = Muted)
-            item == null -> Text(if (done > 0) tr("All done, thanks! {count} sorted.", "count" to done) else tr("Nothing to sort right now."), color = Muted)
+            item == null -> {
+                Text(if (done > 0) tr("All done, thanks! {count} sorted.", "count" to done) else tr("Nothing to sort right now."), color = Muted)
+                // The list is fetched 50 at a time: more may be waiting.
+                var more by remember { mutableStateOf<List<LeavingItem>?>(null) }
+                LaunchedEffect(done) {
+                    if (done == 0) return@LaunchedEffect
+                    kotlinx.coroutines.delay(800)
+                    more = runCatching { core.keepTriage(50u) }.getOrNull()?.filter { it.key !in sorted }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val next = more
+                    if (!next.isNullOrEmpty()) {
+                        ActionButton(
+                            trn("Keep going ({n} more)", "Keep going ({n} more)", next.size),
+                            { queue = next },
+                            Modifier.focusOnAppear(),
+                            primary = true,
+                        )
+                        ActionButton(tr("Done"), { nav.pop() }, icon = be.alwyapps.watch.ui.Icons.Check)
+                    } else {
+                        ActionButton(tr("Done"), { nav.pop() }, Modifier.focusOnAppear(), primary = true, icon = be.alwyapps.watch.ui.Icons.Check)
+                    }
+                }
+            }
             else -> {
                 Text(
                     if (d.isTv) {
