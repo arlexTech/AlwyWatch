@@ -193,7 +193,7 @@ struct KeepAdminView: View {
     @State private var users: [AdminUser]?
     @State private var note: String?
     @State private var armed: String?
-    @State private var seerrUsers: [SeerrUser] = []
+    @State private var seerrUsers: [KeepSeerrUser] = []
     @State private var editing: String?
     @State private var linking: AdminUser?
 
@@ -359,7 +359,7 @@ private struct PersonRightsSheet: View {
     let user: AdminUser
     let seerrName: String?
     let hasSeerr: Bool
-    let seerrUsers: [SeerrUser]
+    let seerrUsers: [KeepSeerrUser]
     let onRights: (Rights) -> Void
     let onSeerr: (Int64?) -> Void
 
