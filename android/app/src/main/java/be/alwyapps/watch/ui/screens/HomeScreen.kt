@@ -457,6 +457,12 @@ private fun HomeTopBar(
                             .FontWeight(800),
                 ),
         )
+        // Play on the TV: shown while one of my TVs has AlwyWatch open.
+        if (be.alwyapps.watch.remote.RemotePhone.devices
+                .isNotEmpty()
+        ) {
+            TopIcon(Icons.Tv, tr("Play on the TV")) { nav.push(Route.Remote(null)) }
+        }
         TopIcon(Icons.Bookmark, tr("My list")) { nav.push(Route.Watchlist) }
         TopIcon(Icons.Search, tr("Search")) { nav.push(Route.Search) }
         TopIcon(Icons.Download, if (offline) tr("Leave downloads") else tr("Downloads"), active = offline, onClick = onToggleDownloads)

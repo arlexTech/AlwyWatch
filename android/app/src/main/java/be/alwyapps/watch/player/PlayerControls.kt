@@ -806,29 +806,7 @@ private fun TracksPanel(
             for (i in 0 until g.length) {
                 if (!g.isTrackSupported(i)) continue
                 val f = g.getTrackFormat(i)
-                val label =
-                    listOfNotNull(
-                        f.label ?: f.language?.let {
-                            java.util.Locale
-                                .forLanguageTag(it)
-                                .getDisplayLanguage(java.util.Locale.forLanguageTag(I18n.language))
-                                .ifEmpty { it }
-                                .replaceFirstChar { c -> c.uppercase() }
-                        },
-                        if (type == C.TRACK_TYPE_AUDIO && f.channelCount > 0) {
-                            when (f.channelCount) {
-                                1 -> tr("Mono")
-                                2 -> tr("Stereo")
-                                6 -> "5.1"
-                                8 -> "7.1"
-                                else -> tr("{count} ch", "count" to f.channelCount)
-                            }
-                        } else {
-                            null
-                        },
-                        // Media3 converts subtitles to "x-media3-cues" while extracting; the original format is in codecs.
-                        friendlyFormat(if (f.sampleMimeType == "application/x-media3-cues") f.codecs else f.sampleMimeType ?: f.codecs),
-                    ).joinToString(" · ").ifEmpty { tr("Track {number}", "number" to i + 1) }
+                val label = trackLabel(f, type, i)
                 out += Option(label, g.isTrackSelected(i)) { select(type, g, i) }
             }
         }
@@ -863,6 +841,39 @@ private fun TracksPanel(
     }
 }
 
+/** A track's name in the menus (and on a phone's remote): language or title, channels, format. */
+fun trackLabel(
+    f: androidx.media3.common.Format,
+    type: Int,
+    i: Int,
+): String =
+    listOfNotNull(
+        f.label ?: f.language?.let {
+            java.util.Locale
+                .forLanguageTag(it)
+                .getDisplayLanguage(java.util.Locale.forLanguageTag(I18n.language))
+                .ifEmpty { it }
+                .replaceFirstChar { c -> c.uppercase() }
+        },
+        if (type == C.TRACK_TYPE_AUDIO && f.channelCount > 0) {
+            when (f.channelCount) {
+                1 -> tr("Mono")
+                2 -> tr("Stereo")
+                6 -> "5.1"
+                8 -> "7.1"
+                else -> tr("{count} ch", "count" to f.channelCount)
+            }
+        } else {
+            null
+        },
+        // Media3 converts subtitles to "x-media3-cues" while extracting; the original format is in codecs.
+        friendlyFormat(if (f.sampleMimeType == "application/x-media3-cues") f.codecs else f.sampleMimeType ?: f.codecs),
+    ).joinToString(" · ").ifEmpty { tr("Track {number}", "number" to i + 1) }
+
+/** A file's stream in the conversion's menus (and on a phone's remote). */
+fun streamLabel(s: be.alwyapps.watch.core.media.MediaStream): String =
+    s.displayTitle ?: listOfNotNull(s.title ?: languageName(s.language), s.codec.uppercase().ifEmpty { null }).joinToString(" · ")
+
 /** The conversion's choice among the file's streams; a pick restarts it with the new tracks. */
 @Composable
 private fun ServerTracksPanel(
@@ -881,8 +892,7 @@ private fun ServerTracksPanel(
     val audioNow = sel.audioIndex ?: audio.firstOrNull { it.isDefault }?.index ?: audio.firstOrNull()?.index
     val subNow = (sel.subtitle as? be.alwyapps.watch.core.media.SubtitleSelection.Stream)?.index
 
-    fun label(s: be.alwyapps.watch.core.media.MediaStream): String =
-        s.displayTitle ?: listOfNotNull(s.title ?: languageName(s.language), s.codec.uppercase().ifEmpty { null }).joinToString(" · ")
+    fun label(s: be.alwyapps.watch.core.media.MediaStream): String = streamLabel(s)
     Column(
         Modifier
             .fillMaxHeight()

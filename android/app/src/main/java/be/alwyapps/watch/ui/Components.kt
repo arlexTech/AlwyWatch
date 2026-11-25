@@ -304,10 +304,8 @@ fun ItemMenu(
                     icon = Icons.Play,
                     onClick = {
                         onDismiss()
-                        ctx.startActivity(
-                            be.alwyapps.watch.player.PlayerActivity
-                                .intent(ctx, account, item.id, 0L),
-                        )
+                        be.alwyapps.watch.remote.RemotePhone
+                            .start(ctx, account, item.id, 0L)
                     },
                 )
             }

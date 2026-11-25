@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import be.alwyapps.watch.core.AlwyWatch
 import be.alwyapps.watch.ui.AlwyTheme
 import be.alwyapps.watch.ui.AppScaffold
@@ -86,11 +87,21 @@ class MainActivity : ComponentActivity() {
         stoppedAt = 0L
         be.alwyapps.watch.together.TogetherInbox
             .activityStarted(null, player = false)
+        // Play on the TV: phones see this TV while AlwyWatch is open on it.
+        if (services.isTv) {
+            be.alwyapps.watch.remote.RemoteTv
+                .activityStarted(this, null)
+        }
         val core = services.core
         if (core.isCompleted) {
             lifecycleScope.launch {
+                val c = core.await()
                 be.alwyapps.watch.together.TogetherInbox
-                    .setCore(core.await())
+                    .setCore(c)
+                if (services.isTv) {
+                    be.alwyapps.watch.remote.RemoteTv
+                        .setCore(c)
+                }
             }
         }
     }
@@ -100,6 +111,10 @@ class MainActivity : ComponentActivity() {
         stoppedAt = android.os.SystemClock.elapsedRealtime()
         be.alwyapps.watch.together.TogetherInbox
             .activityStopped(player = false)
+        if (services.isTv) {
+            be.alwyapps.watch.remote.RemoteTv
+                .activityStopped()
+        }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {
@@ -173,6 +188,10 @@ class MainActivity : ComponentActivity() {
                         services.core.await().also {
                             be.alwyapps.watch.together.TogetherInbox
                                 .setCore(it)
+                            if (services.isTv) {
+                                be.alwyapps.watch.remote.RemoteTv
+                                    .setCore(it)
+                            }
                         }
                 }
                 Box(Modifier.fillMaxSize().background(Background)) {
@@ -224,6 +243,16 @@ private fun Root(core: AlwyWatch) {
             onConfirm = { activity?.finish() },
             onDismiss = { askQuit = false },
         )
+    }
+
+    // Play on the TV (phones): my TVs with AlwyWatch open, asked while the app is in front.
+    if (!isTv && activity is androidx.lifecycle.LifecycleOwner) {
+        androidx.compose.runtime.LaunchedEffect(core, account) {
+            activity.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                be.alwyapps.watch.remote.RemotePhone
+                    .poll(core)
+            }
+        }
     }
 
     CompositionLocalProvider(LocalCore provides core, LocalNavigator provides nav) {
@@ -286,6 +315,8 @@ private fun Root(core: AlwyWatch) {
                         }
                 }
                 AppScaffold {
+                    be.alwyapps.watch.ui.screens
+                        .RemotePlayChooser()
                     // One initial focus per screen visit (see initialFocus).
                     val focusDone = remember(nav.current) { mutableStateOf(false) }
                     // TV: a screen where nothing took the focus by its first frame (no initial
@@ -380,6 +411,9 @@ private fun Root(core: AlwyWatch) {
                                 Route.AdminCountdown -> KeepAdminScreen(people = false, countdown = true)
                                 Route.KeepForever -> KeepForeverScreen()
                                 Route.Dashboard -> DashboardScreen()
+                                is Route.Remote ->
+                                    be.alwyapps.watch.ui.screens
+                                        .RemoteScreen(r.deviceId)
                                 Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
                                 // Combined home: a page of another account's server runs as that account.
                                 is Route.Library ->

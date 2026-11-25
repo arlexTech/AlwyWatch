@@ -58,6 +58,11 @@ sealed interface Route {
         val code: String,
     ) : Route
 
+    /** Play on the TV: the mini remote of TV [deviceId] (null: the list of my TVs). */
+    data class Remote(
+        val deviceId: String?,
+    ) : Route
+
     /** Copy watch history from one server to another. */
     data object HistoryCopy : Route
 
@@ -143,6 +148,7 @@ sealed interface Route {
             // Its list lives in memory only: restored as the home.
             ContinueWatching -> "home"
             HistoryCopy -> "history-copy"
+            is Remote -> "remote\u001f${deviceId.orEmpty()}"
             is SettingsSection -> "settings-section\u001f$id"
             is Library -> "lib\u001f$id\u001f$title\u001f${account.orEmpty()}"
             is Detail -> "item\u001f$itemId\u001f${season.orEmpty()}\u001f${account.orEmpty()}"
@@ -178,6 +184,7 @@ sealed interface Route {
                 "room" -> p.getOrNull(1)?.let { Room(it) }
                 "watchlist" -> Watchlist
                 "history-copy" -> HistoryCopy
+                "remote" -> Remote(p.getOrNull(1)?.ifEmpty { null })
                 "settings-section" -> p.getOrNull(1)?.let { SettingsSection(it) }
                 "lib" -> if (p.size >= 3) Library(p[1], p[2], p.getOrNull(3)?.ifEmpty { null }) else null
                 "item" -> if (p.size >= 2) Detail(p[1], p.getOrNull(2)?.ifEmpty { null }, p.getOrNull(3)?.ifEmpty { null }) else null

@@ -308,7 +308,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
-#: ios/AlwyWatch/Downloads.swift
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
 msgid "Stop"
 msgstr ""
 
@@ -379,6 +379,24 @@ msgid "Audio, subtitles & quality"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+msgid "Audio"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+msgid "Subtitles"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+msgid "Off"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 msgid "Mono"
 msgstr ""
@@ -399,24 +417,6 @@ msgid "Track {number}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-msgid "Audio"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-msgid "Subtitles"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
-msgid "Off"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 msgid "Converted by the server: changing a track restarts the stream"
 msgstr ""
 
@@ -433,6 +433,10 @@ msgstr ""
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: ios/AlwyWatch/Together.swift
 msgid "Selected"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/remote/RemoteTv.kt
+msgid "Not on this TV's servers"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/together/Together.kt
@@ -1928,6 +1932,7 @@ msgid "Off: you use a request site directly"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
 #: ios/AlwyWatch/Requests.swift
 msgid "Connecting…"
 msgstr ""
@@ -2073,8 +2078,8 @@ msgid "Movies"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
 #: desktop/src/dashboard.rs
-#: web/src/dashboard.rs
 msgid "TV"
 msgstr ""
 
@@ -3027,6 +3032,11 @@ msgid "Nothing here yet."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+msgid "Play on the TV"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
 #: ios/AlwyWatch/HomeView.swift
 msgid "Leave downloads"
 msgstr ""
@@ -3827,6 +3837,38 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/QrScanner.kt
 msgid "The camera could not start."
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+msgid "No TV here. Open AlwyWatch on the TV, with this profile, and it shows here."
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+msgid "Nothing playing"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+msgid "This TV isn't there anymore: AlwyWatch was closed on it."
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+msgid "Nothing playing. Pick a title, then Play and this TV."
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+msgid "Back 10 seconds"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+msgid "Forward 30 seconds"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+msgid "Play on"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/RemoteScreen.kt
+msgid "This phone"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt

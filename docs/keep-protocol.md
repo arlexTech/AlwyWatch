@@ -485,6 +485,10 @@ sign-in): for anyone else a device id answers 404, like an unknown one.
   1000 in all.
 * Phones move the position on from the report while it plays: `position_ms + now_ms - at_ms`
   (`remote_position_now`).
+* Android: a TV listens while an AlwyWatch screen is in front (`remote/RemoteTv.kt`; the player
+  reports every second while something changes, else every 5 s). A phone asks for its TVs every
+  20 s while in front (`remote/RemotePhone.kt`); with one there, the home shows a TV button (the
+  mini remote) and Play asks "This phone" or a TV.
 
 ## Device transfer
 

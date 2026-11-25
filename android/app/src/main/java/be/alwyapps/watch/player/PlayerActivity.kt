@@ -231,6 +231,7 @@ class PlayerActivity : ComponentActivity() {
                 together = true
             }
             ui.canWatchTogether = !together && runCatching { core.keepActive() }.getOrDefault(false)
+            startRemote()
             load(itemId, start)
             if (together) followRoom()
         }
@@ -1193,6 +1194,141 @@ class PlayerActivity : ComponentActivity() {
         ui.stillWatching = true
     }
 
+    // ----- play on the TV --------------------------------------------------------------------
+
+    private var remoteJob: Job? = null
+    private var remoteServer: Pair<String, String?>? = null
+
+    /** On a TV: the phone's commands for this player, and what it plays, for the phone. */
+    private fun startRemote() {
+        if (!services.isTv) return
+        val tv = be.alwyapps.watch.remote.RemoteTv
+        tv.setCore(core)
+        remoteJob?.cancel()
+        remoteJob =
+            lifecycleScope.launch {
+                launch { tv.commands.collect { applyRemote(it) } }
+                var lastKey: Any? = null
+                var lastSent = 0L
+                while (true) {
+                    val r = remoteReport()
+                    val key = listOf(r.title, r.playing, r.loading, r.audioIndex, r.subtitleIndex, r.audio, r.subtitles, r.durationMs)
+                    val now = android.os.SystemClock.uptimeMillis()
+                    // Changes at once; the position every few seconds (the phone moves it itself).
+                    if (key != lastKey || now - lastSent > 5_000) {
+                        tv.report(r)
+                        lastKey = key
+                        lastSent = now
+                    }
+                    kotlinx.coroutines.delay(1_000)
+                }
+            }
+    }
+
+    private fun remoteReport(): be.alwyapps.watch.core.keep.RemoteReport {
+        val p = player
+        val audio = mutableListOf<be.alwyapps.watch.core.keep.RemoteTrack>()
+        val subs = mutableListOf<be.alwyapps.watch.core.keep.RemoteTrack>()
+        var audioNow: Int? = null
+        var subNow: Int? = null
+        val server = ui.serverTracks
+        if (server != null) {
+            // The server's conversion: the file's streams, by their index in the file.
+            for (st in server.streams) {
+                val t =
+                    be.alwyapps.watch.core.keep
+                        .RemoteTrack(st.index.toInt(), streamLabel(st))
+                when (st.kind) {
+                    StreamKind.AUDIO -> audio += t
+                    StreamKind.SUBTITLE -> subs += t
+                    else -> {}
+                }
+            }
+            val a = server.streams.filter { it.kind == StreamKind.AUDIO }
+            audioNow = (server.selection.audioIndex ?: a.firstOrNull { it.isDefault }?.index ?: a.firstOrNull()?.index)?.toInt()
+            subNow = (server.selection.subtitle as? be.alwyapps.watch.core.media.SubtitleSelection.Stream)?.index?.toInt()
+        } else if (p != null) {
+            // The player's own tracks, numbered as PlayerTracks numbers them.
+            val textOff = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+            PlayerTracks(p.currentTracks).refs.forEachIndexed { id, (g, i) ->
+                val t =
+                    be.alwyapps.watch.core.keep
+                        .RemoteTrack(id, trackLabel(g.getTrackFormat(i), g.type, i))
+                if (g.type == C.TRACK_TYPE_AUDIO) {
+                    audio += t
+                    if (g.isTrackSelected(i)) audioNow = id
+                } else {
+                    subs += t
+                    if (g.isTrackSelected(i) && !textOff) subNow = id
+                }
+            }
+        }
+        val serverId =
+            remoteServer?.takeIf { it.first == account }?.second
+                ?: runCatching { core.accounts().firstOrNull { it.id == account }?.serverId }
+                    .getOrNull()
+                    .also { remoteServer = account to it }
+        return be.alwyapps.watch.core.keep.RemoteReport(
+            title = ui.title,
+            subtitle = ui.subtitle.ifEmpty { null },
+            serverId = serverId,
+            itemId = itemId,
+            playing = p?.playWhenReady == true,
+            loading = ui.buffering,
+            positionMs = p?.currentPosition?.coerceAtLeast(0) ?: 0,
+            durationMs = p?.duration?.takeIf { it > 0 } ?: 0,
+            audio = audio,
+            subtitles = subs,
+            audioIndex = audioNow,
+            subtitleIndex = subNow,
+            error = null,
+        )
+    }
+
+    private fun applyRemote(cmd: be.alwyapps.watch.core.keep.RemoteCommand) {
+        val p = player ?: return
+        lastInteraction = android.os.SystemClock.uptimeMillis()
+        when (cmd.action) {
+            be.alwyapps.watch.core.keep.RemoteAction.PAUSE -> p.pause()
+            be.alwyapps.watch.core.keep.RemoteAction.RESUME -> {
+                ui.stillWatching = false
+                p.play()
+            }
+            be.alwyapps.watch.core.keep.RemoteAction.SEEK -> cmd.positionMs?.let { p.seekTo(it.coerceAtLeast(0)) }
+            be.alwyapps.watch.core.keep.RemoteAction.STOP -> finish()
+            be.alwyapps.watch.core.keep.RemoteAction.AUDIO -> cmd.index?.let { remoteTrack(C.TRACK_TYPE_AUDIO, it) }
+            be.alwyapps.watch.core.keep.RemoteAction.SUBTITLES -> remoteTrack(C.TRACK_TYPE_TEXT, cmd.index)
+            be.alwyapps.watch.core.keep.RemoteAction.PLAY -> {}
+        }
+    }
+
+    /** A track picked on the phone: as if picked in the menu here (and remembered the same). */
+    private fun remoteTrack(
+        type: Int,
+        index: Int?,
+    ) {
+        if (ui.serverTracks != null) {
+            pickServerTrack(if (type == C.TRACK_TYPE_AUDIO) StreamKind.AUDIO else StreamKind.SUBTITLE, index?.toLong())
+            return
+        }
+        val p = player ?: return
+        val b = p.trackSelectionParameters.buildUpon()
+        if (index == null) {
+            if (type != C.TRACK_TYPE_TEXT) return
+            p.trackSelectionParameters = b.setTrackTypeDisabled(type, true).build()
+            rememberTrack(type, null)
+            return
+        }
+        val (g, i) = PlayerTracks(p.currentTracks).refs.getOrNull(index) ?: return
+        if (g.type != type) return
+        p.trackSelectionParameters =
+            b
+                .setTrackTypeDisabled(type, false)
+                .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i))
+                .build()
+        rememberTrack(type, g.getTrackFormat(i))
+    }
+
     // ----- watch together ------------------------------------------------------------------
 
     /**
@@ -1814,11 +1950,24 @@ class PlayerActivity : ComponentActivity() {
             refreshPip()
         }
         TogetherInbox.activityStarted(null, player = true)
+        if (services.isTv) {
+            be.alwyapps.watch.remote.RemoteTv
+                .activityStarted(this, null)
+            // Back in front: report again (stopped in onStop).
+            if (::core.isInitialized && remoteJob?.isActive != true) startRemote()
+        }
     }
 
     override fun onStop() {
         super.onStop()
         TogetherInbox.activityStopped(player = true)
+        if (services.isTv) {
+            remoteJob?.cancel()
+            be.alwyapps.watch.remote.RemoteTv
+                .stopped()
+            be.alwyapps.watch.remote.RemoteTv
+                .activityStopped()
+        }
         val stop = report(PlaybackEvent.STOP)
         // Once the server knows where we stopped, the screens behind show "Resume" at the right place.
         services.scope.launch {

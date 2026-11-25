@@ -97,7 +97,9 @@ fun play(
     item: Item,
     fromStart: Boolean,
 ) {
-    ctx.startActivity(PlayerActivity.intent(ctx, account, item.id, if (fromStart) 0L else item.user.positionMs.toLong()))
+    // On a phone with one of my TVs there, asks where (Play on the TV).
+    be.alwyapps.watch.remote.RemotePhone
+        .start(ctx, account, item.id, if (fromStart) 0L else item.user.positionMs.toLong())
 }
 
 @Composable
