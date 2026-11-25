@@ -140,6 +140,7 @@ struct TriageView: View {
         Task {
             do {
                 _ = try await model.core.keepVote(key: item.key, vote: r)
+                NotificationCenter.default.post(name: .keepVoted, object: nil)
             } catch {
                 self.error = message(error)
             }

@@ -1132,7 +1132,7 @@ async fn triage(
         .await
         .map_err(internal)?
         .into_iter()
-        .filter(|i| i.my_vote.is_none() && i.effective_deletion_date.is_some())
+        .filter(keep_service::needs_review)
         .take(q.limit.unwrap_or(20).min(200))
         .collect();
     Ok(Json(list))

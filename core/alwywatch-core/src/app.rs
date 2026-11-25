@@ -3556,6 +3556,17 @@ pub fn together_correction(
     )
 }
 
+/// The home's Leaving soon row: the titles still to review by me (no choice of mine yet, a
+/// deletion date still set), most urgent first as listed, at most `limit`. Empty: no row.
+#[uniffi::export]
+pub fn keep_to_review(items: Vec<LeavingItem>, limit: u32) -> Vec<LeavingItem> {
+    items
+        .into_iter()
+        .filter(keep_service::needs_review)
+        .take(limit as usize)
+        .collect()
+}
+
 /// The built-in avatars, in display order (draw: a disc of `background`, `shape` in
 /// `foreground`; geometry in docs/keep-protocol.md).
 #[uniffi::export]

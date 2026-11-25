@@ -1389,6 +1389,12 @@ pub fn leaving_entry<'a>(
         })
 }
 
+/// Still to review by the caller: no choice of theirs yet, and a deletion date still set
+/// (not kept forever or until watched). The swipe queue and the home's Leaving soon row.
+pub fn needs_review(i: &LeavingItem) -> bool {
+    i.my_vote.is_none() && i.effective_deletion_date.is_some()
+}
+
 /// What the Leaving soon lists show: titles in a deletion list, and the kept ones. A title in
 /// no list with only "a while" or "I don't care" on it is neither leaving nor kept (the
 /// server sends it for its own page).
@@ -1424,6 +1430,25 @@ mod leaving_entry_tests {
             counts: VoteCounts::default(),
             listed: true,
         }
+    }
+
+    #[test]
+    fn to_review_is_unvoted_and_still_dated() {
+        let mut open = item("a", "movie", None, None);
+        open.effective_deletion_date = Some(100);
+        let mut voted = open.clone();
+        voted.my_vote = Some(MyVote {
+            kind: VoteKind::DontCare,
+            until: None,
+            reminder_days: None,
+            reason: None,
+            created_at: 0,
+        });
+        // Kept forever or until watched by others: no date, nothing to decide.
+        let kept = item("c", "movie", None, None);
+        assert!(needs_review(&open));
+        assert!(!needs_review(&voted));
+        assert!(!needs_review(&kept));
     }
 
     #[test]

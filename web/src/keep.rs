@@ -62,7 +62,8 @@ pub fn LeavingRail() -> impl IntoView {
         let shown: Vec<LeavingItem> = items
             .get()
             .into_iter()
-            .filter(|i| matches!(i.protection, Protection::None | Protection::Extended))
+            // Only what is still mine to review; nothing left: no row.
+            .filter(keep_service::needs_review)
             .take(15)
             .collect();
         (on() && !shown.is_empty()).then(|| view! {

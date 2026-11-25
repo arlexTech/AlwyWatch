@@ -57,6 +57,7 @@ import be.alwyapps.watch.core.keep.Protection
 import be.alwyapps.watch.core.keep.Rights
 import be.alwyapps.watch.core.keep.VoteKind
 import be.alwyapps.watch.core.keep.VoteRequest
+import be.alwyapps.watch.core.keepToReview
 import be.alwyapps.watch.core.seerr.SeerrMediaType
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
@@ -159,6 +160,7 @@ fun KeepActions(
         scope.launch {
             try {
                 onVoted(if (r == null) core.keepUnvote(item.key) else core.keepVote(item.key, r))
+                KeepVotes.version++
                 error = null
             } catch (e: CoreException) {
                 error = e.message
@@ -209,6 +211,7 @@ fun KeepSheet(
         scope.launch {
             try {
                 onVoted(if (r == null) core.keepUnvote(item.key) else core.keepVote(item.key, r))
+                KeepVotes.version++
                 onDismiss()
             } catch (e: CoreException) {
                 error = e.message
@@ -298,18 +301,22 @@ fun KeepSheet(
     )
 }
 
+/** Bumped by every keep choice of mine, so the home's row re-reads the list. */
+object KeepVotes {
+    var version by mutableIntStateOf(0)
+}
+
 /** Compact rail for the home screen. */
 @Composable
 fun LeavingSoonRail(onFocus: ((LeavingItem) -> Unit)? = null) {
     val core = LocalCore.current
     val nav = LocalNavigator.current
     val d = LocalDimens.current
-    val list = rememberSwr("leaving-rail", cached = { core.cachedLeavingSoon() }, refresh = { core.refreshLeavingSoon(it) })
-    val items =
-        list.value
-            ?.filter { it.protection == Protection.NONE || it.protection == Protection.EXTENDED }
-            ?.take(15)
-            .orEmpty()
+    // A choice made anywhere (this row, the list, swiping) takes the title out at once.
+    val list =
+        rememberSwr("leaving-rail", KeepVotes.version, cached = { core.cachedLeavingSoon() }, refresh = { core.refreshLeavingSoon(it) })
+    // Only what is still mine to review; nothing left: no row.
+    val items = remember(list.value) { list.value?.let { keepToReview(it, 15u) }.orEmpty() }
     if (items.isEmpty()) return
     var open by remember { mutableStateOf<LeavingItem?>(null) }
     open?.let { o -> KeepSheet(o, onVoted = { list.reload() }, onDismiss = { open = null }) }
@@ -604,6 +611,7 @@ fun TriageScreen() {
         scope.launch {
             try {
                 core.keepVote(item.key, r)
+                KeepVotes.version++
             } catch (e: CoreException) {
                 error = e.message
             }

@@ -212,6 +212,7 @@ struct KeepSheet: View {
                     updated = try await model.core.keepUnvote(key: item.key)
                 }
                 voted(updated)
+                NotificationCenter.default.post(name: .keepVoted, object: nil)
                 dismiss()
             } catch {
                 self.error = message(error)
@@ -279,6 +280,10 @@ struct LeavingSoonRail: View {
             KeepSheet(item: o) { _ in Task { await load(force: true) } }
         }
         .task { await load(force: false) }
+        // A choice made anywhere (the list, swiping) takes the title out at once.
+        .onReceive(NotificationCenter.default.publisher(for: .keepVoted)) { _ in
+            if let cached = (try? model.core.cachedLeavingSoon()) ?? nil { items = toReview(cached) }
+        }
     }
 
     private func load(force: Bool) async {
@@ -287,13 +292,12 @@ struct LeavingSoonRail: View {
         if !model.core.keepServices().leavingSoon {
             guard let fresh = try? await model.core.refreshKeepServices(), fresh.leavingSoon else { items = []; return }
         }
-        if !force, let cached = (try? model.core.cachedLeavingSoon()) ?? nil { items = atRisk(cached) }
-        if let fresh = try? await model.core.refreshLeavingSoon(force: force) { items = atRisk(fresh) }
+        if !force, let cached = (try? model.core.cachedLeavingSoon()) ?? nil { items = toReview(cached) }
+        if let fresh = try? await model.core.refreshLeavingSoon(force: force) { items = toReview(fresh) }
     }
 
-    private func atRisk(_ l: [LeavingItem]) -> [LeavingItem] {
-        Array(l.filter { $0.protection == .none || $0.protection == .extended }.prefix(15))
-    }
+    /// Only what is still mine to review (the core's rule); nothing left: no row.
+    private func toReview(_ l: [LeavingItem]) -> [LeavingItem] { keepToReview(items: l, limit: 15) }
 }
 
 /// Everything leaving, most urgent first, with the keep choices (Android's LeavingSoonScreen).
@@ -436,4 +440,9 @@ struct ChipStyle: ButtonStyle {
             .overlay(Capsule().stroke(selected ? Palette.accent : .clear, lineWidth: 2))
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
+}
+
+extension Notification.Name {
+    /// A keep choice of mine was sent (the home's Leaving soon row re-reads the list).
+    static let keepVoted = Notification.Name("alwywatch.keepVoted")
 }
