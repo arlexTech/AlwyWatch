@@ -297,6 +297,7 @@ msgstr[1] "{name} · {n} appareils"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Are you still watching?"
 msgstr "Êtes-vous toujours là ?"
 
@@ -745,6 +746,7 @@ msgstr "Retirer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Your AlwyWatch account"
 msgstr "Votre compte AlwyWatch"
 
@@ -892,7 +894,7 @@ msgstr "Compte AlwyWatch"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SignInView.swift
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Your servers"
 msgstr "Vos serveurs"
 
@@ -1800,6 +1802,7 @@ msgstr "Profil sur cet appareil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: web/src/account.rs
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Connect to AlwyWatch"
 msgstr "Se connecter à AlwyWatch"
 
@@ -2194,6 +2197,7 @@ msgstr "Conteneur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Size"
 msgstr "Taille"
 
@@ -3975,6 +3979,7 @@ msgstr "Impossible de le demander."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/prefs.rs
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "{n} second"
 msgid_plural "{n} seconds"
 msgstr[0] "{n} seconde"
@@ -3987,6 +3992,7 @@ msgstr[0] "{n} profil"
 msgstr[1] "{n} profils"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "After {n} hour"
 msgid_plural "After {n} hours"
 msgstr[0] "Après {n} heure"
@@ -4021,46 +4027,57 @@ msgid "Menu & pages"
 msgstr "Menu et pages"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "on"
 msgstr "activé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "off"
 msgstr "désactivé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "No AlwyWatch account · connect to AlwyWatch"
 msgstr "Pas de compte AlwyWatch · se connecter à AlwyWatch"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "No server yet"
 msgstr "Aucun serveur pour l'instant"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Request site {address}"
 msgstr "Site de demandes {address}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Skip intros {intros} · next episode {next} · −{back} s / +{forward} s"
 msgstr "Passer les intros {intros} · épisode suivant {next} · −{back} s / +{forward} s"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Original audio"
 msgstr "Audio d'origine"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "subtitles forced only"
 msgstr "sous-titres forcés uniquement"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "subtitles always"
 msgstr "sous-titres toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "subtitles off"
 msgstr "sous-titres désactivés"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "subtitles automatic"
 msgstr "sous-titres automatiques"
 
@@ -4101,6 +4118,7 @@ msgid "When to delete, manage downloads"
 msgstr "Quand supprimer, gérer les téléchargements"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "People, countdown, invitations, server status"
 msgstr "Personnes, compte à rebours, invitations, état du serveur"
 
@@ -4124,23 +4142,28 @@ msgid "Sign out of {server}?"
 msgstr "Se déconnecter de {server} ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "{name} is signed out of {server} on this device. Its downloads stay until you delete them."
 msgstr "{name} sera déconnecté de {server} sur cet appareil. Ses téléchargements restent jusqu'à ce que vous les supprimiez."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "AlwyWatch uses the login showing now."
 msgstr "AlwyWatch utilise la connexion affichée."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Preferred"
 msgstr "Préféré"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Showing now"
 msgstr "Affiché"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Sign out of {server}"
 msgstr "Se déconnecter de {server}"
 
@@ -4149,10 +4172,12 @@ msgid "Linked to your account, not signed in on this device"
 msgstr "Lié à votre compte, pas connecté sur cet appareil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Together, the home mixes every server; a title on several is shown once, from the preferred one."
 msgstr "Ensemble, l'accueil mélange tous les serveurs ; un titre présent sur plusieurs n'apparaît qu'une fois, depuis le serveur préféré."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Show all servers together"
 msgstr "Afficher tous les serveurs ensemble"
 
@@ -4161,6 +4186,7 @@ msgid "Select a login above to make it the preferred one"
 msgstr "Sélectionnez une connexion ci-dessus pour en faire la préférée"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Tap a login above to make it the preferred one"
 msgstr "Touchez une connexion ci-dessus pour en faire la préférée"
 
@@ -4169,6 +4195,7 @@ msgid "One server at a time: select a login above to switch"
 msgstr "Un serveur à la fois : sélectionnez une connexion ci-dessus pour changer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "One server at a time: tap a login above to switch"
 msgstr "Un serveur à la fois : touchez une connexion ci-dessus pour changer"
 
@@ -4239,6 +4266,7 @@ msgstr "Synchroniser"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/prefs.rs
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Intros and credits"
 msgstr "Intros et génériques"
 
@@ -4261,35 +4289,43 @@ msgid "Play the next episode automatically"
 msgstr "Lire l'épisode suivant automatiquement"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "A countdown during the credits, which Back cancels. Off: playback stops at the end of the episode."
 msgstr "Un compte à rebours pendant le générique, annulable avec Retour. Désactivé : la lecture s'arrête à la fin de l'épisode."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/prefs.rs
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Next episode countdown"
 msgstr "Compte à rebours avant l'épisode suivant"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Remote and resuming"
 msgstr "Télécommande et reprise"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Skip back"
 msgstr "Reculer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Skip forward"
 msgstr "Avancer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Rewind when resuming"
 msgstr "Reculer à la reprise"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Never"
 msgstr "Jamais"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Pauses when the remote has not been touched for that long."
 msgstr "Met en pause quand la télécommande n'a pas été touchée pendant cette durée."
 
@@ -4345,19 +4381,23 @@ msgstr "Les autres peuvent avancer ou reculer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/prefs.rs
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Languages"
 msgstr "Langues"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "A movie or show remembers the tracks picked for it (on its page or while watching), and its next episodes follow."
 msgstr "Un film ou une série retient les pistes choisies pour lui (sur sa page ou pendant la lecture), et les épisodes suivants font de même."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Audio language"
 msgstr "Langue audio"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Original (the file's default)"
 msgstr "Originale (par défaut du fichier)"
 
@@ -4380,54 +4420,67 @@ msgid "Subtitle language"
 msgstr "Langue des sous-titres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Device language ({language})"
 msgstr "Langue de l'appareil ({language})"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Subtitle look"
 msgstr "Apparence des sous-titres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Small"
 msgstr "Petite"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Normal"
 msgstr "Normale"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Large"
 msgstr "Grande"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Huge"
 msgstr "Très grande"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Colour"
 msgstr "Couleur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "White"
 msgstr "Blanc"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Yellow"
 msgstr "Jaune"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Background box"
 msgstr "Fond derrière le texte"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Otherwise a dark outline keeps them readable."
 msgstr "Sinon, un contour sombre les garde lisibles."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Raise subtitles"
 msgstr "Remonter les sous-titres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Higher on the screen (TVs that crop the edges)."
 msgstr "Plus haut sur l'écran (pour les téléviseurs qui rognent les bords)."
 
@@ -4506,6 +4559,7 @@ msgid "Language"
 msgstr "Langue"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Same as the device"
 msgstr "Comme l'appareil"
 
@@ -4516,6 +4570,7 @@ msgid "Storage"
 msgstr "Stockage"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Posters and backdrops kept to show pages instantly; they come back when needed."
 msgstr "Affiches et fonds gardés pour afficher les pages instantanément ; ils reviennent si besoin."
 
@@ -4527,11 +4582,13 @@ msgstr "Cache des images"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "{size} MB"
 msgstr "{size} Mo"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/signin.rs
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "About"
 msgstr "À propos"
 
@@ -4542,6 +4599,7 @@ msgid "Free software under the GNU AGPL v3 or later."
 msgstr "Logiciel libre sous licence GNU AGPL v3 ou ultérieure."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Core {version}"
 msgstr "Cœur {version}"
 
@@ -8494,17 +8552,15 @@ msgstr "Rien à lire."
 msgid "This file can't be played on this device."
 msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 
-#: ios/AlwyWatch/SettingsScreen.swift
-msgid "System"
-msgstr "Système"
-
-#: ios/AlwyWatch/SettingsScreen.swift
-msgid "Clear the image cache"
-msgstr "Vider le cache des images"
-
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "System"
+#~ msgstr "Système"
+
+#~ msgid "Clear the image cache"
+#~ msgstr "Vider le cache des images"
 
 #~ msgid "Movies, shows, episodes"
 #~ msgstr "Films, séries, épisodes"
