@@ -76,7 +76,7 @@ pub fn LeavingRail() -> impl IntoView {
                     <A href="/leaving/sort" attr:class="button primary small">{tr!("Swipe them!")}</A>
                     <A href="/leaving" attr:class="see-all">{tr!("See all ›")}</A>
                 </div>
-                <div class="rail-row">
+                <crate::ui::RailRow>
                     {shown.into_iter().map(|i| {
                         let href = i.server_item_id.as_ref().map_or_else(|| "/leaving".to_owned(), |id| format!("/item/{acc}/{id}"));
                         view! {
@@ -90,7 +90,7 @@ pub fn LeavingRail() -> impl IntoView {
                             </A>
                         }
                     }).collect_view()}
-                </div>
+                </crate::ui::RailRow>
             </section>
         })
     }

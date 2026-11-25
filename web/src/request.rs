@@ -378,7 +378,7 @@ fn TitleView(
         </div>
         {(!cast.is_empty()).then(|| view! {
             <h2>{tr!("Cast")}</h2>
-            <div class="rail-row">
+            <crate::ui::RailRow>
                 {cast.into_iter().map(|p| view! {
                     <div class="person-card">
                         <div class="face">{p.photo_url.map(|u| view! { <img src=u loading="lazy" alt="" /> })}</div>
@@ -386,7 +386,7 @@ fn TitleView(
                         <div class="sub">{p.character.unwrap_or_default()}</div>
                     </div>
                 }).collect_view()}
-            </div>
+            </crate::ui::RailRow>
         })}
     }
 }

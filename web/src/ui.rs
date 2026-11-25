@@ -113,15 +113,57 @@ pub fn Rail(
                     <h2>{title}</h2>
                     {(!see_all.is_empty()).then(|| view! { <A href=see_all attr:class="see-all">{tr!("See all ›")}</A> })}
                 </div>
-                <div class="rail-row">
+                <RailRow>
                     {items.into_iter().map(|(acc, i)| {
                         let note = notes.iter().find(|n| n.item_id == i.id).cloned();
                         view! { <Card acc=acc item=i wide=wide note=note /> }
                     }).collect_view()}
-                </div>
+                </RailRow>
             </section>
         }
     })
+}
+
+/// A row that scrolls sideways: with a mouse, arrows on its sides move it a page at a time (no
+/// scroll bar, as in the desktop apps); touch screens swipe it. An arrow shows only when there
+/// is more that way.
+#[component]
+pub fn RailRow(children: Children) -> impl IntoView {
+    let row = NodeRef::<leptos::html::Div>::new();
+    let (more_left, more_right) = (RwSignal::new(false), RwSignal::new(false));
+    let update = move || {
+        if let Some(r) = row.get_untracked() {
+            let (x, max) = (r.scroll_left(), r.scroll_width() - r.client_width());
+            more_left.try_set(x > 4);
+            more_right.try_set(x < max - 4);
+        }
+    };
+    // Once laid out (images and fonts change the widths a little later too).
+    Effect::new(move |_| {
+        if row.get().is_some() {
+            update();
+            leptos::task::spawn_local(async move {
+                state::sleep(400).await;
+                update();
+            });
+        }
+    });
+    let by = move |dir: i32| {
+        if let Some(r) = row.get_untracked() {
+            // A page, minus a card's worth so the last one seen stays in view.
+            let step = (f64::from(r.client_width()) * 0.85) as i32;
+            r.set_scroll_left(r.scroll_left() + dir * step);
+        }
+    };
+    view! {
+        <div class="rail-wrap">
+            <button class="rail-arrow prev" class:shown=move || more_left.get() tabindex="-1"
+                aria-label=tr!("Previous") on:click=move |_| by(-1)>"‹"</button>
+            <div class="rail-row" node_ref=row on:scroll=move |_| update()>{children()}</div>
+            <button class="rail-arrow next" class:shown=move || more_right.get() tabindex="-1"
+                aria-label=tr!("Next") on:click=move |_| by(1)>"›"</button>
+        </div>
+    }
 }
 
 #[component]

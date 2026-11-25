@@ -106,7 +106,7 @@ pub fn Cast(acc: String, id: String) -> impl IntoView {
     view! {
         {move || people.get().flatten().filter(|l| !l.is_empty()).map(|list| view! {
             <h2>{tr!("Cast")}</h2>
-            <div class="rail-row">
+            <crate::ui::RailRow>
                 {list.into_iter().map(|(name, role, photo)| view! {
                     <div class="person-card">
                         <div class="face">{photo.map(|p| view! { <img src=p loading="lazy" alt="" /> })}</div>
@@ -114,7 +114,7 @@ pub fn Cast(acc: String, id: String) -> impl IntoView {
                         <div class="sub">{role.unwrap_or_default()}</div>
                     </div>
                 }).collect_view()}
-            </div>
+            </crate::ui::RailRow>
         })}
     }
 }
