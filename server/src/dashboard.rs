@@ -538,6 +538,37 @@ pub struct Play {
     pub transcode: Option<bool>,
 }
 
+/// One Tautulli `get_history` row.
+pub fn tautulli_play(server_id: &str, r: &Value) -> Play {
+    let kind = match s(r, "media_type").as_str() {
+        "movie" => Kind::Movie,
+        "episode" => Kind::Episode,
+        _ => Kind::Other,
+    };
+    let (title, thumb) = if kind == Kind::Episode {
+        (
+            s(r, "grandparent_title"),
+            nonempty(s(r, "grandparent_rating_key"))
+                .map(|k| format!("/library/metadata/{k}/thumb")),
+        )
+    } else {
+        (s(r, "title"), nonempty(s(r, "thumb")))
+    };
+    let user_id = s(r, "user_id");
+    Play {
+        server_id: server_id.into(),
+        user_key: format!("plex:{server_id}:{user_id}"),
+        user_name: nonempty(s(r, "friendly_name")).unwrap_or_else(|| s(r, "user")),
+        avatar: nonempty(s(r, "user_thumb")).filter(|u| u.starts_with("https://")),
+        kind,
+        title,
+        image: thumb.map(|t| format!("plex:{t}")),
+        start: n(r, "started").max(n(r, "date")),
+        seconds: n(r, "play_duration").max(0) as u64,
+        transcode: Some(s(r, "transcode_decision") == "transcode"),
+    }
+}
+
 /// Unix seconds + offset (minutes east) → `YYYY-MM-DD`.
 pub fn day_of(t: i64, tz_minutes: i32) -> String {
     let days = (t + tz_minutes as i64 * 60).div_euclid(86_400);
@@ -942,39 +973,7 @@ impl State {
             ])
             .await?;
         let rows = d.get("data")?.as_array()?;
-        Some(
-            rows.iter()
-                .map(|r| {
-                    let kind = match s(r, "media_type").as_str() {
-                        "movie" => Kind::Movie,
-                        "episode" => Kind::Episode,
-                        _ => Kind::Other,
-                    };
-                    let (title, thumb) = if kind == Kind::Episode {
-                        (
-                            s(r, "grandparent_title"),
-                            nonempty(s(r, "grandparent_rating_key"))
-                                .map(|k| format!("/library/metadata/{k}/thumb")),
-                        )
-                    } else {
-                        (s(r, "title"), nonempty(s(r, "thumb")))
-                    };
-                    let user_id = s(r, "user_id");
-                    Play {
-                        server_id: server.id.clone(),
-                        user_key: format!("plex:{}:{user_id}", server.id),
-                        user_name: nonempty(s(r, "friendly_name")).unwrap_or_else(|| s(r, "user")),
-                        avatar: nonempty(s(r, "user_thumb")).filter(|u| u.starts_with("https://")),
-                        kind,
-                        title,
-                        image: thumb.map(|t| format!("plex:{t}")),
-                        start: n(r, "started").max(n(r, "date")),
-                        seconds: n(r, "play_duration").max(0) as u64,
-                        transcode: Some(s(r, "transcode_decision") == "transcode"),
-                    }
-                })
-                .collect(),
-        )
+        Some(rows.iter().map(|r| tautulli_play(&server.id, r)).collect())
     }
 
     /// Plays from the activity log, and since when the log goes back.
@@ -1169,8 +1168,10 @@ impl State {
                 ("apikey", key),
                 ("cmd", "pms_image_proxy"),
                 ("img", path),
-                ("width", "300"),
-                ("height", "450"),
+                ("width", "200"),
+                ("height", "300"),
+                // JPEG: a tenth of Tautulli's default PNG.
+                ("img_format", "jpg"),
                 ("fallback", "poster"),
             ])
         } else if let Some(rest) = img.strip_prefix("jf:") {
@@ -1182,7 +1183,7 @@ impl State {
                 return None;
             }
             let path = match what {
-                "item" => format!("/Items/{id}/Images/Primary?fillHeight=450&quality=85"),
+                "item" => format!("/Items/{id}/Images/Primary?fillHeight=300&quality=80"),
                 "user" => format!("/Users/{id}/Images/Primary?fillHeight=96&quality=85"),
                 _ => return None,
             };
