@@ -544,3 +544,6 @@ code.wrap { overflow-wrap: anywhere; font-size: .85rem; background: var(--surfac
   .player-top > :nth-child(n+4) { order: 2; }
   .player-top select.chip { max-width: 9em; height: 34px; padding: 6px 26px 6px 12px; font-size: .85rem; }
 }
+/* The person's avatar in the top bar (one profile on this device). */
+.me-link { display: inline-flex; border-radius: 50%; }
+.me-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

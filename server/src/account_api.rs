@@ -289,12 +289,14 @@ pub async fn register(
         }
         _ => {}
     }
-    s.limits.account_signups.hit(&ip);
+    // Only failures count towards the limit (probing for usernames, or for invitations): a
+    // family joining one evening on the same home connection must not be stopped at five.
     if s.db
         .account_by_username(&username)
         .map_err(internal)?
         .is_some()
     {
+        s.limits.account_signups.hit(&ip);
         return Err(account_err(AccountError::UsernameTaken));
     }
     // From here on it runs to its end even if the client goes away: a Jellyfin login made
@@ -308,7 +310,11 @@ pub async fn register(
         email,
         r.device,
     ));
-    task.await.map_err(internal)?
+    let made = task.await.map_err(internal)?;
+    if made.is_err() {
+        s.limits.account_signups.hit(&ip);
+    }
+    made
 }
 
 async fn make_account(

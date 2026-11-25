@@ -7860,6 +7860,10 @@ msgid "In watch together rooms and invitations. You can change it later in Setti
 msgstr "Dans les salons Regarder ensemble et les invitations. Vous pourrez le modifier plus tard dans les Paramètres."
 
 #: web/src/profiles.rs
+msgid "Your account"
+msgstr "Votre compte"
+
+#: web/src/profiles.rs
 #: desktop/ui/app.slint
 msgid "Manage profiles"
 msgstr "Gérer les profils"

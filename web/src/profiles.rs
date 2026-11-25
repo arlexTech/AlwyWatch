@@ -203,6 +203,23 @@ pub fn switch_to(id: &str, path: &str) {
 #[component]
 pub fn ProfileMenu() -> impl IntoView {
     let all = list();
+    // One profile (most people): the person's own avatar, to their account settings; a menu
+    // only once there are profiles to switch between (a lone "Main" initial meant nothing).
+    if all.len() < 2 {
+        let me = crate::state::ctx().me;
+        return view! {
+            {move || me.get().map(|m| {
+                let title = m.name.clone();
+                view! {
+                    <leptos_router::components::A href="/settings/account" attr:class="me-link"
+                        attr:aria-label=tr!("Your account") attr:title=title>
+                        <crate::profile::Avatar user_key=m.user_key name=m.name avatar=m.avatar size=36 />
+                    </leptos_router::components::A>
+                }
+            })}
+        }
+        .into_any();
+    }
     let me = current();
     let name = all
         .iter()
@@ -224,6 +241,7 @@ pub fn ProfileMenu() -> impl IntoView {
             </div>
         </details>
     }
+    .into_any()
 }
 
 fn initial(name: &str) -> String {

@@ -4060,6 +4060,51 @@ async fn an_invitation_makes_the_jellyfin_login_too() {
 }
 
 #[tokio::test]
+async fn a_family_can_all_sign_up_but_failures_are_limited() {
+    let e = env().await;
+    let (st, inv) = e
+        .call(
+            "POST",
+            "/v1/account/invites",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"uses": 20})),
+        )
+        .await;
+    assert_eq!(st, StatusCode::OK, "{inv}");
+    let code = inv["code"].as_str().unwrap().to_owned();
+    let register = |name: String| {
+        let (e, code) = (&e, code.clone());
+        async move {
+            e.anon(
+                "POST",
+                "/v1/account/register",
+                None,
+                Some(json!({"username": name, "password": "password1", "invite": code})),
+            )
+            .await
+            .0
+        }
+    };
+    // Six people from one home connection: none is stopped.
+    for i in 0..6 {
+        assert_eq!(
+            register(format!("family{i}")).await,
+            StatusCode::OK,
+            "sign-up {i}"
+        );
+    }
+    // Failures (a taken username) count: the sixth attempt is refused, even a good one.
+    for _ in 0..5 {
+        assert_eq!(register("family0".into()).await, StatusCode::CONFLICT);
+    }
+    assert_eq!(
+        register("family9".into()).await,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+}
+
+#[tokio::test]
 async fn only_admins_see_the_server_settings_and_secrets_stay_hidden() {
     let e = env().await;
     *e.state.stored.lock().await = crate::settings::Stored {
