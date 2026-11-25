@@ -103,7 +103,7 @@ impl App {
     }
 
     /// Progress reports that failed (offline) wait in the cache: retried every minute, as the
-    /// phone does when its network comes back.
+    /// phone does when its network comes back. Downloads' housekeeping every 15 minutes.
     pub(crate) fn start_progress_flush(self: &Rc<Self>) {
         let w = Rc::downgrade(self);
         self.progress_timer.start(
@@ -112,8 +112,19 @@ impl App {
             move || {
                 let Some(a) = w.upgrade() else { return };
                 let core = a.core.clone();
+                // Every 15 minutes, the downloads' housekeeping too: rules that are due, and
+                // shows set to keep their next episodes downloaded.
+                let tick = a.progress_ticks.get();
+                a.progress_ticks.set(tick.wrapping_add(1));
+                let w = Rc::downgrade(&a);
                 slint::spawn_local(async move {
                     let _ = core.flush_pending_progress().await;
+                    if tick % 15 == 0
+                        && core.sync_downloads().await.unwrap_or(0) > 0
+                        && let Some(a) = w.upgrade()
+                    {
+                        a.kick_downloads();
+                    }
                 })
                 .ok();
             },

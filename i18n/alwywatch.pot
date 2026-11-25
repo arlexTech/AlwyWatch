@@ -5999,6 +5999,22 @@ msgid "System language"
 msgstr ""
 
 #: desktop/src/app.rs
+msgid "Download {season}"
+msgstr ""
+
+#: desktop/src/app.rs
+msgid "Download the whole show"
+msgstr ""
+
+#: desktop/src/app.rs
+msgid "Stop keeping the next {n} episodes"
+msgstr ""
+
+#: desktop/src/app.rs
+msgid "Keep the next 3 episodes downloaded"
+msgstr ""
+
+#: desktop/src/app.rs
 msgid "Mark all episodes of {title} unwatched? This forgets where you stopped."
 msgstr ""
 

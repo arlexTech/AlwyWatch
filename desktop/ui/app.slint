@@ -1833,6 +1833,8 @@ export component AppWindow inherits Window {
     /// A card's actions (right click, long press, Menu key): opened for an id and its row.
     callback card-menu-open(string, string);
     callback card-menu-pick(string);
+    /// A show's Download: the season shown, the whole show, or the next episodes kept.
+    callback series-download-menu();
     in-out property <CardMenu> card-menu;
     callback prefetch(string);
     callback open-library(string, string);
@@ -2432,6 +2434,11 @@ export component AppWindow inherits Window {
                                             icon: @image-url("icons/download.svg");
                                             tip: @tr("Download");
                                             clicked => { root.download(root.detail.id); }
+                                        }
+                                        if root.detail.is-series : IconButton {
+                                            icon: @image-url("icons/download.svg");
+                                            tip: @tr("Download");
+                                            clicked => { root.series-download-menu(); }
                                         }
                                         IconButton {
                                             icon: @image-url("icons/check.svg");
@@ -4658,6 +4665,8 @@ export component AppWindow inherits Window {
                             : a.id == "start" ? @image-url("icons/play_arrow_fill1.svg")
                             : a.id == "show" || a.id == "season" ? @image-url("icons/tv_gen.svg")
                             : a.id == "list_add" ? @image-url("icons/bookmark.svg")
+                            : a.id == "dl_season" || a.id == "dl_show" || a.id == "dl_auto" ? @image-url("icons/download.svg")
+                            : a.id == "dl_auto_off" ? @image-url("icons/close.svg")
                             : a.id == "list_remove" ? @image-url("icons/bookmark_fill1.svg")
                             : a.id == "unwatched" || a.id == "all_unwatched" ? @image-url("icons/schedule.svg")
                             : @image-url("icons/check.svg");

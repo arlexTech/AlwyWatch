@@ -201,6 +201,7 @@ pub struct App {
     history_timer: slint::Timer,
     /// Sends progress saved while offline (downloads watched on the train) once back online.
     progress_timer: slint::Timer,
+    progress_ticks: std::cell::Cell<u32>,
     core: Arc<AlwyWatch>,
     ui: Weak<AppWindow>,
     tokens: Tokens,
@@ -302,6 +303,7 @@ impl App {
             runner_timer: slint::Timer::default(),
             history_timer: slint::Timer::default(),
             progress_timer: slint::Timer::default(),
+            progress_ticks: std::cell::Cell::new(0),
             core,
             ui: ui.as_weak(),
             tokens,
@@ -448,7 +450,7 @@ impl App {
         );
     }
 
-    fn kick_downloads(&self) {
+    pub(super) fn kick_downloads(&self) {
         let core = self.core.clone();
         self.core.runtime().spawn(async move {
             let _ = core.run_downloads().await;
@@ -4303,6 +4305,48 @@ impl App {
         });
     }
 
+    /// A show's Download choices, in the card menu's sheet.
+    fn series_download_menu(self: &Rc<Self>) {
+        let ui = self.ui();
+        let d = ui.get_detail();
+        let series = d.id.to_string();
+        let account = self.account_of(&series).unwrap_or_default();
+        let season = {
+            use slint::Model;
+            ui.get_seasons().iter().find(|s| s.selected)
+        };
+        let mut actions: Vec<(&str, String)> = Vec::new();
+        if let Some(s) = &season {
+            actions.push((
+                "dl_season",
+                tr!("Download {season}", season = s.title.to_string()),
+            ));
+        }
+        actions.push(("dl_show", tr!("Download the whole show")));
+        match self.core.auto_download_of(account, series.clone()) {
+            Some(a) if a.count > 0 => actions.push((
+                "dl_auto_off",
+                tr!("Stop keeping the next {n} episodes", n = a.count),
+            )),
+            _ => actions.push(("dl_auto", tr!("Keep the next 3 episodes downloaded"))),
+        }
+        self.state.borrow_mut().card_menu = Some((series, "download".into()));
+        ui.set_card_menu(CardMenu {
+            shown: true,
+            title: d.title.clone(),
+            actions: ModelRc::new(VecModel::from(
+                actions
+                    .into_iter()
+                    .map(|(id, title)| NamedId {
+                        id: sstr(id),
+                        title: sstr(title),
+                        selected: false,
+                    })
+                    .collect::<Vec<_>>(),
+            )),
+        });
+    }
+
     fn card_menu_pick(self: &Rc<Self>, action: String) {
         self.ui().set_card_menu(CardMenu::default());
         let Some((id, _)) = self.state.borrow_mut().card_menu.take() else {
@@ -4326,6 +4370,38 @@ impl App {
                 return self.navigate(Route::Detail(series));
             }
             "" => return,
+            "dl_season" | "dl_show" | "dl_auto" | "dl_auto_off" => {
+                let season = self.state.borrow().season.clone();
+                let (core, this, title) = (self.core.clone(), Rc::downgrade(self), i.title.clone());
+                slint::spawn_local(async move {
+                    let r = match action.as_str() {
+                        "dl_season" => match season {
+                            Some(s) => core.download_season(account, id, s, None).await,
+                            None => Ok(0),
+                        },
+                        "dl_show" => core.download_series(account, id, None).await,
+                        "dl_auto" => {
+                            let rule = core.default_delete_rule();
+                            core.set_auto_download(account, id, title, 3, rule).await
+                        }
+                        _ => {
+                            let rule = core.default_delete_rule();
+                            core.set_auto_download(account, id, title, 0, rule).await
+                        }
+                    };
+                    let Some(t) = this.upgrade() else { return };
+                    match r {
+                        Ok(n) if n > 0 => {
+                            t.kick_downloads();
+                            t.navigate(Route::Downloads);
+                        }
+                        Ok(_) => {}
+                        Err(e) => t.set_error(Some(e)),
+                    }
+                })
+                .ok();
+                return;
+            }
             _ => {}
         }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
@@ -5797,6 +5873,7 @@ impl App {
             .card_menu_open(id.into(), row.into()));
         on!(on_card_menu_pick, |a, action| a
             .card_menu_pick(action.into()));
+        on!(on_series_download_menu, |a| a.series_download_menu());
         on!(on_toggle_played, |a, id| a.toggle_played(id.into()));
         on!(on_mark_many, |a, kind, played| a
             .mark_many(kind.into(), played));
