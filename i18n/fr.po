@@ -4509,11 +4509,13 @@ msgid "Waiting for the first sync"
 msgstr "En attente de la première synchro"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/signin.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "Syncing…"
 msgstr "Synchronisation…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/signin.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "Sync now"
 msgstr "Synchroniser"
@@ -7741,15 +7743,6 @@ msgid "This video can't be played in this browser, even converted by the server.
 msgstr "Cette vidéo ne peut pas être lue dans ce navigateur, même convertie par le serveur."
 
 #: web/src/player.rs
-#: desktop/ui/app.slint
-msgid "Full screen"
-msgstr "Plein écran"
-
-#: web/src/player.rs
-msgid "Full screen (F)"
-msgstr "Plein écran (F)"
-
-#: web/src/player.rs
 msgid "S{season} E{episode} · {title}"
 msgstr "S{season} E{episode} · {title}"
 
@@ -7764,6 +7757,15 @@ msgstr "Converti par le serveur"
 #: web/src/player.rs
 msgid "Subtitles off"
 msgstr "Sans sous-titres"
+
+#: web/src/player.rs
+#: desktop/ui/app.slint
+msgid "Full screen"
+msgstr "Plein écran"
+
+#: web/src/player.rs
+msgid "Full screen (F)"
+msgstr "Plein écran (F)"
 
 #: web/src/player.rs
 #: desktop/ui/app.slint
@@ -8060,6 +8062,10 @@ msgid "Can't load the list of servers. Check your connection and reload the page
 msgstr "Impossible de charger la liste des serveurs. Vérifiez votre connexion et rechargez la page."
 
 #: web/src/signin.rs
+msgid "Jellyfin · from your other devices"
+msgstr "Jellyfin · depuis vos autres appareils"
+
+#: web/src/signin.rs
 msgid "Another Jellyfin server"
 msgstr "Un autre serveur Jellyfin"
 
@@ -8147,6 +8153,22 @@ msgstr "Se déconnecter de {server} ? AlwyWatch utilise cette connexion : Bient�
 msgid "Sign out of {server} in this browser?"
 msgstr "Se déconnecter de {server} dans ce navigateur ?"
 
+#: web/src/signin.rs
+msgid "Already up to date."
+msgstr "Déjà à jour."
+
+#: web/src/signin.rs
+msgid "Synced: {pulled} taken from your other devices, {sent} sent to them."
+msgstr "Synchronisé : {pulled} reçus de vos autres appareils, {sent} envoyés."
+
+#: web/src/signin.rs
+msgid "Sync with your other devices"
+msgstr "Synchroniser avec vos autres appareils"
+
+#: web/src/signin.rs
+msgid "Your playback preferences and the list of your servers follow your AlwyWatch account, as in the apps. Sign-ins don't: sign in on each device. This happens when the page opens and when you change a preference; to do it now:"
+msgstr "Vos préférences de lecture et la liste de vos serveurs suivent votre compte AlwyWatch, comme dans les applis. Pas les connexions : connectez-vous sur chaque appareil. Cela se fait à l'ouverture de la page et quand vous changez une préférence ; pour le faire maintenant :"
+
 #: web/src/state.rs
 msgid "The server refused: your session may have ended. Sign in again in Settings."
 msgstr "Le serveur a refusé : votre session a peut-être expiré. Reconnectez-vous dans les Paramètres."
@@ -8182,6 +8204,10 @@ msgstr "Le serveur AlwyWatch a rencontré un problème. Réessayez dans un insta
 #: web/src/state.rs
 msgid "Too many changes in a short time. Try again in a few minutes."
 msgstr "Trop de modifications en peu de temps. Réessayez dans quelques minutes."
+
+#: web/src/sync.rs
+msgid "Sign in to AlwyWatch first: your settings are kept on your account."
+msgstr "Connectez-vous d'abord à AlwyWatch : vos réglages sont gardés sur votre compte."
 
 #: web/src/together.rs
 msgid "You can invite up to {n} person at a time."
@@ -8355,6 +8381,14 @@ msgstr "Ouvrir le salon"
 #: web/src/ui.rs
 msgid "{series} · S{season} E{episode}"
 msgstr "{series} · S{season} E{episode}"
+
+#: web/src/ui.rs
+msgid "Previous"
+msgstr "Précédent"
+
+#: web/src/ui.rs
+msgid "Next"
+msgstr "Suivant"
 
 #: desktop/ui/app.slint
 msgid "·  ends at {}"

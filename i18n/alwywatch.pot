@@ -4504,11 +4504,13 @@ msgid "Waiting for the first sync"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/signin.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "Syncing…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/signin.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "Sync now"
 msgstr ""
@@ -7736,15 +7738,6 @@ msgid "This video can't be played in this browser, even converted by the server.
 msgstr ""
 
 #: web/src/player.rs
-#: desktop/ui/app.slint
-msgid "Full screen"
-msgstr ""
-
-#: web/src/player.rs
-msgid "Full screen (F)"
-msgstr ""
-
-#: web/src/player.rs
 msgid "S{season} E{episode} · {title}"
 msgstr ""
 
@@ -7758,6 +7751,15 @@ msgstr ""
 
 #: web/src/player.rs
 msgid "Subtitles off"
+msgstr ""
+
+#: web/src/player.rs
+#: desktop/ui/app.slint
+msgid "Full screen"
+msgstr ""
+
+#: web/src/player.rs
+msgid "Full screen (F)"
 msgstr ""
 
 #: web/src/player.rs
@@ -8055,6 +8057,10 @@ msgid "Can't load the list of servers. Check your connection and reload the page
 msgstr ""
 
 #: web/src/signin.rs
+msgid "Jellyfin · from your other devices"
+msgstr ""
+
+#: web/src/signin.rs
 msgid "Another Jellyfin server"
 msgstr ""
 
@@ -8142,6 +8148,22 @@ msgstr ""
 msgid "Sign out of {server} in this browser?"
 msgstr ""
 
+#: web/src/signin.rs
+msgid "Already up to date."
+msgstr ""
+
+#: web/src/signin.rs
+msgid "Synced: {pulled} taken from your other devices, {sent} sent to them."
+msgstr ""
+
+#: web/src/signin.rs
+msgid "Sync with your other devices"
+msgstr ""
+
+#: web/src/signin.rs
+msgid "Your playback preferences and the list of your servers follow your AlwyWatch account, as in the apps. Sign-ins don't: sign in on each device. This happens when the page opens and when you change a preference; to do it now:"
+msgstr ""
+
 #: web/src/state.rs
 msgid "The server refused: your session may have ended. Sign in again in Settings."
 msgstr ""
@@ -8176,6 +8198,10 @@ msgstr ""
 
 #: web/src/state.rs
 msgid "Too many changes in a short time. Try again in a few minutes."
+msgstr ""
+
+#: web/src/sync.rs
+msgid "Sign in to AlwyWatch first: your settings are kept on your account."
 msgstr ""
 
 #: web/src/together.rs
@@ -8349,6 +8375,14 @@ msgstr ""
 
 #: web/src/ui.rs
 msgid "{series} · S{season} E{episode}"
+msgstr ""
+
+#: web/src/ui.rs
+msgid "Previous"
+msgstr ""
+
+#: web/src/ui.rs
+msgid "Next"
 msgstr ""
 
 #: desktop/ui/app.slint

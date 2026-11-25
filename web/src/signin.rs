@@ -249,6 +249,18 @@ fn SignInWays(to_alwywatch: bool) -> impl IntoView {
                                 </button>
                             }
                         }).collect_view()}
+                        // From the account's synced list (added on another device).
+                        {crate::sync::other_servers().into_iter()
+                            .filter(|o| !all.iter().any(|e| e.url.trim_end_matches('/') == o.url.trim_end_matches('/')))
+                            .map(|o| {
+                                let entry = ServerEntry { id: String::new(), kind: ServerType::Jellyfin, name: o.name.clone(), url: o.url.clone() };
+                                view! {
+                                    <button class="choice" on:click=move |_| picked.set(Some(entry.clone()))>
+                                        <strong>{o.name.clone()}</strong>
+                                        <span class="muted">{tr!("Jellyfin · from your other devices")}</span>
+                                    </button>
+                                }
+                            }).collect_view()}
                         <button class="choice" on:click=move |_| picked.set(Some(ServerEntry {
                             id: String::new(), kind: ServerType::Jellyfin, name: tr!("Another Jellyfin server"), url: String::new(),
                         }))>
@@ -705,6 +717,47 @@ fn ServersSection() -> impl IntoView {
                 }).collect_view()
             }}
             <leptos_router::components::A href="/signin" attr:class="button">{tr!("Add a server")}</leptos_router::components::A>
+        </section>
+        <SyncSection />
+    }
+}
+
+/// Settings → Servers: what follows you across devices, and a button to bring it now.
+#[component]
+fn SyncSection() -> impl IntoView {
+    let busy = RwSignal::new(false);
+    let result = RwSignal::new(None::<Result<String, String>>);
+    let run = move |_| {
+        busy.set(true);
+        result.set(None);
+        leptos::task::spawn_local(async move {
+            let r = crate::sync::sync()
+                .await
+                .map(|o| match (o.pulled, o.pushed) {
+                    (0, 0) => tr!("Already up to date."),
+                    (p, s) => tr!(
+                        "Synced: {pulled} taken from your other devices, {sent} sent to them.",
+                        pulled = p,
+                        sent = s
+                    ),
+                });
+            busy.try_set(false);
+            result.try_set(Some(r));
+        });
+    };
+    view! {
+        <section class="group">
+            <h2>{tr!("Sync with your other devices")}</h2>
+            <p class="muted small">{tr!("Your playback preferences and the list of your servers follow your AlwyWatch account, as in the apps. Sign-ins don't: sign in on each device. This happens when the page opens and when you change a preference; to do it now:")}</p>
+            <div class="actions">
+                <button on:click=run disabled=move || busy.get()>
+                    {move || if busy.get() { tr!("Syncing…") } else { tr!("Sync now") }}
+                </button>
+                {move || result.get().map(|r| match r {
+                    Ok(m) => view! { <span class="muted small" role="status">{m}</span> }.into_any(),
+                    Err(e) => view! { <ErrorText text=e /> }.into_any(),
+                })}
+            </div>
         </section>
     }
 }

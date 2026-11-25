@@ -20,6 +20,7 @@ mod request;
 mod setup;
 mod signin;
 mod state;
+mod sync;
 mod together;
 mod ui;
 
@@ -85,6 +86,9 @@ fn App() -> impl IntoView {
         leptos::task::spawn_local(async move {
             account::check(c.clone()).await;
             signin::check_keep(c).await;
+            // Settings and servers from the other devices (quietly: Settings → Servers says
+            // what happened when asked).
+            let _ = sync::sync().await;
             // "Are these both you?" once for two accounts of one person.
             links::refresh(true).await;
         });

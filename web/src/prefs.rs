@@ -44,8 +44,16 @@ pub fn load() -> PlayerPrefs {
     state::load(KEY).unwrap_or_default()
 }
 
+/// Values taken from the other devices (not shared back as changes made here).
+pub fn save_quietly(p: &PlayerPrefs) {
+    state::save(KEY, p);
+}
+
 pub fn save(p: &PlayerPrefs) {
-    state::save(KEY, p)
+    let before = load();
+    state::save(KEY, p);
+    // Shared with the other devices (a moment later).
+    crate::sync::changed(&before, p);
 }
 
 /// The languages offered, as on the apps: ISO 639-2/T, 639-1, 639-2/B (names: `language_label`).

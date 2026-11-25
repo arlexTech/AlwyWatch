@@ -169,12 +169,9 @@ button:disabled { opacity: .5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .seek-bubble svg { animation: none; } }
 .player-top { position: absolute; top: 0; left: 0; right: 0; display: flex; gap: 16px; align-items: center;
   padding: 18px 24px 40px; background: linear-gradient(#000c, transparent); transition: opacity .3s; }
-.player:not(:hover) .player-top { opacity: 0; }
-/* Touch screens have no hover to bring it back (tablets: wider than the phone layout). */
-@media (hover: none) { .player:not(:hover) .player-top { opacity: 1; } }
 .player .icon { width: 44px; height: 44px; justify-content: center; padding: 0; font-size: 1.3rem; }
 .ptitle { font-weight: 600; font-size: 1.1rem; }
-.pill { margin-left: auto; background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: .8rem; color: var(--muted); }
+.pill { background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: .8rem; color: var(--muted); }
 .skip { position: absolute; right: 32px; bottom: 90px; background: var(--text); color: #000; font-weight: 600;
   padding: 12px 24px; box-shadow: 0 6px 24px #0008; }
 .skip:hover { background: #fff; }
@@ -187,8 +184,6 @@ select.chip option { background: #1a1a1f; color: var(--text); }
 .person-card img { width: 100%; height: 100%; object-fit: cover; }
 .person-card .title, .person-card .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .9rem; }
 .person-card .sub { color: var(--muted); font-size: .8rem; }
-.player-top .subs { margin-left: auto; }
-.player-top .pill + .subs, .player-top .subs + .subs { margin-left: 0; }
 video::cue { background: #000a; }
 
 /* Seerr state badge, on title pages and on posters. */
@@ -249,7 +244,6 @@ label.row.toggle input { width: 20px; height: 20px; accent-color: var(--accent);
 .player-msg { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px;
   padding: 24px; text-align: center; background: #000c; }
 .player-msg p { max-width: 50ch; }
-.player:focus-within .player-top { opacity: 1; }
 
 /* Long titles wrap instead of pushing the page sideways. */
 h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
@@ -267,7 +261,6 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
   .triage-card { width: 100%; max-width: 260px; margin: 0 auto; }
   .triage-info { min-width: 0; }
   .player-top { padding: 10px 12px 30px; gap: 8px; flex-wrap: wrap; }
-  .player:not(:hover) .player-top { opacity: 1; }
   .pill.together { max-width: 60vw; }
   .skip, .skip-row { right: 12px; bottom: 70px; }
   .toast { left: 12px; right: 12px; bottom: 120px; }
@@ -278,10 +271,18 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
   .chip { flex: none; }
 }
 /* Rows scroll sideways: a slim, quiet scrollbar instead of the system's. */
-.rail-row { scrollbar-width: thin; scrollbar-color: #ffffff2e transparent; }
-.rail-row::-webkit-scrollbar { height: 6px; }
-.rail-row::-webkit-scrollbar-thumb { background: #ffffff2e; border-radius: 3px; }
-.rail-row::-webkit-scrollbar-track, .rail-row::-webkit-scrollbar-button { background: transparent; display: none; }
+/* Rows scroll sideways without a bar: arrows on their sides (mouse), a swipe (touch). */
+.rail-row { scrollbar-width: none; scroll-behavior: smooth; }
+.rail-row::-webkit-scrollbar { display: none; }
+.rail-wrap { position: relative; }
+.rail-arrow { position: absolute; top: 0; bottom: 8px; z-index: 2; width: 48px; padding: 0; border-radius: 0;
+  display: grid; place-items: center; font-size: 2.4rem; line-height: 1; color: #fff; opacity: 0;
+  pointer-events: none; transition: opacity .2s; }
+.rail-arrow.prev { left: -40px; background: linear-gradient(to right, var(--bg) 30%, transparent); }
+.rail-arrow.next { right: -40px; background: linear-gradient(to left, var(--bg) 30%, transparent); }
+.rail-arrow:hover { background-color: transparent; color: var(--accent); }
+.rail-wrap:hover .rail-arrow.shown { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .rail-arrow { display: none; } }
 
 /* People: avatars, rows, the room. */
 .avatar { display: inline-block; flex: none; border-radius: 50%; overflow: hidden; vertical-align: middle; object-fit: cover; }
@@ -510,3 +511,31 @@ code.wrap { overflow-wrap: anywhere; font-size: .85rem; background: var(--surfac
 /* Leaving soon rows: the poster and the title open the title's page. */
 .leaving-row > a { flex: none; line-height: 0; }
 .leaving-info a.leaving-title:hover strong, .leaving-info a.leaving-title:focus-visible strong { text-decoration: underline; }
+
+/* The player's bar: back and the title on the left, its controls on the right, in dark glass
+   over a soft shade; it fades after a few still seconds while playing. */
+.player-top { padding: 20px 28px 56px; gap: 10px; background: linear-gradient(#000000d9, #00000080 55%, transparent); }
+.player.idle .player-top { opacity: 0; pointer-events: none; }
+.player.idle { cursor: none; }
+.pspacer { flex: 1; }
+.ptitles { min-width: 0; margin-left: 4px; }
+.ptitle { font-size: 1.3rem; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.psub { color: #ffffffb3; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pbtn { width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: #ffffff1f; backdrop-filter: blur(10px); color: #fff; }
+.pbtn:hover { background: #ffffff38; }
+.pbtn .icon { width: 24px; height: 24px; }
+.player-top .pill, .player-top select.chip, .player-top button.small { background-color: #ffffff1f; backdrop-filter: blur(10px);
+  color: #fff; border: 0; border-radius: 999px; font-size: .9rem; padding: 8px 14px; height: 38px; }
+.player-top select.chip { padding-right: 30px; max-width: 14em; text-overflow: ellipsis; }
+.player-top select.chip:hover, .player-top button.small:hover { background-color: #ffffff38; }
+.player-top .pill { color: #ffffffcc; display: inline-flex; align-items: center; }
+.player-top select.quality { border: 0; }
+@media (max-width: 720px) {
+  .player-top { padding: 10px 10px 36px; gap: 6px; }
+  .ptitle { font-size: 1.05rem; }
+  .psub { font-size: .85rem; }
+  .pspacer { flex-basis: 100%; order: 1; height: 0; }
+  .player-top > :nth-child(n+4) { order: 2; }
+  .player-top select.chip { max-width: 9em; height: 34px; padding: 6px 26px 6px 12px; font-size: .85rem; }
+}

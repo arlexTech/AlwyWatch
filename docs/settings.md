@@ -123,7 +123,8 @@ AlwyWatch") opens on three cards:
    On the web too: "No AlwyWatch account: your logins and settings stay in this browser" (the
    profile is never linked to the AlwyWatch server by itself; "Connect to AlwyWatch" does it).
 
-The web doesn't sync settings, so its first card reads "Your name and picture, Leaving soon and
+The web syncs fewer settings than the apps (playback preferences and the server list, through
+the AlwyWatch account only), so its first card reads "Your name and picture, Leaving soon and
 watch together".
 
 Then:

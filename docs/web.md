@@ -91,11 +91,17 @@ Image subtitles (PGS, DVD, DVB) are not shown.
   to sign out on shared computers.
 * **Tokens go in media URLs** (`api_key=` for Jellyfin, `X-Plex-Token=` for Plex), because
   `<img>` and `<video>` cannot send headers. They can end up in browser history and server logs.
-* **No audio track choice**: the browser plays the file's default audio track (or the
-  conversion's). Progress reports carry no audio or subtitle index.
+* **Another audio track, or image subtitles (PGS, VobSub), means the server converts**:
+  browsers can't switch the tracks of a file they play themselves, nor draw image subtitles.
+* **A file the browser accepts but can't really play** (black picture, no sound, never
+  starts) is noticed a few seconds in and handed to the server's conversion.
 * **Only the first media source** is played; there is no version picker.
-* **Not synced**: player preferences stay in the browser (no `/v1/me/settings`, no Jellyfin
-  `DisplayPreferences`); per-title track choices are not shared with the apps.
+* **Synced through the AlwyWatch account only** (`web/src/sync.rs`, same keys and rules as
+  the apps): playback preferences (skip intros, next episode, countdown, subtitle mode and
+  language, watch together rights) and the server list (`account.servers`, offered under "Add
+  a server"), when the page opens, a moment after a change, and with Settings → Servers → Sync
+  now. Not through Jellyfin `DisplayPreferences`; per-title track choices and the screen's
+  own settings are not shared.
 * **Not available on the web**: downloads, watch history copy and two-server sync, device
   transfer, device profiles, trailers, theme music, Seerr sagas, Seerr without the bridge.
 * No HDR handling, no passthrough, no offline mode.
