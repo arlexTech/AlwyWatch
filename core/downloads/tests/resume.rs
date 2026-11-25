@@ -493,7 +493,7 @@ async fn pause_stops_at_next_chunk_and_resume_continues() {
     struct Slow(FileSink);
     impl Sink for Slow {
         fn write_all(&mut self, b: &[u8]) -> io::Result<()> {
-            std::thread::sleep(Duration::from_millis(2));
+            std::thread::sleep(Duration::from_millis(10));
             self.0.write_all(b)
         }
         fn sync(&mut self) -> io::Result<()> {
