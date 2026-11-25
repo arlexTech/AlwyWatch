@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     @Published var accounts: [Account] = []
     /// Watch-state sync and the history copy (Settings).
     let sync: SyncJobs
+    let downloads: DownloadRunner
     /// What the AlwyWatch server offers (Leaving soon, requests): which tabs show.
     @Published var services: Services
 
@@ -21,9 +22,14 @@ final class AppModel: ObservableObject {
         I18n.apply()
         core = try! AlwyWatch(config: AppModel.config())
         sync = SyncJobs(core: core)
+        downloads = DownloadRunner(core: core)
         services = core.keepServices()
         Self.activate(core)
         reload()
+        // A playback closed: watched downloads may go, "next episodes" may come.
+        NotificationCenter.default.addObserver(forName: .playbackEnded, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.downloads.sync() }
+        }
         Task.detached { [core] in
             _ = try? await core.flushPendingProgress()
             _ = try? await core.syncSettings()
@@ -40,6 +46,8 @@ final class AppModel: ObservableObject {
         }
         sync.syncIfDue()
         sync.schedule()
+        // Rules due, "next episodes" topped up, and the queue resumed where it stopped.
+        downloads.sync()
         Task {
             if core.keepActive(), let s = try? await core.refreshKeepServices() { services = s }
         }
@@ -158,6 +166,11 @@ final class AppModel: ObservableObject {
         let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let downloads = support.appendingPathComponent("downloads")
         for d in [support, caches, downloads] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
+        // Downloads can be fetched again: not in the phone's backups.
+        var noBackup = URLResourceValues()
+        noBackup.isExcludedFromBackup = true
+        var dir = downloads
+        try? dir.setResourceValues(noBackup)
         let defaults = UserDefaults.standard
         let id = defaults.string(forKey: "device.id") ?? {
             let new = UUID().uuidString

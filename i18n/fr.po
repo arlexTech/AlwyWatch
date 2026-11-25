@@ -309,6 +309,7 @@ msgstr "Continuer"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Stop"
 msgstr "Arrêter"
 
@@ -658,6 +659,7 @@ msgstr "Retour"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Rows.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Delete"
 msgstr "Supprimer"
 
@@ -2080,15 +2082,18 @@ msgstr[0] "Gardé jusqu'à ce que {n} personne l'ait vu"
 msgstr[1] "Gardé jusqu'à ce que {n} personnes l'aient vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: ios/AlwyWatch/DetailView.swift
 msgid "Season {season}"
 msgstr "Saison {season}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: ios/AlwyWatch/DetailView.swift
 msgid "Season"
 msgstr "Saison"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Open the show"
 msgstr "Ouvrir la série"
 
@@ -2234,6 +2239,7 @@ msgstr "Téléchargé · {progress}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Paused · {progress}"
 msgstr "En pause · {progress}"
 
@@ -2243,38 +2249,46 @@ msgstr "En attente du réseau"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Download failed"
 msgstr "Échec du téléchargement"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Downloading {progress}"
 msgstr "Téléchargement {progress}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: ios/AlwyWatch/DetailView.swift
 msgid "Downloading {count}"
 msgstr "{count} en cours de téléchargement"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/DetailView.swift
 msgid "{count} downloaded"
 msgstr "{count} téléchargés"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Remove the download?"
 msgstr "Supprimer le téléchargement ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Cancel the download?"
 msgstr "Annuler le téléchargement ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "{title} ({size}) will be deleted from this device."
 msgstr "{title} ({size}) sera supprimé de cet appareil."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Keep"
 msgstr "Garder"
 
@@ -2408,104 +2422,124 @@ msgid "Saga · {name}"
 msgstr "Saga · {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "{n} day after watching"
 msgid_plural "{n} days after watching"
 msgstr[0] "{n} jour après visionnage"
 msgstr[1] "{n} jours après visionnage"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "After {n} day"
 msgid_plural "After {n} days"
 msgstr[0] "Après {n} jour"
 msgstr[1] "Après {n} jours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "deletes {n} day after watching"
 msgid_plural "deletes {n} days after watching"
 msgstr[0] "supprimé {n} jour après visionnage"
 msgstr[1] "supprimé {n} jours après visionnage"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "deletes after {n} day"
 msgid_plural "deletes after {n} days"
 msgstr[0] "supprimé après {n} jour"
 msgstr[1] "supprimé après {n} jours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Deletes them {n} day after watching"
 msgid_plural "Deletes them {n} days after watching"
 msgstr[0] "Les supprime {n} jour après visionnage"
 msgstr[1] "Les supprime {n} jours après visionnage"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Deletes them after {n} day"
 msgid_plural "Deletes them after {n} days"
 msgstr[0] "Les supprime après {n} jour"
 msgstr[1] "Les supprime après {n} jours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "{n} episode"
 msgid_plural "{n} episodes"
 msgstr[0] "{n} épisode"
 msgstr[1] "{n} épisodes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Keeps the next {n} episode"
 msgid_plural "Keeps the next {n} episodes"
 msgstr[0] "Garde le prochain épisode"
 msgstr[1] "Garde les {n} prochains épisodes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Cancel {n} download in progress?"
 msgid_plural "Cancel {n} downloads in progress?"
 msgstr[0] "Annuler le téléchargement en cours ?"
 msgstr[1] "Annuler les {n} téléchargements en cours ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Remove all {n} download"
 msgid_plural "Remove all {n} downloads"
 msgstr[0] "Supprimer le téléchargement"
 msgstr[1] "Supprimer les {n} téléchargements"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Remove all {n} download of {title}?"
 msgid_plural "Remove all {n} downloads of {title}?"
 msgstr[0] "Supprimer le téléchargement de {title} ?"
 msgstr[1] "Supprimer les {n} téléchargements de {title} ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Once watched"
 msgstr "Une fois vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "deletes once watched"
 msgstr "supprimé une fois vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Deletes them once watched"
 msgstr "Les supprime une fois vus"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Queued · {progress}"
 msgstr "En file d'attente · {progress}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Paused: storage full. Free some space, then resume."
 msgstr "En pause : stockage plein. Libérez de l'espace, puis reprenez."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Waiting for the network · {progress}"
 msgstr "En attente du réseau · {progress}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Failed: {reason}"
 msgstr "Échec : {reason}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "unknown error"
 msgstr "erreur inconnue"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "watched"
 msgstr "vu"
 
@@ -2518,30 +2552,37 @@ msgid "Starting download"
 msgstr "Démarrage du téléchargement"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Downloaded, {progress}"
 msgstr "Téléchargé, {progress}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Downloading, {progress}"
 msgstr "Téléchargement, {progress}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Downloaded · {size}"
 msgstr "Téléchargé · {size}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Paused: storage full"
 msgstr "En pause : stockage plein"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Downloading {progress} · {done} / {total}"
 msgstr "Téléchargement {progress} · {done} / {total}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Nothing downloaded yet"
 msgstr "Aucun téléchargement pour l'instant"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Download a movie, an episode, a season or a whole show from its page."
 msgstr "Téléchargez un film, un épisode, une saison ou une série entière depuis sa page."
 
@@ -2552,6 +2593,7 @@ msgid "Downloading"
 msgstr "En cours de téléchargement"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Shows"
 msgstr "Séries"
 
@@ -2562,27 +2604,33 @@ msgid "Manage downloads"
 msgstr "Gérer les téléchargements"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Offline"
 msgstr "Hors ligne"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Another profile's download"
 msgstr "Téléchargement d'un autre profil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Downloads.swift
 msgid "Resume"
 msgstr "Reprendre"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Delete the download?"
 msgstr "Supprimer le téléchargement ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "{title} ({progress}) will be removed from this device."
 msgstr "{title} ({progress}) sera supprimé de cet appareil."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Cancel download"
 msgstr "Annuler le téléchargement"
 
@@ -2593,26 +2641,32 @@ msgid "Season {number}"
 msgstr "Saison {number}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "E{number} · {title}"
 msgstr "E{number} · {title}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "This episode"
 msgstr "Cet épisode"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Whole show"
 msgstr "Toute la série"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Next episodes"
 msgstr "Épisodes suivants"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Keeps your next unwatched episodes on this device and replaces them as you watch."
 msgstr "Garde vos prochains épisodes non vus sur cet appareil et les remplace au fil de vos visionnages."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Delete them"
 msgstr "Les supprimer"
 
@@ -2621,38 +2675,47 @@ msgid "Adding…"
 msgstr "Ajout…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "{size} GB will be freed on this device."
 msgstr "{size} Go seront libérés sur cet appareil."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Remove this episode"
 msgstr "Supprimer cet épisode"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Cancel this episode"
 msgstr "Annuler cet épisode"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Remove this episode's download?"
 msgstr "Supprimer le téléchargement de cet épisode ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Cancel this episode's download?"
 msgstr "Annuler le téléchargement de cet épisode ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Cancel {count} downloading"
 msgstr "Annuler {count} en cours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Stop keeping next"
 msgstr "Ne plus garder les suivants"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsScreen.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "{size} GB on this device"
 msgstr "{size} Go sur cet appareil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsScreen.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Nothing downloaded."
 msgstr "Aucun téléchargement."
 
@@ -2842,10 +2905,12 @@ msgid "Recently added in {library}"
 msgstr "Ajouts récents dans {library}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Downloading {count} · {percent}% · manage"
 msgstr "{count} en téléchargement · {percent} % · gérer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Downloading {count} · manage"
 msgstr "{count} en téléchargement · gérer"
 
@@ -2859,6 +2924,7 @@ msgid "Nothing here yet."
 msgstr "Rien ici pour l'instant."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
+#: ios/AlwyWatch/HomeView.swift
 msgid "Leave downloads"
 msgstr "Quitter les téléchargements"
 
@@ -4115,6 +4181,7 @@ msgid "quitting"
 msgstr "confirmation avant de quitter"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "When to delete, manage downloads"
 msgstr "Quand supprimer, gérer les téléchargements"
 
@@ -4542,14 +4609,17 @@ msgid "Back on the home asks first."
 msgstr "Retour depuis l'accueil demande confirmation."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "Delete downloads"
 msgstr "Supprimer les téléchargements"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "For new downloads; a show's \"next episodes\" keeps its own choice."
 msgstr "Pour les nouveaux téléchargements ; les « épisodes suivants » d'une série gardent leur propre choix."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Downloads.swift
 msgid "When to delete"
 msgstr "Quand supprimer"
 

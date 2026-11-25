@@ -46,6 +46,8 @@ enum Route: Hashable {
     case seerrTitle(type: String, tmdbId: Int64)
     case seerrSaga(id: Int64, name: String)
     case settingsSection(String)
+    case manageDownloads
+    case downloadedShow(id: String, title: String)
 }
 
 struct RootView: View {
@@ -107,6 +109,8 @@ extension View {
             case let .seerrTitle(type, tmdbId): SeerrTitleView(movie: type == "movie", tmdbId: tmdbId)
             case let .seerrSaga(id, name): SeerrSagaView(id: id, name: name)
             case let .settingsSection(id): SettingsSectionView(section: SettingsSection(rawValue: id) ?? .device)
+            case .manageDownloads: ManageDownloadsView()
+            case let .downloadedShow(id, title): DownloadedShowView(seriesId: id, title: title)
             }
         }
     }

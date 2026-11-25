@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The pages of Settings, in the same order on every app (Android's Section).
 enum SettingsSection: String, CaseIterable, Hashable {
-    case account, servers, requests, playback, audio, device, admin
+    case account, servers, requests, playback, audio, downloads, device, admin
 
     var label: String {
         switch self {
@@ -12,6 +12,7 @@ enum SettingsSection: String, CaseIterable, Hashable {
         case .requests: return tr("Requests")
         case .playback: return tr("Playback")
         case .audio: return tr("Audio & subtitles")
+        case .downloads: return tr("Downloads")
         case .device: return tr("This device")
         case .admin: return tr("Admin")
         }
@@ -24,6 +25,7 @@ enum SettingsSection: String, CaseIterable, Hashable {
         case .requests: return "plus"
         case .playback: return "play"
         case .audio: return "captions.bubble"
+        case .downloads: return "arrow.down.circle"
         case .device: return "iphone"
         case .admin: return "gearshape"
         }
@@ -122,6 +124,8 @@ struct SettingsScreen: View {
             }
             return [languageName(settings.audioLanguage) ?? tr("Original audio"), mode, sizeName(settings.subtitleSize).lowercased()]
                 .joined(separator: " · ")
+        case .downloads:
+            return tr("When to delete, manage downloads")
         case .device:
             let lang = i18nLanguages().first { $0.code == I18n.language }?.name
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
@@ -161,6 +165,7 @@ struct SettingsSectionView: View {
             case .requests: RequestsSettings()
             case .playback: PlaybackSettings(settings: PlayerSettings(core: model.core))
             case .audio: AudioSettings(settings: PlayerSettings(core: model.core))
+            case .downloads: DownloadSettings()
             case .device: DeviceSettings()
             case .admin: AdminSettings()
             }

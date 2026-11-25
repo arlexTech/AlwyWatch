@@ -96,6 +96,7 @@ final class PlayerPresenter: NSObject, AVPlayerViewControllerDelegate {
     }
 
     private func finish() {
+        if playback != nil { NotificationCenter.default.post(name: .playbackEnded, object: nil) }
         playback?.stop()
         playback = nil
         vc = nil
@@ -236,12 +237,31 @@ final class Playback: ObservableObject {
         await open(item, at: at)
     }
 
-    private func open(_ item: Item, at startMs: UInt64, forceConversion: Bool = false) async {
+    private func open(_ item: Item, at startMs: UInt64, forceConversion: Bool = false, local: Bool = true) async {
         guard let core else { return }
         self.item = item
         self.startMs = startMs
         error = nil
         let profile = DeviceProfiles.ios
+        // Downloaded: the local original file (works offline; progress is queued).
+        if local, !forceConversion, let path = core.downloadedFile(accountId: account, itemId: item.id) {
+            info = nil
+            source = nil
+            transcoding = false
+            let playerItem = AVPlayerItem(url: URL(fileURLWithPath: path))
+            playerItem.externalMetadata = metadata(item)
+            playerItem.textStyleRules = subtitleStyle()
+            resetPrompts()
+            watch(playerItem, startMs: startMs)
+            player.replaceCurrentItem(with: playerItem)
+            if startMs > 0 {
+                _ = await player.seek(to: CMTime(value: CMTimeValue(startMs), timescale: 1000), toleranceBefore: .zero, toleranceAfter: .positiveInfinity)
+            }
+            player.play()
+            report(.start)
+            loadExtras(item)
+            return
+        }
         do {
             let info = try await core.playbackInfo(accountId: account, itemId: item.id, profile: profile)
             guard let src = info.sources.first else { throw CoreError.NotFound(message: tr("Nothing to play.")) }
@@ -268,19 +288,25 @@ final class Playback: ObservableObject {
             }
             player.play()
             report(.start)
-            let id = item.id
-            Task {
-                let found = (try? await core.segments(accountId: account, itemId: id)) ?? []
-                if self.item?.id == id { segments = found }
-            }
-            if item.kind == .episode {
-                Task {
-                    let n = (try? await core.adjacentEpisodes(accountId: account, itemId: id))?.next
-                    if self.item?.id == id { next = n }
-                }
-            }
+            loadExtras(item)
         } catch {
             self.error = message(error)
+        }
+    }
+
+    /// Skip markers and the next episode, once playing.
+    private func loadExtras(_ item: Item) {
+        guard let core else { return }
+        let id = item.id, account = account
+        Task {
+            let found = (try? await core.segments(accountId: account, itemId: id)) ?? []
+            if self.item?.id == id { segments = found }
+        }
+        if item.kind == .episode {
+            Task {
+                let n = (try? await core.adjacentEpisodes(accountId: account, itemId: id))?.next
+                if self.item?.id == id { next = n }
+            }
         }
     }
 
@@ -526,6 +552,12 @@ final class Playback: ObservableObject {
 
     /// The original didn't play here: the server's conversion, from the same point.
     private func failed(_ reason: String?) {
+        if source == nil, let item {
+            // The downloaded file didn't play: the server's copy.
+            let at = positionMs > 0 ? positionMs : startMs
+            Task { await open(item, at: at, local: false) }
+            return
+        }
         guard let item, !transcoding, source?.transcode != nil else {
             error = reason ?? tr("This file can't be played on this device.")
             return
@@ -613,4 +645,9 @@ extension AlwyWatch {
     func getSettingOr(_ key: String, _ fallback: String) -> String {
         ((try? getSetting(key: key)) ?? nil) ?? fallback
     }
+}
+
+extension Notification.Name {
+    /// A playback was closed: watched downloads may go, "next episodes" may come.
+    static let playbackEnded = Notification.Name("alwywatch.playbackEnded")
 }

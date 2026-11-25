@@ -17,6 +17,8 @@ struct DetailView: View {
     @State private var error: String?
     @State private var changed = 0
     @State private var listed = false
+    @State private var downloads: [Download] = []
+    @State private var sheet: DownloadTarget?
 
     var body: some View {
         ScrollView {
@@ -32,6 +34,8 @@ struct DetailView: View {
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: "\(itemId)\(changed)") { await load() }
+        .pollDownloads($downloads)
+        .sheet(item: $sheet) { DownloadSheet(target: $0).environmentObject(model) }
         .onChange(of: player?.id) { _ in
             guard let request = player else { return }
             player = nil
@@ -143,6 +147,7 @@ struct DetailView: View {
                 .accessibilityLabel(listed ? tr("Remove from my list") : tr("Add to my list"))
                 .onAppear { listed = model.core.isWatchlisted(accountId: account, itemId: item.id) }
             }
+            downloadButton(item)
             Button {
                 Task {
                     do {
@@ -157,6 +162,60 @@ struct DetailView: View {
             }
             .buttonStyle(ActionButtonStyle())
             .accessibilityLabel(item.user.played ? tr("Mark unwatched") : tr("Mark watched"))
+        }
+    }
+
+    private func download(_ id: String) -> Download? {
+        downloads.first { $0.accountId == account && $0.itemId == id }
+    }
+
+    /// Movies: download, or cancel/remove. Shows and episodes: the download choices.
+    @ViewBuilder private func downloadButton(_ item: Item) -> some View {
+        switch item.kind {
+        case .movie:
+            let dl = download(item.id)
+            DownloadToggle(runner: model.downloads, account: account, item: item, dl: dl) { pending in
+                DownloadStateIcon(dl: dl, pending: pending, size: 22)
+            }
+            .buttonStyle(ActionButtonStyle())
+            .accessibilityLabel(dl?.summary ?? tr("Download"))
+        case .episode, .series:
+            let mine = item.kind == .episode
+                ? downloads.filter { $0.accountId == account && $0.itemId == item.id }
+                : downloads.filter { $0.accountId == account && $0.episode?.seriesId == item.id }
+            let active = mine.filter { !$0.done }
+            let pending = mine.isEmpty && model.downloads.pending.contains(item.id)
+            Button {
+                openSheet(item)
+            } label: {
+                if pending || (!active.isEmpty && active.allSatisfy { $0.downloaded == 0 }) {
+                    DownloadStateIcon(dl: nil, pending: true, size: 22)
+                } else if !active.isEmpty {
+                    let total = active.reduce(UInt64(0)) { $0 + ($1.total ?? 0) }
+                    let got = active.reduce(UInt64(0)) { $0 + $1.downloaded }
+                    ProgressRing(fraction: total > 0 ? Double(got) / Double(total) : 0, size: 26)
+                } else {
+                    Image(systemName: mine.isEmpty ? "arrow.down.circle" : "arrow.down.circle.fill")
+                        .foregroundStyle(mine.isEmpty ? Palette.onSurface : Palette.accent)
+                }
+            }
+            .buttonStyle(ActionButtonStyle())
+            .accessibilityLabel(
+                !active.isEmpty ? tr("Downloading {count}", ["count": active.count])
+                    : !mine.isEmpty ? tr("{count} downloaded", ["count": mine.count]) : tr("Download")
+            )
+        default:
+            EmptyView()
+        }
+    }
+
+    private func openSheet(_ item: Item) {
+        if item.kind == .episode, let sid = item.seriesId {
+            let season = item.seasonId.map { (id: $0, title: item.seasonNumber.map { tr("Season {season}", ["season": $0]) } ?? tr("Season")) }
+            sheet = DownloadTarget(seriesId: sid, seriesTitle: item.seriesTitle ?? item.title, season: season, episode: item)
+        } else if item.kind == .series {
+            let s = seasons.first { $0.id == season }
+            sheet = DownloadTarget(seriesId: item.id, seriesTitle: item.title, season: s.map { (id: $0.id, title: seasonLabel($0)) }, episode: nil)
         }
     }
 
@@ -182,7 +241,7 @@ struct DetailView: View {
             }
             LazyVStack(alignment: .leading, spacing: 14) {
                 ForEach(episodes) { ep in
-                    EpisodeRow(account: account, episode: ep)
+                    EpisodeRow(account: account, episode: ep, dl: download(ep.id))
                         .onTapGesture { player = PlayRequest(account: account, item: ep) }
                         .contextMenu { ItemMenu(account: account, item: ep) { changed += 1 } }
                 }
@@ -250,6 +309,7 @@ func seasonLabel(_ s: Item) -> String {
 private struct EpisodeRow: View {
     let account: String
     let episode: Item
+    let dl: Download?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -270,6 +330,7 @@ private struct EpisodeRow: View {
                 if let o = episode.overview { Text(o).font(.caption).foregroundStyle(Palette.subtle).lineLimit(2) }
             }
             Spacer(minLength: 0)
+            EpisodeDownloadButton(account: account, item: episode, dl: dl)
         }
         .contentShape(Rectangle())
     }

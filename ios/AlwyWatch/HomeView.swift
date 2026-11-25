@@ -8,10 +8,41 @@ struct HomeView: View {
     @State private var home: Home?
     @State private var error: String?
     @State private var player: PlayRequest?
+    /// Downloads mode: the home made of what is on this phone (the top bar toggles it).
+    @State private var offline = false
 
     var body: some View {
         let account = model.account ?? ""
         ScrollView {
+            if offline {
+                DownloadsHomeContent(accounts: Set(model.listAccounts()))
+                    .padding(.vertical, 12)
+            } else {
+                online(account)
+            }
+        }
+        .background(Palette.background.ignoresSafeArea())
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HomeTopBar(offline: offline) {
+                offline.toggle()
+                try? model.core.setSetting(key: "ui.downloads_mode", value: offline ? "1" : "0")
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .refreshable { await refresh(force: true) }
+        .onAppear { offline = model.core.getSettingOr("ui.downloads_mode", "0") == "1" }
+        .task(id: account) {
+            home = (try? model.core.cachedHome(accountId: account)) ?? nil
+            await refresh(force: false)
+        }
+        .onChange(of: player?.id) { _ in
+            guard let request = player else { return }
+            player = nil
+            PlayerPresenter.shared.play(request, core: model.core) { Task { await refresh(force: true) } }
+        }
+    }
+
+    private func online(_ account: String) -> some View {
             LazyVStack(alignment: .leading, spacing: 26) {
                 if let home {
                     if !home.continueWatching.isEmpty {
@@ -76,20 +107,6 @@ struct HomeView: View {
                 ErrorText(text: error).padding(.horizontal, 16)
             }
             .padding(.vertical, 12)
-        }
-        .background(Palette.background.ignoresSafeArea())
-        .safeAreaInset(edge: .top, spacing: 0) { HomeTopBar() }
-        .toolbar(.hidden, for: .navigationBar)
-        .refreshable { await refresh(force: true) }
-        .task(id: account) {
-            home = (try? model.core.cachedHome(accountId: account)) ?? nil
-            await refresh(force: false)
-        }
-        .onChange(of: player?.id) { _ in
-            guard let request = player else { return }
-            player = nil
-            PlayerPresenter.shared.play(request, core: model.core) { Task { await refresh(force: true) } }
-        }
     }
 
     private func refresh(force: Bool) async {
@@ -145,6 +162,8 @@ struct ItemMenu: View {
 /// Android's home bar: the name on the left; search and you (settings) on the right.
 private struct HomeTopBar: View {
     @EnvironmentObject var model: AppModel
+    let offline: Bool
+    let toggleOffline: () -> Void
 
     var body: some View {
         HStack(spacing: 4) {
@@ -159,6 +178,13 @@ private struct HomeTopBar: View {
                 Image(systemName: "magnifyingglass").font(.title3).frame(width: 44, height: 44)
             }
             .accessibilityLabel(tr("Search"))
+            Button(action: toggleOffline) {
+                Image(systemName: offline ? "arrow.down.circle.fill" : "arrow.down.circle")
+                    .font(.title3)
+                    .foregroundStyle(offline ? Palette.accent : Palette.onSurface)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(offline ? tr("Leave downloads") : tr("Downloads"))
             NavigationLink(value: Route.settings) {
                 Text(String(model.current?.userName.prefix(1) ?? "?").uppercased())
                     .font(.headline)
