@@ -353,6 +353,15 @@ struct LeavingSoonView: View {
         .scrollContentBackground(.hidden)
         .background(Palette.background.ignoresSafeArea())
         .navigationTitle(tr("Leaving soon"))
+        .toolbar {
+            // Admins: the countdown and people's rights.
+            if model.core.keepConnection()?.isAdmin == true {
+                ToolbarItem(placement: .primaryAction) {
+                    NavigationLink(value: Route.keepAdmin) { Image(systemName: "gearshape") }
+                        .accessibilityLabel(tr("Admin"))
+                }
+            }
+        }
         .refreshable { await load(force: true) }
         .task { await load(force: false) }
         .sheet(item: $open) { o in

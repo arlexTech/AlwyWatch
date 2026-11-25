@@ -1319,6 +1319,7 @@ msgstr[1] "{n} minutes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "{n} hour"
 msgid_plural "{n} hours"
 msgstr[0] "{n} heure"
@@ -1350,6 +1351,7 @@ msgstr[1] "{n} personnes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/src/app/invites.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Valid {n} day, for {count}. In AlwyWatch: Add a profile → Create an AlwyWatch account."
 msgid_plural "Valid {n} days, for {count}. In AlwyWatch: Add a profile → Create an AlwyWatch account."
 msgstr[0] "Valable {n} jour, pour {count}. Dans AlwyWatch : Ajouter un profil → Créer un compte AlwyWatch."
@@ -1374,6 +1376,7 @@ msgid "People"
 msgstr "Personnes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "What each person may keep, and whose request-site user they request as"
 msgstr "Ce que chacun peut garder, et sous quel utilisateur du site de demandes il fait ses demandes"
 
@@ -1384,6 +1387,7 @@ msgid "Invitations"
 msgstr "Invitations"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Invite someone by email or with a link, also to Jellyfin"
 msgstr "Invitez quelqu'un par e-mail ou avec un lien, aussi sur Jellyfin"
 
@@ -1400,6 +1404,7 @@ msgid "Leaving soon countdown"
 msgstr "Compte à rebours de Bientôt supprimés"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Restart the deletion countdown of a collection"
 msgstr "Relancer le compte à rebours de suppression d'une collection"
 
@@ -1417,21 +1422,25 @@ msgstr "Par personne, et la part que d'autres gardent aussi"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Server status"
 msgstr "État du serveur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "Read only: change these in Server settings (web app)."
 msgstr "Lecture seule : modifiez-les dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "Test mode: nothing is changed in Maintainerr or Seerr. Turn it off in Server settings (web app)."
 msgstr "Mode test : rien n'est modifié dans Maintainerr ni Seerr. Désactivez-le dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Off. Set up Maintainerr in Server settings (web app)."
 msgstr "Désactivé. Configurez Maintainerr dans Paramètres du serveur (application web)."
 
@@ -1443,6 +1452,7 @@ msgstr "Première lecture de Maintainerr…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Can't reach Maintainerr. Check its address and API key in Server settings (web app)."
 msgstr "Maintainerr est injoignable. Vérifiez son adresse et sa clé API dans Paramètres du serveur (application web)."
 
@@ -1454,35 +1464,42 @@ msgstr "Activé : chaque app fait les demandes sous l'utilisateur Seerr de chaq
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Off: only direct request-site logins work. Set up Seerr in Server settings (web app)."
 msgstr "Désactivé : seules les connexions directes au site de demandes fonctionnent. Configurez Seerr dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Keeps end by themselves once watched."
 msgstr "Les titres gardés sont libérés d'eux-mêmes une fois vus."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Jellyfin keeps don't end by themselves. Add the Jellyfin server's key in Server settings (web app)."
 msgstr "Les conservations Jellyfin ne prennent pas fin toutes seules. Ajoutez la clé du serveur Jellyfin dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Plex keeps don't end by themselves. Set up Tautulli in Server settings (web app)."
 msgstr "Les conservations Plex ne prennent pas fin toutes seules. Configurez Tautulli dans Paramètres du serveur (application web)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Webhooks"
 msgstr "Webhooks"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "On: watched titles are noticed at once."
 msgstr "Activé : les titres vus sont détectés immédiatement."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Optional: watched titles are noticed within 15 min. For instant, add the webhooks shown in Server settings (web app)."
 msgstr "Facultatif : les titres vus sont repérés sous 15 min. Pour que ce soit instantané, ajoutez les webhooks indiqués dans Paramètres du serveur (application web)."
 
@@ -1499,25 +1516,30 @@ msgid "On"
 msgstr "Activé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Off: set this site's address (https) in Server settings (web app)"
 msgstr "Désactivé : indiquez l'adresse (https) de ce site dans Paramètres du serveur (application web)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "New accounts"
 msgstr "Nouveaux comptes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Anyone with the address"
 msgstr "Toute personne ayant l'adresse"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "With an invitation"
 msgstr "Avec une invitation"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Closed"
 msgstr "Fermé"
 
@@ -1535,19 +1557,23 @@ msgstr "Paramètres du serveur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "Media servers, Seerr, Maintainerr, Tautulli, email and sign-up are set up in the web app."
 msgstr "Les serveurs multimédias, Seerr, Maintainerr, Tautulli, l'e-mail et l'inscription se configurent dans l'application web."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Invitations are made with an AlwyWatch account: sign in to yours on this device (Settings → Account), or use the web app."
 msgstr "Les invitations se créent avec un compte AlwyWatch : connectez-vous au vôtre sur cet appareil (Paramètres → Compte), ou utilisez l'app web."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "End this invitation?"
 msgstr "Mettre fin à cette invitation ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "Its code and link stop working. Accounts already made with it stay."
 msgstr "Son code et son lien ne fonctionneront plus. Les comptes déjà créés avec elle sont conservés."
 
@@ -1558,10 +1584,12 @@ msgid "End"
 msgstr "Terminer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "A new person gets an AlwyWatch account, and a Jellyfin login if you like"
 msgstr "Une nouvelle personne reçoit un compte AlwyWatch, et un compte Jellyfin si vous le souhaitez"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Invite someone"
 msgstr "Inviter quelqu'un"
 
@@ -1573,11 +1601,13 @@ msgstr "E-mail (facultatif)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "Empty: you get a link and a code to send them yourself."
 msgstr "Vide : vous obtenez un lien et un code à envoyer vous-même."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "AlwyWatch emails them a link that works once."
 msgstr "AlwyWatch lui envoie par e-mail un lien utilisable une seule fois."
 
@@ -1589,21 +1619,25 @@ msgstr "Configurez l'e-mail dans Paramètres du serveur pour envoyer les invitat
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "For now, you get a link and a code to send them yourself."
 msgstr "Pour l'instant, vous obtenez un lien et un code à envoyer vous-même."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/admin.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Also make a Jellyfin login on {server}"
 msgstr "Créer aussi un compte Jellyfin sur {server}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "Same username and password as their AlwyWatch account"
 msgstr "Mêmes nom d'utilisateur et mot de passe que son compte AlwyWatch"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "Jellyfin server"
 msgstr "Serveur Jellyfin"
 
@@ -1621,15 +1655,18 @@ msgstr "Réglages par défaut de Jellyfin"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "Libraries, parental rating and permissions are copied from this user"
 msgstr "Les bibliothèques, le contrôle parental et les autorisations sont copiés depuis cet utilisateur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/admin.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Personal note (optional)"
 msgstr "Message personnel (facultatif)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "A few words in the email"
 msgstr "Quelques mots dans l'e-mail"
 
@@ -1641,6 +1678,7 @@ msgstr "Valable"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "How many people"
 msgstr "Combien de personnes"
 
@@ -1664,15 +1702,18 @@ msgstr "Créer un lien"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/admin.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Sent to {email}"
 msgstr "Envoyé à {email}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Admin.swift
 msgid "Or the link"
 msgstr "Ou le lien"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Your AlwyWatch invitation code: {code}"
 msgstr "Votre code d'invitation AlwyWatch : {code}"
 
@@ -1684,15 +1725,18 @@ msgstr "Copier"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: web/src/admin.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Share"
 msgstr "Partager"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Until {date}"
 msgstr "Jusqu'au {date}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: desktop/src/app/invites.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Ended"
 msgstr "Terminée"
 
@@ -2738,11 +2782,13 @@ msgstr "Tout"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Kept by several"
 msgstr "Gardés par plusieurs"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Kept by one person"
 msgstr "Gardés par une personne"
 
@@ -2759,6 +2805,7 @@ msgid "Nobody keeps anything forever yet."
 msgstr "Personne ne garde rien pour toujours pour l'instant."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Shared: someone else keeps it forever too. Choose a person to see their titles."
 msgstr "Partagé : quelqu'un d'autre le garde aussi pour toujours. Choisissez une personne pour voir ses titres."
 
@@ -2769,10 +2816,12 @@ msgid "Nothing here."
 msgstr "Rien ici."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Only them"
 msgstr "Uniquement cette personne"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Also {names}"
 msgstr "Aussi {names}"
 
@@ -2783,6 +2832,7 @@ msgid "{shared} shared · {alone} only them"
 msgstr "{shared} partagés · {alone} rien qu'à elle"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "most with {names}"
 msgstr "surtout avec {names}"
 
@@ -3036,18 +3086,21 @@ msgstr[1] "{n} restants  ·  Glissez à gauche : peut être supprimé · à dro
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Spread over {n} day"
 msgid_plural "Spread over {n} days"
 msgstr[0] "Réparti sur {n} jour"
 msgstr[1] "Réparti sur {n} jours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "{n} day at most"
 msgid_plural "{n} days at most"
 msgstr[0] "{n} jour au plus"
 msgstr[1] "{n} jours au plus"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Keeps {n} title forever."
 msgid_plural "Keeps {n} titles forever."
 msgstr[0] "Garde {n} titre pour toujours."
@@ -3282,6 +3335,7 @@ msgstr "Pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Collection {id}"
 msgstr "Collection {id}"
 
@@ -3290,6 +3344,7 @@ msgid "Requests of {name}"
 msgstr "Demandes de {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Their own Seerr account (created if needed)"
 msgstr "Son propre compte Seerr (créé si besoin)"
 
@@ -3304,14 +3359,17 @@ msgstr "Ce que chacun peut garder, et sous quel nom il demande"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Who keeps what forever"
 msgstr "Qui garde quoi pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Start countdown"
 msgstr "Lancer le compte à rebours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Every item is already past its date. Before activating a collection in Maintainerr, restart its countdown so people get the full delay to vote. This changes deletion dates in Maintainerr (press twice to confirm)."
 msgstr "Tous les éléments ont déjà dépassé leur date. Avant d'activer une collection dans Maintainerr, relancez son compte à rebours pour que chacun ait tout le délai pour voter. Cela modifie les dates de suppression dans Maintainerr (appuyez deux fois pour confirmer)."
 
@@ -3322,10 +3380,12 @@ msgid "Restart now"
 msgstr "Relancer maintenant"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Confirm"
 msgstr "Confirmer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "{collection}: {reset} restarted, {skipped} skipped"
 msgstr "{collection} : {reset} relancés, {skipped} ignorés"
 
@@ -3334,55 +3394,68 @@ msgid "No limits by default. Select a person to change theirs."
 msgstr "Aucune limite par défaut. Sélectionnez une personne pour changer les siennes."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "No limits by default. Tap a person to change theirs."
 msgstr "Aucune limite par défaut. Touchez une personne pour changer les siennes."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "{name} · admin"
 msgstr "{name} · admin"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Can't keep forever"
 msgstr "Ne peut pas garder pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Up to {n} forever"
 msgstr "Jusqu'à {n} pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Requests as {name}"
 msgstr "Demande en tant que {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "No limits"
 msgstr "Aucune limite"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "May keep forever"
 msgstr "Peut garder pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Titles kept forever"
 msgstr "Titres gardés pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "No limit"
 msgstr "Sans limite"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Up to {n}"
 msgstr "Jusqu'à {n}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "Keep for at most"
 msgstr "Garder au plus"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Admin.swift
 msgid "How long one “keep for a while” can last"
 msgstr "Durée maximale d'un « garder un moment »"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Admin.swift
 msgid "Requests as"
 msgstr "Demande en tant que"
 

@@ -50,6 +50,11 @@ enum Route: Hashable {
     case manageDownloads
     case downloadedShow(id: String, title: String)
     case room(code: String)
+    case adminPeople
+    case adminCountdown
+    case adminInvites
+    case keepForever
+    case keepAdmin
 }
 
 struct RootView: View {
@@ -150,6 +155,11 @@ extension View {
             case .manageDownloads: ManageDownloadsView()
             case let .downloadedShow(id, title): DownloadedShowView(seriesId: id, title: title)
             case let .room(code): RoomView(code: code)
+            case .adminPeople: KeepAdminView(people: true, countdown: false)
+            case .adminCountdown: KeepAdminView(people: false, countdown: true)
+            case .keepAdmin: KeepAdminView()
+            case .adminInvites: InvitationsView()
+            case .keepForever: KeepForeverView()
             }
         }
     }

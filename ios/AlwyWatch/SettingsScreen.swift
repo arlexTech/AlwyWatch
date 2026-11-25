@@ -509,12 +509,3 @@ private struct DeviceSettings: View {
     }
 }
 
-private struct AdminSettings: View {
-    var body: some View {
-        Section(tr("Dashboard")) {
-            NavigationLink(value: Route.dashboard) {
-                TitledLabel(title: tr("Dashboard"), subtitle: tr("What plays now, direct play or converted, bandwidth, CPU, RAM and who watched what"))
-            }
-        }
-    }
-}
