@@ -40,6 +40,8 @@ pub struct State {
     pub transfers: Arc<crate::transfer::Transfers>,
     /// Watch together rooms (in memory only).
     pub rooms: Arc<crate::together::Rooms>,
+    /// TVs a phone can play on (in memory only).
+    pub remotes: Arc<crate::remote::Remotes>,
     /// Passkey challenges in progress (in memory only).
     pub passkeys: Arc<crate::passkey::Flows>,
     /// Pocket ID sign-ins in progress (in memory only).
@@ -171,6 +173,7 @@ impl State {
             library: Default::default(),
             transfers: Default::default(),
             rooms: Default::default(),
+            remotes: Default::default(),
             passkeys: Default::default(),
             oidc: Default::default(),
             limits: Default::default(),
@@ -996,6 +999,7 @@ fn lookup(m: &ProviderIndex, row: &ItemRow) -> Option<String> {
 pub struct Lasting {
     pub transfers: Arc<crate::transfer::Transfers>,
     pub rooms: Arc<crate::together::Rooms>,
+    pub remotes: Arc<crate::remote::Remotes>,
     pub passkeys: Arc<crate::passkey::Flows>,
     pub oidc: Arc<crate::oidc::Oidc>,
     pub limits: Arc<Limits>,
@@ -1007,6 +1011,7 @@ impl State {
     pub fn with_lasting(mut self, l: &Lasting) -> Self {
         self.transfers = l.transfers.clone();
         self.rooms = l.rooms.clone();
+        self.remotes = l.remotes.clone();
         self.passkeys = l.passkeys.clone();
         self.oidc = l.oidc.clone();
         self.limits = l.limits.clone();

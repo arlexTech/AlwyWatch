@@ -229,8 +229,8 @@ pub struct Core {
     downloads: downloads::Downloads,
     downloads_running: std::sync::atomic::AtomicBool,
     /// Owner of the downloads this profile asks for (see `downloads::Download::owners`).
-    profile: String,
-    client: ClientInfo,
+    pub(crate) profile: String,
+    pub(crate) client: ClientInfo,
     pub(crate) http: net::reqwest::Client,
     pub(crate) store: Arc<Store>,
     images: ImageCache,
@@ -3662,7 +3662,11 @@ impl Core {
     }
 
     /// A title as every server can find it (an episode carries its show's ids).
-    async fn together_media(&self, account_id: &str, item_id: &str) -> Result<TogetherMedia> {
+    pub(crate) async fn together_media(
+        &self,
+        account_id: &str,
+        item_id: &str,
+    ) -> Result<TogetherMedia> {
         let srv = self.server(account_id)?;
         let item = srv.item(item_id).await?;
         let episode = item.kind == ItemKind::Episode;
@@ -3687,7 +3691,7 @@ impl Core {
     }
 
     /// The room's title on `account_id`: by provider ids, else by title (and year).
-    async fn together_find_on(
+    pub(crate) async fn together_find_on(
         &self,
         account_id: &str,
         m: &TogetherMedia,

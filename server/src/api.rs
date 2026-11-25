@@ -78,6 +78,14 @@ pub fn router(state: Shared) -> Router {
         .route("/v1/hooks/{source}/{secret}", post(hook))
         .route("/v1/together", get(together_rooms).post(together_create))
         .route("/v1/together/wait", get(together_rooms_wait))
+        .route("/v1/remote/listen", get(remote_listen))
+        .route("/v1/remote/devices", get(remote_devices))
+        .route("/v1/remote/devices/{device}", delete(remote_leave))
+        .route(
+            "/v1/remote/devices/{device}/state",
+            get(remote_state).put(remote_report),
+        )
+        .route("/v1/remote/devices/{device}/commands", post(remote_command))
         .route("/v1/together/people", get(together_people))
         .route("/v1/together/clock", get(together_clock))
         .route("/v1/together/{code}", put(together_update))
@@ -375,6 +383,98 @@ async fn together_create(
         .create(c, &id.name, &id.user_key, &id.avatar)
         .map(Json)
         .map_err(together_error)
+}
+
+// ----- Play on the TV (remote.rs) ---------------------------------------------------------
+
+fn remote_error(e: crate::remote::RemoteError) -> Error {
+    match e {
+        crate::remote::RemoteError::NotFound => Error(
+            StatusCode::NOT_FOUND,
+            "this TV is not there any more".into(),
+        ),
+        crate::remote::RemoteError::Busy => Error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "too many TVs, try again later".into(),
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+struct RemoteListenQuery {
+    device: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    after: u64,
+}
+
+async fn remote_listen(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Query(q): Query<RemoteListenQuery>,
+) -> Result<Json<keep_service::remote::RemoteCommands>, Error> {
+    if q.device.trim().is_empty() {
+        return Err(Error(StatusCode::BAD_REQUEST, "device is required".into()));
+    }
+    s.remotes
+        .listen(&id.user_key, &q.device, &q.name, q.after)
+        .await
+        .map(Json)
+        .map_err(remote_error)
+}
+
+async fn remote_report(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(device): Path<String>,
+    Json(r): Json<keep_service::remote::RemoteReport>,
+) -> Result<StatusCode, Error> {
+    s.remotes
+        .report(&id.user_key, &device, r)
+        .map_err(remote_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn remote_leave(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(device): Path<String>,
+) -> StatusCode {
+    s.remotes.leave(&id.user_key, &device);
+    StatusCode::NO_CONTENT
+}
+
+async fn remote_devices(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+) -> Json<Vec<keep_service::remote::RemoteDevice>> {
+    Json(s.remotes.devices(&id.user_key))
+}
+
+async fn remote_command(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(device): Path<String>,
+    Json(c): Json<keep_service::remote::RemoteCommand>,
+) -> Result<StatusCode, Error> {
+    s.remotes
+        .command(&id.user_key, &device, c)
+        .map_err(remote_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn remote_state(
+    State(s): State<Shared>,
+    Caller(id): Caller,
+    Path(device): Path<String>,
+    Query(q): Query<ListWaitQuery>,
+) -> Result<Json<keep_service::remote::RemoteState>, Error> {
+    s.remotes
+        .state(&id.user_key, &device, q.after)
+        .await
+        .map(Json)
+        .map_err(remote_error)
 }
 
 async fn together_rooms(
@@ -858,6 +958,7 @@ pub(crate) async fn link_person(
             forget_avatar_file(s, old).await;
         }
         s.rooms.rekey(&outcome.merged, &outcome.canonical);
+        s.remotes.rekey(&outcome.merged, &outcome.canonical);
         s.db.log(
             &outcome.canonical,
             "link",

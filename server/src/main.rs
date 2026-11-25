@@ -20,6 +20,7 @@ mod limit;
 mod mail;
 mod oidc;
 mod passkey;
+mod remote;
 mod seerr;
 mod server_settings;
 mod settings;

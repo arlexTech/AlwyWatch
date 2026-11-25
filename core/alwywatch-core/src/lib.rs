@@ -21,6 +21,7 @@ mod history;
 mod lang;
 mod merge;
 mod playback;
+mod remote;
 mod settings_sync;
 mod sync;
 mod tracks;
@@ -33,6 +34,10 @@ pub use downloads::{DeleteRule, Download, DownloadState, EpisodeOf};
 pub use error::{CoreError, Result};
 pub use history::{HistoryChange, HistoryCopyResult, HistoryPlan, HistoryProgress};
 pub use keep_service::identity::LinkedIdentity;
+pub use keep_service::remote::{
+    RemoteAction, RemoteCommand, RemoteCommands, RemoteDevice, RemoteReport, RemoteState,
+    RemoteTrack,
+};
 pub use keep_service::together::{
     TogetherCorrection, TogetherCreate, TogetherInvite, TogetherInvitee, TogetherJoined,
     TogetherMedia, TogetherMember, TogetherPerson, TogetherRights, TogetherRoom, TogetherRooms,
@@ -50,6 +55,7 @@ pub use media_api::quality::QualityChoice;
 pub use media_api::recent::{RailNote, recently_added};
 pub use merge::{AccountHome, MergedHome, merge_homes, same_as};
 pub use playback::{PlaybackPrompt, playback_prompt};
+pub use remote::{RemotePlay, remote_position_now};
 pub use seerr::{
     Availability, QuickConnect as SeerrQuickConnect, RequestStatus, SeasonChoice, SeasonPlan,
     SeasonState, SeerrCast, SeerrCollection, SeerrCollectionRef, SeerrDetails, SeerrInfo,

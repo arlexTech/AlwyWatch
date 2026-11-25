@@ -13,6 +13,7 @@ pub mod account;
 pub mod dashboard;
 pub mod identity;
 pub mod profile;
+pub mod remote;
 pub mod settings;
 pub mod together;
 pub mod transfer;
@@ -1092,6 +1093,90 @@ impl KeepClient {
         ))
         .await?;
         Ok(())
+    }
+
+    // ----- Play on the TV (`remote`) -----------------------------------------------------
+
+    /// TV: commands past `after` (see [`remote::RemoteCommands`]), as soon as there are any or
+    /// after about 25 s. Calling it is also the TV's presence: keep calling while it is open.
+    pub async fn remote_listen(
+        &self,
+        device: &str,
+        name: &str,
+        after: u64,
+    ) -> Result<remote::RemoteCommands> {
+        net::send_json(
+            self.req(
+                Method::GET,
+                &format!(
+                    "/remote/listen?device={}&name={}&after={after}",
+                    net::percent_encode(device),
+                    net::percent_encode(name)
+                ),
+            )
+            .timeout(std::time::Duration::from_secs(remote::WAIT_SECS + 15)),
+        )
+        .await
+    }
+
+    /// TV: what it plays now.
+    pub async fn remote_report(&self, device: &str, report: &remote::RemoteReport) -> Result<()> {
+        net::send(
+            self.req(
+                Method::PUT,
+                &format!("/remote/devices/{}/state", net::percent_encode(device)),
+            )
+            .json(report),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// TV: no longer there (closed, or another profile).
+    pub async fn remote_leave(&self, device: &str) -> Result<()> {
+        net::send(self.req(
+            Method::DELETE,
+            &format!("/remote/devices/{}", net::percent_encode(device)),
+        ))
+        .await?;
+        Ok(())
+    }
+
+    /// Phone: my TVs there now.
+    pub async fn remote_devices(&self) -> Result<Vec<remote::RemoteDevice>> {
+        net::send_json(self.req(Method::GET, "/remote/devices")).await
+    }
+
+    /// Phone: asks a TV to do something.
+    pub async fn remote_command(
+        &self,
+        device: &str,
+        command: &remote::RemoteCommand,
+    ) -> Result<()> {
+        net::send(
+            self.req(
+                Method::POST,
+                &format!("/remote/devices/{}/commands", net::percent_encode(device)),
+            )
+            .json(command),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Phone: the TV's state once its `version` differs from `after`, or after about 25 s.
+    pub async fn remote_state(&self, device: &str, after: u64) -> Result<remote::RemoteState> {
+        net::send_json(
+            self.req(
+                Method::GET,
+                &format!(
+                    "/remote/devices/{}/state?after={after}",
+                    net::percent_encode(device)
+                ),
+            )
+            .timeout(std::time::Duration::from_secs(remote::WAIT_SECS + 15)),
+        )
+        .await
     }
 
     pub fn base_url(&self) -> &str {

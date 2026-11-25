@@ -4463,3 +4463,107 @@ async fn an_invitation_offers_its_email_and_no_username() {
     assert_eq!(st, StatusCode::OK, "{r}");
     assert_eq!(r["account"]["email"], "erin@example.org");
 }
+
+#[tokio::test]
+async fn a_phone_plays_on_its_own_persons_tv_only() {
+    let e = env().await;
+    e.sign_in(&[("jfsrv", "jf-alice"), ("jfsrv", "jf-bob")])
+        .await;
+    // Alice's TV opens AlwyWatch: it is there for her, and for nobody else.
+    let (s, first) = e
+        .call(
+            "GET",
+            "/v1/remote/listen?device=tv-1&name=Living%20room&after=0",
+            "jfsrv",
+            "jf-alice",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK);
+    let seq = first["last_seq"].as_u64().unwrap();
+    assert!(seq > 0);
+    let (_, mine) = e
+        .call("GET", "/v1/remote/devices", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(mine[0]["name"], "Living room");
+    let (_, theirs) = e
+        .call("GET", "/v1/remote/devices", "jfsrv", "jf-bob", None)
+        .await;
+    assert_eq!(theirs, json!([]));
+    let play = json!({"action": "play", "server_id": "jfsrv", "item_id": "m1", "media": arrival()});
+    let (s, _) = e
+        .call(
+            "POST",
+            "/v1/remote/devices/tv-1/commands",
+            "jfsrv",
+            "jf-bob",
+            Some(play.clone()),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = e
+        .call(
+            "POST",
+            "/v1/remote/devices/tv-1/commands",
+            "jfsrv",
+            "jf-alice",
+            Some(play),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (_, got) = e
+        .call(
+            "GET",
+            &format!("/v1/remote/listen?device=tv-1&name=Living%20room&after={seq}"),
+            "jfsrv",
+            "jf-alice",
+            None,
+        )
+        .await;
+    assert_eq!(got["commands"][0]["action"], "play");
+    assert_eq!(got["commands"][0]["item_id"], "m1");
+    // The TV reports; the phone sees it, Bob still doesn't.
+    let (s, _) = e
+        .call(
+            "PUT",
+            "/v1/remote/devices/tv-1/state",
+            "jfsrv",
+            "jf-alice",
+            Some(json!({"title": "Arrival", "playing": true, "position_ms": 1000, "duration_ms": 6000000})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    let (_, st) = e
+        .call(
+            "GET",
+            "/v1/remote/devices/tv-1/state?after=0",
+            "jfsrv",
+            "jf-alice",
+            None,
+        )
+        .await;
+    assert_eq!(st["report"]["title"], "Arrival");
+    let (s, _) = e
+        .call(
+            "GET",
+            "/v1/remote/devices/tv-1/state?after=0",
+            "jfsrv",
+            "jf-bob",
+            None,
+        )
+        .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    // Closed on the TV: gone for the phone at once.
+    e.call(
+        "DELETE",
+        "/v1/remote/devices/tv-1",
+        "jfsrv",
+        "jf-alice",
+        None,
+    )
+    .await;
+    let (_, mine) = e
+        .call("GET", "/v1/remote/devices", "jfsrv", "jf-alice", None)
+        .await;
+    assert_eq!(mine, json!([]));
+}

@@ -457,6 +457,35 @@ uppercased (`?` if none), white, bold, about 45 % of the diameter, centred on a 
 0x01000193). Use `default_avatar_color(name)` / `avatar_initial(name)` rather than
 reimplementing.
 
+## Play on the TV
+
+A phone starts a title on the same person's AlwyWatch TV and controls it. Types:
+`keep_service::remote`; server: `server/src/remote.rs`; apps: the core's `remote_*` calls.
+Everything lives in memory.
+
+While AlwyWatch is open on a TV with a profile, the TV long-polls `listen`: that is its
+presence (a TV that has not listened for 60 s is gone) and how it receives commands. It
+reports what it plays with `state`. Devices belong to the caller's person (any linked
+sign-in): for anyone else a device id answers 404, like an unknown one.
+
+| Method | Path | Who | Body → answer |
+|---|---|---|---|
+| GET | `/v1/remote/listen?device=&name=&after=` | TV | → `{last_seq, commands}`: commands past `after` as soon as there are any, or empty after 25 s. `after=0` (a TV just there) answers at once with `last_seq` and no commands: nothing sent before counts |
+| PUT | `/v1/remote/devices/{id}/state` | TV | `RemoteReport` (title, subtitle, server_id, item_id, playing, loading, position_ms, duration_ms, audio, subtitles, audio_index, subtitle_index, error) → 204 |
+| DELETE | `/v1/remote/devices/{id}` | TV | → 204: gone (background, other profile) |
+| GET | `/v1/remote/devices` | phone | → `[{id, name, title}]`: my TVs there now |
+| POST | `/v1/remote/devices/{id}/commands` | phone | `{action, media?, server_id?, item_id?, position_ms?, index?}` → 204; 404 when the TV is gone |
+| GET | `/v1/remote/devices/{id}/state?after=` | phone | → `{version, at_ms, now_ms, report}` once `version` differs from `after`, or after 25 s; 404 when gone |
+
+* `action`: `play` (with `media`, the title as every server can find it, and the phone's
+  `server_id`/`item_id`: the TV uses them directly when signed in to the same server, else finds
+  the title by its ids, then name), `pause`, `resume`, `seek` (`position_ms`), `stop`, `audio`
+  and `subtitles` (`index` in the report's track lists; none: subtitles off).
+* A command not picked up within 30 s is dropped; 20 wait at most per TV. 10 TVs per person,
+  1000 in all.
+* Phones move the position on from the report while it plays: `position_ms + now_ms - at_ms`
+  (`remote_position_now`).
+
 ## Device transfer
 
 Moves a user's sign-ins to a new device without the server being able to read them. Types:
