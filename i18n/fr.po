@@ -726,18 +726,22 @@ msgid "You can set a custom picture from your phone, computer or the web app."
 msgstr "Vous pouvez choisir votre propre image depuis votre téléphone, votre ordinateur ou l'application web."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Your initial"
 msgstr "Votre initiale"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Picture {shape}"
 msgstr "Image {shape}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Your picture"
 msgstr "Votre image"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "New picture"
 msgstr "Nouvelle image"
 
@@ -749,6 +753,7 @@ msgstr "Importer une image"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
 #: desktop/src/app/account.rs
+#: ios/AlwyWatch/Account.swift
 msgid "Choose a picture"
 msgstr "Choisir une image"
 
@@ -760,16 +765,18 @@ msgstr "Retirer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: ios/AlwyWatch/Account.swift
 msgid "Your AlwyWatch account"
 msgstr "Votre compte AlwyWatch"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Others see this name and picture when you watch together."
 msgstr "Les autres voient ce nom et cette image quand vous regardez ensemble."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Signed in as {name}"
 msgstr "Connecté en tant que {name}"
 
@@ -787,10 +794,12 @@ msgstr "Changer de nom"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
 #: web/src/profile.rs
+#: ios/AlwyWatch/Account.swift
 msgid "Reset to {name}"
 msgstr "Revenir à {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Your name on your media server"
 msgstr "Votre nom sur votre serveur multimédia"
 
@@ -805,6 +814,7 @@ msgid "Built-in pictures"
 msgstr "Images intégrées"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "A built-in one, or a photo"
 msgstr "Une image intégrée ou une photo"
 
@@ -815,6 +825,7 @@ msgid "Your name"
 msgstr "Votre nom"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "This is the name others see."
 msgstr "C'est le nom que les autres voient."
 
@@ -831,14 +842,17 @@ msgid "Save"
 msgstr "Enregistrer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Welcome!"
 msgstr "Bienvenue !"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "This is how others see you"
 msgstr "Voici comment les autres vous voient"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: ios/AlwyWatch/Account.swift
 msgid "You can change this later in Settings."
 msgstr "Vous pourrez le modifier plus tard dans les paramètres."
 
@@ -1276,16 +1290,18 @@ msgstr "Code PIN"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
-#: ios/AlwyWatch/SignInView.swift
+#: ios/AlwyWatch/Profiles.swift
 msgid "PIN for {name}"
 msgstr "Code PIN de {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "Sign in to Plex again to switch user."
 msgstr "Reconnectez-vous à Plex pour changer d'utilisateur."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Switch Plex user"
 msgstr "Changer d'utilisateur Plex"
 
@@ -1302,10 +1318,12 @@ msgid "Loading…"
 msgstr "Chargement…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "This Plex account has no other users (it is not a Plex Home)."
 msgstr "Ce compte Plex n'a pas d'autres utilisateurs (ce n'est pas un Plex Home)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: ios/AlwyWatch/SignInView.swift
 msgid "This user has no access to {server}."
 msgstr "Cet utilisateur n'a pas accès à {server}."
 
@@ -1779,19 +1797,23 @@ msgid "Sign in to {server} again first."
 msgstr "Reconnectez-vous d'abord à {server}."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Sign-in expired: sign in again"
 msgstr "Connexion expirée : reconnectez-vous"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Can't reach it"
 msgstr "Injoignable"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Account.swift
 msgid "Sign out of AlwyWatch?"
 msgstr "Se déconnecter d'AlwyWatch ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Account.swift
 msgid "This profile keeps its Jellyfin and Plex logins and becomes a profile without an AlwyWatch account. Leaving soon and watch together disappear from it. Your keep choices stay on the server."
 msgstr "Ce profil garde ses identifiants Jellyfin et Plex et devient un profil sans compte AlwyWatch. Bientôt supprimés et Regarder ensemble y disparaissent. Vos choix de conservation restent sur le serveur."
 
@@ -1808,11 +1830,13 @@ msgid "Password & passkeys"
 msgstr "Mot de passe et clés d'accès"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Connected with your login {name}"
 msgstr "Connecté avec votre connexion {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: web/src/account.rs
+#: ios/AlwyWatch/Account.swift
 msgid "Connected"
 msgstr "Connecté"
 
@@ -1821,6 +1845,7 @@ msgid "Also deleting the account: on your phone or computer, at {address}"
 msgstr "Pour supprimer aussi le compte : sur votre téléphone ou ordinateur, à l'adresse {address}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Also deleting the account: opens {address}"
 msgstr "Pour supprimer aussi le compte : ouvre {address}"
 
@@ -1831,6 +1856,7 @@ msgid "Sign out of AlwyWatch"
 msgstr "Se déconnecter d'AlwyWatch"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Account.swift
 msgid "This profile keeps its Jellyfin and Plex logins"
 msgstr "Ce profil garde ses identifiants Jellyfin et Plex"
 
@@ -1860,7 +1886,7 @@ msgstr "Profil sur cet appareil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: web/src/account.rs
-#: ios/AlwyWatch/SettingsScreen.swift
+#: ios/AlwyWatch/Account.swift
 msgid "Connect to AlwyWatch"
 msgstr "Se connecter à AlwyWatch"
 
@@ -1886,35 +1912,43 @@ msgstr "Via votre serveur AlwyWatch"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: web/src/request.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "Through your AlwyWatch server, as {name}"
 msgstr "Via votre serveur AlwyWatch, en tant que {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Off: you use a request site directly"
 msgstr "Désactivé : vous utilisez directement un site de demandes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Connecting…"
 msgstr "Connexion…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Requests.swift
 msgid "Your AlwyWatch server doesn't take requests. Ask its owner, or use a request site address below."
 msgstr "Votre serveur AlwyWatch n'accepte pas les demandes. Demandez à la personne qui le gère, ou utilisez l'adresse d'un site de demandes ci-dessous."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Request site"
 msgstr "Site de demandes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Ask for movies and shows that aren't on the server yet, on a request site (Seerr, Overseerr or Jellyseerr) run by your server's owner. It only accepts the logins it's set up for (Plex or Jellyfin)."
 msgstr "Demandez des films et des séries qui ne sont pas encore sur le serveur, via un site de demandes (Seerr, Overseerr ou Jellyseerr) géré par la personne qui gère votre serveur. Il n'accepte que les identifiants pour lesquels il est configuré (Plex ou Jellyfin)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Use a request site address"
 msgstr "Utiliser l'adresse d'un site de demandes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "It only accepts the logins it's set up for (Plex or Jellyfin)"
 msgstr "Il n'accepte que les identifiants pour lesquels il est configuré (Plex ou Jellyfin)"
 
@@ -2354,6 +2388,7 @@ msgid "Episodes"
 msgstr "Épisodes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: ios/AlwyWatch/DetailView.swift
 msgid "More seasons"
 msgstr "Autres saisons"
 
@@ -2990,6 +3025,7 @@ msgid "Leave downloads"
 msgstr "Quitter les téléchargements"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
+#: ios/AlwyWatch/HomeView.swift
 msgid "Switch profile, settings"
 msgstr "Changer de profil, paramètres"
 
@@ -3477,16 +3513,19 @@ msgstr "Recommandé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/LibraryView.swift
 msgid "Browse"
 msgstr "Parcourir"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/LibraryView.swift
 msgid "Collections"
 msgstr "Collections"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/LibraryView.swift
 msgid "Categories"
 msgstr "Catégories"
 
@@ -3498,11 +3537,13 @@ msgstr "Ajouts récents"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/LibraryView.swift
 msgid "No collections in this library."
 msgstr "Aucune collection dans cette bibliothèque."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/LibraryView.swift
 msgid "A–Z"
 msgstr "A–Z"
 
@@ -3512,44 +3553,54 @@ msgid "Release date"
 msgstr "Date de sortie"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "{n} account on this device"
 msgid_plural "{n} accounts on this device"
 msgstr[0] "{n} compte sur cet appareil"
 msgstr[1] "{n} comptes sur cet appareil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Your {server} sign-in has expired: sign in again on that account, then link."
 msgstr "Votre connexion à {server} a expiré : reconnectez-vous à ce compte, puis associez-le."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Your other sign-in has expired: sign in again on that account, then link."
 msgstr "Votre autre connexion a expiré : reconnectez-vous à ce compte, puis associez-le."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "These are two different people on the same server: they can't be one AlwyWatch account."
 msgstr "Ce sont deux personnes différentes sur le même serveur : elles ne peuvent pas former un seul compte AlwyWatch."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Too many tries. Try again in a few minutes."
 msgstr "Trop de tentatives. Réessayez dans quelques minutes."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "The media server is unreachable right now. Try again later."
 msgstr "Le serveur multimédia est injoignable pour le moment. Réessayez plus tard."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "this account"
 msgstr "ce compte"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Use one AlwyWatch account for both of these sign-ins:"
 msgstr "Utiliser un seul compte AlwyWatch pour ces deux connexions :"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "They will share one name and picture, the same keep choices and the same watch-together rooms, on every device."
 msgstr "Elles partageront le même nom, la même photo, les mêmes choix de conservation et les mêmes salons, sur tous les appareils."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Only link them if both are you, not someone else who uses this device. It can't simply be undone: unlinking later turns that sign-in into a new, empty account."
 msgstr "Ne les associez que si les deux sont bien vous, et pas quelqu'un d'autre qui utilise cet appareil. Ce n'est pas simple à annuler : dissocier plus tard transforme cette connexion en un nouveau compte vide."
 
@@ -3578,10 +3629,12 @@ msgid "Also signed in as {names}"
 msgstr "Également connecté en tant que {names}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Unlink {name}?"
 msgstr "Dissocier {name} ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "{name} on {server} becomes a separate, new AlwyWatch account with no votes, name or history. Continue?"
 msgstr "{name} sur {server} deviendra un nouveau compte AlwyWatch distinct, sans votes, nom ni historique. Continuer ?"
 
@@ -3593,6 +3646,7 @@ msgstr "Dissocier"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
 #: desktop/src/app/links.rs
+#: ios/AlwyWatch/Account.swift
 msgid "The main sign-in can't be unlinked."
 msgstr "La connexion principale ne peut pas être dissociée."
 
@@ -3609,6 +3663,7 @@ msgid "Linked logins"
 msgstr "Connexions associées"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LinkedSignIns.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Your logins on different servers, as one AlwyWatch account: the same name, picture, keep choices and rooms."
 msgstr "Vos connexions sur différents serveurs, réunies en un seul compte AlwyWatch : même nom, même photo, mêmes choix de conservation et mêmes salons."
 
@@ -3626,62 +3681,74 @@ msgstr "Principale"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Profiles.swift
 msgid "Who's watching?"
 msgstr "Qui regarde ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: desktop/src/app/profiles.rs
+#: ios/AlwyWatch/Profiles.swift
 msgid "Wrong PIN"
 msgstr "Code PIN incorrect"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
+#: ios/AlwyWatch/Profiles.swift
 msgid "Switch to {name}"
 msgstr "Passer à {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
+#: ios/AlwyWatch/Profiles.swift
 msgid "Current"
 msgstr "Actuel"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: web/src/admin.rs
+#: ios/AlwyWatch/Profiles.swift
 msgid "Add"
 msgstr "Ajouter"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: web/src/profiles.rs
+#: ios/AlwyWatch/Profiles.swift
 msgid "Profiles"
 msgstr "Profils"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
+#: ios/AlwyWatch/Profiles.swift
 msgid "A profile is one person: their own AlwyWatch account or logins, history and settings. Downloads are shared."
 msgstr "Un profil, c'est une personne : son propre compte AlwyWatch ou ses identifiants, son historique et ses paramètres. Les téléchargements sont partagés."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Profiles.swift
 msgid "Protected by a PIN"
 msgstr "Protégé par un code PIN"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Profiles.swift
 msgid "In use"
 msgstr "Utilisé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
-#: ios/AlwyWatch/Together.swift
+#: ios/AlwyWatch/Profiles.swift
 msgid "Remove {name}"
 msgstr "Supprimer {name}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
+#: ios/AlwyWatch/Profiles.swift
 msgid "Someone else on this device"
 msgstr "Une autre personne sur cet appareil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
+#: ios/AlwyWatch/Profiles.swift
 msgid "Skip “Who's watching?” at start"
 msgstr "Passer « Qui regarde ? » au démarrage"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Profiles.swift
 msgid "Open the last profile used instead of asking who's watching (a PIN is still asked)"
 msgstr "Ouvrir le dernier profil utilisé au lieu de demander qui regarde (le code PIN reste demandé)"
 
@@ -3692,38 +3759,46 @@ msgid "Rename"
 msgstr "Renommer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
+#: ios/AlwyWatch/Profiles.swift
 msgid "Protect {name} with a PIN"
 msgstr "Protéger {name} par un code PIN"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Profiles.swift
 msgid "Asked when opening this profile."
 msgstr "Demandé à l'ouverture de ce profil."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Profiles.swift
 msgid "New 4-digit PIN"
 msgstr "Nouveau code PIN à 4 chiffres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Profiles.swift
 msgid "4-digit PIN"
 msgstr "Code PIN à 4 chiffres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Profiles.swift
 msgid "Remove PIN"
 msgstr "Retirer le code PIN"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
+#: ios/AlwyWatch/Profiles.swift
 msgid "Remove {name}?"
 msgstr "Supprimer {name} ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
+#: ios/AlwyWatch/Profiles.swift
 msgid "Their servers, history and settings on this device are deleted. Downloads only they wanted are deleted too."
 msgstr "Ses serveurs, son historique et ses paramètres sur cet appareil seront supprimés, ainsi que les téléchargements que ce profil était seul à vouloir."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/QrScanner.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Point at the QR code on the other device"
 msgstr "Visez le code QR affiché sur l'autre appareil"
 
@@ -4019,18 +4094,22 @@ msgid "No results for “{query}”."
 msgstr "Aucun résultat pour « {query} »."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Ask for movies and shows that aren't on the server yet"
 msgstr "Demandez des films et des séries qui ne sont pas encore sur le serveur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "No extra sign-in: your AlwyWatch server handles it."
 msgstr "Pas de connexion en plus : votre serveur AlwyWatch s'en charge."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Use my AlwyWatch server"
 msgstr "Utiliser mon serveur AlwyWatch"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Or type the address of the request site (Seerr, Overseerr or Jellyseerr)"
 msgstr "Ou saisissez l'adresse du site de demandes (Seerr, Overseerr ou Jellyseerr)"
 
@@ -4042,19 +4121,23 @@ msgstr "Se connecter avec Plex"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "Sign in with Jellyfin"
 msgstr "Se connecter avec Jellyfin"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "Sign in with Emby"
 msgstr "Se connecter avec Emby"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "An account made on the request site"
 msgstr "Un compte créé sur le site de demandes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "This request site has no sign-in method enabled. Tell your server's owner."
 msgstr "Ce site de demandes n'a aucun mode de connexion activé. Prévenez la personne qui gère votre serveur."
 
@@ -4063,14 +4146,17 @@ msgid "Go to plex.tv/link and enter:"
 msgstr "Allez sur plex.tv/link et saisissez :"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Finish signing in to Plex in the browser."
 msgstr "Terminez la connexion à Plex dans le navigateur."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Quick Connect: enter this code in a signed-in Jellyfin app"
 msgstr "Connexion rapide (Quick Connect) : saisissez ce code dans une appli Jellyfin connectée"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrConnectScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "or sign in with your password:"
 msgstr "ou connectez-vous avec votre mot de passe :"
 
@@ -4138,6 +4224,7 @@ msgstr[0] "{n} seconde"
 msgstr[1] "{n} secondes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "{n} profile"
 msgid_plural "{n} profiles"
 msgstr[0] "{n} profil"
@@ -4175,6 +4262,7 @@ msgid "Audio & subtitles"
 msgstr "Audio et sous-titres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Menu & pages"
 msgstr "Menu et pages"
 
@@ -4189,6 +4277,7 @@ msgid "off"
 msgstr "désactivé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Account.swift
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "No AlwyWatch account · connect to AlwyWatch"
 msgstr "Pas de compte AlwyWatch · se connecter à AlwyWatch"
@@ -4258,6 +4347,7 @@ msgid "clock"
 msgstr "horloge"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "theme music"
 msgstr "musique du thème"
 
@@ -4276,6 +4366,7 @@ msgid "People, countdown, invitations, server status"
 msgstr "Personnes, compte à rebours, invitations, état du serveur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Other devices"
 msgstr "Autres appareils"
 
@@ -4286,6 +4377,7 @@ msgid "Sign in another device"
 msgstr "Connecter un autre appareil"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Account.swift
 msgid "On the new phone, tablet or TV, choose “Sign in with a code”, then type its code here"
 msgstr "Sur le nouveau téléphone, la tablette ou la TV, choisissez “Se connecter avec un code”, puis saisissez son code ici"
 
@@ -4321,6 +4413,7 @@ msgid "Sign out of {server}"
 msgstr "Se déconnecter de {server}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Linked to your account, not signed in on this device"
 msgstr "Lié à votre compte, pas connecté sur cet appareil"
 
@@ -4666,14 +4759,17 @@ msgid "Move down"
 msgstr "Descendre"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Pages and app"
 msgstr "Pages et application"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Theme music on show pages"
 msgstr "Générique sur les pages des séries"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Quietly, when the server has the show's theme."
 msgstr "Doucement, quand le serveur a le générique de la série."
 
@@ -5099,6 +5195,7 @@ msgid "Waiting for the other device…"
 msgstr "En attente de l'autre appareil…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Without the camera, type the code instead."
 msgstr "Sans l'appareil photo, saisissez plutôt le code."
 
@@ -5109,37 +5206,45 @@ msgid "Unknown or expired code."
 msgstr "Code inconnu ou expiré."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Sent"
 msgstr "Envoyé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Your accounts and settings are on their way. The other device signs in by itself."
 msgstr "Vos comptes et paramètres sont en route. L'autre appareil se connecte tout seul."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
+#: ios/AlwyWatch/Account.swift
 msgid "On the new device, choose “Sign in with a code”, then type the code it shows here."
 msgstr "Sur le nouvel appareil, choisissez « Se connecter avec un code », puis saisissez ici le code affiché."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Scan the QR code"
 msgstr "Scanner le code QR"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
+#: ios/AlwyWatch/Account.swift
 msgid "Send your accounts and settings to “{device}”?"
 msgstr "Envoyer vos comptes et paramètres à « {device} » ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Account.swift
 msgid "Check number"
 msgstr "Numéro de contrôle"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Account.swift
 msgid "Only send if the new device shows the same number."
 msgstr "N'envoyez que si le nouvel appareil affiche le même numéro."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/Transfer.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Account.swift
 msgid "Send"
 msgstr "Envoyer"
 
@@ -8724,26 +8829,6 @@ msgstr "Vous n'attendiez pas ce message ? Vous pouvez ignorer cet e-mail."
 msgid "Play from the start"
 msgstr "Lire depuis le début"
 
-#: ios/AlwyWatch/LibraryView.swift
-msgid "Sort"
-msgstr "Trier"
-
-#: ios/AlwyWatch/LibraryView.swift
-msgid "Title"
-msgstr "Titre"
-
-#: ios/AlwyWatch/LibraryView.swift
-msgid "Date added"
-msgstr "Date d'ajout"
-
-#: ios/AlwyWatch/LibraryView.swift
-msgid "Rating"
-msgstr "Note"
-
-#: ios/AlwyWatch/LibraryView.swift
-msgid "Unwatched only"
-msgstr "Non vus uniquement"
-
 #: ios/AlwyWatch/PlayerView.swift
 msgid "Nothing to play."
 msgstr "Rien à lire."
@@ -8756,6 +8841,21 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "Sort"
+#~ msgstr "Trier"
+
+#~ msgid "Title"
+#~ msgstr "Titre"
+
+#~ msgid "Date added"
+#~ msgstr "Date d'ajout"
+
+#~ msgid "Rating"
+#~ msgstr "Note"
+
+#~ msgid "Unwatched only"
+#~ msgstr "Non vus uniquement"
 
 #~ msgid "System"
 #~ msgstr "Système"
