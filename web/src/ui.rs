@@ -34,7 +34,32 @@ pub fn Card(
     #[prop(optional)] wide: bool,
     // A "recently added" show: what is new (the second line) and what opening it shows.
     #[prop(optional_no_strip)] note: Option<RailNote>,
+    /// In Continue watching: a button takes it out (on the server, else in this browser).
+    #[prop(optional)]
+    removable: bool,
 ) -> impl IntoView {
+    let gone = RwSignal::new(false);
+    let (racc, rid) = (acc.clone(), item.id.clone());
+    let remove = move |e: leptos::ev::MouseEvent| {
+        e.prevent_default();
+        e.stop_propagation();
+        gone.set(true);
+        let (acc, id) = (racc.clone(), rid.clone());
+        leptos::task::spawn_local(async move {
+            let Some(srv) = state::ctx().server(&acc) else {
+                return;
+            };
+            // Jellyfin can't take a "next up" episode out: hidden here until watched again.
+            use media_api::MediaServer;
+            if !srv
+                .remove_from_continue_watching(&id)
+                .await
+                .unwrap_or(false)
+            {
+                crate::browse::hide_from_continue(&acc, &id);
+            }
+        });
+    };
     let c = state::ctx();
     let srv: Option<AnyServer> = c.server(&acc);
     let kinds: &[ImageKind] = if wide {
@@ -81,9 +106,13 @@ pub fn Card(
         ),
         None => (subtitle(&item), item_href(&acc, &item)),
     };
+    let label = tr!("Remove from Continue watching");
     view! {
-        <A href=href attr:class=if wide { "card wide" } else { "card" }>
+        <A href=href attr:class=if wide { "card wide" } else { "card" } attr:hidden=move || gone.get()>
             <div class="art">
+                {removable.then(|| view! {
+                    <button class="card-x" title=label.clone() aria-label=label.clone() on:click=remove.clone()>"✕"</button>
+                })}
                 {src.map(|s| view! { <img src=s loading="lazy" alt="" /> })}
                 {item.user.played.then(|| view! { <span class="badge">"✓"</span> })}
                 {progress.map(|p| view! { <div class="bar"><div style=format!("width:{p}%") /></div> })}
@@ -105,6 +134,9 @@ pub fn Rail(
     /// Where "See all" goes (none when empty).
     #[prop(optional)]
     see_all: String,
+    /// Continue watching: each card can be taken out of it.
+    #[prop(optional)]
+    removable: bool,
 ) -> impl IntoView {
     (!items.is_empty()).then(|| {
         view! {
@@ -116,7 +148,7 @@ pub fn Rail(
                 <RailRow>
                     {items.into_iter().map(|(acc, i)| {
                         let note = notes.iter().find(|n| n.item_id == i.id).cloned();
-                        view! { <Card acc=acc item=i wide=wide note=note /> }
+                        view! { <Card acc=acc item=i wide=wide note=note removable=removable /> }
                     }).collect_view()}
                 </RailRow>
             </section>
@@ -168,10 +200,10 @@ pub fn RailRow(children: Children) -> impl IntoView {
 }
 
 #[component]
-pub fn Grid(items: Vec<(String, Item)>) -> impl IntoView {
+pub fn Grid(items: Vec<(String, Item)>, #[prop(optional)] removable: bool) -> impl IntoView {
     view! {
         <div class="grid">
-            {items.into_iter().map(|(acc, i)| view! { <Card acc=acc item=i /> }).collect_view()}
+            {items.into_iter().map(|(acc, i)| view! { <Card acc=acc item=i removable=removable /> }).collect_view()}
         </div>
     }
 }

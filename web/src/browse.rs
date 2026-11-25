@@ -3,7 +3,7 @@
 //! once, then refresh it (never a blank page for data we already had).
 
 use i18n::tr;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -115,6 +115,15 @@ async fn load_server(c: &state::Ctx, acc: String, srv: AnyServer) -> ServerHome 
 }
 
 /// Every server at once. None when none of them answered (offline: keep what we had).
+/// Titles taken out of Continue watching in this browser: "account|id" → when (seconds).
+const HIDDEN: &str = "aw.hidden";
+
+pub fn hide_from_continue(acc: &str, id: &str) {
+    let mut h = state::load::<HashMap<String, i64>>(HIDDEN).unwrap_or_default();
+    h.insert(format!("{acc}|{id}"), (js_sys::Date::now() / 1000.0) as i64);
+    state::save(HIDDEN, &h);
+}
+
 async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
     let parts = state::join_all(
         c.servers()
@@ -143,6 +152,15 @@ async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
     resume.retain(|(_, i)| {
         !(i.user.played && i.user.position_ms < (i.runtime_ms.unwrap_or(0) / 20).max(120_000))
     });
+    // Taken out here (Jellyfin's "next up" can't be): until watched again since.
+    let hidden = state::load::<HashMap<String, i64>>(HIDDEN).unwrap_or_default();
+    let shown = |(acc, i): &(String, Item)| {
+        hidden
+            .get(&format!("{acc}|{}", i.id))
+            .is_none_or(|&at| i.user.last_played_at.unwrap_or(0) > at)
+    };
+    resume.retain(shown);
+    next.retain(shown);
     let mut watching = dedupe(resume);
     let started: HashSet<String> = watching
         .iter()
@@ -216,7 +234,7 @@ pub fn Home() -> impl IntoView {
             }.into_any(),
             // Leaving soon right after "Continue watching", as in the apps.
             Some(r) => r.into_iter().enumerate().map(|(n, (t, items, wide, notes, link))| view! {
-                <Rail title=t items=items wide=wide notes=notes see_all=link />
+                <Rail title=t items=items wide=wide notes=notes removable={link == "/continue"} see_all=link />
                 {(n == 0).then(|| view! { <crate::keep::LeavingRail /> })}
             }).collect_view().into_any(),
         }}
@@ -540,6 +558,9 @@ pub fn Detail() -> impl IntoView {
                                         what=tr!("{season} of {show}", season = i.title, show = i.series_title.clone().unwrap_or_default()) watched=i.user.played />
                                 })}
                                 <p class="overview">{i.overview.clone().unwrap_or_default()}</p>
+                                {matches!(i.kind, ItemKind::Movie | ItemKind::Series).then(|| view! {
+                                    <TrailerLink acc=acc.clone() id=i.id.clone() />
+                                })}
                                 {(i.kind == ItemKind::Movie).then(|| view! {
                                     <SagaLink tmdb=i.provider_ids.tmdb.as_deref().and_then(|t| t.parse().ok()) />
                                 })}
@@ -563,6 +584,32 @@ pub fn Detail() -> impl IntoView {
                 }.into_any()
             }
         }}
+    }
+}
+
+/// The title's trailer: the server's own in the player, else a web one (YouTube) in a new tab.
+#[component]
+fn TrailerLink(acc: String, id: String) -> impl IntoView {
+    let found = RwSignal::new(None::<media_api::Trailer>);
+    let a = acc.clone();
+    spawn_local(async move {
+        let Some(srv) = state::ctx().server(&a) else {
+            return;
+        };
+        if let Ok(t) = srv.trailers(&id).await {
+            found.try_set(t.into_iter().next());
+        }
+    });
+    move || {
+        found.get().and_then(|t| match (t.item_id, t.url) {
+            (Some(tid), _) => Some(view! {
+                <div class="actions"><A href=format!("/play/{acc}/{tid}?t=0") attr:class="button">{tr!("Trailer")}</A></div>
+            }.into_any()),
+            (None, Some(u)) => Some(view! {
+                <div class="actions"><a class="button" href=u target="_blank" rel="noopener">{tr!("Trailer")}</a></div>
+            }.into_any()),
+            _ => None,
+        })
     }
 }
 
@@ -907,7 +954,7 @@ pub fn ContinueWatching() -> impl IntoView {
         {move || match items.get() {
             None => view! { <Loading /> }.into_any(),
             Some(l) if l.is_empty() => view! { <p class="muted">{tr!("Nothing in progress.")}</p> }.into_any(),
-            Some(l) => view! { <Grid items=l /> }.into_any(),
+            Some(l) => view! { <Grid items=l removable=true /> }.into_any(),
         }}
     }
 }

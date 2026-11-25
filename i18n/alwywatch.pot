@@ -572,7 +572,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: desktop/src/app.rs
-#: ios/AlwyWatch/HomeView.swift
+#: web/src/ui.rs
 msgid "Remove from Continue watching"
 msgstr ""
 
@@ -2232,7 +2232,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: core/media-api/src/jellyfin.rs
-#: desktop/ui/app.slint
+#: web/src/browse.rs
 msgid "Trailer"
 msgstr ""
 
