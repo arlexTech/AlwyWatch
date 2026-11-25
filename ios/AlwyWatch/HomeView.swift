@@ -86,7 +86,7 @@ struct HomeView: View {
                             VStack(alignment: .leading, spacing: 10) {
                                 SectionTitle(
                                     title: tr("Recently added in {library}", ["library": rail.library.title]),
-                                    seeAll: .library(account: account, id: rail.library.id, title: rail.library.title)
+                                    seeAll: .library(account: account, id: rail.library.id, title: rail.library.title, recent: true)
                                 )
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     LazyHStack(alignment: .top, spacing: 12) {

@@ -33,7 +33,8 @@ struct AlwyWatchApp: App {
 /// Places to go from anywhere (navigation values).
 enum Route: Hashable {
     case detail(account: String, itemId: String)
-    case library(account: String, id: String, title: String)
+    case library(account: String, id: String, title: String, recent: Bool = false)
+    case filtered(account: String, libraryId: String, title: String, genreId: String?, collectionId: String?)
     case addServer
     case dashboard
     case historyCopy
@@ -162,7 +163,9 @@ extension View {
         navigationDestination(for: Route.self) { route in
             switch route {
             case let .detail(account, itemId): DetailView(account: account, itemId: itemId)
-            case let .library(account, id, title): LibraryView(account: account, libraryId: id, title: title)
+            case let .library(account, id, title, recent): LibraryView(account: account, libraryId: id, title: title, recent: recent)
+            case let .filtered(account, libraryId, title, genreId, collectionId):
+                FilteredLibraryView(account: account, libraryId: libraryId, title: title, genreId: genreId, collectionId: collectionId)
             case .addServer: SignInView()
             case .dashboard: DashboardView()
             case .historyCopy: HistoryCopyScreen()
