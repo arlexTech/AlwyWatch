@@ -54,7 +54,7 @@ struct HomeView: View {
                             ScrollView(.horizontal, showsIndicators: false) {
                                 LazyHStack(alignment: .top, spacing: 12) {
                                     ForEach(home.continueWatching) { item in
-                                        WideCard(account: account, item: item)
+                                        PosterCard(account: account, item: item)
                                             .onTapGesture { player = PlayRequest(account: account, item: item) }
                                             .contextMenu { ItemMenu(account: account, item: item) { Task { await refresh(force: true) } } }
                                     }

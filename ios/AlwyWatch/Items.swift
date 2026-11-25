@@ -42,6 +42,12 @@ extension Item {
         }
     }
 
+    /// "S3 · E4" (a card's second line for an episode, as on Android).
+    var episodeCode: String? {
+        guard kind == .episode, let s = seasonNumber, let e = episodeNumber else { return nil }
+        return tr("S{season} · E{episode}", ["season": s, "episode": e])
+    }
+
     /// The title line of a card: an episode shows its show.
     var cardTitle: String { kind == .episode ? (seriesTitle ?? title) : title }
 

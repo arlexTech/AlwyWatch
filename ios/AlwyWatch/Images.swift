@@ -62,7 +62,7 @@ struct PosterCard: View {
             ServerImage(account: account, itemId: item.id, image: item.poster, width: width)
                 .frame(width: width, height: width * 1.5)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .bottom) { ProgressLine(progress: item.progress) }
+                .overlay(alignment: .bottom) { ProgressLine(progress: item.progress).padding(8) }
                 .overlay(alignment: .topTrailing) {
                     if item.user.played {
                         Image(systemName: "checkmark.circle.fill")
@@ -71,41 +71,21 @@ struct PosterCard: View {
                     }
                 }
             Text(item.cardTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
-            Text(item.subtitle).font(.caption).foregroundStyle(Palette.muted).lineLimit(1)
+            Text(item.kind == .episode ? (item.episodeCode ?? item.subtitle) : item.subtitle).font(.caption).foregroundStyle(Palette.muted).lineLimit(1)
         }
         .frame(width: width)
     }
 }
 
-/// A 16:9 card (continue watching, episodes).
-struct WideCard: View {
-    let account: String
-    let item: Item
-    var width: CGFloat = 240
-    var note: String? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ServerImage(account: account, itemId: item.id, image: item.thumb, width: width)
-                .frame(width: width, height: width * 9 / 16)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .bottom) { ProgressLine(progress: item.progress) }
-            Text(item.cardTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
-            Text(note ?? item.remaining ?? item.subtitle).font(.caption).foregroundStyle(Palette.muted).lineLimit(1)
-        }
-        .frame(width: width)
-    }
-}
-
-/// The watched part, along the bottom of a card.
+/// The watched part, inset along the bottom of a poster (as on Android).
 struct ProgressLine: View {
     let progress: Double?
     var body: some View {
         if let progress {
             GeometryReader { g in
                 ZStack(alignment: .leading) {
-                    Rectangle().fill(.black.opacity(0.5))
-                    Rectangle().fill(Palette.accent).frame(width: g.size.width * progress)
+                    Capsule().fill(.white.opacity(0.25))
+                    Capsule().fill(Palette.accent).frame(width: g.size.width * progress)
                 }
             }
             .frame(height: 4)

@@ -99,7 +99,7 @@ private struct LibraryRecommended: View {
                                 LazyHStack(alignment: .top, spacing: 12) {
                                     ForEach(watching) { item in
                                         NavigationLink(value: Route.detail(account: account, itemId: item.id)) {
-                                            WideCard(account: account, item: item)
+                                            PosterCard(account: account, item: item)
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -362,7 +362,7 @@ struct GridPoster: View {
                 .aspectRatio(2 / 3, contentMode: .fit)
                 .overlay { ServerImage(account: account, itemId: item.id, image: item.poster, width: 160) }
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(alignment: .bottom) { ProgressLine(progress: item.progress) }
+                .overlay(alignment: .bottom) { ProgressLine(progress: item.progress).padding(8) }
                 .overlay(alignment: .topTrailing) {
                     if item.user.played {
                         Image(systemName: "checkmark.circle.fill")

@@ -393,7 +393,7 @@ private struct EpisodeRow: View {
             ServerImage(account: account, itemId: episode.id, image: episode.thumb, width: 160)
                 .frame(width: 150, height: 150 * 9 / 16)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(alignment: .bottom) { ProgressLine(progress: episode.progress) }
+                .overlay(alignment: .bottom) { ProgressLine(progress: episode.progress).padding(8) }
                 .overlay(alignment: .topTrailing) {
                     if episode.user.played {
                         Image(systemName: "checkmark.circle.fill")
