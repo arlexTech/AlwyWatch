@@ -6,7 +6,7 @@
 //!
 //! Scripted mode (`ALWYWATCH_DRIVE=1`, `ALWYWATCH_SCREENSHOT` ignored): one command per line on
 //! stdin, to drive the real UI end to end without a display:
-//! `click X Y`, `scroll X Y DY`, `key NAME` (Tab, Return, Escape, Up, Down, Left, Right, Space,
+//! `click X Y`, `rclick X Y`, `press X Y` / `release X Y` (held between), `scroll X Y DY`, `key NAME` (Tab, Return, Escape, Up, Down, Left, Right, Space,
 //! Backspace or one character), `type TEXT`, `shot FILE.png`, `size W H`, `quit`.
 
 use std::rc::Rc;
@@ -177,6 +177,24 @@ impl Headless {
                 w.dispatch_event(WindowEvent::PointerMoved { position });
                 w.dispatch_event(WindowEvent::PointerPressed { position, button });
                 w.dispatch_event(WindowEvent::PointerReleased { position, button });
+            }
+            ("rclick", [x, y]) => {
+                let position = LogicalPosition::new(*x, *y);
+                let button = PointerEventButton::Right;
+                w.dispatch_event(WindowEvent::PointerMoved { position });
+                w.dispatch_event(WindowEvent::PointerPressed { position, button });
+                w.dispatch_event(WindowEvent::PointerReleased { position, button });
+            }
+            // A press held across lines (long press): `press X Y`, … , `release X Y`.
+            ("press" | "release", [x, y]) => {
+                let position = LogicalPosition::new(*x, *y);
+                let button = PointerEventButton::Left;
+                w.dispatch_event(WindowEvent::PointerMoved { position });
+                w.dispatch_event(if cmd == "press" {
+                    WindowEvent::PointerPressed { position, button }
+                } else {
+                    WindowEvent::PointerReleased { position, button }
+                });
             }
             ("scroll", [x, y, dy]) => {
                 let position = LogicalPosition::new(*x, *y);

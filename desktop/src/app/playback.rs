@@ -102,6 +102,24 @@ impl App {
         );
     }
 
+    /// Progress reports that failed (offline) wait in the cache: retried every minute, as the
+    /// phone does when its network comes back.
+    pub(crate) fn start_progress_flush(self: &Rc<Self>) {
+        let w = Rc::downgrade(self);
+        self.progress_timer.start(
+            slint::TimerMode::Repeated,
+            std::time::Duration::from_secs(60),
+            move || {
+                let Some(a) = w.upgrade() else { return };
+                let core = a.core.clone();
+                slint::spawn_local(async move {
+                    let _ = core.flush_pending_progress().await;
+                })
+                .ok();
+            },
+        );
+    }
+
     /// At startup: full screen when it was left so.
     pub(crate) fn app_fullscreen_restore(&self) {
         if self

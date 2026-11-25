@@ -534,6 +534,7 @@ msgid "{time} left"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Play from start"
 msgstr ""
 
@@ -542,11 +543,13 @@ msgid "Instead of resuming at {time}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 #: web/src/extra.rs
 msgid "Mark all episodes watched"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 #: web/src/extra.rs
 msgid "Mark all episodes unwatched"
 msgstr ""
@@ -557,41 +560,45 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: web/src/extra.rs
+#: desktop/src/app.rs
 msgid "Mark watched"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: web/src/extra.rs
+#: desktop/src/app.rs
 msgid "Mark unwatched"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Remove from Continue watching"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Go to the show"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Go to season {season}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Go to season"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: ios/AlwyWatch/DetailView.swift
+#: desktop/src/app.rs
 msgid "Remove from my list"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: desktop/ui/app.slint
+#: desktop/src/app.rs
 msgid "Add to my list"
 msgstr ""
 
@@ -8428,6 +8435,14 @@ msgstr ""
 
 #: desktop/ui/app.slint
 msgid "Resume from {}"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Resume {} from {}"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Play {}"
 msgstr ""
 
 #: desktop/ui/app.slint

@@ -281,6 +281,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
     );
     app.app_fullscreen_restore();
+    app.start_progress_flush();
     let raise = slint::Timer::default();
     if let Some(instance) = instance {
         let w = ui.as_weak();

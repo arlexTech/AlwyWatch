@@ -26,8 +26,8 @@ mod profiles;
 mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
 use crate::{
-    AccountRow, AdminRow, AppWindow, Card, Detail, DownloadRow, ForeverRow, KeepPanel, LeavingRow,
-    NamedId, Page, Rail, SeerrPage, SeerrPanel, ServerChoice, StatusRow,
+    AccountRow, AdminRow, AppWindow, Card, CardMenu, Detail, DownloadRow, ForeverRow, KeepPanel,
+    LeavingRow, NamedId, Page, Rail, SeerrPage, SeerrPanel, ServerChoice, StatusRow,
 };
 use together::TogetherPlay;
 
@@ -186,6 +186,8 @@ struct State {
     notes: HashMap<String, RailNote>,
     /// The season a show's page opens on (a card's note): (show, season).
     pending_season: Option<(String, String)>,
+    /// The card whose actions are open, and the row it is in.
+    card_menu: Option<(String, String)>,
 }
 
 thread_local! {
@@ -197,6 +199,8 @@ pub struct App {
     downloads_timer: slint::Timer,
     runner_timer: slint::Timer,
     history_timer: slint::Timer,
+    /// Sends progress saved while offline (downloads watched on the train) once back online.
+    progress_timer: slint::Timer,
     core: Arc<AlwyWatch>,
     ui: Weak<AppWindow>,
     tokens: Tokens,
@@ -297,6 +301,7 @@ impl App {
             downloads_timer: slint::Timer::default(),
             runner_timer: slint::Timer::default(),
             history_timer: slint::Timer::default(),
+            progress_timer: slint::Timer::default(),
             core,
             ui: ui.as_weak(),
             tokens,
@@ -355,6 +360,7 @@ impl App {
                 invites: Default::default(),
                 notes: HashMap::new(),
                 pending_season: None,
+                card_menu: None,
             }),
             images: RefCell::new(HashMap::new()),
             faces: RefCell::new(HashMap::new()),
@@ -3022,6 +3028,9 @@ impl App {
                 (true, Some(n)) => sstr(tr!("Season {n}", n = n)),
                 _ => SharedString::default(),
             },
+            next_id: SharedString::default(),
+            next_label: SharedString::default(),
+            next_resume_at: SharedString::default(),
         }
     }
 
@@ -3046,6 +3055,9 @@ impl App {
             d.crew = prev.crew;
             d.saga_id = prev.saga_id;
             d.saga_label = prev.saga_label;
+            d.next_id = prev.next_id;
+            d.next_label = prev.next_label;
+            d.next_resume_at = prev.next_resume_at;
         } else {
             ui.set_leaving_open(SharedString::new());
         }
@@ -3095,6 +3107,119 @@ impl App {
         if i.kind == ItemKind::Series && self.state.borrow().series.as_deref() != Some(&i.id) {
             self.load_seasons(i.id.clone());
         }
+        if i.kind == ItemKind::Series && !same {
+            self.load_next_episode(i.id.clone());
+        }
+    }
+
+    /// A show's Play: the episode in progress, else the next unwatched one (like the phone:
+    /// the server's continue watching first, then the first unwatched season's episodes).
+    fn load_next_episode(self: &Rc<Self>, series: String) {
+        let Some(account) = self.account_of(&series) else {
+            return;
+        };
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let from_home = core
+                .cached_home(account.clone())
+                .ok()
+                .flatten()
+                .and_then(|h| {
+                    h.continue_watching
+                        .into_iter()
+                        .find(|e| e.series_id.as_deref() == Some(&series))
+                });
+            let next = match from_home {
+                Some(e) => Some(e),
+                None => {
+                    let seasons = match core.cached_seasons(account.clone(), series.clone()) {
+                        Ok(Some(r)) => r.items,
+                        _ => core
+                            .refresh_seasons(account.clone(), series.clone(), false)
+                            .await
+                            .map(|r| r.items)
+                            .unwrap_or_default(),
+                    };
+                    let mut todo: Vec<&Item> = seasons.iter().filter(|s| !s.user.played).collect();
+                    if todo.is_empty() {
+                        todo.extend(seasons.first());
+                    }
+                    let mut found = None;
+                    for season in todo {
+                        let eps = match core.cached_episodes(
+                            account.clone(),
+                            series.clone(),
+                            season.id.clone(),
+                        ) {
+                            Ok(Some(r)) => r.items,
+                            _ => core
+                                .refresh_episodes(
+                                    account.clone(),
+                                    series.clone(),
+                                    season.id.clone(),
+                                    false,
+                                )
+                                .await
+                                .map(|r| r.items)
+                                .unwrap_or_default(),
+                        };
+                        found = eps
+                            .iter()
+                            .find(|e| e.user.position_ms > 0 && !e.user.played)
+                            .or_else(|| eps.iter().find(|e| !e.user.played))
+                            .cloned();
+                        if found.is_some() {
+                            break;
+                        }
+                    }
+                    found
+                }
+            };
+            // The episode's own cache is fresher than the home's (watched since on this device).
+            let next = next.map(|e| {
+                core.cached_item(account.clone(), e.id.clone())
+                    .ok()
+                    .flatten()
+                    .map_or(e, |r| r.item)
+            });
+            let show = |next: Option<Item>| {
+                let Some(this) = this.upgrade() else { return };
+                let ui = this.ui();
+                let mut d = ui.get_detail();
+                if d.id.as_str() != series {
+                    return;
+                }
+                match next {
+                    Some(e) => {
+                        this.own(std::slice::from_ref(&e), &account);
+                        this.state
+                            .borrow_mut()
+                            .items
+                            .insert(e.id.clone(), e.clone());
+                        d.next_id = sstr(&e.id);
+                        d.next_label = sstr(match (e.season_number, e.episode_number) {
+                            (Some(s), Some(n)) => format!("S{s} E{n}"),
+                            _ => e.title.clone(),
+                        });
+                        d.next_resume_at = if e.user.position_ms > 0 {
+                            sstr(clock(e.user.position_ms))
+                        } else {
+                            SharedString::default()
+                        };
+                    }
+                    None => d.next_id = SharedString::default(),
+                }
+                ui.set_detail(d);
+            };
+            show(next.clone());
+            // Then the server's word on where it stands (watched elsewhere since).
+            if let Some(e) = next
+                && let Ok(r) = core.refresh_item(account.clone(), e.id, false).await
+            {
+                show(Some(r.item));
+            }
+        })
+        .ok();
     }
 
     fn load_detail(self: &Rc<Self>, id: String) {
@@ -4098,6 +4223,148 @@ impl App {
                 this.set_error(Some(e));
             }
             render(&this, lists);
+        })
+        .ok();
+    }
+
+    /// A card's actions, as on the phone's long press.
+    fn card_menu_open(self: &Rc<Self>, id: String, row: String) {
+        if id.starts_with("leaving:") {
+            return;
+        }
+        let Some(i) = self.state.borrow().items.get(&id).cloned() else {
+            return;
+        };
+        let series = i.kind == ItemKind::Series;
+        let playable = matches!(i.kind, ItemKind::Movie | ItemKind::Episode);
+        let started = i.user.position_ms > 0;
+        let in_continue = row == "continue";
+        let mut actions: Vec<(&str, String)> = Vec::new();
+        if playable && started {
+            actions.push(("start", tr!("Play from start")));
+        }
+        if series {
+            if !i.user.played {
+                actions.push(("all_watched", tr!("Mark all episodes watched")));
+            }
+            actions.push(("all_unwatched", tr!("Mark all episodes unwatched")));
+        } else if playable {
+            if !i.user.played {
+                actions.push(("watched", tr!("Mark watched")));
+            }
+            if i.user.played || started {
+                actions.push(("unwatched", tr!("Mark unwatched")));
+            }
+        }
+        if playable && (!i.user.played || in_continue) && (started || in_continue) {
+            actions.push(("remove_cw", tr!("Remove from Continue watching")));
+        }
+        if i.kind == ItemKind::Episode && i.series_id.is_some() {
+            actions.push(("show", tr!("Go to the show")));
+            if i.season_id.is_some() {
+                actions.push((
+                    "season",
+                    match i.season_number {
+                        Some(n) => tr!("Go to season {season}", season = n),
+                        None => tr!("Go to season"),
+                    },
+                ));
+            }
+        }
+        if matches!(i.kind, ItemKind::Movie | ItemKind::Series) {
+            let account = self.account_of(&id).unwrap_or_default();
+            if self.core.is_watchlisted(account, id.clone()) {
+                actions.push(("list_remove", tr!("Remove from my list")));
+            } else {
+                actions.push(("list_add", tr!("Add to my list")));
+            }
+        }
+        if actions.is_empty() {
+            return;
+        }
+        let title = match (&i.series_title, i.kind) {
+            (Some(show), ItemKind::Episode) => format!("{show} · {}", i.title),
+            _ => i.title.clone(),
+        };
+        self.state.borrow_mut().card_menu = Some((id, row));
+        self.ui().set_card_menu(CardMenu {
+            shown: true,
+            title: sstr(title),
+            actions: ModelRc::new(VecModel::from(
+                actions
+                    .into_iter()
+                    .map(|(id, title)| NamedId {
+                        id: sstr(id),
+                        title: sstr(title),
+                        selected: false,
+                    })
+                    .collect::<Vec<_>>(),
+            )),
+        });
+    }
+
+    fn card_menu_pick(self: &Rc<Self>, action: String) {
+        self.ui().set_card_menu(CardMenu::default());
+        let Some((id, _)) = self.state.borrow_mut().card_menu.take() else {
+            return;
+        };
+        let Some(i) = self.state.borrow().items.get(&id).cloned() else {
+            return;
+        };
+        let Some(account) = self.account_of(&id) else {
+            return;
+        };
+        match action.as_str() {
+            "start" => return self.play(id, true),
+            "show" | "season" => {
+                let Some(series) = i.series_id.clone() else {
+                    return;
+                };
+                let season = i.season_id.clone().filter(|_| action == "season");
+                self.own_ids([&series].into_iter().chain(season.as_ref()), &account);
+                self.state.borrow_mut().pending_season = season.map(|s| (series.clone(), s));
+                return self.navigate(Route::Detail(series));
+            }
+            "" => return,
+            _ => {}
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = match action.as_str() {
+                "watched" | "all_watched" => {
+                    core.set_played(account.clone(), id.clone(), true).await
+                }
+                "unwatched" | "all_unwatched" => {
+                    core.set_played(account.clone(), id.clone(), false).await
+                }
+                "remove_cw" => {
+                    core.remove_from_continue_watching(account.clone(), id.clone())
+                        .await
+                }
+                "list_add" => {
+                    core.set_watchlisted(account.clone(), id.clone(), true)
+                        .await
+                }
+                "list_remove" => {
+                    core.set_watchlisted(account.clone(), id.clone(), false)
+                        .await
+                }
+                _ => Ok(()),
+            };
+            let Some(t) = this.upgrade() else { return };
+            if let Err(e) = r {
+                t.set_error(Some(e));
+                return;
+            }
+            // What changed shows at once: the home and this title asked again, the page redrawn.
+            let _ = core.refresh_home(account.clone(), true).await;
+            if let Ok(r) = core.refresh_item(account, id, true).await {
+                t.state.borrow_mut().items.insert(r.item.id.clone(), r.item);
+            }
+            let route = t.state.borrow().stack.last().cloned();
+            if let Some(route) = route {
+                t.show(route);
+            }
         })
         .ok();
     }
@@ -5526,6 +5793,10 @@ impl App {
             ));
         });
         on!(on_play, |a, id, from_start| a.play(id.into(), from_start));
+        on!(on_card_menu_open, |a, id, row| a
+            .card_menu_open(id.into(), row.into()));
+        on!(on_card_menu_pick, |a, action| a
+            .card_menu_pick(action.into()));
         on!(on_toggle_played, |a, id| a.toggle_played(id.into()));
         on!(on_mark_many, |a, kind, played| a
             .mark_many(kind.into(), played));

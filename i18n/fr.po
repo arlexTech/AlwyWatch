@@ -539,6 +539,7 @@ msgid "{time} left"
 msgstr "{time} restantes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Play from start"
 msgstr "Lire depuis le début"
 
@@ -547,11 +548,13 @@ msgid "Instead of resuming at {time}"
 msgstr "Au lieu de reprendre à {time}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 #: web/src/extra.rs
 msgid "Mark all episodes watched"
 msgstr "Marquer tous les épisodes comme vus"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 #: web/src/extra.rs
 msgid "Mark all episodes unwatched"
 msgstr "Marquer tous les épisodes comme non vus"
@@ -562,41 +565,45 @@ msgstr "Oublie où vous vous étiez arrêté"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: web/src/extra.rs
+#: desktop/src/app.rs
 msgid "Mark watched"
 msgstr "Marquer comme vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: web/src/extra.rs
+#: desktop/src/app.rs
 msgid "Mark unwatched"
 msgstr "Marquer comme non vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Remove from Continue watching"
 msgstr "Retirer de Reprendre"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Go to the show"
 msgstr "Aller à la série"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Go to season {season}"
 msgstr "Aller à la saison {season}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: desktop/src/app.rs
 msgid "Go to season"
 msgstr "Aller à la saison"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: ios/AlwyWatch/DetailView.swift
+#: desktop/src/app.rs
 msgid "Remove from my list"
 msgstr "Retirer de ma liste"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: desktop/ui/app.slint
+#: desktop/src/app.rs
 msgid "Add to my list"
 msgstr "Ajouter à ma liste"
 
@@ -8434,6 +8441,14 @@ msgstr "Rien en cours ni ajouté récemment."
 #: desktop/ui/app.slint
 msgid "Resume from {}"
 msgstr "Reprendre à {}"
+
+#: desktop/ui/app.slint
+msgid "Resume {} from {}"
+msgstr "Reprendre {} à {}"
+
+#: desktop/ui/app.slint
+msgid "Play {}"
+msgstr "Lire {}"
 
 #: desktop/ui/app.slint
 msgid "Mark as"
