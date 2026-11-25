@@ -1156,43 +1156,45 @@ impl State {
         let ok_id = |x: &str| {
             !x.is_empty() && x.len() <= 64 && x.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
         };
-        let req = if let Some(path) = img.strip_prefix("plex:") {
-            let safe = path.starts_with("/library/metadata/")
-                && path.len() < 120
-                && path.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'/');
-            if conf.kind != ServerType::Plex || !safe {
-                return None;
+        let req = match img.split_once(':')? {
+            ("plex", path) => {
+                let safe = path.starts_with("/library/metadata/")
+                    && path.len() < 120
+                    && path.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'/');
+                if conf.kind != ServerType::Plex || !safe {
+                    return None;
+                }
+                let (url, key) = self.tautulli()?;
+                self.http.get(format!("{url}/api/v2")).query(&[
+                    ("apikey", key),
+                    ("cmd", "pms_image_proxy"),
+                    ("img", path),
+                    ("width", "200"),
+                    ("height", "300"),
+                    // JPEG: a tenth of Tautulli's default PNG.
+                    ("img_format", "jpg"),
+                    ("fallback", "poster"),
+                ])
             }
-            let (url, key) = self.tautulli()?;
-            self.http.get(format!("{url}/api/v2")).query(&[
-                ("apikey", key),
-                ("cmd", "pms_image_proxy"),
-                ("img", path),
-                ("width", "200"),
-                ("height", "300"),
-                // JPEG: a tenth of Tautulli's default PNG.
-                ("img_format", "jpg"),
-                ("fallback", "poster"),
-            ])
-        } else if let Some(rest) = img.strip_prefix("jf:") {
-            if conf.kind != ServerType::Jellyfin {
-                return None;
+            ("jf", rest) => {
+                if conf.kind != ServerType::Jellyfin {
+                    return None;
+                }
+                let (what, id) = rest.split_once(':')?;
+                if !ok_id(id) {
+                    return None;
+                }
+                let path = match what {
+                    "item" => format!("/Items/{id}/Images/Primary?fillHeight=300&quality=80"),
+                    "user" => format!("/Users/{id}/Images/Primary?fillHeight=96&quality=85"),
+                    _ => return None,
+                };
+                let key = self.config.secrets.jellyfin_key(&conf.id)?;
+                self.http
+                    .get(format!("{}{path}", conf.internal()))
+                    .header("Authorization", format!("MediaBrowser Token=\"{key}\""))
             }
-            let (what, id) = rest.split_once(':')?;
-            if !ok_id(id) {
-                return None;
-            }
-            let path = match what {
-                "item" => format!("/Items/{id}/Images/Primary?fillHeight=300&quality=80"),
-                "user" => format!("/Users/{id}/Images/Primary?fillHeight=96&quality=85"),
-                _ => return None,
-            };
-            let key = self.config.secrets.jellyfin_key(&conf.id)?;
-            self.http
-                .get(format!("{}{path}", conf.internal()))
-                .header("Authorization", format!("MediaBrowser Token=\"{key}\""))
-        } else {
-            return None;
+            _ => return None,
         };
         let res = req
             .timeout(Duration::from_secs(20))
