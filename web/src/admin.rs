@@ -39,6 +39,51 @@ pub async fn wait_for_restart(c: &Ctx) -> bool {
     false
 }
 
+thread_local! {
+    /// The login Server settings were read with (see `settings_clients`).
+    static SETTINGS_LOGIN: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Server settings hold every key: the server shows them only to a sign-in that is itself a
+/// Jellyfin administrator or the Plex owner (an admin through a linked login is not enough).
+/// So each login of this browser is offered in turn, the one AlwyWatch uses first.
+fn settings_clients(c: &Ctx) -> Vec<(Option<String>, KeepClient)> {
+    let linked = c.keep.get_untracked().map(|k| k.account);
+    let mut out: Vec<(Option<String>, KeepClient)> = Vec::new();
+    if let Some(k) = c.keep_client() {
+        out.push((linked.clone(), k));
+    }
+    for s in c.accounts.get_untracked() {
+        let key = state::account_key(&s);
+        if Some(&key) != linked.as_ref()
+            && let Some(k) = c.keep_for(&s)
+        {
+            out.push((Some(key), k));
+        }
+    }
+    if out.is_empty()
+        && let Some(k) = c.account_client()
+    {
+        out.push((None, k));
+    }
+    out
+}
+
+/// The client Server settings were read with, for saving and testing them.
+fn settings_client(c: &Ctx) -> Option<KeepClient> {
+    let chosen = SETTINGS_LOGIN.with(|l| l.borrow().clone());
+    chosen
+        .and_then(|k| c.session(&k))
+        .and_then(|s| c.keep_for(&s))
+        .or_else(|| admin_client(c))
+}
+
+fn not_settings_admin() -> String {
+    tr!(
+        "Server settings need a Jellyfin administrator's or the Plex owner's login, signed in here (they hold every password and key, so an admin login linked to your account isn't enough). Add one in Settings → Servers."
+    )
+}
+
 fn admin_error(e: &net::Error) -> String {
     match e {
         net::Error::Unauthorized => tr!("Only admins of this AlwyWatch server can see this."),
@@ -344,7 +389,7 @@ fn Test(
         testing.set(true);
         result.set(None);
         spawn_local(async move {
-            let Some(k) = admin_client(&state::ctx()) else {
+            let Some(k) = settings_client(&state::ctx()) else {
                 // Signed out meanwhile: the button comes back, with why.
                 testing.try_set(false);
                 result.try_set(Some((
@@ -397,13 +442,25 @@ pub fn ServerSettingsPage() -> impl IntoView {
     Effect::new(move |_| {
         f.version.get();
         spawn_local(async move {
-            let Some(k) = admin_client(&state::ctx()) else {
+            let candidates = settings_clients(&state::ctx());
+            if candidates.is_empty() {
                 loaded.try_set(Some(Err(tr!(
                     "Sign in as an admin of this AlwyWatch server first."
                 ))));
                 return;
-            };
-            match k.admin_settings().await {
+            }
+            let mut answer = Err(net::Error::Unauthorized);
+            for (login, k) in candidates {
+                answer = k.admin_settings().await;
+                if !matches!(answer, Err(net::Error::Unauthorized)) {
+                    SETTINGS_LOGIN.with(|l| *l.borrow_mut() = login);
+                    break;
+                }
+            }
+            match answer {
+                Err(net::Error::Unauthorized) => {
+                    loaded.try_set(Some(Err(not_settings_admin())));
+                }
                 Ok(v) => {
                     f.orig.try_set(v.settings.clone());
                     f.edit.try_set(v.settings);
@@ -443,7 +500,7 @@ pub fn ServerSettingsPage() -> impl IntoView {
         f.note.set(None);
         f.busy.set(true);
         spawn_local(async move {
-            let r = match admin_client(&state::ctx()) {
+            let r = match settings_client(&state::ctx()) {
                 Some(k) => k.put_admin_settings(&f.edit.get_untracked()).await,
                 None => Err(net::Error::Unauthorized),
             };
@@ -451,6 +508,10 @@ pub fn ServerSettingsPage() -> impl IntoView {
                 Ok(()) => f.restarting(tr!(
                     "Saved. The server is starting again with the new settings…"
                 )),
+                Err(net::Error::Unauthorized) => {
+                    f.busy.try_set(false);
+                    f.error.try_set(Some(not_settings_admin()));
+                }
                 Err(e) => {
                     f.busy.try_set(false);
                     f.error.try_set(Some(admin_error(&e)));

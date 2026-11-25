@@ -6764,6 +6764,10 @@ msgid "Code"
 msgstr "Code"
 
 #: web/src/admin.rs
+msgid "Server settings need a Jellyfin administrator's or the Plex owner's login, signed in here (they hold every password and key, so an admin login linked to your account isn't enough). Add one in Settings → Servers."
+msgstr "Les réglages du serveur demandent une connexion d'administrateur Jellyfin ou du propriétaire Plex, ouverte ici (ils contiennent tous les mots de passe et clés : une connexion admin liée à votre compte ne suffit pas). Ajoutez-en une dans Réglages → Serveurs."
+
+#: web/src/admin.rs
 #: web/src/keep.rs
 msgid "Only admins of this AlwyWatch server can see this."
 msgstr "Seuls les administrateurs de ce serveur AlwyWatch peuvent voir ceci."
