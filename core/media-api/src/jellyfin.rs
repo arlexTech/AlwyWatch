@@ -742,12 +742,14 @@ fn jellyfin_profile(p: &DeviceProfile) -> serde_json::Value {
     // otherwise H.264 first. HEVC goes in fMP4 segments, never MPEG-TS: Apple's players refuse
     // it there, and Media3 reads a copied 10-bit HEVC stream in TS with broken frames (a
     // Matroska original converted for its track layout flickered with artefacts on a
-    // Chromecast). H.264 stays in TS, which every player reads.
+    // Chromecast). H.264 stays in TS, which every player reads, and alone there: with "hevc"
+    // also listed, Jellyfin copied a 10-bit HEVC original as is into TS for a device that had
+    // just said it can't decode it (a browser: hls.js reads no HEVC in TS, nothing played).
     let hevc = p.video_10bit_codecs.iter().any(|c| c == "hevc");
     let (transcode_codecs, segments) = if hevc {
         ("hevc,h264", "mp4")
     } else {
-        ("h264,hevc", "ts")
+        ("h264", "ts")
     };
     let subs: Vec<_> = p
         .subtitle_codecs
@@ -1617,7 +1619,7 @@ mod profile_tests {
         assert_eq!(cps[1]["Codec"], "hevc");
         assert_eq!(cps[1]["Conditions"][0]["Property"], "VideoBitDepth");
         assert_eq!(cps[2]["Conditions"][0]["Value"], "1920");
-        assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "h264,hevc");
+        assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "h264");
     }
 
     #[test]
@@ -1646,9 +1648,9 @@ mod profile_tests {
             max_height: None,
             hdr: vec![],
         };
-        // No 10-bit HEVC: H.264 first, in MPEG-TS.
+        // No 10-bit HEVC: H.264 only, in MPEG-TS (never an HEVC copy there).
         let j = jellyfin_profile(&p);
-        assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "h264,hevc");
+        assert_eq!(j["TranscodingProfiles"][0]["VideoCodec"], "h264");
         assert_eq!(j["TranscodingProfiles"][0]["Container"], "ts");
         // HEVC first, in fMP4 segments (never TS).
         p.video_10bit_codecs.push("hevc".into());

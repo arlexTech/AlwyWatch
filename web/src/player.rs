@@ -4,8 +4,8 @@
 //!
 //! The original file plays directly whenever the browser says it can; if it then fails (an
 //! audio codec it can't decode, a container it only claimed), the server's HLS transcode takes
-//! over at the same position. HLS plays natively in Safari, through hls.js elsewhere (loaded
-//! only then, from this site).
+//! over at the same position. HLS plays through hls.js (loaded only then, from this site),
+//! natively only where there is no MediaSource (iPhone).
 
 use i18n::{tr, trn};
 use leptos::prelude::*;
@@ -110,7 +110,9 @@ fn browser_profile() -> DeviceProfile {
         containers.push("mkv".into());
     }
     DeviceProfile {
-        max_bitrate: None,
+        // As the Android app. None let Jellyfin size a conversion from the audio's bitrate
+        // alone: 416×234 video for a 1080p film.
+        max_bitrate: Some(200_000_000),
         containers,
         video_codecs: video,
         video_10bit_codecs: ten_bit,
@@ -122,8 +124,15 @@ fn browser_profile() -> DeviceProfile {
     }
 }
 
+/// HLS through the browser itself only where hls.js can't run (iPhone Safari: no
+/// MediaSource). Chrome now says "maybe" for HLS too, but its own player stalled on Jellyfin's
+/// conversions (the playlist loaded, never a segment, no error): hls.js wherever it can.
 fn native_hls() -> bool {
-    test_video().is_some_and(|v| !v.can_play_type("application/vnd.apple.mpegurl").is_empty())
+    let mse = web_sys::window()
+        .and_then(|w| js_sys::Reflect::get(&w, &"MediaSource".into()).ok())
+        .is_some_and(|m| !m.is_undefined());
+    !mse && test_video()
+        .is_some_and(|v| !v.can_play_type("application/vnd.apple.mpegurl").is_empty())
 }
 
 /// Codec names as servers write them, as the profile does.
@@ -1575,7 +1584,7 @@ fn PlayerView(
                             let choices = media_api::quality::quality_choices(&src);
                             let picks: Vec<Option<Quality>> = choices.iter().map(|c| c.quality).collect();
                             view! {
-                                <span class="pill" title=tr!("Playing now")>{now}</span>
+                                <span class="pill" title=format!("{}: {now}", tr!("Playing now"))>{now.clone()}</span>
                                 <select class="chip small quality" aria-label=tr!("Quality")
                                     on:change=move |ev| {
                                         if let Some(q) = event_target_value(&ev).parse::<usize>().ok().and_then(|i| picks.get(i)) {
