@@ -3113,8 +3113,14 @@ impl App {
             _ => {
                 // Show what the list already knew while the detail loads.
                 let known = self.state.borrow().items.get(&id).cloned();
-                if let Some(i) = known {
-                    self.render_detail(&i);
+                match known {
+                    Some(i) => self.render_detail(&i),
+                    // Nothing yet: an empty page of its own (not the previous title's, which
+                    // would also make the answer below look stale).
+                    None => self.ui().set_detail(Detail {
+                        id: sstr(&id),
+                        ..Default::default()
+                    }),
                 }
             }
         }
@@ -5529,6 +5535,13 @@ impl App {
         on!(on_play_trailer, |a, id| a.play_trailer(id.into()));
         on!(on_select_season, |a, id| a.select_season(id.into()));
         on!(on_detail_open_series, |a, series, season| {
+            // The show is on the episode's server (several sign-ins: not the current one).
+            let episode = a.ui().get_detail().id.to_string();
+            let owner = a.state.borrow().owners.get(&episode).cloned();
+            if let Some(acc) = owner {
+                let ids = [series.to_string(), season.to_string()];
+                a.own_ids(ids.iter().filter(|i| !i.is_empty()), &acc);
+            }
             a.state.borrow_mut().pending_season =
                 (!season.is_empty()).then(|| (series.to_string(), season.to_string()));
             a.navigate(Route::Detail(series.into()));

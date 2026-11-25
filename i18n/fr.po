@@ -8428,18 +8428,6 @@ msgid "Now: {}"
 msgstr "Maintenant : {}"
 
 #: desktop/ui/app.slint
-msgid "Leave full screen"
-msgstr "Quitter le plein écran"
-
-#: desktop/ui/app.slint
-msgid "Minimize"
-msgstr "Réduire"
-
-#: desktop/ui/app.slint
-msgid "Maximize"
-msgstr "Agrandir"
-
-#: desktop/ui/app.slint
 msgid "Nothing in progress or recently added."
 msgstr "Rien en cours ni ajouté récemment."
 
@@ -8882,6 +8870,18 @@ msgstr "INVITATIONS"
 #: desktop/ui/app.slint
 msgid "SERVER STATUS"
 msgstr "ÉTAT DU SERVEUR"
+
+#: desktop/ui/app.slint
+msgid "Leave full screen"
+msgstr "Quitter le plein écran"
+
+#: desktop/ui/app.slint
+msgid "Minimize"
+msgstr "Réduire"
+
+#: desktop/ui/app.slint
+msgid "Maximize"
+msgstr "Agrandir"
 
 #: desktop/ui/app.slint
 msgid "Your avatar"

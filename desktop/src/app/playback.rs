@@ -93,7 +93,7 @@ impl App {
     /// The whole app full screen or not (the sidebar's button, F11), kept for the next launch.
     pub(super) fn app_fullscreen_toggle(&self) {
         let ui = self.ui();
-        let on = !ui.get_app_fullscreen();
+        let on = !ui.window().is_fullscreen();
         ui.set_app_fullscreen(on);
         ui.window().set_fullscreen(on);
         let _ = self.core.set_setting(
@@ -121,10 +121,10 @@ impl App {
     /// A control was used (PlayerOverlay's `cmd`).
     pub(super) fn player_cmd(&self, cmd: &str, arg: &str) {
         if cmd == "fullscreen" {
+            // One switch for the app and the player: kept when the player closes.
+            self.app_fullscreen_toggle();
             let ui = self.ui();
-            let on = !ui.window().is_fullscreen();
-            ui.window().set_fullscreen(on);
-            ui.set_player_fullscreen(on);
+            ui.set_player_fullscreen(ui.get_app_fullscreen());
             return;
         }
         let Some(m) = self.state.borrow().player_mpv.clone() else {

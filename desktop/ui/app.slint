@@ -2039,6 +2039,10 @@ export component AppWindow inherits Window {
     callback window-minimize();
     callback window-maximize();
     callback window-close();
+    /// The top-right corner's buttons (full screen, and the window's on Wayland): the width
+    /// pages keep free there.
+    property <bool> window-buttons: root.window-controls && !root.app-fullscreen;
+    out property <length> corner-width: (root.window-buttons ? 4 : 1) * 44px + (root.window-buttons ? 3 : 0) * 8px + 16px;
     callback app-fullscreen-toggle();
     // A row's "See all" (key from Rail.see-all, the row's title).
     callback rail-see-all(string, string);
@@ -2088,11 +2092,12 @@ export component AppWindow inherits Window {
                 width: 232px;
                 background: #ffffff08;
                 Rectangle { x: parent.width - 1px; width: 1px; background: Palette.outline; }
+                // Header, the pages (scrolling when the window is short: a tablet, many libraries)
+                // and the window's own controls, always in sight at the bottom.
                 VerticalLayout {
                     padding: 16px;
                     padding-top: 24px;
                     spacing: 4px;
-                    alignment: start;
                     Text {
                         text: "AlwyWatch";
                         color: Palette.text;
@@ -2101,45 +2106,38 @@ export component AppWindow inherits Window {
                         letter-spacing: -0.5px;
                     }
                     Rectangle { height: 22px; }
-                    // Several profiles on this computer: who is watching, one click to switch.
-                    if root.profiles.length > 1 : NavItem { label: root.profile-name; icon: @image-url("icons/person.svg"); selected: false; clicked => { root.profile-switcher(); } }
-                    NavItem { label: @tr("Home"); icon: @image-url("icons/home.svg"); selected: root.page == Page.home; clicked => { root.go(Page.home); } }
-                    NavItem { label: @tr("Search"); icon: @image-url("icons/search.svg"); selected: root.page == Page.search; clicked => { root.go(Page.search); } }
-                    NavItem { label: @tr("My list"); icon: @image-url("icons/bookmark.svg"); selected: root.page == Page.mylist && root.list-title == "My list"; clicked => { root.go(Page.mylist); } }
-                    for lib in root.libraries : NavItem {
-                        label: lib.title;
-                        icon: @image-url("icons/movie.svg");
-                        selected: root.page == Page.library && root.library-id == lib.id;
-                        clicked => { root.open-library(lib.id, lib.title); }
-                    }
-                    if root.keep-active && root.leaving-available : NavItem {
-                        label: @tr("Leaving soon");
-                        icon: @image-url("icons/hourglass_bottom.svg");
-                        selected: root.page == Page.leaving || root.page == Page.triage || root.page == Page.keepadmin;
-                        clicked => { root.go(Page.leaving); }
-                    }
-                    if root.keep-active : NavItem {
-                        label: @tr("Together");
-                        icon: @image-url("icons/group.svg");
-                        selected: root.page == Page.together || root.page == Page.room;
-                        clicked => { root.go(Page.together); }
-                    }
-                    if root.seerr-active && root.requests-available : NavItem { label: @tr("Requests"); icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
-                    NavItem { label: @tr("Downloads"); icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
-                    NavItem { label: @tr("Settings"); icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings || root.page == Page.profiles || root.page == Page.historycopy; clicked => { root.go(Page.settings); } }
-                    NavItem {
-                        label: root.app-fullscreen ? @tr("Leave full screen") : @tr("Full screen");
-                        icon: root.app-fullscreen ? @image-url("icons/fullscreen_exit.svg") : @image-url("icons/fullscreen.svg");
-                        selected: false;
-                        clicked => { root.app-fullscreen-toggle(); }
-                    }
-                    if root.window-controls && !root.app-fullscreen : HorizontalLayout {
-                        padding-top: 8px;
-                        spacing: 8px;
-                        alignment: start;
-                        IconButton { icon: @image-url("icons/minimize.svg"); tip: @tr("Minimize"); clicked => { root.window-minimize(); } }
-                        IconButton { icon: @image-url("icons/crop_square.svg"); tip: @tr("Maximize"); clicked => { root.window-maximize(); } }
-                        IconButton { icon: @image-url("icons/close.svg"); tip: @tr("Quit"); clicked => { root.window-close(); } }
+                    Flickable {
+                        vertical-stretch: 1;
+                        VerticalLayout {
+                            spacing: 4px;
+                            alignment: start;
+                            // Several profiles on this computer: who is watching, one click to switch.
+                            if root.profiles.length > 1 : NavItem { label: root.profile-name; icon: @image-url("icons/person.svg"); selected: false; clicked => { root.profile-switcher(); } }
+                            NavItem { label: @tr("Home"); icon: @image-url("icons/home.svg"); selected: root.page == Page.home; clicked => { root.go(Page.home); } }
+                            NavItem { label: @tr("Search"); icon: @image-url("icons/search.svg"); selected: root.page == Page.search; clicked => { root.go(Page.search); } }
+                            NavItem { label: @tr("My list"); icon: @image-url("icons/bookmark.svg"); selected: root.page == Page.mylist && root.list-title == "My list"; clicked => { root.go(Page.mylist); } }
+                            for lib in root.libraries : NavItem {
+                                label: lib.title;
+                                icon: @image-url("icons/movie.svg");
+                                selected: root.page == Page.library && root.library-id == lib.id;
+                                clicked => { root.open-library(lib.id, lib.title); }
+                            }
+                            if root.keep-active && root.leaving-available : NavItem {
+                                label: @tr("Leaving soon");
+                                icon: @image-url("icons/hourglass_bottom.svg");
+                                selected: root.page == Page.leaving || root.page == Page.triage || root.page == Page.keepadmin;
+                                clicked => { root.go(Page.leaving); }
+                            }
+                            if root.keep-active : NavItem {
+                                label: @tr("Together");
+                                icon: @image-url("icons/group.svg");
+                                selected: root.page == Page.together || root.page == Page.room;
+                                clicked => { root.go(Page.together); }
+                            }
+                            if root.seerr-active && root.requests-available : NavItem { label: @tr("Requests"); icon: @image-url("icons/add.svg"); selected: root.page == Page.requests || root.page == Page.seerrtitle || root.page == Page.seerrsaga; clicked => { root.go(Page.requests); } }
+                            NavItem { label: @tr("Downloads"); icon: @image-url("icons/download.svg"); selected: root.page == Page.downloads; clicked => { root.go(Page.downloads); } }
+                            NavItem { label: @tr("Settings"); icon: @image-url("icons/settings.svg"); selected: root.page == Page.settings || root.page == Page.profiles || root.page == Page.historycopy; clicked => { root.go(Page.settings); } }
+                        }
                     }
                 }
             }
@@ -2191,6 +2189,7 @@ export component AppWindow inherits Window {
                         spacing: 18px;
                         if root.page == Page.library : HorizontalLayout {
                             spacing: 10px;
+                            padding-right: root.corner-width - 8px;
                             PageTitle { title: root.grid-title; }
                             Rectangle { horizontal-stretch: 1; }
                             if root.library-tab == "browse" || root.library-tab == "" : HorizontalLayout {
@@ -4039,6 +4038,23 @@ export component AppWindow inherits Window {
                         }
                         }
                     }
+                }
+                // Top-right, where windows keep them: full screen (the same switch as the
+                // player's), and on Wayland the window's buttons (its title bar ignores touch).
+                if !root.player-on : HorizontalLayout {
+                    width: root.corner-width - 16px;
+                    x: parent.width - self.width - 16px;
+                    y: 16px;
+                    height: 44px;
+                    spacing: 8px;
+                    IconButton {
+                        icon: root.app-fullscreen ? @image-url("icons/fullscreen_exit.svg") : @image-url("icons/fullscreen.svg");
+                        tip: root.app-fullscreen ? @tr("Leave full screen") : @tr("Full screen");
+                        clicked => { root.app-fullscreen-toggle(); }
+                    }
+                    if root.window-buttons : IconButton { icon: @image-url("icons/minimize.svg"); tip: @tr("Minimize"); clicked => { root.window-minimize(); } }
+                    if root.window-buttons : IconButton { icon: @image-url("icons/crop_square.svg"); tip: @tr("Maximize"); clicked => { root.window-maximize(); } }
+                    if root.window-buttons : IconButton { icon: @image-url("icons/close.svg"); tip: @tr("Quit"); clicked => { root.window-close(); } }
                 }
             }
         }

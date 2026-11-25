@@ -8423,18 +8423,6 @@ msgid "Now: {}"
 msgstr ""
 
 #: desktop/ui/app.slint
-msgid "Leave full screen"
-msgstr ""
-
-#: desktop/ui/app.slint
-msgid "Minimize"
-msgstr ""
-
-#: desktop/ui/app.slint
-msgid "Maximize"
-msgstr ""
-
-#: desktop/ui/app.slint
 msgid "Nothing in progress or recently added."
 msgstr ""
 
@@ -8876,6 +8864,18 @@ msgstr ""
 
 #: desktop/ui/app.slint
 msgid "SERVER STATUS"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Leave full screen"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Minimize"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Maximize"
 msgstr ""
 
 #: desktop/ui/app.slint
