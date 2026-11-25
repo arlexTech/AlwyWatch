@@ -193,6 +193,74 @@ export struct TogetherRow {
     host-avatar: PersonAvatar,
 }
 
+export struct DashTrack {
+    kind: string,
+    label: string,
+    /// "Direct play", "Transcode → 720p (H264)"…
+    decision: string,
+    /// direct_play, direct_stream or transcode (its colour).
+    code: string,
+}
+
+export struct DashStream {
+    title: string,
+    subtitle: string,
+    /// The server's name, in the merged view only.
+    server: string,
+    /// plex or jellyfin (its mark).
+    kind: string,
+    poster: image,
+    progress: float,
+    player: string,
+    state: string,
+    where: string,
+    tracks: [DashTrack],
+    user: string,
+    avatar: image,
+    has-avatar: bool,
+    converted: bool,
+    /// Keeps a short last row's cards as wide as the others.
+    filler: bool,
+}
+
+export struct DashRow {
+    cards: [DashStream],
+}
+
+export struct DashServerChip {
+    id: string,
+    name: string,
+    kind: string,
+}
+
+export struct DashUser {
+    name: string,
+    plays: string,
+    tv: string,
+    movies: string,
+    avatar: image,
+    has-avatar: bool,
+}
+
+export struct DashTitle {
+    title: string,
+    detail: string,
+    poster: image,
+}
+
+/// A line chart: SVG path commands in a 600 × 160 box, one or two series.
+export struct DashChart {
+    title: string,
+    note: string,
+    legend-a: string,
+    path-a: string,
+    color-a: color,
+    legend-b: string,
+    path-b: string,
+    color-b: color,
+    top: string,
+}
+
 export struct ForeverRow {
     title: string,
     detail: string,
@@ -251,7 +319,7 @@ export struct AccountChoice {
     selected: bool,
 }
 
-export enum Page { add, home, library, detail, search, mylist, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin, together, room, profiles, historycopy }
+export enum Page { add, home, library, detail, search, mylist, settings, downloads, requests, seerrtitle, seerrsaga, leaving, triage, keepadmin, together, room, profiles, historycopy, dashboard }
 
 export global Palette {
     out property <color> bg: #09090c;
@@ -1307,6 +1375,141 @@ component AccountChoiceRow inherits Focusable {
 }
 
 // Grouped settings card.
+/// A server type's mark, as on Android: Plex's yellow chevron, Jellyfin's purple-to-blue triangle.
+component KindMark inherits Rectangle {
+    in property <string> kind;
+    in property <length> size: 22px;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    background: #000000b8;
+    if root.kind == "plex" : Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        fill: #e5a00d;
+        commands: "M34.9,23 L51.1,23 L69.4,50 L51.1,77 L34.9,77 L53.2,50 Z";
+    }
+    if root.kind != "plex" : Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        fill: @linear-gradient(135deg, #aa5cc3 0%, #00a4dc 100%);
+        commands: "M50,23 L77,77 L23,77 Z";
+    }
+    if root.kind != "plex" : Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        fill: #000000b8;
+        commands: "M50,45.7 L61.9,69.4 L38.1,69.4 Z";
+    }
+}
+
+component DashChartView inherits VerticalLayout {
+    in property <DashChart> chart;
+    spacing: 8px;
+    HorizontalLayout {
+        Text { text: root.chart.title; color: Palette.text; font-weight: 800; font-size: 13px; letter-spacing: 1px; horizontal-stretch: 1; }
+        Text { text: root.chart.note; color: Palette.muted; font-size: 12px; }
+    }
+    HorizontalLayout {
+        spacing: 16px;
+        alignment: start;
+        HorizontalLayout { spacing: 6px; Rectangle { width: 10px; height: 10px; y: 4px; border-radius: 5px; background: root.chart.color-a; } Text { text: root.chart.legend-a; color: Palette.muted; font-size: 12px; } }
+        if root.chart.legend-b != "" : HorizontalLayout { spacing: 6px; Rectangle { width: 10px; height: 10px; y: 4px; border-radius: 5px; background: root.chart.color-b; } Text { text: root.chart.legend-b; color: Palette.muted; font-size: 12px; } }
+    }
+    Rectangle {
+        height: 140px;
+        Rectangle { y: parent.height / 2; height: 1px; background: Palette.outline; }
+        Rectangle { y: parent.height - 1px; height: 1px; background: Palette.surface-high; }
+        Path { width: 100%; height: 100%; viewbox-width: 600; viewbox-height: 160; stroke: root.chart.color-a; stroke-width: 2px; commands: root.chart.path-a; }
+        if root.chart.path-b != "" : Path { width: 100%; height: 100%; viewbox-width: 600; viewbox-height: 160; stroke: root.chart.color-b; stroke-width: 2px; commands: root.chart.path-b; }
+        Text { x: 0; y: 0; text: root.chart.top; color: Palette.subtle; font-size: 11px; }
+    }
+}
+
+component DashStreamCard inherits Rectangle {
+    in property <DashStream> s;
+    border-radius: 12px;
+    background: Palette.surface;
+    clip: true;
+    VerticalLayout {
+        Rectangle { height: 3px; background: root.s.converted ? Palette.accent : Palette.success; }
+        HorizontalLayout {
+            padding: 10px;
+            spacing: 12px;
+            Rectangle {
+                width: 64px;
+                height: 96px;
+                border-radius: 6px;
+                background: Palette.surface-high;
+                clip: true;
+                Image { source: root.s.poster; width: 100%; height: 100%; image-fit: cover; }
+                KindMark { x: 4px; y: 4px; kind: root.s.kind; }
+            }
+            VerticalLayout {
+                spacing: 2px;
+                alignment: start;
+                Text { text: root.s.title; color: Palette.text; font-weight: 700; wrap: word-wrap; }
+                Text { text: root.s.subtitle; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                if root.s.server != "" : Text { text: root.s.server; color: Palette.subtle; font-size: 12px; }
+            }
+        }
+        Rectangle {
+            height: 3px;
+            background: Palette.surface-high;
+            Rectangle { x: 0; width: parent.width * root.s.progress; background: Palette.accent; }
+        }
+        VerticalLayout {
+            padding: 10px;
+            spacing: 2px;
+            Text { text: root.s.player; color: Palette.text; font-weight: 700; font-size: 14px; wrap: word-wrap; }
+            Text { text: root.s.state; color: Palette.muted; font-size: 13px; }
+            Text { text: root.s.where; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+            for t in root.s.tracks : VerticalLayout {
+                padding-top: 6px;
+                spacing: 4px;
+                Rectangle { height: 1px; background: Palette.outline; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: t.kind; color: Palette.muted; font-size: 13px; width: 74px; }
+                    VerticalLayout {
+                        Text { text: t.label; color: Palette.text; font-size: 14px; wrap: word-wrap; }
+                        Text {
+                            text: (t.code == "transcode" ? "⚙ " : t.code == "direct_stream" ? "⇄ " : "✓ ") + t.decision;
+                            color: t.code == "transcode" ? Palette.accent : t.code == "direct_stream" ? #7cc4ff : Palette.success;
+                            font-size: 13px;
+                            font-weight: t.code == "transcode" ? 700 : 400;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            background: #00000026;
+            HorizontalLayout {
+                padding: 10px;
+                spacing: 10px;
+                Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: Palette.surface-high;
+                    clip: true;
+                    if root.s.has-avatar : Image { source: root.s.avatar; width: 100%; height: 100%; image-fit: cover; }
+                    if !root.s.has-avatar : Text { text: root.s.user.character-count > 0 ? "•" : ""; color: Palette.text; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                Text { text: root.s.user; color: Palette.text; vertical-alignment: center; }
+            }
+        }
+    }
+}
+
 component Group inherits VerticalLayout {
     in property <string> title;
     spacing: 8px;
@@ -1548,6 +1751,27 @@ export component AppWindow inherits Window {
     in property <string> forever-summary;
     in property <[ForeverRow]> forever-people;
     in property <[ForeverRow]> forever-titles;
+    in property <[DashServerChip]> dash-servers;
+    in property <string> dash-server: "all";
+    in property <string> dash-message;
+    in property <string> dash-summary;
+    in property <[DashStream]> dash-streams;
+    in property <[DashRow]> dash-rows;
+    in property <[DashChart]> dash-charts;
+    in property <int> dash-days: 30;
+    in property <string> dash-stats-message;
+    in property <string> dash-since;
+    in property <[DashUser]> dash-users;
+    in property <string> dash-history-note;
+    in property <string> dash-history-legend;
+    in property <string> dash-history-shows;
+    in property <string> dash-history-movies;
+    in property <string> dash-history-first;
+    in property <string> dash-history-last;
+    in property <[DashTitle]> dash-movies;
+    in property <[DashTitle]> dash-shows;
+    callback dash-pick(string);
+    callback dash-days-pick(int);
 
     callback back();
     callback move-focus(bool);
@@ -3015,6 +3239,140 @@ export component AppWindow inherits Window {
                         }
                     }
 
+                    if root.page == Page.dashboard : ScrollView {
+                        VerticalLayout {
+                            padding: 40px;
+                            padding-top: 28px;
+                            spacing: 18px;
+                            alignment: start;
+                            PageTitle { title: @tr("Dashboard"); subtitle: root.dash-summary; }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Button { label: @tr("All servers"); primary: root.dash-server == "all"; clicked => { root.dash-pick("all"); } }
+                                for sv in root.dash-servers : HorizontalLayout {
+                                    spacing: 6px;
+                                    KindMark { kind: sv.kind; y: (parent.height - self.height) / 2; }
+                                    Button { label: sv.name; primary: root.dash-server == sv.id; clicked => { root.dash-pick(sv.id); } }
+                                }
+                            }
+                            if root.dash-message != "" : Text { text: root.dash-message; color: Palette.accent; wrap: word-wrap; }
+                            Group {
+                                title: @tr("NOW PLAYING");
+                                if root.dash-streams.length == 0 : Text { text: @tr("Nothing is playing."); color: Palette.muted; }
+                                // Three cards a row (rows made in Rust).
+                                for row in root.dash-rows : HorizontalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+                                    for st in row.cards : DashStreamCard { s: st; horizontal-stretch: 1; min-width: 0; visible: !st.filler; }
+                                }
+                            }
+                            for c in root.dash-charts : Group { DashChartView { chart: c; } }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Text { text: @tr("Over the last days"); color: Palette.text; font-size: 20px; font-weight: 800; vertical-alignment: center; }
+                                Rectangle { width: 12px; }
+                                Button { label: @tr("{n} day" | "{n} days" % 7); primary: root.dash-days == 7; clicked => { root.dash-days-pick(7); } }
+                                Button { label: @tr("{n} day" | "{n} days" % 30); primary: root.dash-days == 30; clicked => { root.dash-days-pick(30); } }
+                                Button { label: @tr("{n} day" | "{n} days" % 90); primary: root.dash-days == 90; clicked => { root.dash-days-pick(90); } }
+                            }
+                            if root.dash-stats-message != "" : Text { text: root.dash-stats-message; color: Palette.muted; wrap: word-wrap; }
+                            if root.dash-since != "" : Text { text: root.dash-since; color: Palette.muted; font-size: 13px; wrap: word-wrap; }
+                            Group {
+                                title: @tr("TOP USERS");
+                                if root.dash-users.length == 0 : Text { text: @tr("Nothing yet."); color: Palette.muted; }
+                                Flickable {
+                                    height: root.dash-users.length > 0 ? 150px : 0;
+                                    viewport-width: root.dash-users.length * 212px;
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        alignment: start;
+                                        for u in root.dash-users : Rectangle {
+                                            width: 200px;
+                                            border-radius: 12px;
+                                            background: Palette.surface;
+                                            VerticalLayout {
+                                                padding: 12px;
+                                                spacing: 6px;
+                                                HorizontalLayout {
+                                                    spacing: 10px;
+                                                    Rectangle {
+                                                        width: 44px;
+                                                        height: 44px;
+                                                        border-radius: 22px;
+                                                        background: Palette.surface-high;
+                                                        clip: true;
+                                                        if u.has-avatar : Image { source: u.avatar; width: 100%; height: 100%; image-fit: cover; }
+                                                    }
+                                                    VerticalLayout {
+                                                        Text { text: u.name; color: Palette.text; font-weight: 700; overflow: elide; }
+                                                        Text { text: u.plays; color: Palette.muted; font-size: 12px; }
+                                                    }
+                                                }
+                                                HorizontalLayout { Text { text: @tr("TV"); color: Palette.text; font-size: 13px; horizontal-stretch: 1; } Text { text: u.tv; color: Palette.text; font-size: 13px; } }
+                                                HorizontalLayout { Text { text: @tr("Movies"); color: Palette.text; font-size: 13px; horizontal-stretch: 1; } Text { text: u.movies; color: Palette.text; font-size: 13px; } }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Group {
+                                title: @tr("PLAY HISTORY");
+                                Text { text: root.dash-history-legend; color: Palette.muted; font-size: 13px; }
+                                if root.dash-history-note != "" : Text { text: root.dash-history-note; color: Palette.muted; font-size: 13px; }
+                                Rectangle {
+                                    height: 150px;
+                                    Path { width: 100%; height: 100%; viewbox-width: 600; viewbox-height: 160; fill: #e8689f; commands: root.dash-history-shows; }
+                                    Path { width: 100%; height: 100%; viewbox-width: 600; viewbox-height: 160; fill: #3ec7b0; commands: root.dash-history-movies; }
+                                }
+                                HorizontalLayout {
+                                    Text { text: root.dash-history-first; color: Palette.subtle; font-size: 12px; horizontal-stretch: 1; }
+                                    Text { text: root.dash-history-last; color: Palette.subtle; font-size: 12px; }
+                                }
+                            }
+                            Group {
+                                title: @tr("TOP PLAYED");
+                                Text { text: @tr("Movies"); color: Palette.muted; }
+                                if root.dash-movies.length == 0 : Text { text: @tr("Nothing yet."); color: Palette.muted; font-size: 13px; }
+                                Flickable {
+                                    height: root.dash-movies.length > 0 ? 230px : 0;
+                                    viewport-width: root.dash-movies.length * 122px;
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        alignment: start;
+                                        for t in root.dash-movies : VerticalLayout {
+                                            width: 110px;
+                                            spacing: 4px;
+                                            alignment: start;
+                                            Rectangle { height: 165px; border-radius: 8px; background: Palette.surface-high; clip: true; Image { source: t.poster; width: 100%; height: 100%; image-fit: cover; } }
+                                            Text { text: t.title; color: Palette.text; font-size: 13px; font-weight: 700; overflow: elide; }
+                                            Text { text: t.detail; color: Palette.muted; font-size: 12px; }
+                                        }
+                                    }
+                                }
+                                Text { text: @tr("TV"); color: Palette.muted; }
+                                if root.dash-shows.length == 0 : Text { text: @tr("Nothing yet."); color: Palette.muted; font-size: 13px; }
+                                Flickable {
+                                    height: root.dash-shows.length > 0 ? 230px : 0;
+                                    viewport-width: root.dash-shows.length * 122px;
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        alignment: start;
+                                        for t in root.dash-shows : VerticalLayout {
+                                            width: 110px;
+                                            spacing: 4px;
+                                            alignment: start;
+                                            Rectangle { height: 165px; border-radius: 8px; background: Palette.surface-high; clip: true; Image { source: t.poster; width: 100%; height: 100%; image-fit: cover; } }
+                                            Text { text: t.title; color: Palette.text; font-size: 13px; font-weight: 700; overflow: elide; }
+                                            Text { text: t.detail; color: Palette.muted; font-size: 12px; }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if root.page == Page.historycopy : ScrollView {
                         VerticalLayout {
                             padding: 40px;
@@ -3474,6 +3832,14 @@ export component AppWindow inherits Window {
                             if root.shown-section == "admin" : VerticalLayout {
                                 spacing: 22px;
                                 alignment: start;
+                            Group {
+                                title: @tr("DASHBOARD");
+                                HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: @tr("What plays now, direct play or converted, bandwidth, CPU, RAM and who watched what"); color: Palette.muted; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; }
+                                    Button { label: @tr("Open"); y: (parent.height - self.height) / 2; clicked => { root.go(Page.dashboard); } }
+                                }
+                            }
                             Group {
                                 title: @tr("LEAVING SOON AND PEOPLE");
                                 HorizontalLayout {

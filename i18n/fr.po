@@ -395,14 +395,14 @@ msgid "Track {number}"
 msgstr "Piste {number}"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: web/src/dashboard.rs
 msgid "Audio"
 msgstr "Audio"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 msgid "Subtitles"
 msgstr "Sous-titres"
 
@@ -1278,7 +1278,7 @@ msgstr "{name} sur {server}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 msgid "Loading…"
 msgstr "Chargement…"
 
@@ -1306,8 +1306,8 @@ msgstr[0] "{n} heure"
 msgstr[1] "{n} heures"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
-#: desktop/src/app.rs
 msgid "{n} day"
 msgid_plural "{n} days"
 msgstr[0] "{n} jour"
@@ -1322,8 +1322,8 @@ msgstr[0] "Maintainerr {version} · lu il y a {time} · {n} titre bientôt suppr
 msgstr[1] "Maintainerr {version} · lu il y a {time} · {n} titres bientôt supprimés"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt
-#: desktop/src/app/invites.rs
 msgid "{n} person"
 msgid_plural "{n} people"
 msgstr[0] "{n} personne"
@@ -1335,6 +1335,18 @@ msgid "Valid {n} day, for {count}. In AlwyWatch: Add a profile → Create an Alw
 msgid_plural "Valid {n} days, for {count}. In AlwyWatch: Add a profile → Create an AlwyWatch account."
 msgstr[0] "Valable {n} jour, pour {count}. Dans AlwyWatch : Ajouter un profil → Créer un compte AlwyWatch."
 msgstr[1] "Valable {n} jours, pour {count}. Dans AlwyWatch : Ajouter un profil → Créer un compte AlwyWatch."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: web/src/dashboard.rs
+msgid "Dashboard"
+msgstr "Tableau de bord"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
+#: web/src/signin.rs
+#: desktop/ui/app.slint
+msgid "What plays now, direct play or converted, bandwidth, CPU, RAM and who watched what"
+msgstr "Ce qui est en lecture, en direct ou converti, bande passante, CPU, RAM et qui a regardé quoi"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AdminSettings.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ForeverScreen.kt
@@ -1848,6 +1860,206 @@ msgstr "Il n'accepte que les identifiants pour lesquels il est configuré (Plex 
 msgid "Continue watching"
 msgstr "Reprendre"
 
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "{n} stream"
+msgid_plural "{n} streams"
+msgstr[0] "{n} flux"
+msgstr[1] "{n} flux"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "{n} converted"
+msgid_plural "{n} converted"
+msgstr[0] "{n} converti"
+msgstr[1] "{n} convertis"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "{n} play"
+msgid_plural "{n} plays"
+msgstr[0] "{n} lecture"
+msgstr[1] "{n} lectures"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: web/src/dashboard.rs
+#: desktop/ui/app.slint
+msgid "All servers"
+msgstr "Tous les serveurs"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Bandwidth"
+msgstr "Bande passante"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Remote"
+msgstr "Distant"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Local"
+msgstr "Local"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "CPU"
+msgstr "CPU"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Server"
+msgstr "Serveur"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "RAM"
+msgstr "RAM"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: web/src/dashboard.rs
+#: desktop/ui/app.slint
+msgid "Over the last days"
+msgstr "Ces derniers jours"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "{server}: history since {date}"
+msgstr "{server} : historique depuis le {date}"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: web/src/dashboard.rs
+msgid "Top users"
+msgstr "Meilleurs utilisateurs"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: web/src/dashboard.rs
+msgid "Play history"
+msgstr "Historique de lecture"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "{direct} direct play · {transcodes} converted (Plex)"
+msgstr "{direct} en lecture directe · {transcodes} convertis (Plex)"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: web/src/dashboard.rs
+msgid "Top played"
+msgstr "Les plus regardés"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: desktop/src/dashboard.rs
+msgid "Movies"
+msgstr "Films"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "TV"
+msgstr "Séries"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Plex is read through Tautulli: set it up in Server settings."
+msgstr "Plex est lu via Tautulli : configurez-le dans les réglages du serveur."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Needs this server's API key in Server settings."
+msgstr "Il faut la clé API de ce serveur dans les réglages du serveur."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Unreachable right now."
+msgstr "Injoignable pour le moment."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Transcode"
+msgstr "Transcodage"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Direct stream"
+msgstr "Direct stream"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Direct play"
+msgstr "Lecture directe"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Nothing is playing."
+msgstr "Rien en lecture."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "all direct"
+msgstr "tout en direct"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: web/src/dashboard.rs
+msgid "Now playing"
+msgstr "En cours de lecture"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+#: desktop/src/dashboard.rs
+msgid "Paused"
+msgstr "En pause"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Buffering"
+msgstr "Mise en mémoire tampon"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "Playing"
+msgstr "En lecture"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: desktop/src/dashboard.rs
+msgid "Video"
+msgstr "Vidéo"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: desktop/src/dashboard.rs
+#: web/src/dashboard.rs
+msgid "last {n} min"
+msgstr "{n} dernières min"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
+#: web/src/dashboard.rs
+#: desktop/ui/app.slint
+msgid "Nothing yet."
+msgstr "Rien pour l’instant."
+
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: desktop/src/app.rs
 #: web/src/keep.rs
@@ -1989,11 +2201,6 @@ msgstr "{rate} Mb/s"
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 msgid "Duration"
 msgstr "Durée"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: web/src/dashboard.rs
-msgid "Video"
-msgstr "Vidéo"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 msgid "{bits}-bit"
@@ -2295,11 +2502,6 @@ msgid "Downloaded"
 msgstr "Téléchargé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
-#: web/src/dashboard.rs
-msgid "Paused"
-msgstr "En pause"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
 msgid "Starting download"
 msgstr "Démarrage du téléchargement"
 
@@ -2340,11 +2542,6 @@ msgstr "En cours de téléchargement"
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
 msgid "Shows"
 msgstr "Séries"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
-#: web/src/dashboard.rs
-msgid "Movies"
-msgstr "Films"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsScreen.kt
@@ -6632,139 +6829,8 @@ msgid "Nothing in progress."
 msgstr "Rien en cours."
 
 #: web/src/dashboard.rs
-msgid "{n} stream"
-msgid_plural "{n} streams"
-msgstr[0] "{n} flux"
-msgstr[1] "{n} flux"
-
-#: web/src/dashboard.rs
-msgid "{n} converted"
-msgid_plural "{n} converted"
-msgstr[0] "{n} converti"
-msgstr[1] "{n} convertis"
-
-#: web/src/dashboard.rs
-msgid "{n} play"
-msgid_plural "{n} plays"
-msgstr[0] "{n} lecture"
-msgstr[1] "{n} lectures"
-
-#: web/src/dashboard.rs
-msgid "Transcode"
-msgstr "Transcodage"
-
-#: web/src/dashboard.rs
-msgid "Direct stream"
-msgstr "Direct stream"
-
-#: web/src/dashboard.rs
-msgid "Direct play"
-msgstr "Lecture directe"
-
-#: web/src/dashboard.rs
-msgid "Plex is read through Tautulli: set it up in Server settings."
-msgstr "Plex est lu via Tautulli : configurez-le dans les réglages du serveur."
-
-#: web/src/dashboard.rs
-msgid "Needs this server's API key in Server settings."
-msgstr "Il faut la clé API de ce serveur dans les réglages du serveur."
-
-#: web/src/dashboard.rs
-msgid "Unreachable right now."
-msgstr "Injoignable pour le moment."
-
-#: web/src/dashboard.rs
-msgid "Buffering"
-msgstr "Mise en mémoire tampon"
-
-#: web/src/dashboard.rs
-msgid "Playing"
-msgstr "En lecture"
-
-#: web/src/dashboard.rs
-msgid "Local"
-msgstr "Local"
-
-#: web/src/dashboard.rs
-msgid "Remote"
-msgstr "Distant"
-
-#: web/src/dashboard.rs
-msgid "last {n} min"
-msgstr "{n} dernières min"
-
-#: web/src/dashboard.rs
-msgid "Nothing is playing."
-msgstr "Rien en lecture."
-
-#: web/src/dashboard.rs
-msgid "all direct"
-msgstr "tout en direct"
-
-#: web/src/dashboard.rs
-msgid "Now playing"
-msgstr "En cours de lecture"
-
-#: web/src/dashboard.rs
-msgid "Bandwidth"
-msgstr "Bande passante"
-
-#: web/src/dashboard.rs
-msgid "CPU"
-msgstr "CPU"
-
-#: web/src/dashboard.rs
-msgid "Server"
-msgstr "Serveur"
-
-#: web/src/dashboard.rs
-msgid "RAM"
-msgstr "RAM"
-
-#: web/src/dashboard.rs
-msgid "TV"
-msgstr "Séries"
-
-#: web/src/dashboard.rs
-msgid "Nothing yet."
-msgstr "Rien pour l’instant."
-
-#: web/src/dashboard.rs
-msgid "Over the last days"
-msgstr "Ces derniers jours"
-
-#: web/src/dashboard.rs
-msgid "{server}: history since {date}"
-msgstr "{server} : historique depuis le {date}"
-
-#: web/src/dashboard.rs
-msgid "Top users"
-msgstr "Meilleurs utilisateurs"
-
-#: web/src/dashboard.rs
-msgid "Play history"
-msgstr "Historique de lecture"
-
-#: web/src/dashboard.rs
-msgid "{direct} direct play · {transcodes} converted (Plex)"
-msgstr "{direct} en lecture directe · {transcodes} convertis (Plex)"
-
-#: web/src/dashboard.rs
-msgid "Top played"
-msgstr "Les plus regardés"
-
-#: web/src/dashboard.rs
 msgid "Sign in with an admin account first."
 msgstr "Connectez-vous d’abord avec un compte administrateur."
-
-#: web/src/dashboard.rs
-#: web/src/signin.rs
-msgid "Dashboard"
-msgstr "Tableau de bord"
-
-#: web/src/dashboard.rs
-msgid "All servers"
-msgstr "Tous les serveurs"
 
 #: web/src/extra.rs
 msgid "✓ Watched · mark unwatched"
@@ -7473,10 +7539,6 @@ msgid "Settings sections"
 msgstr "Sections des paramètres"
 
 #: web/src/signin.rs
-msgid "What plays now, direct play or converted, bandwidth, CPU, RAM and who watched what"
-msgstr "Ce qui est en lecture, en direct ou converti, bande passante, CPU, RAM et qui a regardé quoi"
-
-#: web/src/signin.rs
 msgid "Media servers, Maintainerr, Seerr, Tautulli, email, sign-up"
 msgstr "Serveurs multimédias, Maintainerr, Seerr, Tautulli, e-mail, inscription"
 
@@ -7888,6 +7950,22 @@ msgid "Titles"
 msgstr "Titres"
 
 #: desktop/ui/app.slint
+msgid "NOW PLAYING"
+msgstr "EN COURS DE LECTURE"
+
+#: desktop/ui/app.slint
+msgid "TOP USERS"
+msgstr "MEILLEURS UTILISATEURS"
+
+#: desktop/ui/app.slint
+msgid "PLAY HISTORY"
+msgstr "HISTORIQUE DE LECTURE"
+
+#: desktop/ui/app.slint
+msgid "TOP PLAYED"
+msgstr "LES PLUS REGARDÉS"
+
+#: desktop/ui/app.slint
 msgid "FROM"
 msgstr "DE"
 
@@ -8102,6 +8180,10 @@ msgstr "STOCKAGE"
 #: desktop/ui/app.slint
 msgid "ABOUT"
 msgstr "À PROPOS"
+
+#: desktop/ui/app.slint
+msgid "DASHBOARD"
+msgstr "TABLEAU DE BORD"
 
 #: desktop/ui/app.slint
 msgid "LEAVING SOON AND PEOPLE"

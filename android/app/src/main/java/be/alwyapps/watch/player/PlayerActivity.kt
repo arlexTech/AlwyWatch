@@ -625,10 +625,18 @@ class PlayerActivity : ComponentActivity() {
         progressJob?.cancel()
         progressJob =
             lifecycleScope.launch {
+                var ticks = 0
                 while (isActive) {
                     delay(10_000)
+                    ticks++
                     val pl = player ?: break
-                    if (pl.isPlaying) report(PlaybackEvent.PROGRESS)
+                    if (pl.isPlaying) {
+                        report(PlaybackEvent.PROGRESS)
+                    } else if (ticks % 6 == 0 && pl.playbackState == Player.STATE_READY) {
+                        // Paused: still here every minute, so the server keeps the session
+                        // (and its dashboard shows it) however long the pause.
+                        report(PlaybackEvent.PAUSE)
+                    }
                     checkStillWatching(pl)
                     maybePrefetchNext(pl)
                 }
@@ -930,12 +938,44 @@ class PlayerActivity : ComponentActivity() {
                 positionMs = p.currentPosition.coerceAtLeast(0).toULong(),
                 durationMs = p.duration.takeIf { it > 0 }?.toULong(),
                 event = event,
-                // Converting with chosen tracks: the server's streams it carries.
-                audioIndex = conversion?.audioIndex,
-                subtitleIndex = (conversion?.subtitle as? SubtitleSelection.Stream)?.index,
+                // Converting with chosen tracks: the server's streams it carries. Playing the
+                // file: the tracks the player picked, so the server's dashboard shows them.
+                audioIndex = if (conversion != null) conversion?.audioIndex else playingStream(p, src, C.TRACK_TYPE_AUDIO),
+                subtitleIndex =
+                    if (conversion != null) {
+                        (conversion?.subtitle as? SubtitleSelection.Stream)?.index
+                    } else {
+                        playingStream(p, src, C.TRACK_TYPE_TEXT) ?: -1L
+                    },
                 playMethod = if (transcoding) PlayMethod.TRANSCODE else PlayMethod.DIRECT,
             )
         return services.scope.launch { runCatching { core.reportProgress(account, report) } }
+    }
+
+    /**
+     * The server's stream (its index) of the track of [type] the player plays from the file
+     * itself: the n-th embedded track of that kind in the file is the n-th one the server lists.
+     * Null when unknown or (subtitles) side-loaded.
+     */
+    private fun playingStream(
+        p: Player,
+        src: MediaSource,
+        type: Int,
+    ): Long? {
+        if (transcoding) return null
+        val kind = if (type == C.TRACK_TYPE_AUDIO) StreamKind.AUDIO else StreamKind.SUBTITLE
+        val server = src.streams.filter { it.kind == kind && !it.isExternal }.sortedBy { it.index }
+        // Side-loaded subtitles come as their own groups with the file's URI unknown: only the
+        // groups that come from the file count (they come first, in the file's order).
+        val groups = p.currentTracks.groups.filter { it.type == type }
+        var n = 0
+        for (g in groups) {
+            for (i in 0 until g.length) {
+                if (g.isTrackSelected(i)) return server.getOrNull(n)?.index
+                n++
+            }
+        }
+        return null
     }
 
     private fun playNext() {

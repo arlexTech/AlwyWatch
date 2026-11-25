@@ -67,6 +67,15 @@ import kotlinx.coroutines.launch
 @Composable
 fun AdminSection() {
     val nav = LocalNavigator.current
+    Group(null) {
+        ListRow(
+            tr("Dashboard"),
+            subtitle = tr("What plays now, direct play or converted, bandwidth, CPU, RAM and who watched what"),
+            icon = Icons.Tv,
+            onClick = { nav.push(Route.Dashboard) },
+            trailing = { Chevron() },
+        )
+    }
     ServerSettingsGroup()
     Group(tr("People")) {
         ListRow(

@@ -31,6 +31,9 @@ use crate::{
 };
 use together::TogetherPlay;
 
+#[path = "dashboard.rs"]
+mod dashboard;
+
 const POSTER_PX: u32 = 300;
 const EPISODE_PX: u32 = 320;
 const BACKDROP_PX: u32 = 1280;
@@ -44,6 +47,7 @@ enum Route {
     Leaving,
     Triage,
     KeepAdmin,
+    Dashboard,
     Library(String, String),
     /// A library narrowed to a genre or a collection: library, title, genre, collection.
     Filtered(String, String, Option<String>, Option<String>),
@@ -201,6 +205,8 @@ pub struct App {
     images: RefCell<HashMap<String, Image>>,
     /// Custom avatars by (user, version); None while loading or after a failure.
     faces: RefCell<HashMap<(String, u32), Option<Image>>>,
+    /// The admin dashboard's choice and last readings.
+    dash: RefCell<dashboard::Dash>,
 }
 
 /// Clears `State::player_starting` when a start ends, however it ends.
@@ -352,6 +358,7 @@ impl App {
             }),
             images: RefCell::new(HashMap::new()),
             faces: RefCell::new(HashMap::new()),
+            dash: Default::default(),
         });
         APP.with(|a| *a.borrow_mut() = Rc::downgrade(&app));
         ui.set_grid(ModelRc::from(app.state.borrow().grid_model.clone()));
@@ -2224,6 +2231,10 @@ impl App {
             Route::KeepAdmin => {
                 ui.set_page(Page::Keepadmin);
                 self.load_admin();
+            }
+            Route::Dashboard => {
+                ui.set_page(Page::Dashboard);
+                self.dash_open();
             }
             Route::SeerrTitle(key) => {
                 ui.set_page(Page::Seerrtitle);
@@ -5402,6 +5413,8 @@ impl App {
             }};
         }
         on!(on_back, |a| a.back());
+        on!(on_dash_pick, |a, id| a.dash_pick(id.into()));
+        on!(on_dash_days_pick, |a, days| a.dash_days(days));
         on!(on_move_focus, |a, forward| {
             let key = if forward {
                 slint::platform::Key::Tab
@@ -5495,6 +5508,7 @@ impl App {
             Page::Together => Route::Together,
             Page::Triage => Route::Triage,
             Page::Keepadmin => Route::KeepAdmin,
+            Page::Dashboard => Route::Dashboard,
             Page::Profiles => Route::Profiles,
             Page::Historycopy => Route::HistoryCopy,
             _ => Route::Home,

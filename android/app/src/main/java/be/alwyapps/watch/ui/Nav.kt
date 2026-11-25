@@ -44,6 +44,9 @@ sealed interface Route {
     /** Admins: who keeps what forever, and the overlaps. */
     data object KeepForever : Route
 
+    /** Admins: what plays now (direct or converted), load and who watched what. */
+    data object Dashboard : Route
+
     /** The watchlist (Plex) / favorites (Jellyfin) of the home's servers. */
     data object Watchlist : Route
 
@@ -133,6 +136,7 @@ sealed interface Route {
             AdminInvites -> "admin-invites"
             AdminCountdown -> "admin-countdown"
             KeepForever -> "keep-forever"
+            Dashboard -> "dashboard"
             Together -> "together"
             is Room -> "room\u001f$code"
             Watchlist -> "watchlist"
@@ -169,6 +173,7 @@ sealed interface Route {
                 "admin-invites" -> AdminInvites
                 "admin-countdown" -> AdminCountdown
                 "keep-forever" -> KeepForever
+                "dashboard" -> Dashboard
                 "together" -> Together
                 "room" -> p.getOrNull(1)?.let { Room(it) }
                 "watchlist" -> Watchlist

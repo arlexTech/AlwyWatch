@@ -355,18 +355,16 @@ pub fn jellyfin_stream(server_id: &str, v: &Value) -> Option<Stream> {
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+    // The stream the client says it plays, else the file's default one, else the first.
     let pick = |kind: &str, index_key: &str| -> Option<Value> {
-        let idx = play.get(index_key).and_then(Value::as_i64);
-        streams
-            .iter()
-            .filter(|x| s(x, "Type") == kind)
-            .find(|x| idx.is_none_or(|i| x.get("Index").and_then(Value::as_i64) == Some(i)))
-            .cloned()
-            .or_else(|| {
-                (kind == "Video")
-                    .then(|| streams.iter().find(|x| s(x, "Type") == kind).cloned())
-                    .flatten()
-            })
+        let of_kind = || streams.iter().filter(move |x| s(x, "Type") == kind);
+        match play.get(index_key).and_then(Value::as_i64) {
+            Some(i) => of_kind().find(|x| x.get("Index").and_then(Value::as_i64) == Some(i)),
+            None => of_kind()
+                .find(|x| x.get("IsDefault").and_then(Value::as_bool) == Some(true))
+                .or_else(|| of_kind().next()),
+        }
+        .cloned()
     };
     let direct = |k: &str| tr.and_then(|t| t.get(k)).and_then(Value::as_bool);
     let video = pick("Video", "__none").map(|x| {
@@ -859,7 +857,7 @@ impl State {
             }
             ServerType::Jellyfin => {
                 let d = self
-                    .jellyfin_get(server, "/Sessions?activeWithinSeconds=600")
+                    .jellyfin_get(server, "/Sessions?activeWithinSeconds=1800")
                     .await?;
                 Some(
                     d.as_array()

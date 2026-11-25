@@ -31,6 +31,7 @@ import be.alwyapps.watch.ui.LocalNavigator
 import be.alwyapps.watch.ui.Navigator
 import be.alwyapps.watch.ui.Route
 import be.alwyapps.watch.ui.screens.AddServerScreen
+import be.alwyapps.watch.ui.screens.DashboardScreen
 import be.alwyapps.watch.ui.screens.DetailScreen
 import be.alwyapps.watch.ui.screens.DownloadsScreen
 import be.alwyapps.watch.ui.screens.HomeScreen
@@ -378,6 +379,7 @@ private fun Root(core: AlwyWatch) {
                                         .InvitationsScreen()
                                 Route.AdminCountdown -> KeepAdminScreen(people = false, countdown = true)
                                 Route.KeepForever -> KeepForeverScreen()
+                                Route.Dashboard -> DashboardScreen()
                                 Route.SeerrConnect -> SeerrConnectScreen(onDone = { nav.pop() })
                                 // Combined home: a page of another account's server runs as that account.
                                 is Route.Library ->
