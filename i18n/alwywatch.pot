@@ -572,11 +572,13 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/HomeView.swift
 msgid "Remove from Continue watching"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/HomeView.swift
 msgid "Go to the show"
 msgstr ""
 
@@ -608,6 +610,7 @@ msgid "My list: {error}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: ios/AlwyWatch/HomeView.swift
 msgid "Details"
 msgstr ""
 
@@ -2235,6 +2238,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/DetailView.swift
 msgid "Directed by {names}"
 msgstr ""
 

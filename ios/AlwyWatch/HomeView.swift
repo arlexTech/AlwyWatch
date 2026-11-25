@@ -12,6 +12,8 @@ struct HomeView: View {
     @State private var offline = false
     /// "Settings" from the profile switcher.
     @State private var goSettings = false
+    /// A screen asked by a card's menu (details, the show).
+    @State private var opened: Route?
 
     var body: some View {
         let account = model.account ?? ""
@@ -31,6 +33,9 @@ struct HomeView: View {
             }
         }
         .navigationDestination(isPresented: $goSettings) { SettingsScreen() }
+        .navigationDestination(isPresented: Binding(get: { opened != nil }, set: { if !$0 { opened = nil } })) {
+            if let opened { routeView(opened) }
+        }
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await refresh(force: true) }
         .onAppear { offline = model.core.getSettingOr("ui.downloads_mode", "0") == "1" }
@@ -56,7 +61,11 @@ struct HomeView: View {
                                     ForEach(home.continueWatching) { item in
                                         PosterCard(account: account, item: item)
                                             .onTapGesture { player = PlayRequest(account: account, item: item) }
-                                            .contextMenu { ItemMenu(account: account, item: item) { Task { await refresh(force: true) } } }
+                                            .contextMenu {
+                                                ItemMenu(account: account, item: item, inContinue: true, open: { opened = $0 }) {
+                                                    Task { await refresh(force: true) }
+                                                }
+                                            }
                                     }
                                 }
                                 .padding(.horizontal, 16)
@@ -99,6 +108,7 @@ struct HomeView: View {
                                                 RailCard(account: account, item: item, note: note?.label)
                                             }
                                             .buttonStyle(.plain)
+                                            .contextMenu { ItemMenu(account: account, item: item) { Task { await refresh(force: true) } } }
                                         }
                                     }
                                     .padding(.horizontal, 16)
@@ -142,24 +152,64 @@ private struct RailCard: View {
 }
 
 /// Long-press actions on a card: mark watched / unwatched.
+/// A card's long press, as on Android: details or the show, watched or not, out of Continue
+/// watching, My list.
 struct ItemMenu: View {
     @EnvironmentObject var model: AppModel
     let account: String
     let item: Item
+    /// Shown in Continue watching (it can be taken out of it).
+    var inContinue = false
+    /// Opens a screen (the menu has no link of its own); nil: no navigation entries.
+    var open: ((Route) -> Void)? = nil
     let changed: () -> Void
 
+    private var series: Bool { item.kind == .series }
+    private var playable: Bool { item.kind == .movie || item.kind == .episode }
+    private var started: Bool { item.user.positionMs > 0 }
+
     var body: some View {
-        Button {
-            Task {
-                try? await model.core.setPlayed(accountId: account, itemId: item.id, played: !item.user.played)
-                changed()
+        if let open {
+            if item.kind == .episode, let sid = item.seriesId {
+                Button { open(.detail(account: account, itemId: sid)) } label: {
+                    Label(tr("Go to the show"), systemImage: "tv")
+                }
+            } else {
+                Button { open(.detail(account: account, itemId: item.id)) } label: {
+                    Label(tr("Details"), systemImage: "info.circle")
+                }
             }
+        }
+        Button {
+            act { try await model.core.setPlayed(accountId: account, itemId: item.id, played: !item.user.played) }
         } label: {
             if item.user.played {
-                Label(tr("Mark unwatched"), systemImage: "eye.slash")
+                Label(series ? tr("Mark all episodes unwatched") : tr("Mark unwatched"), systemImage: "eye.slash")
             } else {
-                Label(tr("Mark watched"), systemImage: "checkmark")
+                Label(series ? tr("Mark all episodes watched") : tr("Mark watched"), systemImage: "checkmark")
             }
+        }
+        if playable && (!item.user.played || inContinue) && (started || inContinue) {
+            Button {
+                act { try await model.core.removeFromContinueWatching(accountId: account, itemId: item.id) }
+            } label: {
+                Label(tr("Remove from Continue watching"), systemImage: "xmark")
+            }
+        }
+        if item.kind == .movie || series {
+            let listed = model.core.isWatchlisted(accountId: account, itemId: item.id)
+            Button {
+                act { try await model.core.setWatchlisted(accountId: account, itemId: item.id, on: !listed) }
+            } label: {
+                Label(listed ? tr("Remove from my list") : tr("Add to my list"), systemImage: listed ? "bookmark.slash" : "bookmark")
+            }
+        }
+    }
+
+    private func act(_ f: @escaping () async throws -> Void) {
+        Task {
+            try? await f()
+            changed()
         }
     }
 }

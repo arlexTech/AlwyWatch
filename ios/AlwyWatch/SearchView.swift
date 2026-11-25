@@ -40,6 +40,7 @@ struct SearchView: View {
                                 GridPoster(account: e.account, item: e.item)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu { ItemMenu(account: e.account, item: e.item) {} }
                         }
                     }
                 }

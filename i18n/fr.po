@@ -577,11 +577,13 @@ msgstr "Marquer comme non vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/HomeView.swift
 msgid "Remove from Continue watching"
 msgstr "Retirer de Reprendre"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/HomeView.swift
 msgid "Go to the show"
 msgstr "Aller à la série"
 
@@ -613,6 +615,7 @@ msgid "My list: {error}"
 msgstr "Ma liste : {error}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: ios/AlwyWatch/HomeView.swift
 msgid "Details"
 msgstr "Détails"
 
@@ -2240,6 +2243,7 @@ msgstr "Bande-annonce"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/DetailView.swift
 msgid "Directed by {names}"
 msgstr "Réalisé par {names}"
 

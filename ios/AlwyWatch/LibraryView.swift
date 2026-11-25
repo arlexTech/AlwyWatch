@@ -102,6 +102,7 @@ private struct LibraryRecommended: View {
                                             PosterCard(account: account, item: item)
                                         }
                                         .buttonStyle(.plain)
+                                        .contextMenu { ItemMenu(account: account, item: item, inContinue: true) {} }
                                     }
                                 }
                                 .padding(.horizontal, 16)
@@ -126,6 +127,7 @@ private struct LibraryRecommended: View {
                                             }
                                         }
                                         .buttonStyle(.plain)
+                                        .contextMenu { ItemMenu(account: account, item: item) {} }
                                     }
                                 }
                                 .padding(.horizontal, 16)
@@ -288,6 +290,7 @@ struct LibraryGrid: View {
                         GridPoster(account: account, item: item)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu { ItemMenu(account: account, item: item) {} }
                     .onAppear {
                         if let i = items.firstIndex(where: { $0.id == item.id }), i >= items.count - 12 { Task { await more() } }
                     }

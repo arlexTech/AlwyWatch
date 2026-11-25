@@ -39,6 +39,7 @@ struct PosterGrid: View {
                         PosterCard(account: e.account, item: e.item, width: 104)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu { ItemMenu(account: e.account, item: e.item) {} }
                 }
             }
             .padding(16)

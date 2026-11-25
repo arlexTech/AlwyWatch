@@ -172,36 +172,7 @@ extension TogetherRoom: Identifiable {
 extension View {
     /// Every screen a stack can open.
     func withRoutes() -> some View {
-        navigationDestination(for: Route.self) { route in
-            switch route {
-            case let .detail(account, itemId): DetailView(account: account, itemId: itemId)
-            case let .library(account, id, title, recent): LibraryView(account: account, libraryId: id, title: title, recent: recent)
-            case let .filtered(account, libraryId, title, genreId, collectionId):
-                FilteredLibraryView(account: account, libraryId: libraryId, title: title, genreId: genreId, collectionId: collectionId)
-            case .addServer: SignInView()
-            case .dashboard: DashboardView()
-            case .historyCopy: HistoryCopyScreen()
-            case .leavingSoon: LeavingSoonView()
-            case .triage: TriageView()
-            case .search: SearchView()
-            case .settings: SettingsScreen()
-            case .seerrConnect: SeerrConnectView()
-            case .watchlist: WatchlistView()
-            case let .continueWatching(account): ContinueWatchingView(account: account)
-            case .requests: RequestsView()
-            case let .seerrTitle(type, tmdbId): SeerrTitleView(movie: type == "movie", tmdbId: tmdbId)
-            case let .seerrSaga(id, name): SeerrSagaView(id: id, name: name)
-            case let .settingsSection(id): SettingsSectionView(section: SettingsSection(rawValue: id) ?? .device)
-            case .manageDownloads: ManageDownloadsView()
-            case let .downloadedShow(id, title): DownloadedShowView(seriesId: id, title: title)
-            case let .room(code): RoomView(code: code)
-            case .adminPeople: KeepAdminView(people: true, countdown: false)
-            case .adminCountdown: KeepAdminView(people: false, countdown: true)
-            case .keepAdmin: KeepAdminView()
-            case .adminInvites: InvitationsView()
-            case .keepForever: KeepForeverView()
-            }
-        }
+        navigationDestination(for: Route.self) { route in routeView(route) }
     }
 }
 
@@ -210,4 +181,36 @@ struct HistoryCopyScreen: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View { HistoryCopyView(jobs: model.sync) }
+}
+
+/// The screen of a route (pushed by links, or by code: a card's menu).
+@ViewBuilder func routeView(_ route: Route) -> some View {
+    switch route {
+        case let .detail(account, itemId): DetailView(account: account, itemId: itemId)
+        case let .library(account, id, title, recent): LibraryView(account: account, libraryId: id, title: title, recent: recent)
+        case let .filtered(account, libraryId, title, genreId, collectionId):
+            FilteredLibraryView(account: account, libraryId: libraryId, title: title, genreId: genreId, collectionId: collectionId)
+        case .addServer: SignInView()
+        case .dashboard: DashboardView()
+        case .historyCopy: HistoryCopyScreen()
+        case .leavingSoon: LeavingSoonView()
+        case .triage: TriageView()
+        case .search: SearchView()
+        case .settings: SettingsScreen()
+        case .seerrConnect: SeerrConnectView()
+        case .watchlist: WatchlistView()
+        case let .continueWatching(account): ContinueWatchingView(account: account)
+        case .requests: RequestsView()
+        case let .seerrTitle(type, tmdbId): SeerrTitleView(movie: type == "movie", tmdbId: tmdbId)
+        case let .seerrSaga(id, name): SeerrSagaView(id: id, name: name)
+        case let .settingsSection(id): SettingsSectionView(section: SettingsSection(rawValue: id) ?? .device)
+        case .manageDownloads: ManageDownloadsView()
+        case let .downloadedShow(id, title): DownloadedShowView(seriesId: id, title: title)
+        case let .room(code): RoomView(code: code)
+        case .adminPeople: KeepAdminView(people: true, countdown: false)
+        case .adminCountdown: KeepAdminView(people: false, countdown: true)
+        case .keepAdmin: KeepAdminView()
+        case .adminInvites: InvitationsView()
+        case .keepForever: KeepForeverView()
+    }
 }

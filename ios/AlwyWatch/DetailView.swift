@@ -26,12 +26,21 @@ struct DetailView: View {
     @State private var seerrSeasons: [SeerrSeasonInfo]?
     @State private var requestingSeasons = false
     @StateObject private var theme = ThemeMusic()
+    /// Trailers (the server's extras, else web links) and the cast, loaded with the page.
+    @State private var trailers: [Trailer] = []
+    @State private var people: [Person] = []
+    @Environment(\.openURL) private var openURL
+    /// Where the title stands in Leaving soon (movies and shows), and its choices sheet.
+    @State private var keep: LeavingItem?
+    @State private var keepSheet: LeavingItem?
+    @State private var keepLooking = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 hero
                 if let item { info(item) }
+                if let item, keepShown(item) { keepPanel(item) }
                 if !seasons.isEmpty { seasonList }
                 ErrorText(text: error).padding(.horizontal, 16)
             }
@@ -41,6 +50,8 @@ struct DetailView: View {
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: "\(itemId)\(changed)") { await load() }
+        .task(id: itemId) { await loadExtras() }
+        .sheet(item: $keepSheet) { KeepSheet(item: $0) { keep = $0 }.environmentObject(model) }
         .pollDownloads($downloads)
         .sheet(item: $sheet) { DownloadSheet(target: $0).environmentObject(model) }
         .task(id: showTmdb) { await lookUpSeerrSeasons() }
@@ -100,6 +111,41 @@ struct DetailView: View {
             }
             if !item.genres.isEmpty {
                 Text(item.genres.joined(separator: " · ")).font(.footnote).foregroundStyle(Palette.subtle)
+            }
+            let directors = people.filter { $0.kind == .director }
+            if !directors.isEmpty {
+                Text(tr("Directed by {names}", ["names": directors.map(\.name).joined(separator: ", ")]))
+                    .font(.footnote).foregroundStyle(Palette.muted)
+            }
+            if let trailer = trailers.first {
+                Button { playTrailer(trailer) } label: {
+                    Label(tr("Trailer"), systemImage: "film")
+                }
+                .buttonStyle(ActionButtonStyle())
+            }
+            let cast = people.filter { $0.kind == .actor }
+            if !cast.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(Array(cast.prefix(30).enumerated()), id: \.offset) { _, p in
+                            VStack(spacing: 4) {
+                                AsyncImage(url: p.photoUrl.flatMap(URL.init(string:))) { img in
+                                    img.resizable().scaledToFill()
+                                } placeholder: {
+                                    Image(systemName: "person.fill").foregroundStyle(Palette.subtle)
+                                }
+                                .frame(width: 64, height: 64)
+                                .background(Palette.surface)
+                                .clipShape(Circle())
+                                Text(p.name).font(.caption.weight(.semibold)).lineLimit(1)
+                                if let role = p.role, !role.isEmpty {
+                                    Text(role).font(.caption2).foregroundStyle(Palette.muted).lineLimit(1)
+                                }
+                            }
+                            .frame(width: 84)
+                        }
+                    }
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -325,6 +371,72 @@ struct DetailView: View {
         }
         guard model.core.seerrActive() else { return }
         if let info = try? await model.core.seerrSeasonInfo(tmdbId: tmdb) { seerrSeasons = info }
+    }
+
+    private func keepShown(_ item: Item) -> Bool {
+        (item.kind == .movie || item.kind == .series) && model.core.keepActive() && model.services.leavingSoon
+    }
+
+    /// Android's keep panel: in a deletion list or not, my choice, Keep it.
+    private func keepPanel(_ item: Item) -> some View {
+        let unplanned = keep.map { !$0.listed && $0.protection == .none } ?? true
+        return VStack(alignment: .leading, spacing: 6) {
+            Label(unplanned ? tr("Not scheduled for deletion") : (keep?.leavesLabel ?? ""), systemImage: "hourglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(unplanned ? Palette.muted : Palette.accent)
+            if unplanned {
+                Text(tr("The server doesn't plan to delete this. You can still say you want it kept, in case it does later."))
+                    .font(.footnote).foregroundStyle(Palette.muted)
+            }
+            Text(keep?.voteLabel ?? tr("You haven't chosen anything")).font(.footnote)
+            Button {
+                if let keep { keepSheet = keep; return }
+                keepLooking = true
+                Task {
+                    do {
+                        let e = try await model.core.keepEntry(item: item)
+                        keep = e
+                        keepSheet = e
+                    } catch {
+                        self.error = message(error)
+                    }
+                    keepLooking = false
+                }
+            } label: {
+                Label(keepLooking ? tr("Looking it up…") : (keep?.myVote == nil ? tr("Keep it") : tr("Change my choice")), systemImage: "clock")
+            }
+            .buttonStyle(ActionButtonStyle())
+            .disabled(keepLooking)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 16)
+        .task(id: item.id) {
+            keep = model.core.keepStatusOf(item: item)
+            if (try? await model.core.refreshLeavingSoon(force: false)) != nil {
+                keep = model.core.keepStatusOf(item: item)
+            }
+        }
+    }
+
+    private func loadExtras() async {
+        if let cached = model.core.cachedPeople(accountId: account, itemId: itemId) { people = cached }
+        if let p = try? await model.core.people(accountId: account, itemId: itemId) { people = p }
+        trailers = (try? await model.core.trailers(accountId: account, itemId: itemId)) ?? []
+    }
+
+    /// The server's own trailer in the player; a web one (YouTube) in the browser.
+    private func playTrailer(_ t: Trailer) {
+        if let id = t.itemId {
+            Task {
+                if let r = try? await model.core.refreshItem(accountId: account, itemId: id, force: false) {
+                    player = PlayRequest(account: account, item: r.item, fromStart: true)
+                }
+            }
+        } else if let u = t.url.flatMap(URL.init(string:)) {
+            openURL(u)
+        }
     }
 
     private func load() async {
