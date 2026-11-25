@@ -313,7 +313,7 @@ private struct StreamCard: View {
             }
             .padding(10)
             HStack(spacing: 10) {
-                Avatar(server: s.serverId, img: s.userAvatar, name: s.user, size: 32)
+                DashAvatar(server: s.serverId, img: s.userAvatar, name: s.user, size: 32)
                 Text(s.user)
                 Spacer()
             }
@@ -352,7 +352,7 @@ private struct TrackLine: View {
     }
 }
 
-private struct Avatar: View {
+private struct DashAvatar: View {
     let server: String
     let img: String?
     let name: String
@@ -480,7 +480,7 @@ private struct UserCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                Avatar(server: u.serverId, img: u.avatar, name: u.name, size: 44)
+                DashAvatar(server: u.serverId, img: u.avatar, name: u.name, size: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(u.name).font(.subheadline.weight(.semibold)).lineLimit(1)
                     Text(trn("{n} play", "{n} plays", Int(u.plays))).font(.caption).foregroundStyle(Palette.muted)
