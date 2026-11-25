@@ -90,6 +90,7 @@ final class AppModel: ObservableObject {
     func signOut(_ id: String) {
         try? core.removeAccount(accountId: id)
         for k in [id, "\(id):plextv", "\(id):plexhome"] { Keychain.remove(k) }
+        Identity.shared.forgetAccount(id)
         reload()
     }
 
@@ -109,6 +110,8 @@ final class AppModel: ObservableObject {
         lastAlwyWatchUrl = conn.baseUrl
         let off = (try? core.getSetting(key: "seerr.off")) ?? nil
         if core.seerrConnection() == nil, off != "1" { await connectSeerrThroughKeep() }
+        // Who I am there (the welcome step shows if it isn't done).
+        await MyAccount.shared.linked(core)
         return conn
     }
 

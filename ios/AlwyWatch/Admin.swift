@@ -26,7 +26,8 @@ private func serverSettingsPage(_ core: AlwyWatch) -> URL? {
     return URL(string: base + "/settings/admin/server")
 }
 
-private struct TitledRow: View {
+/// A settings row: an icon, a title and its explanation below.
+struct TitledRow: View {
     let title: String
     var subtitle: String?
     var icon: String?

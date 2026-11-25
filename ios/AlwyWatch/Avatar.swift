@@ -126,6 +126,14 @@ enum AvatarImages {
         return dir.appendingPathComponent("\(digest)_\(version)")
     }
 
+    /// A picture this device just uploaded: no need to fetch it back.
+    static func put(userKey: String, version: UInt32, data: Data) {
+        let f = file(userKey, version)
+        try? FileManager.default.createDirectory(at: f.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: f)
+        if let img = UIImage(data: data) { memory["\(userKey)|\(version)"] = img }
+    }
+
     static func load(core: AlwyWatch, userKey: String, version: UInt32) async -> UIImage? {
         let key = "\(userKey)|\(version)"
         if let hit = memory[key] { return hit }

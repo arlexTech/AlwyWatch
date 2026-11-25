@@ -61,6 +61,8 @@ struct RootView: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject private var inbox = TogetherInbox.shared
     @ObservedObject private var session = TogetherSession.shared
+    @ObservedObject private var my = MyAccount.shared
+    @ObservedObject private var identity = Identity.shared
     @State private var tab = 0
     @State private var togetherPath = NavigationPath()
 
@@ -104,6 +106,28 @@ struct RootView: View {
             }
         }
         .background(Palette.background.ignoresSafeArea())
+        // Once per account: how others see you (name and picture).
+        .fullScreenCover(isPresented: Binding(get: { my.welcomeShowing }, set: { if !$0 { my.welcomeClosed = true } })) {
+            if let me = my.me { WelcomeView(me: me).environmentObject(model) }
+        }
+        // Who I am there, then (well after the start) "Are these both you?" once per run.
+        .task(id: model.core.keepConnection()?.accountId) {
+            guard model.core.keepConnection() != nil else { return }
+            await my.refresh(model.core)
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            await identity.lookForOffer(model.core)
+        }
+        .sheet(item: Binding(
+            get: { my.welcomeShowing || inbox.prompt != nil ? nil : identity.offer },
+            // Swiped away: asked again at a later start; Settings has it meanwhile.
+            set: { identity.offer = $0 }
+        )) { other in
+            LinkSheet(other: other, onDone: { identity.offer = nil }, onNotNow: {
+                if let key = my.me?.userKey { identity.decline(key, other) }
+                identity.offer = nil
+            })
+            .environmentObject(model)
+        }
         // A new invitation, wherever the user is.
         .sheet(item: $inbox.prompt) { InvitationPrompt(room: $0).environmentObject(model) }
         // A room to show: the Together tab, on that room.

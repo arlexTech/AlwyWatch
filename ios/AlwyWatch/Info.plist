@@ -39,6 +39,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>To read the sign-in QR code shown by another device.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>To reach your Jellyfin or Plex server on your home network.</string>
 	<!-- Sound keeps playing with the screen locked, and picture in picture. -->

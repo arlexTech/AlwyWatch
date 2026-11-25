@@ -314,40 +314,6 @@ private struct ServersSettings: View {
 
 // MARK: Account, requests
 
-private struct AccountSettings: View {
-    @EnvironmentObject var model: AppModel
-
-    var body: some View {
-        let keep = model.core.keepConnection()
-        let account = model.core.account()
-        if keep == nil, account == nil {
-            Section {
-                NavigationLink(value: Route.addServer) {
-                    TitledLabel(title: tr("Connect to AlwyWatch"), subtitle: tr("No AlwyWatch account · connect to AlwyWatch"))
-                }
-            }
-        } else {
-            Section(tr("Your AlwyWatch account")) {
-                HStack(spacing: 12) {
-                    let name = account?.name ?? keep?.userName ?? "?"
-                    Text(String(name.prefix(1)).uppercased())
-                        .font(.headline).foregroundStyle(.black)
-                        .frame(width: 46, height: 46)
-                        .background(Palette.accent, in: Circle())
-                    TitledLabel(title: name, subtitle: tr("How others see you"))
-                }
-                if let address = (keep?.baseUrl ?? account?.baseUrl).map(host) {
-                    HStack {
-                        Text(tr("AlwyWatch server"))
-                        Spacer()
-                        Text(address).foregroundStyle(Palette.muted)
-                    }
-                }
-            }
-        }
-    }
-}
-
 private struct RequestsSettings: View {
     @EnvironmentObject var model: AppModel
 
@@ -498,6 +464,7 @@ private struct DeviceSettings: View {
             Text(tr("Posters and backdrops kept to show pages instantly; they come back when needed."))
         }
         .onAppear { cacheBytes = model.core.imageCacheBytes() }
+        OtherDevicesGroup()
         Section {
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
             TitledLabel(title: "AlwyWatch \(version)", subtitle: tr("Core {version}", ["version": coreVersion()]))
