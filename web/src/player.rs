@@ -905,6 +905,53 @@ fn PlayerView(
         });
     };
 
+    // The browser said it plays the file, but some don't play without saying so: a picture it
+    // can't decode stays black, a sound it can't decode stays silent, a file it chokes on never
+    // starts, all with no error event. Checked a few seconds in: then the server converts it,
+    // at the same place, as if the file had failed.
+    let direct_try = StoredValue::new(0u32);
+    let watch_direct = move |v: web_sys::HtmlVideoElement| {
+        direct_try.update_value(|n| *n += 1);
+        let mine = direct_try.get_value();
+        spawn_local(async move {
+            for wait in [8_000, 12_000] {
+                state::sleep(wait).await;
+                if !alive()
+                    || transcoding.get_untracked()
+                    || direct_try.try_get_value() != Some(mine)
+                {
+                    return;
+                }
+                let (has_video, has_audio) = loaded.with_untracked(|l| match l {
+                    Some(Ok(l)) => l.info.sources.first().map_or((false, false), |s| {
+                        (
+                            s.streams.iter().any(|x| x.kind == StreamKind::Video),
+                            s.streams.iter().any(|x| x.kind == StreamKind::Audio),
+                        )
+                    }),
+                    _ => (false, false),
+                });
+                // Paused (autoplay refused, or the viewer paused): nothing to judge.
+                let trying = !v.paused();
+                let stuck = trying && v.ready_state() < 2;
+                let no_picture = has_video && v.ready_state() >= 1 && v.video_width() == 0;
+                let prop = |name: &str| {
+                    js_sys::Reflect::get(&v, &name.into())
+                        .ok()
+                        .filter(|x| !x.is_undefined())
+                };
+                let no_sound = has_audio
+                    && trying
+                    && v.current_time() > 3.0
+                    && (prop("webkitAudioDecodedByteCount").and_then(|x| x.as_f64()) == Some(0.0)
+                        || prop("mozHasAudio").and_then(|x| x.as_bool()) == Some(false));
+                if stuck || no_picture || no_sound {
+                    return convert(v, sub_pick.get_untracked(), true);
+                }
+            }
+        });
+    };
+
     // A size picked in the menu: the conversion restarts at it, here; "Original" goes back to
     // the file itself when the browser plays it (else to the server's own conversion).
     let pick_quality = move |q: Option<Quality>| {
@@ -943,6 +990,7 @@ fn PlayerView(
             });
             v.set_src(&state::media_url(&src.direct, l.srv.session()));
             play(&v);
+            watch_direct(v.clone());
             let pick = sub_pick.get_untracked();
             if pick >= 0 {
                 spawn_local(async move { show_subtitle(&l, &v, pick, sub_pick).await });
@@ -970,6 +1018,7 @@ fn PlayerView(
         if src.supports_direct_play && can_direct(src, &l.profile) {
             v.set_src(&state::media_url(&src.direct, &session));
             play(&v);
+            watch_direct(v.clone());
             // The settings' subtitles, once per title.
             if sub_pick.get_untracked() < 0
                 && let Some(i) = start_subtitle(&l, &prefs, false)
@@ -1444,8 +1493,27 @@ fn PlayerView(
     // The tab closing or the page going away without the app's own Back: Stop all the same.
     let gone = window_event_listener(leptos::ev::pagehide, move |_| stop());
     on_cleanup(move || gone.remove());
+    // The bar over the picture fades after a few still seconds while playing (a move, a tap
+    // or a key brings it back; paused, it stays).
+    let idle = RwSignal::new(false);
+    let wake_seq = StoredValue::new(0u32);
+    let wake = move || {
+        idle.set(false);
+        wake_seq.update_value(|n| *n += 1);
+        let mine = wake_seq.get_value();
+        spawn_local(async move {
+            state::sleep(3000).await;
+            if wake_seq.try_get_value() == Some(mine)
+                && video.get_untracked().is_some_and(|v| !v.paused())
+            {
+                idle.try_set(true);
+            }
+        });
+    };
     view! {
-        <div class="player" node_ref=shell>
+        <div class="player" node_ref=shell class:idle=move || idle.get()
+            on:mousemove=move |_| wake() on:touchstart=move |_| wake() on:keydown=move |_| wake()
+            on:focusin=move |_| wake()>
             <video node_ref=video controls autoplay playsinline controlslist="nofullscreen"
                 on:dblclick=move |_| fullscreen() on:touchend=on_touch_end
                 on:loadedmetadata=on_meta on:timeupdate=on_time on:error=on_error
@@ -1456,13 +1524,13 @@ fn PlayerView(
                     start_sent.set_value(true);
                     report(if first { PlaybackEvent::Start } else { PlaybackEvent::Progress });
                 }
-                on:play=move |_| on_play()
+                on:play=move |_| { on_play(); wake() }
                 on:seeked=move |_| if alive() {
                     local_action();
                     // Closing the tab right after a seek keeps the new position.
                     if start_sent.get_value() && !stopped.get_value() { report(PlaybackEvent::Progress) }
                 }
-                on:pause=move |_| if alive() && !stopped.get_value() { report(PlaybackEvent::Pause); local_action() }
+                on:pause=move |_| { idle.set(false); if alive() && !stopped.get_value() { report(PlaybackEvent::Pause); local_action() } }
                 on:ended=move |_| {
                     // The next episode only with the setting on and the countdown not cancelled.
                     if auto_next && !cancelled.get_untracked() {
@@ -1481,19 +1549,19 @@ fn PlayerView(
                 </div>
             })}
             <div class="player-top">
-                <button class="icon" on:click=back.clone() aria-label=tr!("Back")>"←"</button>
-                <button class="icon fullscreen" on:click=move |_| fullscreen() aria-label=tr!("Full screen") title=tr!("Full screen (F)")>"⛶"</button>
+                <button class="pbtn" on:click=back.clone() aria-label=tr!("Back") title=tr!("Back")><crate::icons::Icon path=crate::icons::ARROW_BACK /></button>
                 {move || match loaded.get() {
                     Some(Ok(l)) => {
                         let i = &l.item;
                         let sub = (i.kind == ItemKind::Episode).then(|| tr!("S{season} E{episode} · {title}",
                             season = i.season_number.unwrap_or(0), episode = i.episode_number.unwrap_or(0), title = i.title));
                         let title = i.series_title.clone().filter(|_| i.kind == ItemKind::Episode).unwrap_or(i.title.clone());
-                        view! { <div><div class="ptitle">{title}</div><div class="muted">{sub}</div></div> }.into_any()
+                        view! { <div class="ptitles"><div class="ptitle">{title}</div><div class="psub">{sub}</div></div> }.into_any()
                     }
                     Some(Err(_)) => ().into_any(),
-                    None => view! { <div class="muted">{tr!("Loading…")}</div> }.into_any(),
+                    None => view! { <div class="ptitles psub">{tr!("Loading…")}</div> }.into_any(),
                 }}
+                <div class="pspacer" />
                 // Quality: what plays now, and a menu to pick another size.
                 {move || {
                     let src = original.get().and_then(|i| i.sources.into_iter().next());
@@ -1602,7 +1670,7 @@ fn PlayerView(
                         _ => Vec::new(),
                     });
                     (!subs.is_empty()).then(|| view! {
-                        <select class="chip subs" aria-label=tr!("Subtitles") prop:value=move || sub_pick.get().to_string() on:change=move |ev| {
+                        <select class="chip subs" aria-label=tr!("Subtitles") title=tr!("Subtitles") prop:value=move || sub_pick.get().to_string() on:change=move |ev| {
                             let pick: i64 = event_target_value(&ev).parse().unwrap_or(-1);
                             sub_pick.set(pick);
                             let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else { return };
@@ -1622,6 +1690,7 @@ fn PlayerView(
                         </select>
                     })
                 }}
+                <button class="pbtn" on:click=move |_| fullscreen() aria-label=tr!("Full screen") title=tr!("Full screen (F)")><crate::icons::Icon path=crate::icons::FULLSCREEN /></button>
             </div>
             {move || {
                 let e = failure.get().or_else(|| loaded.with(|l| l.as_ref().and_then(|l| l.as_ref().err().cloned())));
