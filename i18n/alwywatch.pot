@@ -608,6 +608,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Retry"
 msgstr ""
 
@@ -2891,6 +2892,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HomeScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Movie"
 msgstr ""
 
@@ -3585,23 +3587,28 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "The request was refused: you may have no requests left, or not be allowed to request. If it keeps happening, sign in again in Settings."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Can't reach the request site right now."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "The request site doesn't know this title."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
 #: web/src/request.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "It has already been requested."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "The request site had a problem. Try again in a moment."
 msgstr ""
 
@@ -3612,16 +3619,19 @@ msgid "Specials"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Couldn't request them: {reason}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
 #: web/src/request.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "Request more seasons"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestSeasons.kt
 #: web/src/request.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "Select all missing"
 msgstr ""
 
@@ -3687,11 +3697,13 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
 #: web/src/request.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "To ask for something new, search for it."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
 #: web/src/request.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "Mine"
 msgstr ""
 
@@ -3702,19 +3714,23 @@ msgid "Everyone"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Only request managers can see everyone's requests."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Loading requests…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
 #: web/src/request.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "No requests."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "You haven't requested anything yet. Search for a title that isn't on your servers to request it."
 msgstr ""
 
@@ -3725,6 +3741,7 @@ msgid "Requested: {title}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Could not request {title}: {reason}"
 msgstr ""
 
@@ -3736,6 +3753,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
 #: web/src/request.rs
+#: ios/AlwyWatch/Requests.swift
 msgid "Loading seasons…"
 msgstr ""
 
@@ -3798,36 +3816,44 @@ msgid "Voice search"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt
+#: ios/AlwyWatch/SearchView.swift
 msgid "On my servers"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt
+#: ios/AlwyWatch/SearchView.swift
 msgid "Not on my servers"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt
 #: web/src/browse.rs
+#: ios/AlwyWatch/SearchView.swift
 msgid "On your servers"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt
+#: ios/AlwyWatch/SearchView.swift
 msgid "To also find what is not on your servers (and request it), connect requests in Settings."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt
+#: ios/AlwyWatch/SearchView.swift
 msgid "Requests unavailable: {reason}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt
 #: web/src/browse.rs
+#: ios/AlwyWatch/SearchView.swift
 msgid "Not on your servers"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt
+#: ios/AlwyWatch/SearchView.swift
 msgid "Open one to see it and request it"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SearchScreen.kt
+#: ios/AlwyWatch/SearchView.swift
 msgid "No results for “{query}”."
 msgstr ""
 
@@ -3903,34 +3929,42 @@ msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Requests.swift
 msgid "PART OF THE SAGA"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Already requested: it is downloading."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Already on your servers: search for it to watch it."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Already partly on your servers."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Already requested and approved: it will be added soon."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Already requested: waiting for approval."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "Blocked on the request server: it can't be requested."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SeerrTitleScreen.kt
+#: ios/AlwyWatch/Requests.swift
 msgid "It can't be requested."
 msgstr ""
 
@@ -6881,7 +6915,6 @@ msgid "Couldn't load the episodes."
 msgstr ""
 
 #: web/src/browse.rs
-#: ios/AlwyWatch/SearchView.swift
 msgid "Nothing found."
 msgstr ""
 
@@ -8454,10 +8487,6 @@ msgstr ""
 
 #: ios/AlwyWatch/PlayerView.swift
 msgid "This file can't be played on this device."
-msgstr ""
-
-#: ios/AlwyWatch/SearchView.swift
-msgid "Movies, shows, episodes"
 msgstr ""
 
 #: ios/AlwyWatch/SettingsScreen.swift
