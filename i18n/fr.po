@@ -2706,6 +2706,7 @@ msgstr "surtout avec {names}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "{n} resume point"
 msgid_plural "{n} resume points"
 msgstr[0] "{n} point de reprise"
@@ -2713,6 +2714,7 @@ msgstr[1] "{n} points de reprise"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "Copy {n} title"
 msgid_plural "Copy {n} titles"
 msgstr[0] "Copier {n} titre"
@@ -2720,6 +2722,7 @@ msgstr[1] "Copier {n} titres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "Done: {n} title copied."
 msgid_plural "Done: {n} titles copied."
 msgstr[0] "Terminé : {n} titre copié."
@@ -2727,76 +2730,92 @@ msgstr[1] "Terminé : {n} titres copiés."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Sync.swift
 msgid "Marks what you watched on one server as watched on the other, and copies where you stopped. It only adds: nothing gets unmarked, and a resume point never goes back."
 msgstr "Marque comme vu sur l'autre serveur ce que vous avez vu sur l'un, et copie où vous vous êtes arrêté. Rien n'est retiré : aucun titre ne redevient non vu, et un point de reprise ne recule jamais."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Sync.swift
 msgid "Sign in to both servers first: Settings → Servers → Add a server."
 msgstr "Connectez-vous d'abord aux deux serveurs : Paramètres → Serveurs → Ajouter un serveur."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "From"
 msgstr "De"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "To"
 msgstr "Vers"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "Pick two different servers."
 msgstr "Choisissez deux serveurs différents."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Sync.swift
 msgid "Check what will change"
 msgstr "Voir ce qui va changer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "Nothing to copy: everything is already there."
 msgstr "Rien à copier : tout y est déjà."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "{count} to mark as watched"
 msgstr "{count} à marquer comme vus"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "{count} already up to date"
 msgstr "{count} déjà à jour"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "{count} not on that server"
 msgstr "{count} absents de ce serveur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Sync.swift
 msgid "Hide missing titles"
 msgstr "Masquer les titres absents"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Sync.swift
 msgid "Show missing titles"
 msgstr "Afficher les titres absents"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "Done: {copied} titles copied, {failed} failed (try again)."
 msgstr "Terminé : {copied} titres copiés, {failed} en échec (réessayez)."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Sync.swift
 msgid "Check again"
 msgstr "Vérifier à nouveau"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "Starting"
 msgstr "Démarrage"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "{step} · {done} of {total} ({percent} %)"
 msgstr "{step} · {done} sur {total} ({percent} %)"
 
@@ -4087,54 +4106,67 @@ msgid "One server at a time: tap a login above to switch"
 msgstr "Un serveur à la fois : touchez une connexion ci-dessus pour changer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Moving between servers"
 msgstr "Changer de serveur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "A one-time copy, one way. Each person copies their own history, with their own logins."
 msgstr "Une copie ponctuelle, dans un seul sens. Chacun copie son propre historique, avec ses propres identifiants."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/SettingsScreen.swift
 msgid "What you watched and where you stopped, from one server to another (Plex to Jellyfin)"
 msgstr "Ce que vous avez vu et où vous vous êtes arrêté, d'un serveur à l'autre (de Plex vers Jellyfin)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "Keep in sync"
 msgstr "Garder synchronisé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "Both ways: what you watch, unwatch or where you stop on one server is copied to the other. Right away for what you watch in AlwyWatch, every 6 hours for other apps. Changed on both since the last sync: the further one wins."
 msgstr "Dans les deux sens : ce que vous marquez comme vu ou non vu, et où vous vous arrêtez, sur un serveur est copié sur l'autre. Immédiatement pour ce que vous regardez dans AlwyWatch, toutes les 6 heures pour les autres applis. Modifié des deux côtés depuis la dernière synchro : le plus avancé l'emporte."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "{server} ({kind}) and {other} ({otherKind})"
 msgstr "{server} ({kind}) et {other} ({otherKind})"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "Syncing now…"
 msgstr "Synchronisation en cours…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "Last sync failed: {reason}"
 msgstr "Échec de la dernière synchro : {reason}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "Last synced {time} · nothing to change"
 msgstr "Dernière synchro {time} · rien à changer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "Last synced {time} · {count} updated"
 msgstr "Dernière synchro {time} · {count} mis à jour"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "Waiting for the first sync"
 msgstr "En attente de la première synchro"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "Syncing…"
 msgstr "Synchronisation…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: ios/AlwyWatch/Sync.swift
 msgid "Sync now"
 msgstr "Synchroniser"
 
@@ -8406,6 +8438,10 @@ msgstr "Système"
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Clear the image cache"
 msgstr "Vider le cache des images"
+
+#: ios/AlwyWatch/Sync.swift
+msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
+msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
 
 #~ msgid "Approve on a device where you're signed in"
 #~ msgstr "À approuver sur un appareil où vous êtes connecté"

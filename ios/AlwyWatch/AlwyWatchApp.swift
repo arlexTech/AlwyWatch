@@ -5,6 +5,7 @@ import SwiftUI
 @main
 struct AlwyWatchApp: App {
     @StateObject private var model = AppModel()
+    @Environment(\.scenePhase) private var phase
 
     init() {
         // Films keep their sound with the silent switch on, and in picture in picture.
@@ -17,6 +18,13 @@ struct AlwyWatchApp: App {
                 .environmentObject(model)
                 .preferredColorScheme(.dark)
                 .tint(Palette.accent)
+                .onChange(of: phase) { p in
+                    if p == .active { model.foreground() }
+                }
+        }
+        // Every 6 hours when iOS allows it: the watch-state sync (Android's periodic SyncWorker).
+        .backgroundTask(.appRefresh(SyncJobs.refreshId)) {
+            await model.sync.backgroundRefresh()
         }
     }
 }
@@ -27,6 +35,7 @@ enum Route: Hashable {
     case library(account: String, id: String, title: String)
     case addServer
     case dashboard
+    case historyCopy
 }
 
 struct RootView: View {
@@ -64,7 +73,15 @@ extension View {
             case let .library(account, id, title): LibraryView(account: account, libraryId: id, title: title)
             case .addServer: SignInView()
             case .dashboard: DashboardView()
+            case .historyCopy: HistoryCopyScreen()
             }
         }
     }
+}
+
+/// The history copy page with the app's job (its state outlives the page).
+struct HistoryCopyScreen: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View { HistoryCopyView(jobs: model.sync) }
 }

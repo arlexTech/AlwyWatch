@@ -32,6 +32,22 @@ struct SettingsScreen: View {
                     Label(tr("Add a server"), systemImage: "plus")
                 }
             }
+            if model.accounts.count > 1 {
+                SyncSection(jobs: model.sync)
+                Section {
+                    NavigationLink(value: Route.historyCopy) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(tr("Copy watch history")).foregroundStyle(Palette.onSurface)
+                            Text(tr("What you watched and where you stopped, from one server to another (Plex to Jellyfin)"))
+                                .font(.footnote).foregroundStyle(Palette.muted)
+                        }
+                    }
+                } header: {
+                    Text(tr("Moving between servers"))
+                } footer: {
+                    Text(tr("A one-time copy, one way. Each person copies their own history, with their own logins."))
+                }
+            }
             if model.core.keepConnection()?.isAdmin == true {
                 Section(tr("Admin")) {
                     NavigationLink(value: Route.dashboard) {

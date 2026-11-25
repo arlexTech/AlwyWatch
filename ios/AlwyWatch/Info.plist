@@ -45,6 +45,12 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>fetch</string>
+	</array>
+	<!-- The watch-state sync every 6 hours (Sync.swift). -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>be.alwyapps.watch.sync</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>

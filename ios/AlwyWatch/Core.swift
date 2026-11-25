@@ -12,16 +12,31 @@ final class AppModel: ObservableObject {
     /// The account the screens show ("current_account" in the core settings, as on Android).
     @Published var account: String?
     @Published var accounts: [Account] = []
+    /// Watch-state sync and the history copy (Settings).
+    let sync: SyncJobs
 
     init() {
         I18n.apply()
         core = try! AlwyWatch(config: AppModel.config())
+        sync = SyncJobs(core: core)
         Self.activate(core)
         reload()
         Task.detached { [core] in
             _ = try? await core.flushPendingProgress()
             _ = try? await core.syncSettings()
         }
+    }
+
+    /// Back in the app (and at start): settings that follow the viewer, then the watch-state
+    /// sync when it is due (Android's SettingsSync and SyncWorker).
+    func foreground() {
+        Task.detached { [core] in
+            if ((try? await core.syncSettings()) ?? 0) > 0 {
+                await MainActor.run { self.reload() }
+            }
+        }
+        sync.syncIfDue()
+        sync.schedule()
     }
 
     func reload() {
