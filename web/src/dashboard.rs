@@ -632,8 +632,10 @@ fn StatsPanels(server: Signal<String>, servers: Signal<Vec<DashServer>>) -> impl
                 .admin_dashboard_stats(&asked, d, tz_minutes())
                 .await
                 .map_err(|e| e.to_string());
-            // Only if still asked for.
-            if server.get_untracked() == asked && days.get_untracked() == d {
+            // Only if still asked for (and still on the page: try_ when it was left).
+            if server.try_get_untracked().as_ref() == Some(&asked)
+                && days.try_get_untracked() == Some(d)
+            {
                 stats.set(Some(r));
             }
         });
@@ -698,16 +700,20 @@ fn StatsPanels(server: Signal<String>, servers: Signal<Vec<DashServer>>) -> impl
 pub fn Dashboard() -> impl IntoView {
     let server = RwSignal::new(remembered_server());
     let live = RwSignal::new(None::<Result<Live, String>>);
+    // Leaving the page disposes these signals: the loop reads them with try_ and stops.
     let alive = RwSignal::new(true);
     on_cleanup(move || alive.set(false));
+    let open = move || alive.try_get_untracked().unwrap_or(false);
     // Poll while the page is open and visible.
     spawn_local(async move {
         let mut asked = String::new();
-        while alive.get_untracked() {
+        while open() {
             let hidden = web_sys::window()
                 .and_then(|w| w.document())
                 .is_some_and(|d| d.hidden());
-            let now = server.get_untracked();
+            let Some(now) = server.try_get_untracked() else {
+                return;
+            };
             if !hidden || asked != now {
                 let Some(k) = state::ctx().keep_client() else {
                     live.set(Some(Err(tr!("Sign in with an admin account first."))));
@@ -717,10 +723,10 @@ pub fn Dashboard() -> impl IntoView {
                     .admin_dashboard_live(&now)
                     .await
                     .map_err(|e| e.to_string());
-                if !alive.get_untracked() {
+                if !open() {
                     return;
                 }
-                if server.get_untracked() == now {
+                if server.try_get_untracked().as_ref() == Some(&now) {
                     live.set(Some(r));
                     asked = now;
                 }
@@ -728,7 +734,7 @@ pub fn Dashboard() -> impl IntoView {
             // Wake early when the server choice changes.
             for _ in 0..(POLL_MS / 250) {
                 state::sleep(250).await;
-                if !alive.get_untracked() || server.get_untracked() != asked {
+                if !open() || server.try_get_untracked().as_ref() != Some(&asked) {
                     break;
                 }
             }
