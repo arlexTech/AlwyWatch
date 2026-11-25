@@ -132,7 +132,8 @@ pub fn RailRow(children: Children) -> impl IntoView {
     let row = NodeRef::<leptos::html::Div>::new();
     let (more_left, more_right) = (RwSignal::new(false), RwSignal::new(false));
     let update = move || {
-        if let Some(r) = row.get_untracked() {
+        // Also from a timer: the row may be gone by then (home rows are redrawn when they refresh).
+        if let Some(r) = row.try_get_untracked().flatten() {
             let (x, max) = (r.scroll_left(), r.scroll_width() - r.client_width());
             more_left.try_set(x > 4);
             more_right.try_set(x < max - 4);
@@ -149,7 +150,7 @@ pub fn RailRow(children: Children) -> impl IntoView {
         }
     });
     let by = move |dir: i32| {
-        if let Some(r) = row.get_untracked() {
+        if let Some(r) = row.try_get_untracked().flatten() {
             // A page, minus a card's worth so the last one seen stays in view.
             let step = (f64::from(r.client_width()) * 0.85) as i32;
             r.set_scroll_left(r.scroll_left() + dir * step);

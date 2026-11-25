@@ -282,7 +282,7 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
 .rail-arrow.next { right: -40px; background: linear-gradient(to left, var(--bg) 30%, transparent); }
 .rail-arrow:hover { background-color: transparent; color: var(--accent); }
 .rail-wrap:hover .rail-arrow.shown { opacity: 1; pointer-events: auto; }
-@media (hover: none) { .rail-arrow { display: none; } }
+@media (hover: none), (max-width: 720px) { .rail-arrow { display: none; } }
 
 /* People: avatars, rows, the room. */
 .avatar { display: inline-block; flex: none; border-radius: 50%; overflow: hidden; vertical-align: middle; object-fit: cover; }
@@ -531,6 +531,11 @@ code.wrap { overflow-wrap: anywhere; font-size: .85rem; background: var(--surfac
 .player-top select.chip:hover, .player-top button.small:hover { background-color: #ffffff38; }
 .player-top .pill { color: #ffffffcc; display: inline-flex; align-items: center; }
 .player-top select.quality { border: 0; }
+/* One line each: a long label ("Converted by the server (…)") is cut, its whole text in the
+   tooltip, and the title keeps room. */
+.player-top .pill, .player-top button.small { white-space: nowrap; flex-shrink: 3; min-width: 0; }
+.player-top .pill { display: block; line-height: 22px; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
+.ptitles { flex: 0 1 auto; min-width: 7em; }
 @media (max-width: 720px) {
   .player-top { padding: 10px 10px 36px; gap: 6px; }
   .ptitle { font-size: 1.05rem; }

@@ -289,17 +289,29 @@ pub fn Library() -> impl IntoView {
     if let Some((_, list, t, y)) = restored {
         items.set(list);
         total.set(t);
+        // Once the cards are laid out (the router may also scroll to the top after us).
         spawn_local(async move {
-            state::sleep(0).await;
-            if let Some(w) = web_sys::window() {
+            for wait in [0, 60, 150, 300, 600] {
+                state::sleep(wait).await;
+                let Some(w) = web_sys::window() else { return };
                 w.scroll_to_with_x_and_y(0.0, y);
+                if (w.scroll_y().unwrap_or(0.0) - y).abs() < 2.0 {
+                    return;
+                }
             }
         });
     }
+    // Where the list was, kept as it scrolls: when this page goes, the next one may already
+    // have scrolled the window to its top.
+    let last_y = StoredValue::new(0.0f64);
+    let scroll_watch = window_event_listener(leptos::ev::scroll, move |_| {
+        if let Some(y) = web_sys::window().and_then(|w| w.scroll_y().ok()) {
+            last_y.try_set_value(y);
+        }
+    });
     on_cleanup(move || {
-        let y = web_sys::window()
-            .and_then(|w| w.scroll_y().ok())
-            .unwrap_or(0.0);
+        scroll_watch.remove();
+        let y = last_y.try_get_value().unwrap_or(0.0);
         if let (Some(list), Some(t), Some(k)) = (
             items.try_get_untracked(),
             total.try_get_untracked(),
