@@ -34,6 +34,8 @@ use together::TogetherPlay;
 #[path = "dashboard.rs"]
 mod dashboard;
 
+/// Seerr turned off here on purpose: not connected through the server again (as Android).
+const SEERR_OFF: &str = "seerr.off";
 const POSTER_PX: u32 = 300;
 const EPISODE_PX: u32 = 320;
 const BACKDROP_PX: u32 = 1280;
@@ -1153,10 +1155,23 @@ impl App {
         }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
-            if core.refresh_keep_services().await.is_ok()
+            if let Ok(services) = core.refresh_keep_services().await
                 && let Some(this) = this.upgrade()
             {
                 this.apply_services();
+                // Requests through the server, offered since the sign-in (Seerr added or
+                // switched later): connected now, unless turned off here on purpose.
+                if services.requests
+                    && core.seerr_connection().is_none()
+                    && core
+                        .get_setting(SEERR_OFF.to_owned())
+                        .ok()
+                        .flatten()
+                        .as_deref()
+                        != Some("1")
+                {
+                    this.seerr_bridge(true);
+                }
             }
         })
         .ok();
@@ -1830,6 +1845,9 @@ impl App {
     /// Seerr through the AlwyWatch server (any media server type). `quiet`: the server may
     /// simply not offer it, which is not worth a message after connecting it.
     fn seerr_bridge(self: &Rc<Self>, quiet: bool) {
+        if !quiet {
+            let _ = self.core.set_setting(SEERR_OFF.to_owned(), "0".to_owned());
+        }
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
             let r = core.seerr_connect_bridge().await;
@@ -1854,6 +1872,7 @@ impl App {
                     )));
                     return;
                 }
+                let _ = self.core.set_setting(SEERR_OFF.to_owned(), "0".to_owned());
                 self.ui().set_seerr_message(SharedString::new());
                 self.ui().set_seerr_step("url".into());
                 self.refresh_seerr_settings();
@@ -6070,6 +6089,8 @@ impl App {
         on!(on_seerr_password, |a, u, p| a
             .seerr_password(u.into(), p.into()));
         on!(on_seerr_disconnect, |a| {
+            // Not connected again through the server on the next launch.
+            let _ = a.core.set_setting(SEERR_OFF.to_owned(), "1".to_owned());
             let _ = a.core.seerr_sign_out();
             let _ = a.tokens.remove("seerr");
             a.refresh_seerr_settings();
