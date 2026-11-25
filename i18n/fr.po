@@ -574,6 +574,7 @@ msgstr "Aller à la saison"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: ios/AlwyWatch/DetailView.swift
 msgid "Remove from my list"
 msgstr "Retirer de ma liste"
 
@@ -4852,6 +4853,7 @@ msgstr "Envoyer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/WatchlistScreen.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Lists.swift
 msgid "Nothing saved yet. On a movie or show, press the bookmark to keep it here."
 msgstr "Rien d'enregistré pour l'instant. Sur un film ou une série, appuyez sur le signet pour le garder ici."
 

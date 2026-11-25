@@ -16,7 +16,7 @@ struct HomeView: View {
                 if let home {
                     if !home.continueWatching.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            SectionTitle(title: tr("Continue watching"))
+                            SectionTitle(title: tr("Continue watching"), seeAll: .continueWatching(account: account))
                             ScrollView(.horizontal, showsIndicators: false) {
                                 LazyHStack(alignment: .top, spacing: 12) {
                                     ForEach(home.continueWatching) { item in
@@ -151,6 +151,10 @@ private struct HomeTopBar: View {
             (Text("alwy") + Text("watch").foregroundColor(Palette.accent))
                 .font(.system(size: 28, weight: .heavy))
             Spacer()
+            NavigationLink(value: Route.watchlist) {
+                Image(systemName: "bookmark").font(.title3).frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(tr("My list"))
             NavigationLink(value: Route.search) {
                 Image(systemName: "magnifyingglass").font(.title3).frame(width: 44, height: 44)
             }

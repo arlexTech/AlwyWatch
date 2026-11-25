@@ -16,6 +16,7 @@ struct DetailView: View {
     @State private var player: PlayRequest?
     @State private var error: String?
     @State private var changed = 0
+    @State private var listed = false
 
     var body: some View {
         ScrollView {
@@ -121,6 +122,26 @@ struct DetailView: View {
                     .buttonStyle(ActionButtonStyle())
                     .accessibilityLabel(tr("Play from the start"))
                 }
+            }
+            // My list (plex.tv watchlist, Jellyfin favorites): movies and shows.
+            if item.kind == .movie || item.kind == .series {
+                Button {
+                    let want = !listed
+                    listed = want
+                    Task {
+                        do {
+                            try await model.core.setWatchlisted(accountId: account, itemId: item.id, on: want)
+                        } catch {
+                            listed = !want
+                            self.error = message(error)
+                        }
+                    }
+                } label: {
+                    Image(systemName: listed ? "bookmark.fill" : "bookmark")
+                }
+                .buttonStyle(ActionButtonStyle())
+                .accessibilityLabel(listed ? tr("Remove from my list") : tr("Add to my list"))
+                .onAppear { listed = model.core.isWatchlisted(accountId: account, itemId: item.id) }
             }
             Button {
                 Task {

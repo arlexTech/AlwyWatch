@@ -40,6 +40,8 @@ enum Route: Hashable {
     case triage
     case search
     case settings
+    case watchlist
+    case continueWatching(account: String)
 }
 
 struct RootView: View {
@@ -85,6 +87,8 @@ extension View {
             case .triage: TriageView()
             case .search: SearchView()
             case .settings: SettingsScreen()
+            case .watchlist: WatchlistView()
+            case let .continueWatching(account): ContinueWatchingView(account: account)
             }
         }
     }
