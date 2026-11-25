@@ -164,7 +164,10 @@ caller's Seerr user (`X-API-User`), so Seerr enforces that user's permissions an
 | DELETE | `request/{id}` |
 
 Everything else gets 403. `GET /v1/seerr` links the caller to an existing Seerr user with the
-same Plex id / Jellyfin user id, or creates a local one (`create_users = true`), and returns
+same Plex id / Jellyfin user id; failing that, with Seerr in Jellyfin mode, imports the caller's
+Jellyfin user (`POST /api/v1/user/import-from-jellyfin`, only for an id listed by
+`GET /api/v1/settings/jellyfin/users`: Seerr makes an empty user for an unknown one); failing
+that, creates a local one (`create_users = true`). It returns
 `{"seerr_user_id", "user_name", "public_url", "cache_images"}`. 404 when the bridge is off.
 An admin can point a user at an existing Seerr user instead (`PUT /v1/admin/users/{user_key}/seerr`
 with `{"seerr_user_id": 12}`, or `null` to go back to automatic linking); only the AlwyWatch

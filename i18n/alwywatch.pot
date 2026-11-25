@@ -7897,7 +7897,7 @@ msgid "Your AlwyWatch server doesn't take requests. Ask its owner."
 msgstr ""
 
 #: web/src/request.rs
-msgid "Your AlwyWatch session has expired or you're not allowed to do this. Sign in again in Settings."
+msgid "Seerr isn't available to you here: you may have no Seerr account yet (ask the administrator), or your sign-in expired (sign in again in Settings)."
 msgstr ""
 
 #: web/src/request.rs

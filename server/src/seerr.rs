@@ -9,8 +9,10 @@
 //! and auto-approval, so the operator manages them in Seerr as usual.
 //!
 //! Linking: an existing Seerr user with the same Plex id / Jellyfin user id is reused (so a Plex
-//! user going through the bridge sees their usual requests); otherwise a local Seerr user is
-//! created once (`create_users`), with a random password that is never stored.
+//! user going through the bridge sees their usual requests); otherwise, with Seerr in Jellyfin
+//! mode, the caller's Jellyfin user is imported into Seerr (as their first sign-in to Seerr
+//! would); otherwise a local Seerr user is created once (`create_users`), with a random
+//! password that is never stored.
 
 use axum::body::Bytes;
 use axum::http::{HeaderValue, Method, StatusCode, header};
@@ -176,6 +178,61 @@ impl Bridge {
         Ok(u.permissions & MANAGE != 0)
     }
 
+    /// Imports the first of these Jellyfin users that Seerr's Jellyfin knows, as Seerr's own
+    /// "Import Jellyfin users" does; None when there is none (no Jellyfin sign-in, a Seerr in
+    /// Plex mode, or a Jellyfin user of another server).
+    ///
+    /// Seerr's `POST /user/import-from-jellyfin` makes an empty user for an id its Jellyfin
+    /// doesn't have, hence the check against `GET /settings/jellyfin/users` first.
+    async fn import_jellyfin(
+        &self,
+        ids: &[(ServerType, &str)],
+    ) -> Result<Option<i64>, BridgeError> {
+        let wanted: Vec<&str> = ids
+            .iter()
+            .filter(|(k, _)| *k == ServerType::Jellyfin)
+            .map(|(_, u)| *u)
+            .collect();
+        if wanted.is_empty() {
+            return Ok(None);
+        }
+        #[derive(Deserialize)]
+        struct JfUser {
+            id: String,
+        }
+        // An error here is a Seerr in Plex mode (no Jellyfin set up): nothing to import.
+        let Ok(known) =
+            net::send_json::<Vec<JfUser>>(self.req(Method::GET, "settings/jellyfin/users", None))
+                .await
+        else {
+            return Ok(None);
+        };
+        let Some(jf) = wanted
+            .iter()
+            .find_map(|w| known.iter().find(|k| same_jellyfin_id(&k.id, w)))
+        else {
+            return Ok(None);
+        };
+        if self.dry_run {
+            eprintln!("[dry-run] would import Jellyfin user {} into Seerr", jf.id);
+            return Ok(None);
+        }
+        let made: Vec<SeerrUserDto> = net::send_json(
+            self.req(Method::POST, "user/import-from-jellyfin", None)
+                .json(&json!({ "jellyfinUserIds": [jf.id] })),
+        )
+        .await
+        .map_err(Self::unavailable)?;
+        Ok(made
+            .iter()
+            .find(|u| {
+                u.jellyfin_user_id
+                    .as_deref()
+                    .is_some_and(|j| same_jellyfin_id(j, &jf.id))
+            })
+            .map(|u| u.id))
+    }
+
     pub async fn link(&self, db: &Db, id: &Identity) -> Result<i64, BridgeError> {
         if let Some(u) = db.seerr_link(&id.user_key).map_err(Self::unavailable)? {
             return Ok(u);
@@ -220,15 +277,22 @@ impl Bridge {
                 })
             })
         });
-        let (seerr_id, created) = match found {
-            Some(u) => (u.id, false),
-            None if !self.create_users || self.dry_run => {
+        // A Seerr in Jellyfin mode: the person's Jellyfin user imported, as their first sign-in
+        // to Seerr would (Seerr's default permissions apply).
+        let imported = match found {
+            Some(_) => None,
+            None => self.import_jellyfin(&ids).await?,
+        };
+        let (seerr_id, created) = match (found, imported) {
+            (Some(u), _) => (u.id, false),
+            (None, Some(u)) => (u, true),
+            (None, None) if !self.create_users || self.dry_run => {
                 if self.dry_run {
                     eprintln!("[dry-run] would create a Seerr user for {}", id.user_key);
                 }
                 return Err(BridgeError::NoAccount);
             }
-            None => {
+            (None, None) => {
                 let password = random_password();
                 let body =
                     json!({ "email": email, "username": id.media_name, "password": password });

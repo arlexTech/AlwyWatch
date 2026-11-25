@@ -1048,6 +1048,80 @@ async fn seerr_bridge_links_existing_users_and_creates_missing_ones() {
 }
 
 #[tokio::test]
+async fn seerr_in_jellyfin_mode_imports_the_callers_jellyfin_user() {
+    let e = env().await;
+    let key = || header("x-api-key", "seerr-key");
+    Mock::given(method("GET"))
+        .and(path("/api/v1/user"))
+        .and(key())
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"results": [
+            {"id": 1, "jellyfinUserId": "ja", "displayName": "alice"}
+        ]})))
+        .mount(&e.seerr)
+        .await;
+    // Seerr's Jellyfin knows bob (its ids as Seerr lists them), not carol.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/settings/jellyfin/users"))
+        .and(key())
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": "JA", "username": "alice"},
+            {"id": "JB", "username": "bob"}
+        ])))
+        .mount(&e.seerr)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/user/import-from-jellyfin"))
+        .and(key())
+        .and(body_json(json!({"jellyfinUserIds": ["JB"]})))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!([
+            {"id": 12, "jellyfinUserId": "JB", "displayName": "bob"}
+        ])))
+        .expect(1)
+        .mount(&e.seerr)
+        .await;
+    // Any other import (carol's id, unknown to Seerr's Jellyfin, would make an empty user).
+    Mock::given(method("POST"))
+        .and(path("/api/v1/user/import-from-jellyfin"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!([])))
+        .expect(0)
+        .mount(&e.seerr)
+        .await;
+    // carol falls back to a local user (create_users is on here); refused to keep it short.
+    Mock::given(method("POST"))
+        .and(path("/api/v1/user"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(1)
+        .mount(&e.seerr)
+        .await;
+    Mock::given(path("/api/v1/auth/me"))
+        .and(header("x-api-user", "12"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"id": 12, "displayName": "bob"})),
+        )
+        .mount(&e.seerr)
+        .await;
+    Mock::given(path("/api/v1/settings/public"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&e.seerr)
+        .await;
+
+    let (s, info) = e.call("GET", "/v1/seerr", "jfsrv", "jf-bob", None).await;
+    assert_eq!(
+        (s, info["seerr_user_id"].clone()),
+        (StatusCode::OK, json!(12)),
+        "{info}"
+    );
+    // Linked once: no second import.
+    let (s, _) = e.call("GET", "/v1/seerr", "jfsrv", "jf-bob", None).await;
+    assert_eq!(s, StatusCode::OK);
+
+    // Not imported: her id isn't on Seerr's Jellyfin.
+    let (s, _) = e.call("GET", "/v1/seerr", "jfsrv", "jf-carol", None).await;
+    assert_ne!(s, StatusCode::OK);
+    e.seerr.verify().await;
+}
+
+#[tokio::test]
 async fn dry_run_writes_nothing_to_maintainerr_or_seerr() {
     let e = env_with(true).await;
     e.state.sync().await.unwrap();

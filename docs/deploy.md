@@ -25,7 +25,9 @@ Maintainerr (Leaving soon), Tautulli and Seerr are optional additions.
 * **Maintainerr**: it adds *global exclusions* for titles people keep, removes them when the
   keep ends, and can restart deletion countdowns when an admin asks. It never activates or
   deletes a collection, and never deletes media.
-* **Seerr** (only with the Seerr bridge): it creates requests on behalf of users, and may
+* **Seerr** (only with the Seerr bridge): it creates requests on behalf of users. With Seerr in
+  Jellyfin mode it imports a Jellyfin user into Seerr the first time they use requests (as
+  their first sign-in to Seerr would, with Seerr's default permissions); otherwise it may
   create local Seerr users (an option in Server settings → Seerr).
 * **Jellyfin, Plex, Tautulli**: read only.
 

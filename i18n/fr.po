@@ -7902,8 +7902,8 @@ msgid "Your AlwyWatch server doesn't take requests. Ask its owner."
 msgstr "Votre serveur AlwyWatch n'accepte pas les demandes. Demandez à la personne qui le gère."
 
 #: web/src/request.rs
-msgid "Your AlwyWatch session has expired or you're not allowed to do this. Sign in again in Settings."
-msgstr "Votre session AlwyWatch a expiré ou vous n'avez pas le droit de faire ceci. Reconnectez-vous dans les Paramètres."
+msgid "Seerr isn't available to you here: you may have no Seerr account yet (ask the administrator), or your sign-in expired (sign in again in Settings)."
+msgstr "Seerr ne vous est pas accessible ici : vous n'avez peut-être pas encore de compte Seerr (demandez à l'administrateur), ou votre connexion a expiré (reconnectez-vous dans Réglages)."
 
 #: web/src/request.rs
 msgid "Seerr doesn't know this title."
@@ -9016,6 +9016,9 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "Your AlwyWatch session has expired or you're not allowed to do this. Sign in again in Settings."
+#~ msgstr "Votre session AlwyWatch a expiré ou vous n'avez pas le droit de faire ceci. Reconnectez-vous dans les Paramètres."
 
 #~ msgid "Your name, settings and servers come with you, and you get Leaving soon and watch together."
 #~ msgstr "Votre nom, vos paramètres et vos serveurs vous suivent, et vous avez accès à Bientôt supprimés et Regarder ensemble."

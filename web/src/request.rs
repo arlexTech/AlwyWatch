@@ -206,7 +206,7 @@ pub fn plain_error(e: &Error) -> String {
     match e {
         Error::Unauthorized => {
             tr!(
-                "Your AlwyWatch session has expired or you're not allowed to do this. Sign in again in Settings."
+                "Seerr isn't available to you here: you may have no Seerr account yet (ask the administrator), or your sign-in expired (sign in again in Settings)."
             )
         }
         Error::NotFound => tr!("Seerr doesn't know this title."),
