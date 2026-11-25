@@ -672,6 +672,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Scaffold.kt
 #: web/src/main.rs
+#: ios/AlwyWatch/AlwyWatchApp.swift
 msgid "Leaving"
 msgstr ""
 
@@ -2894,18 +2895,21 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Leaves in {n} day"
 msgid_plural "Leaves in {n} days"
 msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Keep {n} more day"
 msgid_plural "Keep {n} more days"
 msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{n} other person keeps it."
 msgid_plural "{n} other people keep it."
 msgstr[0] ""
@@ -2913,12 +2917,14 @@ msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{count} title"
 msgid_plural "{count} titles"
 msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{n} other keeps it"
 msgid_plural "{n} others keep it"
 msgstr[0] ""
@@ -2932,6 +2938,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Triage.swift
 msgid "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgid_plural "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgstr[0] ""
@@ -2958,6 +2965,7 @@ msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Triage.swift
 msgid "{n} person keeps it"
 msgid_plural "{n} people keep it"
 msgstr[0] ""
@@ -2983,15 +2991,18 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Leaves today"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Leaves tomorrow"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{status} (extended)"
 msgstr ""
 
@@ -3002,16 +3013,19 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Kept"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Soon"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Today"
 msgstr ""
 
@@ -3023,6 +3037,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "You keep it a while"
 msgstr ""
 
@@ -3034,6 +3049,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "You keep it forever ({reason})"
 msgstr ""
 
@@ -3080,23 +3096,28 @@ msgid "Remove my choice"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Kept until you've seen it"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "It's a keeper"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "It only goes if nobody else keeps it"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Everyone's choices count and the longest one wins."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Keep what you still want to watch"
 msgstr ""
 
@@ -3107,6 +3128,7 @@ msgid "Swipe them!"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{count} with your choice"
 msgstr ""
 
@@ -3117,44 +3139,54 @@ msgid "Admin"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Within a week"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "My choices"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{count} aren't scheduled yet: deletion is off for now. Your choices count when it's on."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Can't reach your AlwyWatch server ({address}). This is the last list it sent."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Can't reach your AlwyWatch server ({address})."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Can't reach your AlwyWatch server. This is the last list it sent."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Can't reach your AlwyWatch server."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Triage.swift
 msgid "All done, thanks! {count} sorted."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Triage.swift
 msgid "Nothing to sort right now."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Triage.swift
 msgid "Forever"
 msgstr ""
 

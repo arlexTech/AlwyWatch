@@ -36,27 +36,34 @@ enum Route: Hashable {
     case addServer
     case dashboard
     case historyCopy
+    case leavingSoon
+    case triage
+    case search
+    case settings
 }
 
 struct RootView: View {
     @EnvironmentObject var model: AppModel
     @State private var tab = 0
 
+    /// Android's phone tabs: Home, then Leaving soon when the server has Maintainerr (Search,
+    /// My list, Downloads and Settings are in the home's top bar). One tab: no bar at all.
+    private var leaving: Bool { model.core.keepActive() && model.services.leavingSoon }
+
     var body: some View {
         Group {
             if model.account == nil {
                 NavigationStack { SignInView() }
+            } else if !leaving {
+                NavigationStack { HomeView().withRoutes() }
             } else {
                 TabView(selection: $tab) {
                     NavigationStack { HomeView().withRoutes() }
                         .tabItem { Label(tr("Home"), systemImage: "house") }
                         .tag(0)
-                    NavigationStack { SearchView().withRoutes() }
-                        .tabItem { Label(tr("Search"), systemImage: "magnifyingglass") }
+                    NavigationStack { LeavingSoonView().withRoutes() }
+                        .tabItem { Label(tr("Leaving"), systemImage: "hourglass") }
                         .tag(1)
-                    NavigationStack { SettingsScreen().withRoutes() }
-                        .tabItem { Label(tr("Settings"), systemImage: "gearshape") }
-                        .tag(2)
                 }
             }
         }
@@ -74,6 +81,10 @@ extension View {
             case .addServer: SignInView()
             case .dashboard: DashboardView()
             case .historyCopy: HistoryCopyScreen()
+            case .leavingSoon: LeavingSoonView()
+            case .triage: TriageView()
+            case .search: SearchView()
+            case .settings: SettingsScreen()
             }
         }
     }

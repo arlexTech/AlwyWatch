@@ -14,11 +14,14 @@ final class AppModel: ObservableObject {
     @Published var accounts: [Account] = []
     /// Watch-state sync and the history copy (Settings).
     let sync: SyncJobs
+    /// What the AlwyWatch server offers (Leaving soon, requests): which tabs show.
+    @Published var services: Services
 
     init() {
         I18n.apply()
         core = try! AlwyWatch(config: AppModel.config())
         sync = SyncJobs(core: core)
+        services = core.keepServices()
         Self.activate(core)
         reload()
         Task.detached { [core] in
@@ -37,6 +40,9 @@ final class AppModel: ObservableObject {
         }
         sync.syncIfDue()
         sync.schedule()
+        Task {
+            if core.keepActive(), let s = try? await core.refreshKeepServices() { services = s }
+        }
     }
 
     func reload() {

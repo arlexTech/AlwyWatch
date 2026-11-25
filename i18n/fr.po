@@ -677,6 +677,7 @@ msgstr "Rechercher"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Scaffold.kt
 #: web/src/main.rs
+#: ios/AlwyWatch/AlwyWatchApp.swift
 msgid "Leaving"
 msgstr "Bientôt supprimés"
 
@@ -2899,18 +2900,21 @@ msgstr "Film"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Leaves in {n} day"
 msgid_plural "Leaves in {n} days"
 msgstr[0] "Supprimé dans {n} jour"
 msgstr[1] "Supprimé dans {n} jours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Keep {n} more day"
 msgid_plural "Keep {n} more days"
 msgstr[0] "Garder {n} jour de plus"
 msgstr[1] "Garder {n} jours de plus"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{n} other person keeps it."
 msgid_plural "{n} other people keep it."
 msgstr[0] "{n} autre personne le garde."
@@ -2918,12 +2922,14 @@ msgstr[1] "{n} autres personnes le gardent."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/LibraryScreen.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{count} title"
 msgid_plural "{count} titles"
 msgstr[0] "{count} titre"
 msgstr[1] "{count} titres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{n} other keeps it"
 msgid_plural "{n} others keep it"
 msgstr[0] "{n} autre personne le garde"
@@ -2937,6 +2943,7 @@ msgstr[0] "{n} restant  ·  ← peut être supprimé   → jusqu'à ce que je l'
 msgstr[1] "{n} restants  ·  ← peut être supprimé   → jusqu'à ce que je l'aie vu   ↑ garder pour toujours"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Triage.swift
 msgid "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgid_plural "{n} left  ·  Swipe left: fine to delete · right: keep until I watch it · up: keep forever"
 msgstr[0] "{n} restant  ·  Glissez à gauche : peut être supprimé · à droite : jusqu'à ce que je l'aie vu · en haut : garder pour toujours"
@@ -2963,6 +2970,7 @@ msgstr[1] "Garde {n} titres pour toujours."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Triage.swift
 msgid "{n} person keeps it"
 msgid_plural "{n} people keep it"
 msgstr[0] "{n} personne le garde"
@@ -2988,15 +2996,18 @@ msgstr "D'un jour à l'autre"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Leaves today"
 msgstr "Supprimé aujourd'hui"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Leaves tomorrow"
 msgstr "Supprimé demain"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{status} (extended)"
 msgstr "{status} (prolongé)"
 
@@ -3007,16 +3018,19 @@ msgstr "Les choix de chacun comptent et le plus long l'emporte. « Peut être s
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Kept"
 msgstr "Gardés"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Soon"
 msgstr "Bientôt"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Today"
 msgstr "Aujourd'hui"
 
@@ -3028,6 +3042,7 @@ msgstr "Vous acceptez sa suppression"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "You keep it a while"
 msgstr "Vous le gardez un temps"
 
@@ -3039,6 +3054,7 @@ msgstr "Vous le gardez jusqu'à l'avoir vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/src/app.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "You keep it forever ({reason})"
 msgstr "Vous le gardez pour toujours ({reason})"
 
@@ -3085,23 +3101,28 @@ msgid "Remove my choice"
 msgstr "Retirer mon choix"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Kept until you've seen it"
 msgstr "Gardé jusqu'à ce que vous l'ayez vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "It's a keeper"
 msgstr "Un incontournable"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "It only goes if nobody else keeps it"
 msgstr "Il ne part que si personne d'autre ne le garde"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Everyone's choices count and the longest one wins."
 msgstr "Les choix de chacun comptent et le plus long l'emporte."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Keep.swift
 msgid "Keep what you still want to watch"
 msgstr "Gardez ce que vous voulez encore regarder"
 
@@ -3112,6 +3133,7 @@ msgid "Swipe them!"
 msgstr "Faites le tri !"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{count} with your choice"
 msgstr "{count} avec votre choix"
 
@@ -3122,44 +3144,54 @@ msgid "Admin"
 msgstr "Administration"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Within a week"
 msgstr "Sous une semaine"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "My choices"
 msgstr "Mes choix"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "{count} aren't scheduled yet: deletion is off for now. Your choices count when it's on."
 msgstr "{count} ne sont pas encore programmés : la suppression est désactivée pour l'instant. Vos choix compteront quand elle sera activée."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Can't reach your AlwyWatch server ({address}). This is the last list it sent."
 msgstr "Impossible de joindre votre serveur AlwyWatch ({address}). Voici la dernière liste reçue."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Can't reach your AlwyWatch server ({address})."
 msgstr "Impossible de joindre votre serveur AlwyWatch ({address})."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Can't reach your AlwyWatch server. This is the last list it sent."
 msgstr "Impossible de joindre votre serveur AlwyWatch. Voici la dernière liste reçue."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Can't reach your AlwyWatch server."
 msgstr "Impossible de joindre votre serveur AlwyWatch."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
+#: ios/AlwyWatch/Triage.swift
 msgid "All done, thanks! {count} sorted."
 msgstr "C'est fini, merci ! {count} triés."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: web/src/keep.rs
+#: ios/AlwyWatch/Triage.swift
 msgid "Nothing to sort right now."
 msgstr "Rien à trier pour le moment."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/KeepScreens.kt
 #: desktop/ui/app.slint
+#: ios/AlwyWatch/Triage.swift
 msgid "Forever"
 msgstr "Pour toujours"
 

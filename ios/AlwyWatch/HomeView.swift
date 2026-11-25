@@ -29,6 +29,8 @@ struct HomeView: View {
                             }
                         }
                     }
+                    // After what the user is watching, before the "new" rows (as on Android).
+                    LeavingSoonRail()
                     if !home.libraries.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -76,7 +78,8 @@ struct HomeView: View {
             .padding(.vertical, 12)
         }
         .background(Palette.background.ignoresSafeArea())
-        .navigationTitle(model.current?.serverName ?? "AlwyWatch")
+        .safeAreaInset(edge: .top, spacing: 0) { HomeTopBar() }
+        .toolbar(.hidden, for: .navigationBar)
         .refreshable { await refresh(force: true) }
         .task(id: account) {
             home = (try? model.core.cachedHome(accountId: account)) ?? nil
@@ -136,5 +139,36 @@ struct ItemMenu: View {
                 Label(tr("Mark watched"), systemImage: "checkmark")
             }
         }
+    }
+}
+
+/// Android's home bar: the name on the left; search and you (settings) on the right.
+private struct HomeTopBar: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 4) {
+            (Text("alwy") + Text("watch").foregroundColor(Palette.accent))
+                .font(.system(size: 28, weight: .heavy))
+            Spacer()
+            NavigationLink(value: Route.search) {
+                Image(systemName: "magnifyingglass").font(.title3).frame(width: 44, height: 44)
+            }
+            .accessibilityLabel(tr("Search"))
+            NavigationLink(value: Route.settings) {
+                Text(String(model.current?.userName.prefix(1) ?? "?").uppercased())
+                    .font(.headline)
+                    .foregroundStyle(Color.black)
+                    .frame(width: 38, height: 38)
+                    .background(LinearGradient(colors: [Palette.accent, Color(red: 1, green: 0x6A / 255, blue: 0x3D / 255)], startPoint: .topLeading, endPoint: .bottomTrailing), in: Circle())
+            }
+            .accessibilityLabel(tr("Settings"))
+            .padding(.leading, 6)
+        }
+        .foregroundStyle(Palette.onSurface)
+        .padding(.leading, 16)
+        .padding(.trailing, 10)
+        .padding(.vertical, 6)
+        .background(Palette.background)
     }
 }
