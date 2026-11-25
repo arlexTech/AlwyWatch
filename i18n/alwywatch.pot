@@ -350,6 +350,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: web/src/player.rs
+#: ios/AlwyWatch/PlayerView.swift
 msgid "Next episode in {seconds} s"
 msgstr ""
 

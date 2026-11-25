@@ -75,6 +75,19 @@ final class PlayerPresenter: NSObject, AVPlayerViewControllerDelegate {
             vc?.present(alert, animated: true)
         }
         playback.onFinished = { [weak vc] in vc?.dismiss(animated: true) }
+        // "Skip intro" / "Next episode": above the controls bar, bottom right (where Android
+        // puts them). Sized to its content, so it never covers the video's gestures.
+        let prompt = UIHostingController(rootView: PlayerPrompt(playback: playback))
+        prompt.view.backgroundColor = .clear
+        prompt.sizingOptions = .intrinsicContentSize
+        vc.addChild(prompt)
+        vc.view.addSubview(prompt.view)
+        prompt.didMove(toParent: vc)
+        prompt.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            prompt.view.trailingAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            prompt.view.bottomAnchor.constraint(equalTo: vc.view.safeAreaLayoutGuide.bottomAnchor, constant: -84),
+        ])
         self.vc = vc
         self.playback = playback
         self.onClose = onClose
@@ -133,12 +146,54 @@ final class PlayerViewController: AVPlayerViewController {
     }
 }
 
+/// "Skip intro" or "Next episode" (with its countdown during the credits), like Android.
+struct PlayerPrompt: View {
+    @ObservedObject var playback: Playback
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if playback.nearEnd {
+                if playback.upNextIn != nil {
+                    Button { playback.cancelCountdown() } label: {
+                        Image(systemName: "xmark").font(.body.weight(.semibold)).frame(width: 40, height: 40)
+                    }
+                    .background(Color.black.opacity(0.6), in: Circle())
+                    .accessibilityLabel(tr("Cancel"))
+                }
+                pill(playback.upNextIn.map { tr("Next episode in {seconds} s", ["seconds": $0]) } ?? tr("Next episode")) {
+                    playback.playNext()
+                }
+            } else if let label = playback.skipLabel {
+                pill(label) { playback.skip() }
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(2)
+    }
+
+    private func pill(_ text: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(text, systemImage: "forward.end.fill")
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 16)
+                .frame(height: 40)
+        }
+        .background(Color.black.opacity(0.6), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.35), lineWidth: 1))
+    }
+}
+
 /// One playback: picks the original file or the server's conversion, reports progress to the
 /// server (start, every 10 s, pause, stop), falls back to the conversion when the original
-/// fails, and goes on with the next episode at the end.
+/// fails, skips intros and offers the next episode (Android's segments and countdown), picks
+/// audio and subtitles from the title's choice or the settings, and goes on with the next
+/// episode at the end.
 @MainActor
-final class Playback {
+final class Playback: ObservableObject {
     let player = AVPlayer()
+    @Published private(set) var skipLabel: String?
+    @Published private(set) var nearEnd = false
+    @Published private(set) var upNextIn: Int?
     var onError: ((String) -> Void)?
     var onFinished: (() -> Void)?
     private var error: String? {
@@ -158,11 +213,27 @@ final class Playback {
     private var stopped = false
     /// Where the current file was asked to start (a fallback before anything played).
     private var startMs: UInt64 = 0
+    private var segments: [Segment] = []
+    private var next: Item?
+    private var autoSkipped = Set<UInt64>()
+    private var countdownFrom: Date?
+    private var countdownCancelled = false
+    private var segmentTick: Any?
+    /// The tracks this file offers, numbered for the core (audio first, then subtitles).
+    private var tracks: [(info: TrackInfo, option: AVMediaSelectionOption, group: AVMediaSelectionGroup)] = []
+    /// The selection we made (or last saw): a different one was picked in Apple's menu.
+    private var shownAudio: AVMediaSelectionOption?
+    private var shownSubtitle: AVMediaSelectionOption?
+    private var tracksReady = false
 
     func start(core: AlwyWatch, account: String, item: Item, fromStart: Bool) async {
         self.core = core
         self.account = account
-        await open(item, at: fromStart || item.user.played ? 0 : item.user.positionMs)
+        var at = fromStart || item.user.played ? 0 : item.user.positionMs
+        // Resuming: play a few seconds again, to remember where you were.
+        let rewind = UInt64(max(0, Int(core.getSettingOr("player.resume_rewind", "0")) ?? 0)) * 1000
+        if at > 0 { at = at > rewind ? at - rewind : 0 }
+        await open(item, at: at)
     }
 
     private func open(_ item: Item, at startMs: UInt64, forceConversion: Bool = false) async {
@@ -188,6 +259,8 @@ final class Playback {
             let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
             let playerItem = AVPlayerItem(asset: asset)
             playerItem.externalMetadata = metadata(item)
+            playerItem.textStyleRules = subtitleStyle()
+            resetPrompts()
             watch(playerItem, startMs: startMs)
             player.replaceCurrentItem(with: playerItem)
             if startMs > 0 {
@@ -195,15 +268,233 @@ final class Playback {
             }
             player.play()
             report(.start)
+            let id = item.id
+            Task {
+                let found = (try? await core.segments(accountId: account, itemId: id)) ?? []
+                if self.item?.id == id { segments = found }
+            }
+            if item.kind == .episode {
+                Task {
+                    let n = (try? await core.adjacentEpisodes(accountId: account, itemId: id))?.next
+                    if self.item?.id == id { next = n }
+                }
+            }
         } catch {
             self.error = message(error)
         }
+    }
+
+    private func resetPrompts() {
+        segments = []
+        next = nil
+        autoSkipped = []
+        countdownFrom = nil
+        countdownCancelled = false
+        skipLabel = nil
+        nearEnd = false
+        upNextIn = nil
+        tracks = []
+        tracksReady = false
+        shownAudio = nil
+        shownSubtitle = nil
+    }
+
+    // ----- segments and the next episode ---------------------------------------------------
+
+    private var durationMs: UInt64? {
+        let d = player.currentItem?.duration.seconds ?? 0
+        return d.isFinite && d > 0 ? UInt64(d * 1000) : nil
+    }
+
+    /// Skip intro/credits, and "Next episode" during the credits (or the last 40 s).
+    private func watchSegments() {
+        guard let core, !stopped else { return }
+        let prompt = playbackPrompt(segments: segments, positionMs: positionMs, durationMs: durationMs, hasNext: next != nil)
+        nearEnd = prompt.nextEpisode
+        let seg = prompt.skip
+        if let seg, seg.kind == .intro || seg.kind == .recap,
+           core.getSettingOr("player.auto_skip_intro", "0") == "1",
+           autoSkipped.insert(seg.startMs).inserted {
+            seekTo(seg.endMs)
+            skipLabel = nil
+            return
+        }
+        switch seg?.kind {
+        case .none: skipLabel = nil
+        case .credits: skipLabel = tr("Skip credits")
+        case .intro: skipLabel = tr("Skip intro")
+        case .recap: skipLabel = tr("Skip recap")
+        case .preview: skipLabel = tr("Skip preview")
+        case .commercial: skipLabel = tr("Skip")
+        }
+        // Credits with a next episode: count down, then play it (unless cancelled).
+        if prompt.credits, core.getSettingOr("player.auto_next", "1") != "0", !countdownCancelled, player.rate > 0 {
+            let from = countdownFrom ?? Date()
+            countdownFrom = from
+            let total = Int(core.getSettingOr("player.countdown", "10")) ?? 10
+            let left = total - Int(Date().timeIntervalSince(from))
+            if left <= 0 {
+                upNextIn = nil
+                playNext()
+                return
+            }
+            upNextIn = left
+        } else {
+            countdownFrom = nil
+            upNextIn = nil
+        }
+    }
+
+    func skip() {
+        let prompt = playbackPrompt(segments: segments, positionMs: positionMs, durationMs: durationMs, hasNext: next != nil)
+        guard let seg = prompt.skip else { return }
+        seekTo(seg.endMs)
+        skipLabel = nil
+    }
+
+    func cancelCountdown() {
+        countdownCancelled = true
+        countdownFrom = nil
+        upNextIn = nil
+    }
+
+    func playNext() {
+        guard let next else { return }
+        report(.stop)
+        self.next = nil
+        nearEnd = false
+        upNextIn = nil
+        Task { await open(next, at: next.user.played ? 0 : next.user.positionMs) }
+    }
+
+    private func seekTo(_ ms: UInt64) {
+        player.seek(to: CMTime(value: CMTimeValue(ms), timescale: 1000), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    // ----- audio and subtitles -------------------------------------------------------------
+
+    /// The file's audio and subtitle choices; then the title's choice, else the settings.
+    private func applyTrackPrefs(_ playerItem: AVPlayerItem) async {
+        guard let core, let item, playerItem === player.currentItem else { return }
+        let asset = playerItem.asset
+        var found: [(info: TrackInfo, option: AVMediaSelectionOption, group: AVMediaSelectionGroup)] = []
+        for (kind, characteristic) in [(TrackKind.audio, AVMediaCharacteristic.audible), (TrackKind.subtitle, AVMediaCharacteristic.legible)] {
+            guard let group = try? await asset.loadMediaSelectionGroup(for: characteristic) else { continue }
+            for option in group.options where option.isPlayable {
+                let title = AVMetadataItem.metadataItems(from: option.commonMetadata, filteredByIdentifier: .commonIdentifierTitle).first?.stringValue
+                let info = TrackInfo(
+                    id: UInt32(found.count),
+                    kind: kind,
+                    language: option.extendedLanguageTag ?? option.locale?.identifier,
+                    title: title,
+                    forced: option.hasMediaCharacteristic(.containsOnlyForcedSubtitles)
+                )
+                found.append((info: info, option: option, group: group))
+            }
+        }
+        guard playerItem === player.currentItem else { return }
+        tracks = found
+        let selection = playerItem.currentMediaSelection
+        let defaultAudio = found.first { $0.info.kind == .audio && selection.selectedMediaOption(in: $0.group) == $0.option }?.info.id
+        let subLang = core.getSettingOr("player.sub_lang", "")
+        let rules = TrackRules(
+            audioLanguage: core.getSettingOr("player.audio_lang", ""),
+            subtitleMode: core.getSettingOr("player.sub_mode", "auto"),
+            subtitleLanguage: subLang.isEmpty ? (Locale.current.languageCode ?? "en") : subLang,
+            defaultAudio: defaultAudio
+        )
+        let pref = (try? core.trackPref(accountId: account, titleKey: trackTitleKey(item: item))) ?? nil
+        let choice = chooseTracks(pref: pref, rules: rules, tracks: found.map(\.info))
+        if let a = choice.audio, Int(a) < found.count {
+            playerItem.select(found[Int(a)].option, in: found[Int(a)].group)
+        }
+        if let legible = found.first(where: { $0.info.kind == .subtitle })?.group {
+            if let s = choice.subtitle, Int(s) < found.count {
+                playerItem.select(found[Int(s)].option, in: legible)
+            } else {
+                playerItem.select(nil, in: legible)
+            }
+        }
+        shownAudio = selected(.audio)
+        shownSubtitle = selected(.subtitle)
+        tracksReady = true
+    }
+
+    private func selected(_ kind: TrackKind) -> AVMediaSelectionOption? {
+        guard let playerItem = player.currentItem, let group = tracks.first(where: { $0.info.kind == kind })?.group else { return nil }
+        return playerItem.currentMediaSelection.selectedMediaOption(in: group)
+    }
+
+    /// A track picked in Apple's menu: remembered for the movie or the whole show (Android's
+    /// pickTrack), and the server is told.
+    private func watchTrackChoice() {
+        guard tracksReady, let core, let item else { return }
+        let audio = selected(.audio), subtitle = selected(.subtitle)
+        var changed: [(TrackKind, AVMediaSelectionOption?)] = []
+        if audio != shownAudio { changed.append((.audio, audio)) }
+        if subtitle != shownSubtitle { changed.append((.subtitle, subtitle)) }
+        guard !changed.isEmpty else { return }
+        shownAudio = audio
+        shownSubtitle = subtitle
+        let key = trackTitleKey(item: item)
+        for (kind, option) in changed {
+            let picked = option.flatMap { o in tracks.first { $0.option == o }?.info.id }
+            if option != nil, picked == nil { continue }
+            let old = (try? core.trackPref(accountId: account, titleKey: key)) ?? nil
+            let pref = pickTrack(pref: old, kind: kind, tracks: tracks.map(\.info), picked: picked)
+            try? core.setTrackPref(accountId: account, titleKey: key, pref: pref)
+        }
+        report(.progress)
+    }
+
+    /// The server's stream index of the track playing (the file's own tracks, in order), so
+    /// its dashboard shows the real one. Nothing while converting.
+    private func streamIndex(_ kind: TrackKind) -> Int64? {
+        guard !transcoding, let source, tracksReady else { return nil }
+        let streamKind: StreamKind = kind == .audio ? .audio : .subtitle
+        let server = source.streams.filter { $0.kind == streamKind && !$0.isExternal }.sorted { $0.index < $1.index }
+        guard let option = selected(kind) else { return kind == .subtitle ? -1 : nil }
+        let ofKind = tracks.filter { $0.info.kind == kind }
+        guard let n = ofKind.firstIndex(where: { $0.option == option }), n < server.count else { return nil }
+        return server[n].index
+    }
+
+    /// Subtitle size, colour, background and position from the settings (Android's look).
+    private func subtitleStyle() -> [AVTextStyleRule] {
+        guard let core else { return [] }
+        var attrs: [String: Any] = [:]
+        let yellow = core.getSettingOr("player.sub_color", "white") == "yellow"
+        attrs[kCMTextMarkupAttribute_ForegroundColorARGB as String] = yellow ? [1, 1, 0.9, 0.31] : [1, 1, 1, 1]
+        if core.getSettingOr("player.sub_bg", "0") == "1" {
+            attrs[kCMTextMarkupAttribute_BackgroundColorARGB as String] = [0.67, 0, 0, 0]
+        } else {
+            // No box: a dark edge keeps them readable on bright scenes.
+            attrs[kCMTextMarkupAttribute_CharacterEdgeStyle as String] = kCMTextMarkupCharacterEdgeStyle_Uniform
+        }
+        let size: Double
+        switch core.getSettingOr("player.sub_size", "normal") {
+        case "small": size = 80
+        case "large": size = 125
+        case "huge": size = 150
+        default: size = 100
+        }
+        attrs[kCMTextMarkupAttribute_RelativeFontSize as String] = size
+        if core.getSettingOr("player.sub_raised", "0") == "1" {
+            attrs[kCMTextMarkupAttribute_OrthogonalLinePositionPercentageRelativeToWritingDirection as String] = 80
+        }
+        return AVTextStyleRule(textMarkupAttributes: attrs).map { [$0] } ?? []
     }
 
     private func watch(_ playerItem: AVPlayerItem, startMs: UInt64) {
         observers.removeAll()
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         observers.append(playerItem.observe(\.status) { [weak self] it, _ in
+            if it.status == .readyToPlay {
+                Task { @MainActor in
+                    guard let self, !self.tracksReady else { return }
+                    await self.applyTrackPrefs(it)
+                }
+            }
             guard it.status == .failed else { return }
             let reason = it.error?.localizedDescription
             Task { @MainActor in self?.failed(reason) }
@@ -220,6 +511,14 @@ final class Playback {
                 Task { @MainActor in
                     guard let self, self.player.rate > 0 else { return }
                     self.report(.progress)
+                }
+            }
+        }
+        if segmentTick == nil {
+            segmentTick = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 2), queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.watchSegments()
+                    self?.watchTrackChoice()
                 }
             }
         }
@@ -244,13 +543,18 @@ final class Playback {
     private func ended() async {
         report(.stop)
         guard let core, let item, item.kind == .episode,
-              core.getSettingOr("player.auto_next", "1") != "0",
-              let next = try? await core.adjacentEpisodes(accountId: account, itemId: item.id).next
+              core.getSettingOr("player.auto_next", "1") != "0"
         else {
             onFinished?()
             return
         }
-        await open(next, at: next.user.played ? 0 : next.user.positionMs)
+        var upNext = next
+        if upNext == nil { upNext = (try? await core.adjacentEpisodes(accountId: account, itemId: item.id))?.next }
+        guard let upNext else {
+            onFinished?()
+            return
+        }
+        await open(upNext, at: upNext.user.played ? 0 : upNext.user.positionMs)
     }
 
     func stop() {
@@ -260,6 +564,8 @@ final class Playback {
         player.pause()
         if let tick { player.removeTimeObserver(tick) }
         tick = nil
+        if let segmentTick { player.removeTimeObserver(segmentTick) }
+        segmentTick = nil
         observers.removeAll()
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         player.replaceCurrentItem(with: nil)
@@ -280,8 +586,8 @@ final class Playback {
             positionMs: positionMs,
             durationMs: duration.flatMap { $0.isFinite && $0 > 0 ? UInt64($0 * 1000) : nil },
             event: event,
-            audioIndex: nil,
-            subtitleIndex: nil,
+            audioIndex: streamIndex(.audio),
+            subtitleIndex: streamIndex(.subtitle),
             playMethod: transcoding ? .transcode : .direct
         )
         let account = account
