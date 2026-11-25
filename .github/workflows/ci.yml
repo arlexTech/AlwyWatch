@@ -81,7 +81,8 @@ jobs:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        if: env.KEYSTORE != ''
+        # Only for pushes to main: pull requests never see the key.
+        if: env.KEYSTORE != '' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
           mkdir -p ~/.config/alwywatch
