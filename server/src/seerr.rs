@@ -142,7 +142,7 @@ impl Bridge {
 
     /// The caller's Seerr user id, linking or creating it on first use.
     /// Seerr's users (as the API key's admin), for linking by hand.
-    pub async fn users(&self) -> Result<Vec<keep_service::SeerrUser>, BridgeError> {
+    pub async fn users(&self) -> Result<Vec<keep_service::KeepSeerrUser>, BridgeError> {
         #[derive(Deserialize)]
         struct Page {
             #[serde(default)]
@@ -154,7 +154,7 @@ impl Bridge {
         Ok(page
             .results
             .into_iter()
-            .map(|u| keep_service::SeerrUser {
+            .map(|u| keep_service::KeepSeerrUser {
                 id: u.id,
                 name: u
                     .display_name

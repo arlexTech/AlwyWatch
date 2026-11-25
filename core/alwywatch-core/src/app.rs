@@ -3221,7 +3221,7 @@ impl AlwyWatch {
     }
 
     /// Seerr's users, to link AlwyWatch users to (admins; empty when Seerr is not offered).
-    pub async fn keep_admin_seerr_users(&self) -> Result<Vec<keep_service::SeerrUser>> {
+    pub async fn keep_admin_seerr_users(&self) -> Result<Vec<keep_service::KeepSeerrUser>> {
         self.run(|c| async move { Ok(c.keep()?.admin_seerr_users().await?) })
             .await
     }

@@ -773,7 +773,7 @@ fun KeepAdminScreen(
     val items = remember { core.cachedLeavingSoon().orEmpty() }
     val collections = items.mapNotNull { i -> i.collectionId?.let { it to (i.collectionTitle ?: tr("Collection {id}", "id" to it)) } }.distinct()
     // Seerr's users, to link people to the Seerr account they already have.
-    var seerrUsers by remember { mutableStateOf<List<be.alwyapps.watch.core.keep.SeerrUser>>(emptyList()) }
+    var seerrUsers by remember { mutableStateOf<List<be.alwyapps.watch.core.keep.KeepSeerrUser>>(emptyList()) }
     var linking by remember { mutableStateOf<AdminUser?>(null) }
     // The person whose limits are open (by key: the list's copy is the fresh one).
     var editing by remember { mutableStateOf<String?>(null) }

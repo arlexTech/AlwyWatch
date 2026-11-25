@@ -284,7 +284,7 @@ record! {
 
 record! {
     /// A Seerr user, for admins linking AlwyWatch users to existing Seerr accounts.
-    pub struct SeerrUser {
+    pub struct KeepSeerrUser {
         pub id: i64,
         pub name: String,
     }
@@ -1255,7 +1255,7 @@ impl KeepClient {
     }
 
     /// Seerr's users (admins), to link AlwyWatch users to them.
-    pub async fn admin_seerr_users(&self) -> Result<Vec<SeerrUser>> {
+    pub async fn admin_seerr_users(&self) -> Result<Vec<KeepSeerrUser>> {
         net::send_json(self.req(Method::GET, "/admin/seerr-users")).await
     }
 

@@ -4,7 +4,7 @@
 
 use i18n::{tr, trn};
 use keep_service::{
-    AdminUser, CountdownRequest, ForeverStats, LeavingItem, Protection, Rights, SeerrUser,
+    AdminUser, CountdownRequest, ForeverStats, KeepSeerrUser, LeavingItem, Protection, Rights,
     ServerStatus, VoteKind, VoteRequest,
 };
 use leptos::prelude::*;
@@ -832,7 +832,7 @@ type Armed = (i64, String, u32);
 #[component]
 pub fn Admin() -> impl IntoView {
     let users = RwSignal::new(None::<Result<Vec<AdminUser>, String>>);
-    let seerr_users = RwSignal::new(Vec::<SeerrUser>::new());
+    let seerr_users = RwSignal::new(Vec::<KeepSeerrUser>::new());
     let message = RwSignal::new(None::<String>);
     let armed = RwSignal::new(None::<Armed>);
     let busy = RwSignal::new(false);

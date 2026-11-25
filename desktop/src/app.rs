@@ -169,7 +169,7 @@ struct State {
     continue_items: Vec<Item>,
     admin_users: Vec<AdminUser>,
     /// Seerr's users, for "Requests as" (empty when the AlwyWatch server takes no requests).
-    admin_seerr: Vec<keep_service::SeerrUser>,
+    admin_seerr: Vec<keep_service::KeepSeerrUser>,
     armed: Option<(String, i32)>,
     poll_gen: u64,
     /// Bumped to stop waiting for a device transfer.

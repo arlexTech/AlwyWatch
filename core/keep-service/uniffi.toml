@@ -1,6 +1,2 @@
 [bindings.kotlin]
 package_name = "be.alwyapps.watch.core.keep"
-
-# Swift puts every crate's bindings in one module: `SeerrUser` is also seerr's.
-[bindings.swift.rename]
-SeerrUser = "KeepSeerrUser"
