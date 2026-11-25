@@ -108,7 +108,7 @@ final class AppModel: ObservableObject {
         }
         let conn = try await core.keepConnect(url: url, accountId: account.id, token: token)
         lastAlwyWatchUrl = conn.baseUrl
-        let off = (try? core.getSetting(key: "seerr.off")) ?? nil
+        let off = (try? core.getSetting(key: seerrOffKey)) ?? nil
         if core.seerrConnection() == nil, off != "1" { await connectSeerrThroughKeep() }
         // Who I am there (the welcome step shows if it isn't done).
         await MyAccount.shared.linked(core)

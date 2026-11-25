@@ -606,3 +606,269 @@ struct RequestSeasonsSheet: View {
         }
     }
 }
+
+// ----- Settings → Requests ------------------------------------------------------------------
+
+/// Setting: requests turned off on purpose (the AlwyWatch server's Seerr is not connected again).
+let seerrOffKey = "seerr.off"
+
+/// Settings → Requests: through the AlwyWatch server (a switch when it takes requests), or a
+/// request site (Seerr) directly by its address.
+struct RequestsSettings: View {
+    @EnvironmentObject var model: AppModel
+    @State private var version = 0
+    @State private var error: String?
+    @State private var busy = false
+
+    var body: some View {
+        let _ = version
+        let seerr = model.core.seerrConnection()
+        if model.core.keepConnection() != nil {
+            Section(tr("Through your AlwyWatch server")) {
+                if let seerr, seerr.viaKeep {
+                    Toggle(isOn: Binding(get: { true }, set: { _ in turnOff() })) {
+                        label(tr("Requests"), tr("Through your AlwyWatch server, as {name}", ["name": seerr.userName]))
+                    }
+                    .tint(Palette.accent)
+                } else if model.services.requests {
+                    Toggle(isOn: Binding(get: { false }, set: { _ in turnOn() })) {
+                        label(tr("Requests"), seerr != nil ? tr("Off: you use a request site directly") : busy ? tr("Connecting…") : tr("Off"))
+                    }
+                    .tint(Palette.accent)
+                } else {
+                    Text(tr("Your AlwyWatch server doesn't take requests. Ask its owner, or use a request site address below."))
+                        .font(.subheadline).foregroundStyle(Palette.muted)
+                }
+                ErrorText(text: error)
+            }
+            .listRowBackground(Palette.surface)
+        }
+        Section {
+            if let seerr, !seerr.viaKeep {
+                TitledRow(title: host(seerr.baseUrl), subtitle: tr("Signed in as {name}", ["name": seerr.userName]), icon: "plus")
+                Button { turnOff() } label: {
+                    TitledRow(title: tr("Sign out"), icon: "xmark", tint: Palette.danger)
+                }
+            } else {
+                NavigationLink(value: Route.seerrConnect) {
+                    TitledRow(title: tr("Use a request site address"), subtitle: tr("It only accepts the logins it's set up for (Plex or Jellyfin)"), icon: "plus")
+                }
+            }
+        } header: {
+            Text(tr("Request site"))
+        } footer: {
+            Text(tr("Ask for movies and shows that aren't on the server yet, on a request site (Seerr, Overseerr or Jellyseerr) run by your server's owner. It only accepts the logins it's set up for (Plex or Jellyfin)."))
+        }
+        .listRowBackground(Palette.surface)
+    }
+
+    private func label(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).foregroundStyle(Palette.onSurface)
+            Text(subtitle).font(.footnote).foregroundStyle(Palette.muted)
+        }
+    }
+
+    private func turnOff() {
+        try? model.core.seerrSignOut()
+        try? model.core.setSetting(key: seerrOffKey, value: "1")
+        Keychain.remove("seerr")
+        changed()
+    }
+
+    private func turnOn() {
+        guard !busy else { return }
+        busy = true
+        error = nil
+        Task {
+            try? model.core.setSetting(key: seerrOffKey, value: "0")
+            await model.connectSeerrThroughKeep()
+            if model.core.seerrConnection() == nil { error = tr("Can't reach the request site right now.") }
+            busy = false
+            changed()
+        }
+    }
+
+    /// The tabs (Requests) follow at once.
+    private func changed() {
+        version += 1
+        model.reload()
+    }
+}
+
+/// Connects a request site (Seerr) with whatever sign-in it accepts (Android's SeerrConnectScreen).
+struct SeerrConnectView: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @State private var url = ""
+    @State private var info: SeerrInfo?
+    @State private var method: SeerrLogin?
+    @State private var error: String?
+    @State private var code: String?
+    @State private var user = ""
+    @State private var pass = ""
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(tr("Ask for movies and shows that aren't on the server yet")).foregroundStyle(Palette.muted)
+                if let info {
+                    Text("\(info.title) · \(info.baseUrl)").foregroundStyle(Palette.muted)
+                    if let method {
+                        signIn(info, method)
+                    } else {
+                        FlowLayout(spacing: 10) {
+                            ForEach(info.logins, id: \.self) { m in
+                                switch m {
+                                case .plex: Button(tr("Sign in with Plex")) { choose(m, info) }.buttonStyle(ActionButtonStyle(primary: true))
+                                case .jellyfin: Button(tr("Sign in with Jellyfin")) { choose(m, info) }.buttonStyle(ActionButtonStyle(primary: true))
+                                case .emby: Button(tr("Sign in with Emby")) { choose(m, info) }.buttonStyle(ActionButtonStyle(primary: true))
+                                case .local: Button(tr("An account made on the request site")) { choose(m, info) }.buttonStyle(ActionButtonStyle())
+                                case .notConfigured:
+                                    Text(tr("This request site has no sign-in method enabled. Tell your server's owner.")).foregroundStyle(Palette.danger)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    if model.core.keepActive() {
+                        // Works whatever media server the user signed in with.
+                        ChoiceCard(title: tr("Use my AlwyWatch server"), subtitle: tr("Recommended"), icon: "hourglass") {
+                            attempt {
+                                _ = try await model.core.seerrConnectBridge()
+                                done()
+                            }
+                        }
+                        Text(tr("No extra sign-in: your AlwyWatch server handles it.")).font(.footnote).foregroundStyle(Palette.muted)
+                        Text(tr("Or type the address of the request site (Seerr, Overseerr or Jellyseerr)")).font(.headline).foregroundStyle(Palette.muted)
+                    }
+                    TextField("requests.example.org", text: $url)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .submitLabel(.go)
+                        .onSubmit(lookUp)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                        .background(Palette.surface, in: Capsule())
+                        .overlay(Capsule().stroke(Palette.outline))
+                    Button(tr("Continue"), action: lookUp).buttonStyle(ActionButtonStyle(primary: true))
+                }
+                ErrorText(text: error)
+            }
+            .padding(20)
+            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Palette.background.ignoresSafeArea())
+        .navigationTitle(tr("Requests"))
+    }
+
+    @ViewBuilder
+    private func signIn(_ info: SeerrInfo, _ method: SeerrLogin) -> some View {
+        switch method {
+        case .plex:
+            Text(tr("Finish signing in to Plex in the browser.")).foregroundStyle(Palette.muted)
+        case .jellyfin, .emby, .local:
+            let local = method == .local
+            if method == .jellyfin, let code {
+                Text(tr("Quick Connect: enter this code in a signed-in Jellyfin app")).foregroundStyle(Palette.muted)
+                Text(code).font(.system(size: 40, weight: .bold, design: .rounded))
+                Text(tr("or sign in with your password:")).foregroundStyle(Palette.muted)
+            }
+            TextField(local ? tr("Email") : tr("Username"), text: $user)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(local ? .emailAddress : .default)
+                .textContentType(.username)
+                .padding(14)
+                .background(Palette.surface, in: RoundedRectangle(cornerRadius: 14))
+            SecureField(tr("Password"), text: $pass)
+                .textContentType(.password)
+                .submitLabel(.done)
+                .onSubmit { passwordSignIn(info, local: local) }
+                .padding(14)
+                .background(Palette.surface, in: RoundedRectangle(cornerRadius: 14))
+            Button(tr("Sign in")) { passwordSignIn(info, local: local) }.buttonStyle(ActionButtonStyle(primary: true))
+        case .notConfigured:
+            EmptyView()
+        }
+    }
+
+    private func attempt(_ block: @escaping () async throws -> Void) {
+        error = nil
+        Task {
+            do { try await block() } catch { self.error = message(error) }
+        }
+    }
+
+    private func lookUp() {
+        let typed = url
+        attempt { info = try await model.core.seerrInfo(url: normalizeServerUrl(input: typed)) }
+    }
+
+    private func finish(_ s: SeerrSignedIn) {
+        Keychain.put("seerr", s.cookie)
+        done()
+    }
+
+    private func done() {
+        try? model.core.setSetting(key: seerrOffKey, value: "0")
+        model.reload()
+        dismiss()
+    }
+
+    private func passwordSignIn(_ info: SeerrInfo, local: Bool) {
+        let (u, p, base) = (user, pass, info.baseUrl)
+        attempt {
+            if local {
+                finish(try await model.core.seerrSignInLocal(url: base, email: u, password: p))
+            } else {
+                finish(try await model.core.seerrSignInJellyfin(url: base, username: u, password: p))
+            }
+        }
+    }
+
+    private func choose(_ m: SeerrLogin, _ info: SeerrInfo) {
+        method = m
+        let core = model.core
+        let base = info.baseUrl
+        switch m {
+        case .plex:
+            Task {
+                do {
+                    let pin = try await core.plexCreatePin(strong: true)
+                    if !pin.authUrl.isEmpty, let u = URL(string: pin.authUrl) { openURL(u) }
+                    while !Task.isCancelled, method == .plex {
+                        try await Task.sleep(nanoseconds: 2_000_000_000)
+                        do {
+                            let token = try await core.plexCheckPin(pinId: pin.id)
+                            finish(try await core.seerrSignInPlex(url: base, plexAccountToken: token))
+                            return
+                        } catch {
+                            if !isPending(error) { throw error }
+                        }
+                    }
+                } catch {
+                    self.error = message(error)
+                }
+            }
+        case .jellyfin:
+            Task {
+                guard let qc = try? await core.seerrQuickConnectStart(url: base) else { return }
+                code = qc.code
+                while !Task.isCancelled, method == .jellyfin {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    do {
+                        finish(try await core.seerrQuickConnectPoll(url: base, secret: qc.secret))
+                        return
+                    } catch {
+                        if !isPending(error) { return }
+                    }
+                }
+            }
+        default: break
+        }
+    }
+}

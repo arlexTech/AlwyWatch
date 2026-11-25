@@ -56,6 +56,7 @@ enum Route: Hashable {
     case adminInvites
     case keepForever
     case keepAdmin
+    case seerrConnect
 }
 
 struct RootView: View {
@@ -173,6 +174,7 @@ extension View {
             case .triage: TriageView()
             case .search: SearchView()
             case .settings: SettingsScreen()
+            case .seerrConnect: SeerrConnectView()
             case .watchlist: WatchlistView()
             case let .continueWatching(account): ContinueWatchingView(account: account)
             case .requests: RequestsView()

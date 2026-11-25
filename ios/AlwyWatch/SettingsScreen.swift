@@ -361,25 +361,6 @@ private struct ServersSettings: View {
 
 // MARK: Account, requests
 
-private struct RequestsSettings: View {
-    @EnvironmentObject var model: AppModel
-
-    var body: some View {
-        Section {
-            if let seerr = model.core.seerrConnection() {
-                TitledLabel(
-                    title: seerr.viaKeep ? tr("Through your AlwyWatch server") : tr("Request site {address}", ["address": host(seerr.baseUrl)]),
-                    subtitle: seerr.userName
-                )
-            } else {
-                Text(tr("Off")).foregroundStyle(Palette.muted)
-            }
-        } header: {
-            Text(tr("Requests"))
-        }
-    }
-}
-
 // MARK: Playback, audio
 
 private struct PlaybackSettings: View {
