@@ -32,6 +32,17 @@ struct SettingsScreen: View {
                     Label(tr("Add a server"), systemImage: "plus")
                 }
             }
+            if model.core.keepConnection()?.isAdmin == true {
+                Section(tr("Admin")) {
+                    NavigationLink(value: Route.dashboard) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(tr("Dashboard")).foregroundStyle(Palette.onSurface)
+                            Text(tr("What plays now, direct play or converted, bandwidth, CPU, RAM and who watched what"))
+                                .font(.footnote).foregroundStyle(Palette.muted)
+                        }
+                    }
+                }
+            }
             Section(tr("Language")) {
                 Picker(tr("Language"), selection: $language) {
                     Text(tr("System")).tag("")

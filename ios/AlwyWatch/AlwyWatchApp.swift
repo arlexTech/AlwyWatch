@@ -26,6 +26,7 @@ enum Route: Hashable {
     case detail(account: String, itemId: String)
     case library(account: String, id: String, title: String)
     case addServer
+    case dashboard
 }
 
 struct RootView: View {
@@ -62,6 +63,7 @@ extension View {
             case let .detail(account, itemId): DetailView(account: account, itemId: itemId)
             case let .library(account, id, title): LibraryView(account: account, libraryId: id, title: title)
             case .addServer: SignInView()
+            case .dashboard: DashboardView()
             }
         }
     }

@@ -1935,11 +1935,13 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: web/src/dashboard.rs
+#: ios/AlwyWatch/DashboardView.swift
 msgid "Top users"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: web/src/dashboard.rs
+#: ios/AlwyWatch/DashboardView.swift
 msgid "Play history"
 msgstr ""
 
@@ -1951,6 +1953,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: web/src/dashboard.rs
+#: ios/AlwyWatch/DashboardView.swift
 msgid "Top played"
 msgstr ""
 
@@ -2016,6 +2019,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: web/src/dashboard.rs
+#: ios/AlwyWatch/DashboardView.swift
 msgid "Now playing"
 msgstr ""
 

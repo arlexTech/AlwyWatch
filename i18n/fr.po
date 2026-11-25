@@ -1940,11 +1940,13 @@ msgstr "{server} : historique depuis le {date}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: web/src/dashboard.rs
+#: ios/AlwyWatch/DashboardView.swift
 msgid "Top users"
 msgstr "Meilleurs utilisateurs"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: web/src/dashboard.rs
+#: ios/AlwyWatch/DashboardView.swift
 msgid "Play history"
 msgstr "Historique de lecture"
 
@@ -1956,6 +1958,7 @@ msgstr "{direct} en lecture directe · {transcodes} convertis (Plex)"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: web/src/dashboard.rs
+#: ios/AlwyWatch/DashboardView.swift
 msgid "Top played"
 msgstr "Les plus regardés"
 
@@ -2021,6 +2024,7 @@ msgstr "tout en direct"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DashboardScreen.kt
 #: web/src/dashboard.rs
+#: ios/AlwyWatch/DashboardView.swift
 msgid "Now playing"
 msgstr "En cours de lecture"
 
