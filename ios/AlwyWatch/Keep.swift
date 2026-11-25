@@ -290,7 +290,10 @@ struct LeavingSoonRail: View {
         // Not when Maintainerr doesn't answer the AlwyWatch server (Android's keepServices).
         guard model.core.keepActive() else { items = []; return }
         if !model.core.keepServices().leavingSoon {
-            guard let fresh = try? await model.core.refreshKeepServices(), fresh.leavingSoon else { items = []; return }
+            guard let fresh = try? await model.core.refreshKeepServices() else { items = []; return }
+            // The Leaving tab follows the same answer.
+            model.services = fresh
+            guard fresh.leavingSoon else { items = []; return }
         }
         if !force, let cached = (try? model.core.cachedLeavingSoon()) ?? nil { items = toReview(cached) }
         if let fresh = try? await model.core.refreshLeavingSoon(force: force) { items = toReview(fresh) }

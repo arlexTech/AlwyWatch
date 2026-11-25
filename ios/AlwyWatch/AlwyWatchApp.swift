@@ -27,6 +27,8 @@ struct AlwyWatchApp: App {
             .environmentObject(host)
             .preferredColorScheme(.dark)
             .tint(Palette.accent)
+            // At launch too: onChange doesn't see the first phase.
+            .task { host.model.foreground() }
             .onChange(of: phase) { p in
                 if p == .active { host.model.foreground() }
                 if p == .background { TogetherInbox.shared.stop() }

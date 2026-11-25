@@ -68,8 +68,20 @@ final class AppModel: ObservableObject {
         TogetherInbox.shared.start(core)
         // Rules due, "next episodes" topped up, and the queue resumed where it stopped.
         downloads.sync()
-        Task {
-            if core.keepActive(), let s = try? await core.refreshKeepServices() { services = s }
+        Task { await refreshServices() }
+    }
+
+    /// What the AlwyWatch server offers, asked again (the tabs follow), and Seerr through it
+    /// when it isn't connected yet: a first try at sign-in can fail (Seerr down for a moment)
+    /// and nothing else would try again.
+    func refreshServices() async {
+        guard core.keepActive() else { return }
+        if let s = try? await core.refreshKeepServices() { services = s }
+        let off = (try? core.getSetting(key: seerrOffKey)) ?? nil
+        if services.requests, core.seerrConnection() == nil, off != "1" {
+            await connectSeerrThroughKeep()
+            // The Requests tab reads the connection: draw the tabs again.
+            if core.seerrConnection() != nil { services = core.keepServices() }
         }
     }
 
@@ -98,6 +110,7 @@ final class AppModel: ObservableObject {
         Task.detached { [core] in
             _ = try? await core.keepOnboard(accountId: s.account.id, token: keepToken)
             _ = try? await core.accountLinkMedia(accountId: s.account.id, token: keepToken)
+            await self.refreshServices()
         }
     }
 
