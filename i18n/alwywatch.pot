@@ -108,10 +108,12 @@ msgid "Watch reminders"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/keep/KeepReminderWorker.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Still want to watch {title}?"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/keep/KeepReminderWorker.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "You asked to keep it until you have watched it."
 msgstr ""
 

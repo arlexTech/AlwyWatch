@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import SwiftUI
 import UIKit
+import UserNotifications
 
 private let urlMemory: NSCache<NSString, UIImage> = {
     let c = NSCache<NSString, UIImage>()
@@ -203,6 +204,7 @@ struct KeepSheet: View {
     private func send(_ r: VoteRequest?) {
         guard !busy else { return }
         busy = true
+        if r?.reminderDays != nil { KeepReminders.ask() }
         Task {
             do {
                 let updated: LeavingItem
@@ -448,4 +450,41 @@ struct ChipStyle: ButtonStyle {
 extension Notification.Name {
     /// A keep choice of mine was sent (the home's Leaving soon row re-reads the list).
     static let keepVoted = Notification.Name("alwywatch.keepVoted")
+}
+
+/// "Still want to watch X?": keep-until-watched titles whose reminder is due (the core counts
+/// the days and remembers what it reminded), as local notifications, like Android's daily
+/// KeepReminderWorker. Checked when the app comes to the front and at background refreshes.
+enum KeepReminders {
+    /// Shows them while the app is in front too (iOS hides them by default then).
+    private final class Presenter: NSObject, UNUserNotificationCenterDelegate {
+        func userNotificationCenter(_: UNUserNotificationCenter, willPresent _: UNNotification,
+                                    withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
+            done([.banner, .list, .sound])
+        }
+    }
+
+    private static let presenter = Presenter()
+
+    /// Asks for notifications (once; iOS remembers the answer) when a reminder is set.
+    static func ask() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    static func check(_ core: AlwyWatch) async {
+        UNUserNotificationCenter.current().delegate = presenter
+        guard core.keepActive() else { return }
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
+        _ = try? await core.refreshLeavingSoon(force: false)
+        let due = core.keepDueReminders(now: Int64(Date().timeIntervalSince1970))
+        for item in due {
+            let c = UNMutableNotificationContent()
+            c.title = tr("Still want to watch {title}?", ["title": item.title])
+            c.body = tr("You asked to keep it until you have watched it.")
+            c.sound = .default
+            let r = UNNotificationRequest(identifier: "keep-\(item.key)", content: c, trigger: nil)
+            try? await UNUserNotificationCenter.current().add(r)
+        }
+    }
 }

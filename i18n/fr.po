@@ -113,10 +113,12 @@ msgid "Watch reminders"
 msgstr "Rappels de visionnage"
 
 #: android/app/src/main/java/be/alwyapps/watch/keep/KeepReminderWorker.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "Still want to watch {title}?"
 msgstr "Toujours envie de regarder {title} ?"
 
 #: android/app/src/main/java/be/alwyapps/watch/keep/KeepReminderWorker.kt
+#: ios/AlwyWatch/Keep.swift
 msgid "You asked to keep it until you have watched it."
 msgstr "Vous avez demandé à le garder jusqu'à ce que vous l'ayez vu."
 

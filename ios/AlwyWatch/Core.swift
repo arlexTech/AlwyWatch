@@ -68,6 +68,8 @@ final class AppModel: ObservableObject {
         TogetherInbox.shared.start(core)
         // Play on the TV: my TVs with AlwyWatch open.
         RemotePhone.shared.start(core)
+        // "Still want to watch X?" when its reminder is due.
+        Task { [core] in await KeepReminders.check(core) }
         // Rules due, "next episodes" topped up, and the queue resumed where it stopped.
         downloads.sync()
         Task { await refreshServices() }

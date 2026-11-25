@@ -57,7 +57,8 @@ final class SyncJobs: ObservableObject {
 
     /// Asks iOS for the next background refresh while a pair is on; cancels it otherwise.
     func schedule() {
-        guard !core.syncPairs().isEmpty else {
+        // The pairs to sync, or the keep reminders to check.
+        guard !core.syncPairs().isEmpty || core.keepActive() else {
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.refreshId)
             return
         }
@@ -70,6 +71,7 @@ final class SyncJobs: ObservableObject {
     func backgroundRefresh() async {
         schedule()
         _ = try? await core.syncSettings()
+        await KeepReminders.check(core)
         guard !running, !core.syncPairs().isEmpty else { return }
         running = true
         _ = try? await core.syncNow()

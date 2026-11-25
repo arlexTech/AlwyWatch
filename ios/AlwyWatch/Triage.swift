@@ -159,6 +159,7 @@ struct TriageView: View {
             reminderDays: kind == .keepUntilWatched ? 7 : nil,
             reason: nil
         )
+        if r.reminderDays != nil { KeepReminders.ask() }
         queue = Array(queue?.dropFirst() ?? [])
         sorted.insert(item.key)
         done += 1
