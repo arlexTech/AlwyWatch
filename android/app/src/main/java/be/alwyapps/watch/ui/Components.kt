@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -644,18 +645,32 @@ fun Modifier.rememberFocus(
  */
 class PageFocus {
     var last: FocusRequester? = null
+
+    /** Brings that element back into view (rows inserted above it moved it off screen). */
+    var lastInView: androidx.compose.foundation.relocation.BringIntoViewRequester? = null
 }
 
 /** Provided around the page content (not the menu) on TV. */
 val LocalPageFocus = androidx.compose.runtime.staticCompositionLocalOf<PageFocus?> { null }
 
 /** Registers a focusable element with [LocalPageFocus]; goes before its clickable. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.pageFocusTracked(focused: Boolean): Modifier {
     val page = LocalPageFocus.current ?: return this
     val fr = remember { FocusRequester() }
-    if (focused) androidx.compose.runtime.SideEffect { page.last = fr }
-    return focusRequester(fr)
+    val inView =
+        remember {
+            androidx.compose.foundation.relocation
+                .BringIntoViewRequester()
+        }
+    if (focused) {
+        androidx.compose.runtime.SideEffect {
+            page.last = fr
+            page.lastInView = inView
+        }
+    }
+    return focusRequester(fr).bringIntoViewRequester(inView)
 }
 
 @Composable

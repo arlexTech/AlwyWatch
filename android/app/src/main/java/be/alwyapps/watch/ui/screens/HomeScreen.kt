@@ -748,6 +748,15 @@ private fun TvHome(
             }
         }
     }
+    // A refresh that adds a row above the focused card (Continue watching after playing) pushes
+    // it down, off screen: once laid out, it comes back to its place under the hero.
+    val page = be.alwyapps.watch.ui.LocalPageFocus.current
+    LaunchedEffect(h) {
+        if (h != null) {
+            androidx.compose.runtime.withFrameNanos {}
+            runCatching { page?.lastInView?.bringIntoView() }
+        }
+    }
     val onFocus = remember(focused) { { it: Item -> focused.value = it } }
     val onLeavingFocus = remember(focused) { { it: be.alwyapps.watch.core.keep.LeavingItem -> focused.value = it } }
     BoxWithConstraints(Modifier.fillMaxSize().ambientGlow { hero.value?.ambient() }) {

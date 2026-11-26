@@ -62,6 +62,7 @@ import be.alwyapps.watch.player.PlayerSettings
 import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
+import be.alwyapps.watch.ui.ConfirmDialog
 import be.alwyapps.watch.ui.ErrorBanner
 import be.alwyapps.watch.ui.FocusCard
 import be.alwyapps.watch.ui.IconAction
@@ -221,6 +222,40 @@ fun DetailScreen(
                     null
                 }.getOrNull()
         }
+    }
+    // In the home's Continue watching row (started, or the next episode shown there): it can
+    // leave it from here, after a confirmation (the card's menu is out of reach on a remote).
+    var inContinue by remember(itemId) { mutableStateOf(false) }
+    LaunchedEffect(itemId, changed) {
+        inContinue = runCatching { core.cachedHome(account)?.continueWatching?.any { it.id == itemId } }.getOrNull() == true
+    }
+    var confirmContinue by remember { mutableStateOf(false) }
+    val removeContinue: (() -> Unit)? =
+        item
+            ?.takeIf { playable && (!it.user.played || inContinue) && (it.user.positionMs > 0u || inContinue) }
+            ?.let { { confirmContinue = true } }
+    if (confirmContinue && item != null) {
+        ConfirmDialog(
+            tr("Remove from Continue watching?"),
+            if (item.kind == ItemKind.EPISODE) "${item.seriesTitle ?: ""} · ${item.title}" else item.title,
+            confirm = tr("Remove"),
+            onConfirm = {
+                ctx.services.scope.launch {
+                    val done = runCatching { core.removeFromContinueWatching(account, item.id) }.isSuccess
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        if (done) {
+                            inContinue = false
+                            android.widget.Toast
+                                .makeText(ctx, tr("Removed from Continue watching."), android.widget.Toast.LENGTH_SHORT)
+                                .show()
+                        }
+                        be.alwyapps.watch.ui.ItemsChanged
+                            .bump()
+                    }
+                }
+            },
+            onDismiss = { confirmContinue = false },
+        )
     }
     // Season shown in the episode list (a show page opened from an episode's "Season N").
     var selectedSeason by remember(itemId) { mutableStateOf<Item?>(null) }
@@ -560,6 +595,14 @@ fun DetailScreen(
                                             .then(if (item.kind == ItemKind.SERIES) Modifier.focusRequester(markFocus) else Modifier),
                                         active = item.user.played,
                                     )
+                                    removeContinue?.let {
+                                        IconAction(
+                                            Icons.Close,
+                                            tr("Remove from Continue watching"),
+                                            it,
+                                            Modifier.rememberFocus(focusKey, "continue"),
+                                        )
+                                    }
                                 }
                             } else {
                                 // Phones, like Plex: one wide play button, then labelled actions.
@@ -587,6 +630,9 @@ fun DetailScreen(
                                     }
                                     CaptionAction(if (item.user.played) tr("Watched") else tr("Mark watched"), toggleWatched, highlighted = item.user.played) {
                                         Icon(Icons.Check, null, Modifier.size(22.dp), tint = if (item.user.played) Color.Black else OnSurface)
+                                    }
+                                    removeContinue?.let {
+                                        CaptionAction(tr("Remove from Continue"), it) { Icon(Icons.Close, null, Modifier.size(22.dp)) }
                                     }
                                     when (item.kind) {
                                         ItemKind.MOVIE -> DownloadAction(item, dls[item.id], toggle = true) {}
