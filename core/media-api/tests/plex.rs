@@ -141,7 +141,7 @@ async fn library_items_and_guid_mapping() {
                 "lastViewedAt": 1_790_000_000,
                 "thumb": "/library/metadata/175731/thumb/1", "art": "/library/metadata/175731/art/1",
                 "Genre": [{"tag": "Science-Fiction"}],
-                "Guid": [{"id": "imdb://tt2543164"}, {"id": "tmdb://329865"}]
+                "Guid": [{"id": "imdb://tt2543164"}, {"id": "tmdb://329865"}, {"id": "tmdb://999"}]
             }]
         }})))
         .mount(&s)
@@ -155,6 +155,7 @@ async fn library_items_and_guid_mapping() {
     let page = c.items(&q).await.unwrap();
     assert_eq!(page.total, 776);
     let it = &page.items[0];
+    // The first of several TMDB ids is the title's own.
     assert_eq!(it.provider_ids.tmdb.as_deref(), Some("329865"));
     assert_eq!(it.provider_ids.imdb.as_deref(), Some("tt2543164"));
     assert_eq!(it.genres, vec!["Science-Fiction"]);

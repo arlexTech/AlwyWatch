@@ -907,13 +907,15 @@ fn convert_item(m: MetadataDto) -> Item {
     let mut ids = ProviderIds::default();
     for g in &m.guid {
         if let Some((scheme, v)) = g.id.split_once("://") {
-            let v = Some(v.to_owned());
-            match scheme {
-                "tmdb" => ids.tmdb = v,
-                "tvdb" => ids.tvdb = v,
-                "imdb" => ids.imdb = v,
-                _ => {}
-            }
+            // Plex can list several ids of one kind (a show merged from older entries): the
+            // first is the title's own, the later ones would match other titles.
+            let slot = match scheme {
+                "tmdb" => &mut ids.tmdb,
+                "tvdb" => &mut ids.tvdb,
+                "imdb" => &mut ids.imdb,
+                _ => continue,
+            };
+            slot.get_or_insert_with(|| v.to_owned());
         }
     }
     let (series_id, season_id) = match kind {
