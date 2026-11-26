@@ -317,6 +317,14 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
     // The player's own seek for the room (not the viewer's): its "restart" isn't sent back.
     // Expires, as several quick seeks may end in one restart.
     let mut own_seek: Option<Instant> = None;
+    // Where the video was at the last turn: a jump we didn't make is the viewer's seek.
+    let mut last_seen: Option<(u64, Instant)> = None;
+    // How late our seeks land while playing (network, demuxer): the next ones aim that far
+    // ahead, learnt from where the last ones landed; `reseeks` = checks left after a seek.
+    let mut seek_lead: u64 = 0;
+    let mut reseeks: u8 = 0;
+    // False for the check after loading: that lateness was the loading, not a seek's.
+    let mut reseek_learns = false;
     let mut started = false;
     // The room's last state: followed continuously.
     let mut room: Option<RoomSync> = None;
@@ -421,6 +429,32 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 next_check = Instant::now() + Duration::from_millis(500);
             }
         }
+        // The viewer seeking (mpv's keys or bar, or ours): `time-pos` shows the new place before
+        // the seek lands, so tell the room now; the room's correction would undo it otherwise.
+        let seen = m.get_f64("time-pos").map(|s| (s.max(0.0) * 1000.0) as u64);
+        let jumped = match (seen, last_seen) {
+            (Some(p), Some((q, at))) => {
+                let moved = if paused {
+                    0
+                } else {
+                    (at.elapsed().as_secs_f64() * 1000.0 * rate) as u64
+                };
+                p.abs_diff(q + moved) > 1_500
+            }
+            _ => false,
+        };
+        last_seen = seen.map(|p| (p, Instant::now()));
+        if jumped
+            && started
+            && together.is_some()
+            && !own_seek.is_some_and(|t| t.elapsed() < Duration::from_secs(3))
+            && room
+                .as_ref()
+                .is_some_and(|r| !r.hold && Instant::now() >= r.at)
+        {
+            send_user(&m, &mut room);
+            next_check = Instant::now() + Duration::from_secs(2);
+        }
         // Loading for the room: paused at its position until enough is buffered.
         if let (Some(r), Some(t)) = (&room, together)
             && (r.hold || Instant::now() < r.at)
@@ -466,6 +500,9 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
             // comes first).
             && paused != r.playing
             && Instant::now() >= next_check
+            // A seek on its way (the viewer's, which `time-pos` already shows): correcting now
+            // would undo it and then take it for our own.
+            && !m.get_flag("seeking").unwrap_or(false)
         {
             let (playing, position_ms, at) = (r.playing, r.position_ms, r.at);
             next_check = Instant::now() + Duration::from_millis(500);
@@ -488,15 +525,39 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 .get_f64("time-pos")
                 .map_or(expected, |s| (s.max(0.0) * 1000.0 + half_frame) as u64);
             // Passthrough audio can't change speed: seeks only.
+            // Just landed after a seek (or the start of a joined room): still apart by more than
+            // a speed change closes quickly, so aim further ahead and try again.
+            let behind = expected as i64 - actual as i64;
+            let mut reseeked = false;
+            if reseeks > 0 {
+                if playing && (250..3_000).contains(&behind.abs()) {
+                    if reseek_learns {
+                        // Half the miss: a seek's time varies (cached or not), a full step
+                        // would swing to the other side.
+                        seek_lead = (seek_lead as i64 + behind / 2).clamp(0, 3_000) as u64;
+                    }
+                    reseek_learns = true;
+                    reseeks -= 1;
+                    own_seek = Some(Instant::now());
+                    seek_to(&m, expected + seek_lead);
+                    next_check = Instant::now() + Duration::from_millis(1_500);
+                    reseeked = true;
+                } else {
+                    reseeks = 0;
+                }
+            }
             let c =
                 alwywatch_core::together_correction(expected, actual, playing, rate, !req.spdif);
-            if let Some(to) = c.seek_to_ms {
+            if reseeked {
+            } else if let Some(to) = c.seek_to_ms {
                 own_seek = Some(Instant::now());
-                seek_to(&m, to);
+                seek_to(&m, to + if playing { seek_lead } else { 0 });
+                reseeks = if playing { 2 } else { 0 };
+                reseek_learns = true;
                 // Let the seek land (buffering) before judging again.
-                next_check = Instant::now() + Duration::from_secs(2);
+                next_check = Instant::now() + Duration::from_millis(1_500);
             }
-            if (c.rate - rate).abs() > 0.0001 {
+            if !reseeked && (c.rate - rate).abs() > 0.0001 {
                 rate = c.rate;
                 let _ = m.command(&["set", "speed", &format!("{rate:.3}")]);
             }
@@ -535,8 +596,13 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
                 applied = (selected(&m, "aid"), selected(&m, "sid"));
                 report(snapshot(PlaybackEvent::Start, false));
             }
-            // The first one is the start itself, not the viewer moving.
-            mpv::EVENT_PLAYBACK_RESTART if !started => started = true,
+            // The first one is the start itself, not the viewer moving (in a room: check where
+            // it landed, the loading took time).
+            mpv::EVENT_PLAYBACK_RESTART if !started => {
+                started = true;
+                reseeks = 2;
+                reseek_learns = false;
+            }
             mpv::EVENT_PLAYBACK_RESTART
                 if own_seek
                     .take()

@@ -1761,6 +1761,8 @@ export component AppWindow inherits Window {
     in property <bool> room-hosting; // I host a room: titles offer "Watch in your room"
     in property <string> room-host-name;
     in property <string> room-message;
+    // A note, not a problem ("… went back to the waiting room").
+    in property <string> room-info;
     // "Watch together" pressed in the player: the room over the paused video, and where the
     // host starts it from.
     in property <bool> player-can-together;
@@ -3225,6 +3227,7 @@ export component AppWindow inherits Window {
                                 }
                             }
                             if root.room-message != "" : Text { text: root.room-message; color: Palette.danger; wrap: word-wrap; }
+                            if root.room-info != "" : Text { text: root.room-info; color: Palette.muted; wrap: word-wrap; }
                             Group {
                                 title: @tr("IN THE ROOM");
                                 for m in root.room-members : PersonLine { person: m; }
@@ -4646,6 +4649,7 @@ export component AppWindow inherits Window {
                     for m in root.room-members : PersonLine { person: m; }
                     for p in root.room-invited : PersonLine { person: p; }
                     if root.room-message != "" : Text { text: root.room-message; color: Palette.danger; wrap: word-wrap; }
+                    if root.room-info != "" : Text { text: root.room-info; color: Palette.muted; wrap: word-wrap; }
                     HorizontalLayout {
                         spacing: 10px;
                         alignment: start;

@@ -1265,7 +1265,9 @@ fn PlayerView(
             // so aim further ahead next time and try again.
             let behind = exp as i64 - at as i64;
             if playing && (250..3_000).contains(&behind.abs()) {
-                let lead = (seek_lead.get_value() as i64 + behind).clamp(0, 3_000) as u64;
+                // Half the miss: a seek's time varies (cached or not), a full step would swing
+                // to the other side.
+                let lead = (seek_lead.get_value() as i64 + behind / 2).clamp(0, 3_000) as u64;
                 seek_lead.set_value(lead);
                 reseeks.update_value(|n| *n -= 1);
                 seek_room(&v, exp + lead);
@@ -1319,6 +1321,14 @@ fn PlayerView(
         };
         if v.ready_state() == 0 {
             return;
+        }
+        // Someone changed something: speed corrections get a new chance (a check spoiled by a
+        // seek or a reload in between must not leave a whole second of tolerance for good).
+        if !rate_works.get_value() {
+            rate_works.set_value(true);
+            if (v.playback_rate() - 1.0).abs() > 0.0001 {
+                v.set_playback_rate(1.0);
+            }
         }
         if playing && v.paused() {
             play(&v);

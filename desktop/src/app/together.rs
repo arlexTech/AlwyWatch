@@ -753,6 +753,7 @@ impl App {
             generation,
         });
         self.ui().set_room_message(SharedString::new());
+        self.ui().set_room_info(SharedString::new());
         self.accept_room(j.state);
         self.follow_room();
     }
@@ -1252,6 +1253,7 @@ impl App {
         ui.set_room_members(ModelRc::default());
         ui.set_room_invited(ModelRc::default());
         ui.set_room_message(SharedString::new());
+        ui.set_room_info(SharedString::new());
         ui.set_player_room(true);
         let (core, this) = (self.core.clone(), Rc::downgrade(self));
         slint::spawn_local(async move {
@@ -1561,6 +1563,10 @@ impl App {
             (r.state.clone(), r.member.clone(), r.sending, r.player_open)
         };
         self.accept_room(s.clone());
+        if s.started {
+            // Playing again: the note about the waiting room is over.
+            self.ui().set_room_info(SharedString::new());
+        }
         self.render_room();
         self.render_picker();
         // Each start opens everyone's player (closed meanwhile: "Back to the video").
@@ -1580,7 +1586,7 @@ impl App {
                     .find(|m| m.id == s.host)
                     .map_or_else(|| tr!("The host"), |m| m.name.clone());
                 self.to_player(ToPlayer::Quit);
-                self.ui().set_room_message(sstr(tr!(
+                self.ui().set_room_info(sstr(tr!(
                     "{host} went back to the waiting room.",
                     host = host
                 )));
