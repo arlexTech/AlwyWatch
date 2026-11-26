@@ -127,7 +127,8 @@ fun ListRow(
             ) { Icon(icon, null, Modifier.size(20.dp), tint = iconTint) }
         }
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Its own color: in a dialog the inherited one is the dialog text's muted gray.
+            Text(title, style = MaterialTheme.typography.titleSmall, color = OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
         trailing?.invoke()
