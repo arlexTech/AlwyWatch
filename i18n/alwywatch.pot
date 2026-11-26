@@ -297,6 +297,13 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
+msgid "{count} watching"
+msgid_plural "{count} watching"
+msgstr[0] ""
+msgstr[1] ""
+
+#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Are you still watching?"
@@ -373,13 +380,6 @@ msgstr ""
 #: web/src/player.rs
 msgid "Only you so far"
 msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
-#: web/src/player.rs
-msgid "{count} watching"
-msgid_plural "{count} watching"
-msgstr[0] ""
-msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: web/src/player.rs
@@ -2191,6 +2191,30 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: desktop/src/app.rs
+#: web/src/keep.rs
+msgid "{n} forever"
+msgid_plural "{n} forever"
+msgstr[0] ""
+msgstr[1] ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: desktop/src/app.rs
+#: web/src/keep.rs
+msgid "{n} until watched"
+msgid_plural "{n} until watched"
+msgstr[0] ""
+msgstr[1] ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: desktop/src/app.rs
+#: web/src/keep.rs
+msgid "{n} for a while"
+msgid_plural "{n} for a while"
+msgstr[0] ""
+msgstr[1] ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: ios/AlwyWatch/DetailView.swift
 msgid "Season {season}"
 msgstr ""
@@ -2496,30 +2520,6 @@ msgstr ""
 #: web/src/keep.rs
 msgid "date {date}"
 msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: desktop/src/app.rs
-#: web/src/keep.rs
-msgid "{n} forever"
-msgid_plural "{n} forever"
-msgstr[0] ""
-msgstr[1] ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: desktop/src/app.rs
-#: web/src/keep.rs
-msgid "{n} until watched"
-msgid_plural "{n} until watched"
-msgstr[0] ""
-msgstr[1] ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: desktop/src/app.rs
-#: web/src/keep.rs
-msgid "{n} for a while"
-msgid_plural "{n} for a while"
-msgstr[0] ""
-msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: web/src/keep.rs

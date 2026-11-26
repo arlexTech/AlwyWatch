@@ -382,9 +382,9 @@ fn keep_detail(e: &LeavingItem, now: i64, date: impl Fn(i64) -> String) -> Strin
     }
     let c = &e.counts;
     let keepers: Vec<String> = [
-        (c.forever > 0).then(|| tr!("{n} forever", n = c.forever)),
-        (c.until_watched > 0).then(|| tr!("{n} until watched", n = c.until_watched)),
-        (c.days > 0).then(|| tr!("{n} for a while", n = c.days)),
+        (c.forever > 0).then(|| trn!("{n} forever", "{n} forever", c.forever)),
+        (c.until_watched > 0).then(|| trn!("{n} until watched", "{n} until watched", c.until_watched)),
+        (c.days > 0).then(|| trn!("{n} for a while", "{n} for a while", c.days)),
     ]
     .into_iter()
     .flatten()

@@ -443,7 +443,7 @@ fun PlayerOverlay(
                             val n = ui.togetherMembers.people().size
                             PillButton(
                                 be.alwyapps.watch.ui.Icons.Group,
-                                if (n <= 1) tr("Only you so far") else tr("{count} watching", "count" to n),
+                                if (n <= 1) tr("Only you so far") else trn("{count} watching", "{count} watching", n, "count" to n),
                                 {
                                     roomDialog = true
                                     ui.poke()

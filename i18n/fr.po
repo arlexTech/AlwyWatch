@@ -302,6 +302,13 @@ msgstr[0] "{name} · {n} appareil"
 msgstr[1] "{name} · {n} appareils"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
+msgid "{count} watching"
+msgid_plural "{count} watching"
+msgstr[0] "{count} regarde"
+msgstr[1] "{count} regardent"
+
+#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Are you still watching?"
@@ -378,13 +385,6 @@ msgstr "se termine à {time}"
 #: web/src/player.rs
 msgid "Only you so far"
 msgstr "Vous seul pour l'instant"
-
-#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
-#: web/src/player.rs
-msgid "{count} watching"
-msgid_plural "{count} watching"
-msgstr[0] "{count} regarde"
-msgstr[1] "{count} regardent"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: web/src/player.rs
@@ -2196,6 +2196,30 @@ msgstr[0] "Gardé jusqu'à ce que {n} personne l'ait vu"
 msgstr[1] "Gardé jusqu'à ce que {n} personnes l'aient vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: desktop/src/app.rs
+#: web/src/keep.rs
+msgid "{n} forever"
+msgid_plural "{n} forever"
+msgstr[0] "{n} pour toujours"
+msgstr[1] "{n} pour toujours"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: desktop/src/app.rs
+#: web/src/keep.rs
+msgid "{n} until watched"
+msgid_plural "{n} until watched"
+msgstr[0] "{n} jusqu'au visionnage"
+msgstr[1] "{n} jusqu'au visionnage"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: desktop/src/app.rs
+#: web/src/keep.rs
+msgid "{n} for a while"
+msgid_plural "{n} for a while"
+msgstr[0] "{n} pour un temps"
+msgstr[1] "{n} pour un temps"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: ios/AlwyWatch/DetailView.swift
 msgid "Season {season}"
 msgstr "Saison {season}"
@@ -2501,30 +2525,6 @@ msgstr "la suppression n'est pas encore activée"
 #: web/src/keep.rs
 msgid "date {date}"
 msgstr "date : {date}"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: desktop/src/app.rs
-#: web/src/keep.rs
-msgid "{n} forever"
-msgid_plural "{n} forever"
-msgstr[0] "{n} pour toujours"
-msgstr[1] "{n} pour toujours"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: desktop/src/app.rs
-#: web/src/keep.rs
-msgid "{n} until watched"
-msgid_plural "{n} until watched"
-msgstr[0] "{n} jusqu'au visionnage"
-msgstr[1] "{n} jusqu'au visionnage"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: desktop/src/app.rs
-#: web/src/keep.rs
-msgid "{n} for a while"
-msgid_plural "{n} for a while"
-msgstr[0] "{n} pour un temps"
-msgstr[1] "{n} pour un temps"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: web/src/keep.rs

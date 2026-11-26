@@ -1672,15 +1672,15 @@ private fun keepDetail(e: be.alwyapps.watch.core.keep.LeavingItem): String? {
             c.forever
                 .toInt()
                 .takeIf { it > 0 }
-                ?.let { tr("{n} forever", "n" to it) },
+                ?.let { trn("{n} forever", "{n} forever", it) },
             c.untilWatched
                 .toInt()
                 .takeIf { it > 0 }
-                ?.let { tr("{n} until watched", "n" to it) },
+                ?.let { trn("{n} until watched", "{n} until watched", it) },
             c.days
                 .toInt()
                 .takeIf { it > 0 }
-                ?.let { tr("{n} for a while", "n" to it) },
+                ?.let { trn("{n} for a while", "{n} for a while", it) },
         )
     if (keepers.isNotEmpty()) parts += tr("kept by {list}", "list" to keepers.joinToString(", "))
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")?.replaceFirstChar { it.uppercase() }
