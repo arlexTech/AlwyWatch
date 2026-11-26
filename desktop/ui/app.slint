@@ -134,6 +134,16 @@ export struct AccountRow {
     current: bool,
 }
 
+/// Settings → Servers → Keep in sync: one pair of logins on different servers.
+export struct SyncRow {
+    a: string,
+    b: string,
+    label: string,
+    subtitle: string,
+    recent: string,
+    on: bool,
+}
+
 /// A login linked to the AlwyWatch account, not signed in on this device.
 export struct LinkedServerRow {
     id: string,
@@ -1680,6 +1690,12 @@ export component AppWindow inherits Window {
     in property <[NamedId]> menu-libraries;
     callback menu-lib-toggle(string);
     callback menu-lib-up(string);
+    // Settings → Servers → Keep in sync.
+    in property <[SyncRow]> sync-rows;
+    in property <bool> sync-any-on;
+    in property <bool> sync-running;
+    callback sync-toggle(string, string, bool);
+    callback sync-now();
     // Library / search grid
     in property <string> grid-title;
     in property <[Card]> grid;
@@ -3806,6 +3822,24 @@ export component AppWindow inherits Window {
                                     if root.accounts.length >= 2 : Button { label: @tr("Copy watch history"); has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.go(Page.historycopy); } }
                                 }
                                 if root.keep-active : Text { text: @tr("AlwyWatch follows the login showing now when its server is on your AlwyWatch server."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                            }
+                            if root.sync-rows.length > 0 : Group {
+                                title: @tr("KEEP IN SYNC");
+                                for r in root.sync-rows : VerticalLayout {
+                                    spacing: 4px;
+                                    SettingToggle {
+                                        title: r.label;
+                                        subtitle: r.subtitle;
+                                        on: r.on;
+                                        clicked => { root.sync-toggle(r.a, r.b, !r.on); }
+                                    }
+                                    if r.recent != "" : Text { text: r.recent; color: Palette.muted; font-size: 12px; }
+                                }
+                                if root.sync-any-on : HorizontalLayout {
+                                    alignment: start;
+                                    Button { label: root.sync-running ? @tr("Syncing…") : @tr("Sync now"); has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.sync-now(); } }
+                                }
+                                Text { text: @tr("Both ways: what you watch, unwatch or where you stop on one server is copied to the other. Right away for what you watch in AlwyWatch, every 6 hours for other apps. Changed on both since the last sync: the further one wins."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                             }
                             if root.menu-libraries.length > 0 : Group {
                                 title: @tr("LIBRARIES IN THE MENU");

@@ -4584,49 +4584,56 @@ msgid "Keep in sync"
 msgstr "Garder synchronisé"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/ui/app.slint
 #: ios/AlwyWatch/Sync.swift
 msgid "Both ways: what you watch, unwatch or where you stop on one server is copied to the other. Right away for what you watch in AlwyWatch, every 6 hours for other apps. Changed on both since the last sync: the further one wins."
 msgstr "Dans les deux sens : ce que vous marquez comme vu ou non vu, et où vous vous arrêtez, sur un serveur est copié sur l'autre. Immédiatement pour ce que vous regardez dans AlwyWatch, toutes les 6 heures pour les autres applis. Modifié des deux côtés depuis la dernière synchro : le plus avancé l'emporte."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app/sync.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "{server} ({kind}) and {other} ({otherKind})"
 msgstr "{server} ({kind}) et {other} ({otherKind})"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app/sync.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "Syncing now…"
 msgstr "Synchronisation en cours…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app/sync.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "Last sync failed: {reason}"
 msgstr "Échec de la dernière synchro : {reason}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app/sync.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "Last synced {time} · nothing to change"
 msgstr "Dernière synchro {time} · rien à changer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app/sync.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "Last synced {time} · {count} updated"
 msgstr "Dernière synchro {time} · {count} mis à jour"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app/sync.rs
 #: ios/AlwyWatch/Sync.swift
 msgid "Waiting for the first sync"
 msgstr "En attente de la première synchro"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/signin.rs
-#: ios/AlwyWatch/Sync.swift
+#: desktop/ui/app.slint
 msgid "Syncing…"
 msgstr "Synchronisation…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/signin.rs
-#: ios/AlwyWatch/Sync.swift
+#: desktop/ui/app.slint
 msgid "Sync now"
 msgstr "Synchroniser"
 
@@ -8954,6 +8961,10 @@ msgstr "Cliquez à nouveau pour vous déconnecter"
 #: desktop/ui/app.slint
 msgid "AlwyWatch follows the login showing now when its server is on your AlwyWatch server."
 msgstr "AlwyWatch suit la connexion affichée quand son serveur est sur votre serveur AlwyWatch."
+
+#: desktop/ui/app.slint
+msgid "KEEP IN SYNC"
+msgstr "GARDER SYNCHRONISÉ"
 
 #: desktop/ui/app.slint
 msgid "LIBRARIES IN THE MENU"

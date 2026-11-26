@@ -125,6 +125,12 @@ impl App {
                     {
                         a.kick_downloads();
                     }
+                    // Every 6 hours, servers kept in sync (what other apps changed).
+                    if tick % 360 == 0
+                        && let Some(a) = w.upgrade()
+                    {
+                        a.sync_now();
+                    }
                 })
                 .ok();
             },

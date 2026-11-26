@@ -24,6 +24,7 @@ mod links;
 mod playback;
 mod profiles;
 mod remote;
+mod sync;
 mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
 use crate::{
@@ -4901,6 +4902,7 @@ impl App {
             })
             .collect();
         ui.set_accounts(ModelRc::new(VecModel::from(rows)));
+        self.refresh_sync_settings();
         ui.set_cache_size(sstr(tr!(
             "{size} MB",
             size = self.core.image_cache_bytes() / (1024 * 1024)
@@ -6318,6 +6320,12 @@ impl App {
         on!(on_remove_account, |a, id| a.remove_account(id.into()));
         on!(on_sign_in_linked, |a, id| a.sign_in_linked(id.into()));
         on!(on_menu_lib_toggle, |a, id| a.menu_lib_toggle(id.into()));
+        on!(on_sync_toggle, |a, x, y, on| a.sync_toggle(
+            x.into(),
+            y.into(),
+            on
+        ));
+        on!(on_sync_now, |a| a.sync_now());
         on!(on_menu_lib_up, |a, id| a.menu_lib_up(id.into()));
         on!(on_clear_cache, |a| {
             let _ = a.core.clear_image_cache();
