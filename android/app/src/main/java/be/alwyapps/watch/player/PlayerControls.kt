@@ -848,12 +848,15 @@ fun trackLabel(
     i: Int,
 ): String =
     listOfNotNull(
-        f.label ?: f.language?.let {
-            java.util.Locale
-                .forLanguageTag(it)
-                .getDisplayLanguage(java.util.Locale.forLanguageTag(I18n.language))
-                .ifEmpty { it }
-                .replaceFirstChar { c -> c.uppercase() }
+        // The language, then the file's own name for the track when it says something more
+        // ("French (full)", "English (forced)"): a name alone left two "full" tracks alike.
+        run {
+            val lang = languageName(f.language?.takeIf { it != "und" })
+            val label = f.label?.takeIf { it.isNotBlank() }
+            when {
+                lang != null && label != null && !label.contains(lang, ignoreCase = true) -> "$lang ($label)"
+                else -> label ?: lang
+            }
         },
         if (type == C.TRACK_TYPE_AUDIO && f.channelCount > 0) {
             when (f.channelCount) {
