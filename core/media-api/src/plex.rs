@@ -882,6 +882,12 @@ fn kind_of(t: &str) -> ItemKind {
 
 fn convert_item(m: MetadataDto) -> Item {
     let kind = kind_of(&m.kind);
+    let file_name = m
+        .media
+        .iter()
+        .flat_map(|x| &x.part)
+        .find_map(|p| p.file.as_deref())
+        .and_then(crate::file_name);
     let mut images = Vec::new();
     let mut push = |kind, path: Option<&String>| {
         if let Some(p) = path.filter(|p| !p.is_empty()) {
@@ -969,6 +975,7 @@ fn convert_item(m: MetadataDto) -> Item {
             last_played_at: m.last_viewed_at,
             unplayed_count: unplayed,
         },
+        file_name,
     }
 }
 

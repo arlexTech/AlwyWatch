@@ -295,6 +295,7 @@ mod tests {
             premiere_date: None,
             images: vec![],
             user: UserData::default(),
+            file_name: None,
         }
     }
 

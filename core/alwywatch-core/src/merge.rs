@@ -252,6 +252,7 @@ mod tests {
 
     fn item(id: &str, kind: ItemKind, title: &str, tmdb: Option<&str>, at: Option<i64>) -> Item {
         Item {
+            file_name: None,
             id: id.into(),
             kind,
             title: title.into(),

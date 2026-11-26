@@ -3374,6 +3374,7 @@ mod continue_watching_tests {
 
     pub(super) fn ep(id: &str, series: &str, at: Option<i64>, pos: u64) -> Item {
         Item {
+            file_name: None,
             id: id.into(),
             kind: ItemKind::Episode,
             title: id.into(),

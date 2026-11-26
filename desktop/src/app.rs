@@ -5958,6 +5958,7 @@ impl App {
 
     pub fn test_home(self: &Rc<Self>) {
         let item = |id: &str, kind: ItemKind, title: &str, at: i64| Item {
+            file_name: None,
             id: id.into(),
             kind,
             title: title.into(),

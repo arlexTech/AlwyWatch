@@ -138,6 +138,11 @@ record! {
         pub premiere_date: Option<String>,
         pub images: Vec<ImageRef>,
         pub user: UserData,
+        /// The video file's name, without its folder ("Film (2024) WEBRip-1080p.mkv"), when
+        /// the list asked for it: pairs a title two servers identified differently.
+        #[serde(default)]
+        #[cfg_attr(feature = "uniffi", uniffi(default = None))]
+        pub file_name: Option<String>,
     }
 }
 

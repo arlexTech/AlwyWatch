@@ -318,3 +318,11 @@ pub(crate) fn header(name: &str, value: impl Into<String>) -> Header {
         value: value.into(),
     }
 }
+
+/// The last part of a file path, Unix or Windows ("/a/b/Film.mkv" → "Film.mkv").
+pub(crate) fn file_name(path: &str) -> Option<String> {
+    path.rsplit(['/', '\\'])
+        .next()
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+}

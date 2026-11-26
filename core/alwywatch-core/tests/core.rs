@@ -827,6 +827,7 @@ fn a_track_choice_follows_the_title_to_other_servers() {
     let env = Env::new();
     let app = env.app();
     let episode = |id: &str, show: &str, show_title: &str| Item {
+        file_name: None,
         id: id.into(),
         kind: ItemKind::Episode,
         title: "Maomao".into(),

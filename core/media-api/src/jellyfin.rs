@@ -10,6 +10,7 @@ use net::reqwest::{Client, Method, RequestBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::file_name;
 use crate::model::*;
 use crate::{Error, MediaServer, Result, header};
 
@@ -520,13 +521,6 @@ fn ticks_to_ms(t: i64) -> u64 {
     (t.max(0) / TICKS_PER_MS) as u64
 }
 
-fn file_name(path: &str) -> Option<String> {
-    path.rsplit(['/', '\\'])
-        .next()
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-}
-
 fn hdr_from_range(range: Option<&str>) -> HdrKind {
     match range.unwrap_or("SDR") {
         r if r.starts_with("DOVI") => HdrKind::DolbyVision,
@@ -612,7 +606,7 @@ fn image(
 
 /// "Show - S02E05 - Title.mkv" → (2, 5): the season and episode a file name says.
 fn numbers_in_file_name(path: &str) -> Option<(u32, u32)> {
-    let name = path.rsplit(['/', '\\']).next()?.as_bytes();
+    let name = file_name(path)?.into_bytes();
     let digits = |from: usize| {
         let n = name[from..]
             .iter()
@@ -728,6 +722,7 @@ fn convert_item(mut d: BaseItemDto) -> Item {
             last_played_at: u.last_played_date.as_deref().and_then(iso_to_unix),
             unplayed_count: u.unplayed_item_count,
         },
+        file_name: d.path.as_deref().and_then(file_name),
         id: d.id,
         kind,
     }
@@ -1325,7 +1320,8 @@ impl MediaServer for JellyfinClient {
                     ("recursive", "true".into()),
                     ("includeItemTypes", "Movie,Episode".into()),
                     ("filters", filter.into()),
-                    ("fields", "ProviderIds".into()),
+                    // Path: the file name pairs a movie each server identified differently.
+                    ("fields", "ProviderIds,Path".into()),
                     ("enableImages", "false".into()),
                     ("enableUserData", "true".into()),
                     ("enableTotalRecordCount", "false".into()),
@@ -1387,7 +1383,8 @@ impl MediaServer for JellyfinClient {
             ("userId", self.uid().to_owned()),
             ("recursive", "true".into()),
             ("includeItemTypes", t.into()),
-            ("fields", "ProviderIds".into()),
+            // Path: the file name pairs a movie each server identified differently.
+            ("fields", "ProviderIds,Path".into()),
             ("enableImages", "false".into()),
             ("enableUserData", "false".into()),
             ("enableTotalRecordCount", "false".into()),

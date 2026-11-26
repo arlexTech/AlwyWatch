@@ -70,9 +70,16 @@ pub(crate) fn label(i: &Item) -> String {
     }
 }
 
-/// The same movie or show among `candidates`: external ids first, then title and year.
+/// The same movie or show among `candidates`: the same video file first (both servers read
+/// one disk, and either may have identified it wrong), then external ids, then title and year.
 fn same_title_in<'a>(src: &Item, candidates: &'a [Item]) -> Option<&'a Item> {
     let p = &src.provider_ids;
+    let mut same_file = candidates
+        .iter()
+        .filter(|c| c.file_name.is_some() && c.file_name == src.file_name);
+    if let (Some(c), None) = (same_file.next(), same_file.next()) {
+        return Some(c);
+    }
     candidates
         .iter()
         .find(|c| ids_match(&c.provider_ids, &p.tmdb, &p.imdb, &p.tvdb))
@@ -380,6 +387,7 @@ mod tests {
 
     fn item(id: &str, kind: ItemKind, title: &str, user: UserData) -> Item {
         Item {
+            file_name: None,
             id: id.into(),
             kind,
             title: title.into(),
@@ -454,6 +462,30 @@ mod tests {
         let mut other_year = by_title;
         other_year.year = Some(1999);
         assert!(same_title_in(&src, &[other_year]).is_none());
+    }
+
+    #[test]
+    fn the_same_file_pairs_a_movie_each_server_identified_differently() {
+        let file = Some("The Twisters (2024) WEBRip-1080p.mkv".to_owned());
+        let mut src = item("p1", ItemKind::Movie, "Twisters", played());
+        src.provider_ids.tmdb = Some("718821".into());
+        src.file_name = file.clone();
+        let mut wrong_id = item("j1", ItemKind::Movie, "Twisters", UserData::default());
+        wrong_id.provider_ids.tmdb = Some("718821".into());
+        let mut same_file = item("j2", ItemKind::Movie, "The Twisters", UserData::default());
+        same_file.provider_ids.tmdb = Some("1311844".into());
+        same_file.file_name = file;
+        let both = [wrong_id, same_file.clone()];
+        assert_eq!(same_title_in(&src, &both).unwrap().id, "j2");
+        // A name two files share says nothing: back to ids.
+        let mut twin = same_file;
+        twin.id = "j3".into();
+        assert_eq!(
+            same_title_in(&src, &[both[0].clone(), both[1].clone(), twin])
+                .unwrap()
+                .id,
+            "j1"
+        );
     }
 
     #[test]
