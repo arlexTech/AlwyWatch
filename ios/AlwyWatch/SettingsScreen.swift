@@ -246,12 +246,27 @@ private struct SettingChoice<V: Hashable>: View {
 
 // MARK: Servers
 
+/// A login linked to the AlwyWatch account, not signed in on this device.
+private func linkedRow(_ name: String, _ server: String, subtitle: String?) -> some View {
+    HStack(spacing: 12) {
+        Image(systemName: "plus").foregroundStyle(Palette.accent).frame(width: 34)
+        TitledLabel(title: tr("{name} on {server}", ["name": name, "server": server]),
+                    subtitle: subtitle ?? tr("Linked to your account, not signed in on this device"))
+        Spacer()
+        Text(tr("Sign in")).font(.footnote).foregroundStyle(Palette.muted)
+    }
+}
+
 private struct ServersSettings: View {
     @EnvironmentObject var model: AppModel
     @State private var together = true
     @State private var removing: Account?
     @State private var switching: Account?
     @ObservedObject private var identity = Identity.shared
+    /// Signed in to the AlwyWatch account here: its linked logins not signed in on this device.
+    @State private var linked: [LinkedServer] = []
+    @State private var signingIn: String?
+    @State private var linkError: (String, String)?
 
     var body: some View {
         let accounts = model.accounts
@@ -292,15 +307,32 @@ private struct ServersSettings: View {
                     Button(tr("Sign out of {server}", ["server": a.serverName]), role: .destructive) { removing = a }
                 }
             }
-            // Logins linked to the AlwyWatch account but not signed in on this device: a way to.
-            ForEach((identity.links ?? []).filter { l in !accounts.contains { $0.serverId == l.serverId } }, id: \.userKey) { l in
-                NavigationLink(value: Route.addServer) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "plus").foregroundStyle(Palette.accent).frame(width: 34)
-                        TitledLabel(title: tr("{name} on {server}", ["name": l.mediaName, "server": l.serverName]), subtitle: tr("Linked to your account, not signed in on this device"))
-                        Spacer()
-                        Text(tr("Sign in")).font(.footnote).foregroundStyle(Palette.muted)
+            // Logins linked to the AlwyWatch account but not signed in on this device: with the
+            // account signed in here, one tap signs in (nothing to type); else the add-server screen.
+            if model.core.account() != nil {
+                ForEach(linked.filter { l in !accounts.contains { $0.serverId == l.serverId } }, id: \.serverId) { l in
+                    Button {
+                        guard signingIn == nil else { return }
+                        signingIn = l.serverId
+                        linkError = nil
+                        Task {
+                            do {
+                                let s = try await model.core.accountSignInServer(serverId: l.serverId)
+                                Keychain.put(s.account.id, s.token)
+                                model.reload()
+                            } catch {
+                                linkError = (l.serverId, message(error))
+                            }
+                            signingIn = nil
+                        }
+                    } label: {
+                        linkedRow(l.userName, l.serverName, subtitle: signingIn == l.serverId ? tr("Signing in…")
+                            : linkError?.0 == l.serverId ? linkError!.1 : nil)
                     }
+                }
+            } else {
+                ForEach((identity.links ?? []).filter { l in !accounts.contains { $0.serverId == l.serverId } }, id: \.userKey) { l in
+                    NavigationLink(value: Route.addServer) { linkedRow(l.mediaName, l.serverName, subtitle: nil) }
                 }
             }
             NavigationLink(value: Route.addServer) {
@@ -312,7 +344,13 @@ private struct ServersSettings: View {
             if many, model.core.keepConnection() != nil { Text(tr("AlwyWatch uses the login showing now.")) }
         }
         .onAppear { together = ((try? model.core.getSetting(key: combinedKey)) ?? nil) != "0" }
-        .task { if model.core.keepActive() { await identity.refreshLinks(model.core) } }
+        .task {
+            if model.core.account() != nil {
+                linked = (try? await model.core.accountLinkedServers()) ?? []
+            } else if model.core.keepActive() {
+                await identity.refreshLinks(model.core)
+            }
+        }
         .sheet(item: $switching) { PlexSwitchSheet(account: $0).environmentObject(model) }
         .confirmationDialog(
             tr("Sign out of {server}?", ["server": removing?.serverName ?? ""]),

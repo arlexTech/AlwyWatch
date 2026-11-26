@@ -983,8 +983,8 @@ msgid "Password"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
-#: web/src/account.rs
-#: ios/AlwyWatch/SignInView.swift
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 msgid "Signing in…"
 msgstr ""
 
@@ -1014,6 +1014,12 @@ msgstr ""
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
 #: ios/AlwyWatch/SignInView.swift
 msgid "Sign in with your Jellyfin or Plex login instead, or with a code approved on your phone (passkey, Pocket ID)."
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
+#: desktop/src/app.rs
+#: ios/AlwyWatch/SignInView.swift
+msgid "Signing you in to your servers…"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AddServerScreen.kt
@@ -4493,8 +4499,14 @@ msgid "Sign out of {server}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/signin.rs
+#: desktop/ui/app.slint
 msgid "Linked to your account, not signed in on this device"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/signin.rs
+msgid "Sign in on this device instead"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
@@ -6972,7 +6984,19 @@ msgid "API key: missing. “Until watched” and invitations with a Jellyfin log
 msgstr ""
 
 #: web/src/admin.rs
+msgid "Owner's Plex sign-in: kept (people's new devices sign in to it from their AlwyWatch account)"
+msgstr ""
+
+#: web/src/admin.rs
+msgid "Owner's Plex sign-in: missing. Renew it so people's new devices sign in to it from their AlwyWatch account."
+msgstr ""
+
+#: web/src/admin.rs
 msgid "Renew key"
+msgstr ""
+
+#: web/src/admin.rs
+msgid "Renew sign-in"
 msgstr ""
 
 #: web/src/admin.rs
@@ -7016,7 +7040,7 @@ msgid "The address you open Plex at."
 msgstr ""
 
 #: web/src/admin.rs
-msgid "Only the server's owner can add it: AlwyWatch checks it with the owner's Plex sign-in."
+msgid "Only the server's owner can add it: AlwyWatch checks it with the owner's Plex sign-in, and keeps it to sign people's new devices in to this server from their AlwyWatch account (their own Plex access, as Tautulli reads it)."
 msgstr ""
 
 #: web/src/admin.rs
@@ -8150,6 +8174,14 @@ msgstr ""
 
 #: web/src/setup.rs
 msgid "Sign in with Plex and set up"
+msgstr ""
+
+#: web/src/signin.rs
+msgid "Sign in to your AlwyWatch account first."
+msgstr ""
+
+#: web/src/signin.rs
+msgid "This server is not served here."
 msgstr ""
 
 #: web/src/signin.rs

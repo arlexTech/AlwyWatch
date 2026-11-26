@@ -222,6 +222,11 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
             match r {
                 Ok(s) => {
                     c.set_account(&s.token, &s.account);
+                    // My linked logins sign in by themselves: straight to the library.
+                    if crate::signin::sign_in_all_linked(&c).await > 0 {
+                        busy.try_set(false);
+                        return navigate("/", Default::default());
+                    }
                     // The Jellyfin login an invitation made (same username and password):
                     // signed in here too, so this browser goes straight to the library.
                     if let Some(j) = s.jellyfin
@@ -266,7 +271,12 @@ pub fn AccountSignIn(#[prop(into)] next: String) -> impl IntoView {
                 match KeepClient::passkey_login_finish(&c.http, &base, &flow, DEVICE, &cred).await {
                     Ok(s) => {
                         c.set_account(&s.token, &s.account);
-                        navigate(&next, Default::default());
+                        let to = if crate::signin::sign_in_all_linked(&c).await > 0 {
+                            "/"
+                        } else {
+                            next.as_str()
+                        };
+                        navigate(to, Default::default());
                         Ok(())
                     }
                     Err(net::Error::Unauthorized) => Err(tr!("This passkey isn't known here.")),
@@ -551,7 +561,12 @@ pub fn SignedInPage() -> impl IntoView {
         match k.account_me().await {
             Ok(a) => {
                 c.set_account(&token, &a);
-                navigate(&next, Default::default());
+                let to = if crate::signin::sign_in_all_linked(&c).await > 0 {
+                    "/"
+                } else {
+                    next.as_str()
+                };
+                navigate(to, Default::default());
             }
             Err(e) => error.set(Some(account::explain(&e, false))),
         }

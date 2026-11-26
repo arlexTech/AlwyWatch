@@ -134,6 +134,14 @@ export struct AccountRow {
     current: bool,
 }
 
+/// A login linked to the AlwyWatch account, not signed in on this device.
+export struct LinkedServerRow {
+    id: string,
+    label: string,
+    /// "Signing in…", an error, or empty.
+    status: string,
+}
+
 export struct DownloadRow {
     id: int,
     account: string,
@@ -1702,6 +1710,7 @@ export component AppWindow inherits Window {
     in property <[NamedId]> plex-servers;
     // Settings
     in property <[AccountRow]> accounts;
+    in property <[LinkedServerRow]> linked-servers;
     in property <string> cache-size;
     in property <string> about;
     in-out property <bool> spdif;
@@ -1905,6 +1914,7 @@ export component AppWindow inherits Window {
     in property <bool> add-from-keep;
     callback use-account(string);
     callback remove-account(string);
+    callback sign-in-linked(string);
     /// Server row whose "Sign out" was clicked once (a second click signs out).
     property <string> remove-armed;
     callback clear-cache();
@@ -3759,6 +3769,16 @@ export component AppWindow inherits Window {
                                             if (root.remove-armed == a.id) { root.remove-armed = ""; root.remove-account(a.id); } else { root.remove-armed = a.id; }
                                         }
                                     }
+                                }
+                                for l in root.linked-servers : HorizontalLayout {
+                                    spacing: 10px;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text { text: l.label; color: Palette.text; font-weight: 700; }
+                                        Text { text: l.status != "" ? l.status : @tr("Linked to your account, not signed in on this device"); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                                    }
+                                    Rectangle { horizontal-stretch: 1; }
+                                    Button { label: @tr("Sign in"); primary: true; clicked => { root.sign-in-linked(l.id); } }
                                 }
                                 HorizontalLayout {
                                     alignment: start;

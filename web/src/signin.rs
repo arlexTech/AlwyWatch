@@ -41,6 +41,119 @@ pub async fn finish(c: &Ctx, s: Session, served: &[ServerEntry]) {
     crate::links::refresh(true).await;
 }
 
+/// My logins linked to the AlwyWatch account on served servers this browser is not signed in
+/// to: (server id, my name there, server name). Empty without an account.
+pub async fn linked_not_here(c: &Ctx) -> Vec<(String, String, String)> {
+    let Some(k) = c.account_client() else {
+        return vec![];
+    };
+    let (Ok(a), Ok(served)) = (
+        k.account_me().await,
+        KeepClient::servers(&c.http, &Ctx::origin()).await,
+    ) else {
+        return vec![];
+    };
+    let here: Vec<String> = c
+        .accounts
+        .get_untracked()
+        .into_iter()
+        .map(|s| s.server_id)
+        .collect();
+    let mut out: Vec<(String, String, String)> = vec![];
+    for l in a.linked {
+        if let Some(e) = served.iter().find(|e| e.id == l.server_id)
+            && !here.contains(&l.server_id)
+            && !out.iter().any(|o| o.0 == l.server_id)
+        {
+            out.push((l.server_id, l.name, e.name.clone()));
+        }
+    }
+    out
+}
+
+/// Signs this browser in to `server_id` as my linked login there, through the AlwyWatch
+/// account (nothing to type: Jellyfin approves this browser's Quick Connect code, Plex hands
+/// over my server token).
+pub async fn sign_in_linked(c: &Ctx, server_id: &str) -> Result<(), String> {
+    let k = c
+        .account_client()
+        .ok_or_else(|| tr!("Sign in to your AlwyWatch account first."))?;
+    let served = KeepClient::servers(&c.http, &Ctx::origin())
+        .await
+        .map_err(|e| e.to_string())?;
+    let entry = served
+        .iter()
+        .find(|e| e.id == server_id)
+        .ok_or_else(|| tr!("This server is not served here."))?;
+    let base = net::normalize_base_url(&entry.url).map_err(|e| e.to_string())?;
+    let session = match entry.kind {
+        ServerType::Jellyfin => {
+            let auth = JellyfinAuth::new(c.http.clone(), c.client.clone());
+            let start = auth
+                .quick_connect_start(&base)
+                .await
+                .map_err(|e| sign_in_error(&e, &base))?;
+            k.server_sign_in(server_id, Some(&start.code))
+                .await
+                .map_err(|e| keep_service::account::explain(&e, false))?;
+            let mut tries = 0;
+            loop {
+                match auth.quick_connect_poll(&base, &start.secret).await {
+                    Ok(s) => break s,
+                    Err(Error::Pending) if tries < 5 => {
+                        tries += 1;
+                        state::sleep(600).await;
+                    }
+                    Err(e) => return Err(sign_in_error(&e, &base)),
+                }
+            }
+        }
+        ServerType::Plex => {
+            let r = k
+                .server_sign_in(server_id, None)
+                .await
+                .map_err(|e| keep_service::account::explain(&e, false))?;
+            let token = r
+                .token
+                .ok_or_else(|| tr!("Sign in on this device instead"))?;
+            let server = media_api::plex::PlexServerResource {
+                name: r.server_name,
+                machine_id: r.server_id,
+                owned: r.is_admin,
+                access_token: token,
+                connections: vec![media_api::plex::PlexConnection {
+                    uri: base.clone(),
+                    local: false,
+                    relay: false,
+                }],
+            };
+            let user = media_api::plex::PlexUser {
+                id: r.user_id,
+                username: r.user_name.clone(),
+                title: r.user_name,
+            };
+            PlexAuth::new(c.http.clone(), c.client.clone())
+                .connect(&server, &user, None)
+                .await
+                .map_err(|e| sign_in_error(&e, &base))?
+        }
+    };
+    finish(c, session, &served).await;
+    Ok(())
+}
+
+/// Right after signing in to the AlwyWatch account: every linked login signs in too. How many
+/// did.
+pub async fn sign_in_all_linked(c: &Ctx) -> usize {
+    let mut n = 0;
+    for (id, _, _) in linked_not_here(c).await {
+        if sign_in_linked(c, &id).await.is_ok() {
+            n += 1;
+        }
+    }
+    n
+}
+
 async fn link(c: &Ctx, s: &Session) -> bool {
     let Some(k) = c.keep_for(s) else {
         return false;
@@ -716,9 +829,67 @@ fn ServersSection() -> impl IntoView {
                     }
                 }).collect_view()
             }}
+            <LinkedRows />
             <leptos_router::components::A href="/signin" attr:class="button">{tr!("Add a server")}</leptos_router::components::A>
         </section>
         <SyncSection />
+    }
+}
+
+/// Settings → Servers: my logins linked to the AlwyWatch account, not signed in in this
+/// browser, each signed in with one click.
+#[component]
+fn LinkedRows() -> impl IntoView {
+    let c = state::ctx();
+    let rows = RwSignal::new(Vec::<(String, String, String)>::new());
+    let status = RwSignal::new(None::<(String, String)>);
+    let load = {
+        let c = c.clone();
+        move || {
+            let c = c.clone();
+            spawn_local(async move {
+                let list = linked_not_here(&c).await;
+                rows.try_set(list);
+            });
+        }
+    };
+    load();
+    move || {
+        let c = c.clone();
+        let load = load.clone();
+        rows.get()
+            .into_iter()
+            .map(|(id, name, server)| {
+                let (before, after) =
+                    crate::ui::around(&tr!("{name} on {server}", server = server), "{name}");
+                let (c, load, id2) = (c.clone(), load.clone(), id.clone());
+                let id3 = id.clone();
+                view! {
+                    <div class="row">
+                        <div>{before}<strong>{name}</strong>{after}
+                            <div class="muted">{move || match status.get() {
+                                Some((s, text)) if s == id3 => text,
+                                _ => tr!("Linked to your account, not signed in on this device"),
+                            }}</div></div>
+                        <button class="primary" on:click=move |_| {
+                            let (c, load, id) = (c.clone(), load.clone(), id2.clone());
+                            status.set(Some((id.clone(), tr!("Signing in…"))));
+                            spawn_local(async move {
+                                match sign_in_linked(&c, &id).await {
+                                    Ok(()) => {
+                                        status.try_set(None);
+                                        load();
+                                    }
+                                    Err(e) => {
+                                        status.try_set(Some((id, e)));
+                                    }
+                                }
+                            });
+                        }>{tr!("Sign in")}</button>
+                    </div>
+                }
+            })
+            .collect_view()
     }
 }
 

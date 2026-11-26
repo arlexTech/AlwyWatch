@@ -46,6 +46,7 @@ import be.alwyapps.watch.core.keep.ServerEntry
 import be.alwyapps.watch.core.keep.ServerType
 import be.alwyapps.watch.core.media.PlexServerResource
 import be.alwyapps.watch.core.media.QuickConnectCode
+import be.alwyapps.watch.core.media.ServerKind
 import be.alwyapps.watch.services
 import be.alwyapps.watch.ui.Accent
 import be.alwyapps.watch.ui.ActionButton
@@ -209,6 +210,20 @@ fun AddServerScreen(
             runCatching { core.accountLinkMedia(s.account.id, keepToken) }
         }
         onSignedIn(s.account.id)
+    }
+
+    // Signed in through the AlwyWatch account (no login typed): every token stored as after a
+    // sign-in, the home opens on a Jellyfin one when there is one (it also connects Leaving soon).
+    fun finishLinked(
+        url: String,
+        all: List<SignedIn>,
+    ) {
+        all.forEach { ctx.services.tokens.put(it.account.id, it.token) }
+        val main = all.firstOrNull { it.account.kind == ServerKind.JELLYFIN } ?: all.first()
+        core.setSetting("current_account", main.account.id)
+        core.keepSetPreset(url)
+        ctx.services.scope.launch { runCatching { core.keepOnboard(main.account.id, main.token) } }
+        onSignedIn(main.account.id)
     }
 
     // After the Plex sign-in (and the user choice): the server picked earlier, or the list.
@@ -448,10 +463,25 @@ fun AddServerScreen(
             is Step.Known -> {
                 val me = remember { core.account() }
                 var served by remember { mutableStateOf<List<ServerEntry>?>(null) }
-                LaunchedEffect(s.url) { served = runCatching { core.keepServers(s.url) }.getOrDefault(emptyList()) }
+                // Signed in to the account: its linked servers sign in by themselves first.
+                var linking by remember { mutableStateOf(me != null) }
+                LaunchedEffect(s.url) {
+                    if (me != null) {
+                        val all = runCatching { core.accountSignInLinked() }.getOrDefault(emptyList())
+                        if (all.isNotEmpty()) {
+                            finishLinked(s.url, all)
+                            return@LaunchedEffect
+                        }
+                    }
+                    linking = false
+                    served = runCatching { core.keepServers(s.url) }.getOrDefault(emptyList())
+                }
                 Text(
-                    me?.name?.let { tr("Signed in as {name}. Now sign in to the server you watch on.", "name" to it) }
-                        ?: tr("Signed in as you. Now sign in to the server you watch on."),
+                    when {
+                        linking -> tr("Signing you in to your servers…")
+                        me != null -> tr("Signed in as {name}. Now sign in to the server you watch on.", "name" to me.name)
+                        else -> tr("Signed in as you. Now sign in to the server you watch on.")
+                    },
                     style = MaterialTheme.typography.titleMedium,
                 )
                 served?.forEach { e -> ServerCard(e, existing = existingLogin(e)) { if (!busy) pick(s.url, e) } }

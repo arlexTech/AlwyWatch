@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.BuildConfig
+import be.alwyapps.watch.core.CoreException
 import be.alwyapps.watch.core.coreVersion
 import be.alwyapps.watch.core.media.LibraryKind
 import be.alwyapps.watch.core.media.ServerKind
@@ -51,6 +52,7 @@ import be.alwyapps.watch.ui.Value
 import be.alwyapps.watch.ui.tr
 import be.alwyapps.watch.ui.trn
 import be.alwyapps.watch.ui.usesRail
+import kotlinx.coroutines.launch
 
 /** A page of Settings, opened from the list (`Route.SettingsSection`). Same order on every app. */
 private enum class Section(
@@ -381,15 +383,56 @@ private fun ServersSection(onAccountChanged: (String?) -> Unit) {
                 },
             )
         }
-        // Logins linked to the AlwyWatch account but not signed in on this device: a way to.
-        androidx.compose.runtime.LaunchedEffect(Unit) { if (hasAlwyWatch(core)) Identity.refreshLinks(core) }
-        Identity.links.orEmpty().filter { l -> accounts.none { it.serverId == l.serverId } }.forEach { l ->
+        // Logins linked to the AlwyWatch account but not signed in on this device: with the
+        // account signed in here, one tap signs in (nothing to type); else the add-server screen.
+        val hasAccount = remember(version) { core.account() != null }
+        var linked by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) }
+        var signingIn by remember { mutableStateOf<String?>(null) }
+        var linkError by remember { mutableStateOf<Pair<String, String>?>(null) }
+        val linkScope = androidx.compose.runtime.rememberCoroutineScope()
+        androidx.compose.runtime.LaunchedEffect(version) {
+            if (hasAccount) {
+                linked = runCatching { core.accountLinkedServers() }.getOrDefault(emptyList()).map { Triple(it.serverId, it.userName, it.serverName) }
+            } else if (hasAlwyWatch(core)) {
+                Identity.refreshLinks(core)
+            }
+        }
+        val rows =
+            if (hasAccount) {
+                linked
+            } else {
+                Identity.links.orEmpty().map { Triple(it.serverId, it.mediaName, it.serverName) }
+            }.filter { (id) -> accounts.none { it.serverId == id } }
+        rows.forEach { (id, name, server) ->
             Divider()
             ListRow(
-                tr("{name} on {server}", "name" to l.mediaName, "server" to l.serverName),
-                subtitle = tr("Linked to your account, not signed in on this device"),
+                tr("{name} on {server}", "name" to name, "server" to server),
+                subtitle =
+                    when {
+                        signingIn == id -> tr("Signing in…")
+                        linkError?.first == id -> linkError?.second
+                        else -> tr("Linked to your account, not signed in on this device")
+                    },
                 icon = Icons.Add,
-                onClick = { nav.push(Route.AddServer) },
+                onClick = {
+                    if (!hasAccount) {
+                        nav.push(Route.AddServer)
+                    } else if (signingIn == null) {
+                        linkScope.launch {
+                            signingIn = id
+                            linkError = null
+                            try {
+                                val s = core.accountSignInServer(id)
+                                ctx.services.tokens.put(s.account.id, s.token)
+                                version++
+                            } catch (e: CoreException) {
+                                linkError = id to (e.message ?: tr("Sign in on this device instead"))
+                            } finally {
+                                signingIn = null
+                            }
+                        }
+                    }
+                },
                 trailing = { Value(tr("Sign in")) },
             )
         }

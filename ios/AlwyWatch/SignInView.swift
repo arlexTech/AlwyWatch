@@ -173,7 +173,14 @@ struct SignInView: View {
             }
 
         case let .known(u):
-            KnownStep(url: u, busy: busy) { pick(u, $0) } onKnown: { k in
+            KnownStep(url: u, busy: busy) { pick(u, $0) } onLinked: { all in
+                // Signed in through the AlwyWatch account: a Jellyfin login first (it also
+                // connects Leaving soon), the others stored as they are.
+                try? core.keepSetPreset(url: u)
+                let main = all.first { $0.account.kind == .jellyfin } ?? all[0]
+                for s in all where s.account.id != main.account.id { Keychain.put(s.account.id, s.token) }
+                finish(main)
+            } onKnown: { k in
                 if k.kind == "plex" {
                     go(.plex)
                 } else {
@@ -564,9 +571,12 @@ private struct KnownStep: View {
     let url: String
     let busy: Bool
     let onPick: (ServerEntry) -> Void
+    let onLinked: ([SignedIn]) -> Void
     let onKnown: (KnownServer) -> Void
     let onOther: () -> Void
     @State private var served: [ServerEntry]?
+    /// Signed in to the account: its linked servers sign in by themselves first.
+    @State private var linking = true
 
     var body: some View {
         let core = model.core
@@ -576,7 +586,8 @@ private struct KnownStep: View {
             (served ?? []).allSatisfy { $0.url.bare != k.url.bare }
         }
         Group {
-            Text(me.map { tr("Signed in as {name}. Now sign in to the server you watch on.", ["name": $0.name]) }
+            Text(linking && me != nil ? tr("Signing you in to your servers…")
+                : me.map { tr("Signed in as {name}. Now sign in to the server you watch on.", ["name": $0.name]) }
                 ?? tr("Signed in as you. Now sign in to the server you watch on."))
                 .font(.headline)
             ForEach(served ?? [], id: \.id) { e in
@@ -589,7 +600,17 @@ private struct KnownStep: View {
             }
             ChoiceCard(title: tr("Another server"), subtitle: tr("Jellyfin or Plex by its address"), icon: "plus", action: onOther)
         }
-        .task(id: url) { served = (try? await model.core.keepServers(url: url)) ?? [] }
+        .task(id: url) {
+            if model.core.account() != nil {
+                let all = (try? await model.core.accountSignInLinked()) ?? []
+                if !all.isEmpty {
+                    onLinked(all)
+                    return
+                }
+            }
+            linking = false
+            served = (try? await model.core.keepServers(url: url)) ?? []
+        }
     }
 }
 

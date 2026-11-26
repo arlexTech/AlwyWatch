@@ -613,11 +613,20 @@ fn Servers() -> impl IntoView {
                                         tr!("API key: missing. “Until watched” and invitations with a Jellyfin login need it: renew it.")
                                     }}</div>
                                 })}
+                                {(!jellyfin).then(|| view! {
+                                    <div class="small" class:muted=has_key class:accent=!has_key>{if has_key {
+                                        tr!("Owner's Plex sign-in: kept (people's new devices sign in to it from their AlwyWatch account)")
+                                    } else {
+                                        tr!("Owner's Plex sign-in: missing. Renew it so people's new devices sign in to it from their AlwyWatch account.")
+                                    }}</div>
+                                })}
                             </div>
                             <span class="actions tight">
-                                {jellyfin.then(|| view! {
-                                    <button type="button" class="small" on:click=move |_| adding.set(Some(("jellyfin", url.clone())))>{tr!("Renew key")}</button>
-                                })}
+                                {if jellyfin {
+                                    view! { <button type="button" class="small" on:click=move |_| adding.set(Some(("jellyfin", url.clone())))>{tr!("Renew key")}</button> }.into_any()
+                                } else {
+                                    view! { <button type="button" class="small" on:click=move |_| adding.set(Some(("plex", url.clone())))>{tr!("Renew sign-in")}</button> }.into_any()
+                                }}
                                 <button type="button" class="small subtle" on:click=move |_| remove(s2.clone())>{tr!("Remove")}</button>
                             </span>
                         </div>
@@ -632,7 +641,7 @@ fn Servers() -> impl IntoView {
             {move || adding.get().map(|(kind, url)| {
                 let done = Callback::new(move |()| adding.set(None));
                 if kind == "plex" {
-                    view! { <AddPlexForm done=done /> }.into_any()
+                    view! { <AddPlexForm url=url done=done /> }.into_any()
                 } else {
                     view! { <AddJellyfinForm url=url done=done /> }.into_any()
                 }
@@ -722,9 +731,9 @@ fn plex_tokens(c: &Ctx) -> Vec<String> {
 }
 
 #[component]
-fn AddPlexForm(done: Callback<()>) -> impl IntoView {
+fn AddPlexForm(url: String, done: Callback<()>) -> impl IntoView {
     let f = form();
-    let url = RwSignal::new(String::new());
+    let url = RwSignal::new(url);
     let internal = RwSignal::new(String::new());
     let error = RwSignal::new(None::<String>);
     let has_token = !plex_tokens(&state::ctx()).is_empty();
@@ -790,7 +799,7 @@ fn AddPlexForm(done: Callback<()>) -> impl IntoView {
             {field(tr!("Address"), tr!("The address you open Plex at."), "https://plex.example.org",
                 (move || url.get(), move |v| url.set(v)))}
             {internal_address((move || internal.get(), move |v| internal.set(v)), "http://plex:32400")}
-            <p class="muted small">{tr!("Only the server's owner can add it: AlwyWatch checks it with the owner's Plex sign-in.")}</p>
+            <p class="muted small">{tr!("Only the server's owner can add it: AlwyWatch checks it with the owner's Plex sign-in, and keeps it to sign people's new devices in to this server from their AlwyWatch account (their own Plex access, as Tautulli reads it).")}</p>
             {save_first(f)}
             <div class="actions">
                 {has_token.then(|| view! {

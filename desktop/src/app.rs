@@ -28,7 +28,8 @@ mod together;
 use crate::player::{self, ExternalSub, PlayRequest, TrackSetup};
 use crate::{
     AccountRow, AdminRow, AppWindow, Card, CardMenu, Detail, DownloadRow, ForeverRow, KeepPanel,
-    LeavingRow, NamedId, Page, Rail, SeerrPage, SeerrPanel, ServerChoice, StatusRow,
+    LeavingRow, LinkedServerRow, NamedId, Page, Rail, SeerrPage, SeerrPanel, ServerChoice,
+    StatusRow,
 };
 use together::TogetherPlay;
 
@@ -2287,6 +2288,7 @@ impl App {
                 self.refresh_seerr_settings();
                 self.refresh_keep_settings();
                 self.refresh_settings();
+                self.refresh_linked_servers();
                 self.render_profiles();
                 self.load_me();
                 self.render_links();
@@ -5175,9 +5177,43 @@ impl App {
         Ok(current.or_else(|| ids.into_iter().next()))
     }
 
-    /// Signed in to an AlwyWatch account (no media server yet): its server's list, to sign in
-    /// to the server the user watches on.
+    /// Signed in to an AlwyWatch account (no media server yet): its linked servers sign in by
+    /// themselves (nothing to type), else its server's list, to sign in to the server the user
+    /// watches on.
     fn account_ready(self: &Rc<Self>, url: String, name: String) {
+        let ui = self.ui();
+        ui.set_account_note(sstr(tr!("Signing you in to your servers…")));
+        ui.set_add_create(false);
+        ui.set_add_step("alwywatch".into());
+        ui.set_keep_address(sstr(&url));
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let all = core.account_sign_in_linked().await.unwrap_or_default();
+            let Some(t) = this.upgrade() else { return };
+            if all.is_empty() {
+                return t.account_pick_server(url, name);
+            }
+            let _ = core.sync_settings().await;
+            t.profiles.set_last_address(&url);
+            t.refresh_account_settings();
+            let _ = core.keep_set_preset(url);
+            // A Jellyfin login opens (it also connects Leaving soon); the others are stored.
+            let main = all
+                .iter()
+                .position(|s| s.account.kind == ServerKind::Jellyfin)
+                .unwrap_or(0);
+            for (i, s) in all.iter().enumerate() {
+                if i != main {
+                    let _ = t.tokens.put(&s.account.id, &s.token);
+                }
+            }
+            t.signed_in(all.into_iter().nth(main).expect("not empty"));
+        })
+        .ok();
+    }
+
+    /// The account's server list, to sign in to the server the user watches on.
+    fn account_pick_server(self: &Rc<Self>, url: String, name: String) {
         let ui = self.ui();
         ui.set_account_note(sstr(tr!(
             "Signed in as {name}. Now sign in to the server you watch on.",
@@ -5278,6 +5314,71 @@ impl App {
     }
 
     /// Settings: the AlwyWatch account row.
+    /// Settings → Servers: the account's linked logins not signed in on this device.
+    fn refresh_linked_servers(self: &Rc<Self>) {
+        if self.core.account().is_none() {
+            self.ui()
+                .set_linked_servers(ModelRc::new(VecModel::from(vec![])));
+            return;
+        }
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let list = core.account_linked_servers().await.unwrap_or_default();
+            let Some(t) = this.upgrade() else { return };
+            let rows: Vec<LinkedServerRow> = list
+                .into_iter()
+                .map(|l| LinkedServerRow {
+                    id: sstr(l.server_id),
+                    label: sstr(tr!(
+                        "{name} on {server}",
+                        name = l.user_name,
+                        server = l.server_name
+                    )),
+                    status: SharedString::new(),
+                })
+                .collect();
+            t.ui()
+                .set_linked_servers(ModelRc::new(VecModel::from(rows)));
+        })
+        .ok();
+    }
+
+    /// One tap on a linked login: signed in through the AlwyWatch account.
+    fn sign_in_linked(self: &Rc<Self>, server_id: String) {
+        let status = |t: &Rc<Self>, id: &str, text: String| {
+            let m = t.ui().get_linked_servers();
+            for i in 0..m.row_count() {
+                if let Some(mut r) = m.row_data(i)
+                    && r.id == id
+                {
+                    r.status = sstr(&text);
+                    m.set_row_data(i, r);
+                }
+            }
+        };
+        status(self, &server_id, tr!("Signing in…"));
+        let (core, this) = (self.core.clone(), Rc::downgrade(self));
+        slint::spawn_local(async move {
+            let r = core.account_sign_in_server(server_id.clone()).await;
+            let Some(t) = this.upgrade() else { return };
+            match r {
+                Ok(s) => {
+                    if let Err(e) = t.tokens.put(&s.account.id, &s.token) {
+                        return status(
+                            &t,
+                            &server_id,
+                            tr!("could not store the token: {error}", error = e),
+                        );
+                    }
+                    t.refresh_settings();
+                    t.refresh_linked_servers();
+                }
+                Err(e) => status(&t, &server_id, e.to_string()),
+            }
+        })
+        .ok();
+    }
+
     fn refresh_account_settings(&self) {
         self.ui().set_alwy_account(sstr(
             self.core.account().map(|a| a.name).unwrap_or_default(),
@@ -6025,6 +6126,7 @@ impl App {
         on!(on_plex_pick, |a, id| a.plex_pick(id.into()));
         on!(on_use_account, |a, id| a.use_account(id.into()));
         on!(on_remove_account, |a, id| a.remove_account(id.into()));
+        on!(on_sign_in_linked, |a, id| a.sign_in_linked(id.into()));
         on!(on_clear_cache, |a| {
             let _ = a.core.clear_image_cache();
             a.images.borrow_mut().clear();
