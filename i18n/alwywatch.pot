@@ -4842,6 +4842,7 @@ msgid "Higher on the screen (TVs that crop the edges)."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/signin.rs
 msgid "Libraries in the menu"
 msgstr ""
 
@@ -4862,6 +4863,8 @@ msgid "Hidden"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/signin.rs
+#: desktop/ui/app.slint
 msgid "Move up"
 msgstr ""
 
@@ -8341,6 +8344,21 @@ msgid "Sign out of {server} in this browser?"
 msgstr ""
 
 #: web/src/signin.rs
+#: desktop/ui/app.slint
+msgid "Show in menu"
+msgstr ""
+
+#: web/src/signin.rs
+#: desktop/ui/app.slint
+msgid "Hide"
+msgstr ""
+
+#: web/src/signin.rs
+#: desktop/ui/app.slint
+msgid "The same order and choices on your other devices."
+msgstr ""
+
+#: web/src/signin.rs
 msgid "Already up to date."
 msgstr ""
 
@@ -8895,6 +8913,10 @@ msgstr ""
 
 #: desktop/ui/app.slint
 msgid "AlwyWatch follows the login showing now when its server is on your AlwyWatch server."
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "LIBRARIES IN THE MENU"
 msgstr ""
 
 #: desktop/ui/app.slint

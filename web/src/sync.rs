@@ -44,6 +44,8 @@ fn local_values(p: &PlayerPrefs) -> Vec<(&'static str, String)> {
         ("player.still_watching", p.still_watching_h.to_string()),
         ("player.sub_color", p.sub_color.clone()),
         ("player.sub_bg", flag(p.sub_bg)),
+        ("ui.menu_libs", p.menu_libs.join(",")),
+        ("ui.menu_hidden", p.menu_hidden.join(",")),
         ("together.others_title", flag(p.together.change_title)),
         ("together.others_play", flag(p.together.play_pause)),
         ("together.others_seek", flag(p.together.seek)),
@@ -77,6 +79,18 @@ fn apply(p: &mut PlayerPrefs, key: &str, v: &str) -> bool {
         }
         "player.sub_color" => p.sub_color = v.to_owned(),
         "player.sub_bg" => p.sub_bg = v == "1",
+        "ui.menu_libs" | "ui.menu_hidden" => {
+            let ids = v
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect();
+            if key == "ui.menu_libs" {
+                p.menu_libs = ids;
+            } else {
+                p.menu_hidden = ids;
+            }
+        }
         "together.others_title" => p.together.change_title = on,
         "together.others_play" => p.together.play_pause = on,
         "together.others_seek" => p.together.seek = on,

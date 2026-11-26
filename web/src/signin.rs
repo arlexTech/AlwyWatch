@@ -832,8 +832,77 @@ fn ServersSection() -> impl IntoView {
             <LinkedRows />
             <leptos_router::components::A href="/signin" attr:class="button">{tr!("Add a server")}</leptos_router::components::A>
         </section>
+        <MenuLibraries />
         <SyncSection />
     }
+}
+
+/// Settings → Servers: the menu's libraries, shown or hidden and in which order (the same
+/// keys as the apps, synced).
+#[component]
+fn MenuLibraries() -> impl IntoView {
+    let Some(crate::prefs::MenuPrefs(menu)) = use_context::<crate::prefs::MenuPrefs>() else {
+        return ().into_any();
+    };
+    let libs =
+        state::load::<Vec<(String, String, String, String)>>(state::LIBS).unwrap_or_default();
+    if libs.is_empty() {
+        return ().into_any();
+    }
+    let save = move |f: &dyn Fn(&mut crate::prefs::PlayerPrefs, Vec<String>)| {
+        // Today's order of every library (the new ones too), then the change.
+        let ids: Vec<String> =
+            menu.with_untracked(|p| crate::prefs::arrange(libs_ids(), |s| s.as_str(), p, true));
+        let mut p = crate::prefs::load();
+        f(&mut p, ids);
+        crate::prefs::save(&p);
+        menu.set(p);
+    };
+    view! {
+        <section class="group">
+            <h2>{tr!("Libraries in the menu")}</h2>
+            {move || {
+                let rows = menu.with(|p| crate::prefs::arrange(libs.clone(), |l| l.1.as_str(), p, true));
+                rows.into_iter().enumerate().map(|(i, (_, id, title, server))| {
+                    let hidden = menu.with(|p| p.menu_hidden.contains(&id));
+                    let (id1, id2) = (id.clone(), id.clone());
+                    view! {
+                        <div class="row">
+                            <div class:muted=hidden><strong>{title}</strong><span class="muted small">" · "{server}</span></div>
+                            <span class="actions tight">
+                                {(i > 0).then(|| view! {
+                                    <button type="button" class="small" on:click=move |_| save(&|p, mut ids| {
+                                        if let Some(at) = ids.iter().position(|x| *x == id1) && at > 0 {
+                                            ids.swap(at, at - 1);
+                                        }
+                                        p.menu_libs = ids;
+                                    })>{tr!("Move up")}</button>
+                                })}
+                                <button type="button" class="small" on:click=move |_| save(&|p, _| {
+                                    if let Some(at) = p.menu_hidden.iter().position(|h| *h == id2) {
+                                        p.menu_hidden.remove(at);
+                                    } else {
+                                        p.menu_hidden.push(id2.clone());
+                                    }
+                                })>{if hidden { tr!("Show in menu") } else { tr!("Hide") }}</button>
+                            </span>
+                        </div>
+                    }
+                }).collect_view()
+            }}
+            <p class="muted small">{tr!("The same order and choices on your other devices.")}</p>
+        </section>
+    }
+    .into_any()
+}
+
+/// The ids of the libraries the home found last.
+fn libs_ids() -> Vec<String> {
+    state::load::<Vec<(String, String, String, String)>>(state::LIBS)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|l| l.1)
+        .collect()
 }
 
 /// Settings → Servers: my logins linked to the AlwyWatch account, not signed in in this

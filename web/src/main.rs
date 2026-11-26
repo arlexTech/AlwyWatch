@@ -210,6 +210,11 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
     let libs = StoredValue::new(
         state::load::<Vec<(String, String, String, String)>>(state::LIBS).unwrap_or_default(),
     );
+    // Their order and the hidden ones (Settings → Servers, synced with the apps).
+    let menu = RwSignal::new(crate::prefs::load());
+    provide_context(crate::prefs::MenuPrefs(menu));
+    let shown_libs =
+        move || menu.with(|p| crate::prefs::arrange(libs.get_value(), |l| l.1.as_str(), p, false));
     view! {
         <div class="shell">
             // One bar on every width: the search field in the middle (an icon on phones, where
@@ -247,8 +252,8 @@ fn Shell(children: ChildrenFn) -> impl IntoView {
                         <Show when=leaving_on><A href="/leaving"><Icon path=icons::HOURGLASS /><span>{tr!("Leaving soon")}</span></A></Show>
                         <Show when=requests_on><A href="/requests"><Icon path=icons::ADD /><span>{tr!("Requests")}</span></A></Show>
                         <Show when=keep_on><A href="/together"><Icon path=icons::GROUP /><span>{tr!("Together")}</span></A></Show>
-                        {libs.with_value(|l| !l.is_empty()).then(|| view! { <p class="menu-head">{tr!("Libraries")}</p> })}
-                        {libs.get_value().into_iter().map(|(acc, id, title, server)| view! {
+                        {move || (!shown_libs().is_empty()).then(|| view! { <p class="menu-head">{tr!("Libraries")}</p> })}
+                        {move || shown_libs().into_iter().map(|(acc, id, title, server)| view! {
                             <A href=format!("/library/{acc}/{id}") attr:title=server><Icon path=icons::LIBRARY /><span>{title}</span></A>
                         }).collect_view()}
                     </nav>

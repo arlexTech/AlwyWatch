@@ -111,6 +111,9 @@ struct State {
     grid_model: Rc<VecModel<Card>>,
     episodes_model: Rc<VecModel<Card>>,
     rail_models: Vec<Rc<VecModel<Card>>>,
+    /// Every library of the home (hidden ones too), for Settings → Servers → Libraries in the
+    /// menu.
+    menu_libs: Vec<(String, String)>,
     /// Item metadata for everything currently on screen, by id (for play/prefetch/next episode).
     items: HashMap<String, Item>,
     /// Account each item/library id comes from (several servers on one home). Ids not listed
@@ -329,6 +332,7 @@ impl App {
                 grid_model: Rc::new(VecModel::default()),
                 episodes_model: Rc::new(VecModel::default()),
                 rail_models: vec![],
+                menu_libs: vec![],
                 items: HashMap::new(),
                 owners: HashMap::new(),
                 jellyfin_url: String::new(),
@@ -395,6 +399,7 @@ impl App {
                     && let Some(a) = this.upgrade()
                 {
                     a.load_player_settings();
+                    a.render_menu_libs();
                 }
             })
             .ok();
@@ -2579,17 +2584,13 @@ impl App {
             }
         }
         ui.set_rails(ModelRc::new(VecModel::from(rail_vec)));
-        ui.set_libraries(ModelRc::new(VecModel::from(
-            home.libraries
-                .iter()
-                .filter(|l| l.kind != LibraryKind::Other)
-                .map(|l| NamedId {
-                    id: sstr(&l.id),
-                    title: sstr(&l.title),
-                    selected: false,
-                })
-                .collect::<Vec<_>>(),
-        )));
+        self.state.borrow_mut().menu_libs = home
+            .libraries
+            .iter()
+            .filter(|l| l.kind != LibraryKind::Other)
+            .map(|l| (l.id.clone(), l.title.clone()))
+            .collect();
+        self.render_menu_libs();
         self.state.borrow_mut().rail_models = models;
         ui.set_status(if rails.is_empty() {
             sstr(tr!("Nothing here yet."))
@@ -4768,6 +4769,83 @@ impl App {
         .ok();
     }
 
+    // ----- the menu's libraries (synced with the other apps) ------------------------------
+
+    /// `ui.menu_libs` (order) and `ui.menu_hidden` (ids), as Android writes them.
+    fn menu_prefs(&self) -> (Vec<String>, Vec<String>) {
+        let list = |k: &str| -> Vec<String> {
+            self.core
+                .get_setting(k.to_owned())
+                .ok()
+                .flatten()
+                .unwrap_or_default()
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect()
+        };
+        (list("ui.menu_libs"), list("ui.menu_hidden"))
+    }
+
+    /// The libraries in the user's order (new ones last).
+    fn menu_arranged(&self) -> Vec<(String, String)> {
+        let (order, _) = self.menu_prefs();
+        let mut libs = self.state.borrow().menu_libs.clone();
+        libs.sort_by_key(|(id, _)| order.iter().position(|o| o == id).unwrap_or(usize::MAX));
+        libs
+    }
+
+    /// The sidebar (without the hidden ones) and the settings list (all of them).
+    fn render_menu_libs(&self) {
+        let (_, hidden) = self.menu_prefs();
+        let libs = self.menu_arranged();
+        let ui = self.ui();
+        ui.set_libraries(ModelRc::new(VecModel::from(
+            libs.iter()
+                .filter(|(id, _)| !hidden.contains(id))
+                .map(|(id, title)| NamedId {
+                    id: sstr(id),
+                    title: sstr(title),
+                    selected: false,
+                })
+                .collect::<Vec<_>>(),
+        )));
+        ui.set_menu_libraries(ModelRc::new(VecModel::from(
+            libs.iter()
+                .map(|(id, title)| NamedId {
+                    id: sstr(id),
+                    title: sstr(title),
+                    // Shown in the menu.
+                    selected: !hidden.contains(id),
+                })
+                .collect::<Vec<_>>(),
+        )));
+    }
+
+    fn menu_lib_toggle(&self, id: String) {
+        let (_, mut hidden) = self.menu_prefs();
+        if let Some(i) = hidden.iter().position(|h| *h == id) {
+            hidden.remove(i);
+        } else {
+            hidden.push(id);
+        }
+        let _ = self
+            .core
+            .set_setting("ui.menu_hidden".into(), hidden.join(","));
+        self.render_menu_libs();
+    }
+
+    fn menu_lib_up(&self, id: String) {
+        let mut ids: Vec<String> = self.menu_arranged().into_iter().map(|(i, _)| i).collect();
+        if let Some(i) = ids.iter().position(|x| *x == id)
+            && i > 0
+        {
+            ids.swap(i, i - 1);
+            let _ = self.core.set_setting("ui.menu_libs".into(), ids.join(","));
+            self.render_menu_libs();
+        }
+    }
+
     // ----- accounts and settings -----------------------------------------------------------
 
     fn refresh_settings(&self) {
@@ -6209,6 +6287,8 @@ impl App {
         on!(on_use_account, |a, id| a.use_account(id.into()));
         on!(on_remove_account, |a, id| a.remove_account(id.into()));
         on!(on_sign_in_linked, |a, id| a.sign_in_linked(id.into()));
+        on!(on_menu_lib_toggle, |a, id| a.menu_lib_toggle(id.into()));
+        on!(on_menu_lib_up, |a, id| a.menu_lib_up(id.into()));
         on!(on_clear_cache, |a| {
             let _ = a.core.clear_image_cache();
             a.images.borrow_mut().clear();

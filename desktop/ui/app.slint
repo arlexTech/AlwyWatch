@@ -1676,6 +1676,10 @@ export component AppWindow inherits Window {
     // Home
     in property <[Rail]> rails;
     in property <[NamedId]> libraries;
+    // Settings → Servers: every library, `selected` when shown in the menu.
+    in property <[NamedId]> menu-libraries;
+    callback menu-lib-toggle(string);
+    callback menu-lib-up(string);
     // Library / search grid
     in property <string> grid-title;
     in property <[Card]> grid;
@@ -3801,6 +3805,16 @@ export component AppWindow inherits Window {
                                     if root.accounts.length >= 2 : Button { label: @tr("Copy watch history"); has-icon: true; icon: @image-url("icons/schedule.svg"); clicked => { root.go(Page.historycopy); } }
                                 }
                                 if root.keep-active : Text { text: @tr("AlwyWatch follows the login showing now when its server is on your AlwyWatch server."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                            }
+                            if root.menu-libraries.length > 0 : Group {
+                                title: @tr("LIBRARIES IN THE MENU");
+                                for l[i] in root.menu-libraries : HorizontalLayout {
+                                    spacing: 10px;
+                                    Text { text: l.title; color: l.selected ? Palette.text : Palette.muted; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                    if i > 0 : Button { label: @tr("Move up"); clicked => { root.menu-lib-up(l.id); } }
+                                    Button { label: l.selected ? @tr("Hide") : @tr("Show in menu"); clicked => { root.menu-lib-toggle(l.id); } }
+                                }
+                                Text { text: @tr("The same order and choices on your other devices."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                             }
                             }
                             if root.shown-section == "requests" : VerticalLayout {

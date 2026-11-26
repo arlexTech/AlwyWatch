@@ -39,6 +39,9 @@ pub struct PlayerPrefs {
     pub sub_color: String,
     /// A dark box behind subtitles (else an outline).
     pub sub_bg: bool,
+    /// The menu's libraries: their order and the hidden ones (library ids, as the apps).
+    pub menu_libs: Vec<String>,
+    pub menu_hidden: Vec<String>,
 }
 
 impl Default for PlayerPrefs {
@@ -57,6 +60,8 @@ impl Default for PlayerPrefs {
             still_watching_h: 2,
             sub_color: "white".into(),
             sub_bg: false,
+            menu_libs: vec![],
+            menu_hidden: vec![],
         }
     }
 }
@@ -160,6 +165,23 @@ fn seconds(n: u32) -> String {
         n => trn!("{n} second", "{n} seconds", n),
     }
 }
+
+/// The menu's libraries in the user's order (new ones last), without the hidden ones unless
+/// `all`. `id` gives a library's id.
+pub fn arrange<T>(mut libs: Vec<T>, id: impl Fn(&T) -> &str, p: &PlayerPrefs, all: bool) -> Vec<T> {
+    libs.sort_by_key(|l| {
+        p.menu_libs
+            .iter()
+            .position(|o| o == id(l))
+            .unwrap_or(usize::MAX)
+    });
+    libs.retain(|l| all || !p.menu_hidden.iter().any(|h| h == id(l)));
+    libs
+}
+
+/// Shared by the menu and Settings → Servers, so a change shows at once.
+#[derive(Clone, Copy)]
+pub struct MenuPrefs(pub RwSignal<PlayerPrefs>);
 
 pub fn countdown_left(countdown_s: u32, from_ms: u64, pos_ms: u64) -> u32 {
     let gone = (pos_ms.saturating_sub(from_ms) / 1000) as u32;
@@ -339,6 +361,18 @@ mod tests {
         assert_eq!(lang3("ger").as_deref(), Some("deu"));
         assert_eq!(lang3("xyz").as_deref(), Some("xyz"));
         assert_eq!(lang3(""), None);
+    }
+
+    #[test]
+    fn menu_libraries_follow_the_apps_order_and_hiding() {
+        let p = PlayerPrefs {
+            menu_libs: vec!["b".into(), "a".into()],
+            menu_hidden: vec!["a".into()],
+            ..Default::default()
+        };
+        let libs = vec!["a", "new", "b"];
+        assert_eq!(arrange(libs.clone(), |l| l, &p, true), ["b", "a", "new"]);
+        assert_eq!(arrange(libs, |l| l, &p, false), ["b", "new"]);
     }
 
     #[test]
