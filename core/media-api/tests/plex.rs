@@ -783,3 +783,51 @@ async fn recently_added_episodes_and_a_whole_season_per_show() {
     assert_eq!(r.items[0].images[0].path, "/Scrubs/poster");
     assert_eq!(r.items[2].title, "Naruto");
 }
+
+#[tokio::test]
+async fn files_gone_lists_titles_whose_files_left_the_disk() {
+    let s = MockServer::start().await;
+    let one = |key: &str, parts: serde_json::Value| {
+        json!({"MediaContainer": {"Metadata": [{
+            "ratingKey": key, "type": "episode", "title": "Ep",
+            "Media": [{"id": 1, "Part": parts}]
+        }]}})
+    };
+    // Deleted from the disk: Plex still lists it, its file doesn't exist.
+    Mock::given(path("/library/metadata/1"))
+        .and(query_param("checkFiles", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(one(
+            "1",
+            json!([{"id": 1, "key": "/p/1", "exists": false, "accessible": false}]),
+        )))
+        .mount(&s)
+        .await;
+    // Still there (the attribute as a number, as some versions send it).
+    Mock::given(path("/library/metadata/2"))
+        .and(query_param("checkFiles", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(one(
+            "2",
+            json!([{"id": 2, "key": "/p/2", "exists": 1, "accessible": 1}]),
+        )))
+        .mount(&s)
+        .await;
+    // Two versions, one still on the disk: not gone.
+    Mock::given(path("/library/metadata/3"))
+        .and(query_param("checkFiles", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(one(
+            "3",
+            json!([{"id": 3, "key": "/p/3", "exists": "0"}, {"id": 4, "key": "/p/4", "exists": "1"}]),
+        )))
+        .mount(&s)
+        .await;
+    // No answer about files (or an error, id 5 isn't mounted): never counted as gone.
+    Mock::given(path("/library/metadata/4"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(one("4", json!([{"id": 5, "key": "/p/5"}]))),
+        )
+        .mount(&s)
+        .await;
+    let c = PlexClient::new(session(&s.uri()), client_info(), http());
+    let ids: Vec<String> = ["1", "2", "3", "4", "5"].map(String::from).into();
+    assert_eq!(c.files_gone(&ids).await.unwrap(), vec!["1".to_owned()]);
+}

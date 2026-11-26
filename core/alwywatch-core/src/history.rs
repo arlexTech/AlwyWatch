@@ -37,6 +37,9 @@ pub struct HistoryPlan {
     pub up_to_date: u32,
     /// Titles the target server doesn't have (labels).
     pub not_found: Vec<String>,
+    /// Titles neither server has any more: deleted from the disk, only the source still lists
+    /// them (Plex until its trash is emptied). Nothing to copy; not part of `not_found`.
+    pub gone: Vec<String>,
 }
 
 /// Where a check or a copy is: a step, and a count when it is known (`total` 0: not yet).
@@ -106,11 +109,16 @@ fn decide(src: &UserData, target: Option<&UserData>) -> Option<WatchState> {
 fn plan_from(
     matched: Vec<(&Item, Option<&Item>)>,
     target_state: &HashMap<String, UserData>,
+    gone: &std::collections::HashSet<String>,
 ) -> HistoryPlan {
     let mut plan = HistoryPlan::default();
     for (src, target) in matched {
         let Some(t) = target else {
-            plan.not_found.push(label(src));
+            if gone.contains(&src.id) {
+                plan.gone.push(label(src));
+            } else {
+                plan.not_found.push(label(src));
+            }
             continue;
         };
         match decide(&src.user, target_state.get(&t.id)) {
@@ -126,6 +134,8 @@ fn plan_from(
     }
     plan.not_found.sort();
     plan.not_found.dedup();
+    plan.gone.sort();
+    plan.gone.dedup();
     plan
 }
 
@@ -169,9 +179,36 @@ impl Core {
         let history = self.server(from)?.watch_history().await?;
         let target_state = self.history_state(to).await?;
         let matched = self.match_on(from, to, &history).await?;
+        // What the target lacks may be gone from the source's disk too (deleted titles the
+        // source still lists): set apart, so the "not on that server" list only holds titles
+        // that could still be copied once the target gets them.
+        let missing: Vec<String> = matched
+            .iter()
+            .filter(|(_, t)| t.is_none())
+            .map(|(s, _)| s.id.clone())
+            .collect();
+        let gone = if missing.is_empty() {
+            Default::default()
+        } else {
+            self.progress(
+                i18n::tr!(
+                    "Checking the titles {server} doesn't have",
+                    server = self.server_name(to)
+                ),
+                0,
+                0,
+            );
+            self.server(from)?
+                .files_gone(&missing)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .collect()
+        };
         Ok(plan_from(
             matched.iter().map(|(s, t)| (s, t.as_ref())).collect(),
             &target_state,
+            &gone,
         ))
     }
 
@@ -426,17 +463,26 @@ mod tests {
         ep.series_title = Some("Silo".into());
         (ep.season_number, ep.episode_number) = (Some(1), Some(3));
         let gone = item("p3", ItemKind::Movie, "Gone", played());
+        let deleted = item("p4", ItemKind::Movie, "Deleted", played());
         let ta = item("j1", ItemKind::Movie, "Arrival", UserData::default());
         let te = item("j2", ItemKind::Episode, "Pilot", UserData::default());
         let state = HashMap::from([("j1".to_owned(), played())]);
         let plan = plan_from(
-            vec![(&a, Some(&ta)), (&ep, Some(&te)), (&gone, None)],
+            vec![
+                (&a, Some(&ta)),
+                (&ep, Some(&te)),
+                (&gone, None),
+                (&deleted, None),
+            ],
             &state,
+            &std::collections::HashSet::from(["p4".to_owned()]),
         );
         assert_eq!(plan.up_to_date, 1);
         assert_eq!(plan.changes.len(), 1);
         assert_eq!(plan.changes[0].label, "Silo S1 · E3");
         assert_eq!(plan.changes[0].position_ms, 1_200_000);
         assert_eq!(plan.not_found, vec!["Gone (2016)".to_owned()]);
+        // Deleted from the source's disk too: set apart, not "not found".
+        assert_eq!(plan.gone, vec!["Deleted (2016)".to_owned()]);
     }
 }

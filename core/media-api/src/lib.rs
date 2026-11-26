@@ -152,6 +152,13 @@ pub trait MediaServer: Send + Sync {
     /// Every movie and episode the user watched or started, with user data and external ids
     /// (episodes with their show's id and season/episode numbers). For moving history.
     fn watch_history(&self) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
+    /// Of `item_ids`, those whose files are gone from the disk although the server still lists
+    /// them (Plex keeps deleted titles as "unavailable" until its trash is emptied; Jellyfin
+    /// drops them at the next scan, so it has none).
+    fn files_gone(
+        &self,
+        item_ids: &[String],
+    ) -> impl Future<Output = Result<Vec<String>>> + MaybeSend;
     /// Sets watched, resume position (and the last played date where the server allows it).
     fn set_watch_state(
         &self,
@@ -293,6 +300,9 @@ impl MediaServer for AnyServer {
     }
     async fn watch_history(&self) -> Result<Vec<Item>> {
         dispatch!(self, c => c.watch_history().await)
+    }
+    async fn files_gone(&self, item_ids: &[String]) -> Result<Vec<String>> {
+        dispatch!(self, c => c.files_gone(item_ids).await)
     }
     async fn set_watch_state(&self, item_id: &str, state: &WatchState) -> Result<()> {
         dispatch!(self, c => c.set_watch_state(item_id, state).await)

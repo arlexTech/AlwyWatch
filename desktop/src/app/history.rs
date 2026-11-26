@@ -81,6 +81,14 @@ fn plan_text(p: &HistoryPlan) -> (String, String, String) {
                 p.not_found.len()
             )
         }),
+        // Deleted from the disk: the source still lists them, nothing to copy.
+        (!p.gone.is_empty()).then(|| {
+            trn!(
+                "{n} no longer on either server",
+                "{n} no longer on either server",
+                p.gone.len()
+            )
+        }),
     ]
     .into_iter()
     .flatten()
@@ -391,12 +399,13 @@ mod tests {
             changes: vec![change(true), change(true), change(false)],
             up_to_date: 4,
             not_found: vec!["Silo S1 · E3".into()],
+            gone: vec!["Dahmer S2 · E1".into(), "Dahmer S2 · E2".into()],
         };
         assert_eq!(
             plan_text(&p),
             (
                 "2 to mark as watched · 1 resume point".into(),
-                "4 already up to date · 1 not on that server".into(),
+                "4 already up to date · 1 not on that server · 2 no longer on either server".into(),
                 "Copy 3 titles".into()
             )
         );

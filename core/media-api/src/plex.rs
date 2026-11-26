@@ -550,6 +550,8 @@ struct MediaDto {
 #[serde(default, rename_all = "camelCase")]
 struct PartDto {
     id: serde_json::Value,
+    /// Only with `checkFiles=1`: false (or 0) when the file is gone from the disk.
+    exists: Option<serde_json::Value>,
     key: String,
     file: Option<String>,
     size: Option<u64>,
@@ -1473,6 +1475,24 @@ impl MediaServer for PlexClient {
         Ok(out)
     }
 
+    async fn files_gone(&self, item_ids: &[String]) -> Result<Vec<String>> {
+        let mut gone = Vec::new();
+        for id in item_ids {
+            // checkFiles: each file part says whether it still exists on the disk.
+            let mc = self
+                .get(
+                    &format!("/library/metadata/{}", net::percent_encode(id)),
+                    &[("checkFiles", "1".into())],
+                )
+                .await;
+            let Ok(mc) = mc else { continue };
+            if mc.metadata.first().is_some_and(all_files_missing) {
+                gone.push(id.clone());
+            }
+        }
+        Ok(gone)
+    }
+
     async fn set_watch_state(&self, item_id: &str, state: &WatchState) -> Result<()> {
         if state.played {
             return self.set_played(item_id, true).await;
@@ -1620,6 +1640,19 @@ fn empty_profile() -> DeviceProfile {
         max_height: None,
         hdr: vec![],
     }
+}
+
+/// Every file of the title is gone from the disk (as `checkFiles=1` reports it); a title
+/// without that information is not counted as gone.
+fn all_files_missing(m: &MetadataDto) -> bool {
+    let missing = |v: &Option<serde_json::Value>| match v {
+        Some(serde_json::Value::Bool(b)) => !b,
+        Some(serde_json::Value::Number(n)) => n.as_u64() == Some(0),
+        Some(serde_json::Value::String(s)) => s == "0" || s == "false",
+        _ => false,
+    };
+    let mut parts = m.media.iter().flat_map(|x| &x.part).peekable();
+    parts.peek().is_some() && parts.all(|p| missing(&p.exists))
 }
 
 #[cfg(test)]

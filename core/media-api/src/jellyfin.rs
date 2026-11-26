@@ -1306,6 +1306,11 @@ impl MediaServer for JellyfinClient {
         Ok(out)
     }
 
+    async fn files_gone(&self, _item_ids: &[String]) -> Result<Vec<String>> {
+        // A deleted file leaves the library at the next scan: nothing listed is gone.
+        Ok(Vec::new())
+    }
+
     async fn set_watch_state(&self, item_id: &str, state: &WatchState) -> Result<()> {
         let mut body = serde_json::json!({
             "Played": state.played,

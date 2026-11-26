@@ -547,6 +547,7 @@ msgid "{time} left"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: ios/AlwyWatch/AlwyWatchApp.swift
 msgid "Remove from Continue watching?"
 msgstr ""
@@ -595,8 +596,8 @@ msgid "Mark unwatched"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: desktop/src/app.rs
-#: web/src/extra.rs
 msgid "Remove from Continue watching"
 msgstr ""
 
@@ -2226,6 +2227,11 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: web/src/extra.rs
+msgid "Removed from Continue watching."
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: ios/AlwyWatch/DetailView.swift
 msgid "Season {season}"
 msgstr ""
@@ -2277,6 +2283,10 @@ msgstr ""
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: desktop/ui/app.slint
 msgid "In my list"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+msgid "Remove from Continue"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
@@ -2980,6 +2990,11 @@ msgstr ""
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: ios/AlwyWatch/Sync.swift
 msgid "{count} not on that server"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: ios/AlwyWatch/Sync.swift
+msgid "{count} no longer on either server"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
@@ -5431,6 +5446,10 @@ msgid "The server couldn't do this (HTTP {status}). Try again in a moment."
 msgstr ""
 
 #: core/alwywatch-core/src/error.rs
+msgid "The server's security certificate doesn't match this device's date and time. Check the date and time in this device's settings."
+msgstr ""
+
+#: core/alwywatch-core/src/error.rs
 #: web/src/state.rs
 msgid "Can't reach the server. Check your connection."
 msgstr ""
@@ -5463,6 +5482,10 @@ msgstr ""
 #: core/alwywatch-core/src/history.rs
 #: core/alwywatch-core/src/sync.rs
 msgid "Reading what you watched on {server}"
+msgstr ""
+
+#: core/alwywatch-core/src/history.rs
+msgid "Checking the titles {server} doesn't have"
 msgstr ""
 
 #: core/alwywatch-core/src/history.rs
@@ -5691,6 +5714,12 @@ msgstr[1] ""
 #: desktop/src/app/history.rs
 msgid "{n} not on that server"
 msgid_plural "{n} not on that server"
+msgstr[0] ""
+msgstr[1] ""
+
+#: desktop/src/app/history.rs
+msgid "{n} no longer on either server"
+msgid_plural "{n} no longer on either server"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -7560,10 +7589,6 @@ msgstr ""
 
 #: web/src/extra.rs
 msgid "☆ Add to my list"
-msgstr ""
-
-#: web/src/extra.rs
-msgid "Removed from Continue watching."
 msgstr ""
 
 #: web/src/extra.rs

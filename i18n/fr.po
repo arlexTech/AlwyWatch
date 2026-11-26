@@ -552,6 +552,7 @@ msgid "{time} left"
 msgstr "{time} restantes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: ios/AlwyWatch/AlwyWatchApp.swift
 msgid "Remove from Continue watching?"
 msgstr "Retirer de Reprendre ?"
@@ -600,8 +601,8 @@ msgid "Mark unwatched"
 msgstr "Marquer comme non vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: desktop/src/app.rs
-#: web/src/extra.rs
 msgid "Remove from Continue watching"
 msgstr "Retirer de Reprendre"
 
@@ -2231,6 +2232,11 @@ msgstr[0] "{n} pour un temps"
 msgstr[1] "{n} pour un temps"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: web/src/extra.rs
+msgid "Removed from Continue watching."
+msgstr "Retiré de Reprendre."
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: ios/AlwyWatch/DetailView.swift
 msgid "Season {season}"
 msgstr "Saison {season}"
@@ -2283,6 +2289,10 @@ msgstr "Vu ou non"
 #: desktop/ui/app.slint
 msgid "In my list"
 msgstr "Dans ma liste"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+msgid "Remove from Continue"
+msgstr "Retirer de Reprendre"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: core/media-api/src/jellyfin.rs
@@ -2986,6 +2996,11 @@ msgstr "{count} déjà à jour"
 #: ios/AlwyWatch/Sync.swift
 msgid "{count} not on that server"
 msgstr "{count} absents de ce serveur"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: ios/AlwyWatch/Sync.swift
+msgid "{count} no longer on either server"
+msgstr "{count} absents des deux serveurs"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/ui/app.slint
@@ -5436,6 +5451,10 @@ msgid "The server couldn't do this (HTTP {status}). Try again in a moment."
 msgstr "Le serveur n'a pas pu le faire (HTTP {status}). Réessayez dans un instant."
 
 #: core/alwywatch-core/src/error.rs
+msgid "The server's security certificate doesn't match this device's date and time. Check the date and time in this device's settings."
+msgstr "Le certificat de sécurité du serveur ne correspond pas à la date et à l’heure de cet appareil. Vérifiez la date et l’heure dans les réglages de l’appareil."
+
+#: core/alwywatch-core/src/error.rs
 #: web/src/state.rs
 msgid "Can't reach the server. Check your connection."
 msgstr "Impossible de joindre le serveur. Vérifiez votre connexion."
@@ -5469,6 +5488,10 @@ msgstr "choisissez deux serveurs différents"
 #: core/alwywatch-core/src/sync.rs
 msgid "Reading what you watched on {server}"
 msgstr "Lecture de ce que vous avez vu sur {server}"
+
+#: core/alwywatch-core/src/history.rs
+msgid "Checking the titles {server} doesn't have"
+msgstr "Vérification des titres absents de {server}"
 
 #: core/alwywatch-core/src/history.rs
 msgid "Listing the movies and shows on {server}"
@@ -5698,6 +5721,12 @@ msgid "{n} not on that server"
 msgid_plural "{n} not on that server"
 msgstr[0] "{n} absent de ce serveur"
 msgstr[1] "{n} absents de ce serveur"
+
+#: desktop/src/app/history.rs
+msgid "{n} no longer on either server"
+msgid_plural "{n} no longer on either server"
+msgstr[0] "{n} absent des deux serveurs"
+msgstr[1] "{n} absents des deux serveurs"
 
 #: desktop/src/app/history.rs
 msgid "Couldn't check the history: {error}"
@@ -7566,10 +7595,6 @@ msgstr "★ Dans ma liste · retirer"
 #: web/src/extra.rs
 msgid "☆ Add to my list"
 msgstr "☆ Ajouter à ma liste"
-
-#: web/src/extra.rs
-msgid "Removed from Continue watching."
-msgstr "Retiré de Reprendre."
 
 #: web/src/extra.rs
 msgid "Can't reach your servers right now."
