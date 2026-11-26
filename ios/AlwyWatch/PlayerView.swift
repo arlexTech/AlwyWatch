@@ -239,6 +239,10 @@ final class Playback: ObservableObject {
     private var stopped = false
     /// Where the current file was asked to start (a fallback before anything played).
     private var startMs: UInt64 = 0
+    /// The item the player has loaded: `item` changes as soon as the next one is asked for, while
+    /// the player still holds the last one (at its end: reported with the next one's id, the
+    /// server would count the next episode as watched).
+    private var playerItemId: String?
     private var segments: [Segment] = []
     private var next: Item?
     private var autoSkipped = Set<UInt64>()
@@ -282,6 +286,7 @@ final class Playback: ObservableObject {
             resetPrompts()
             watch(playerItem, startMs: startMs)
             player.replaceCurrentItem(with: playerItem)
+            playerItemId = item.id
             seekHoldUntil = Date().addingTimeInterval(2)
             if startMs > 0 {
                 _ = await player.seek(to: CMTime(value: CMTimeValue(startMs), timescale: 1000), toleranceBefore: .zero, toleranceAfter: .positiveInfinity)
@@ -312,6 +317,7 @@ final class Playback: ObservableObject {
             resetPrompts()
             watch(playerItem, startMs: startMs)
             player.replaceCurrentItem(with: playerItem)
+            playerItemId = item.id
             seekHoldUntil = Date().addingTimeInterval(2)
             if startMs > 0 {
                 _ = await player.seek(to: CMTime(value: CMTimeValue(startMs), timescale: 1000), toleranceBefore: .zero, toleranceAfter: .positiveInfinity)
@@ -1042,7 +1048,7 @@ final class Playback: ObservableObject {
     }
 
     private func report(_ event: PlaybackEvent) {
-        guard let core, let item, !stopped else { return }
+        guard let core, let item, !stopped, playerItemId == item.id else { return }
         let duration = player.currentItem?.duration.seconds
         let report = ProgressReport(
             itemId: item.id,

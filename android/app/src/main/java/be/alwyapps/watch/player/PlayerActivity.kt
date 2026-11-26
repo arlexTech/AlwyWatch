@@ -71,6 +71,13 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var core: AlwyWatch
     private lateinit var account: String
     private lateinit var itemId: String
+
+    /**
+     * The item the player has loaded: [itemId] changes as soon as the next one is asked for,
+     * while the player still holds the last one (at its end: reported with the next one's id,
+     * the server would count the next episode as watched).
+     */
+    private var playerItemId: String? = null
     private var info: PlaybackInfo? = null
     private var source: MediaSource? = null
     private var progressJob: Job? = null
@@ -500,6 +507,7 @@ class PlayerActivity : ComponentActivity() {
         rewind: Boolean = true,
     ) {
         player?.release()
+        playerItemId = itemId
         this.transcoding = transcoding
         // The quality menu: what plays now, and the sizes the server can convert to.
         ui.quality =
@@ -933,6 +941,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun report(event: PlaybackEvent): Job? {
         val p = player ?: return null
+        if (playerItemId != itemId) return null
         val src = source ?: return null
         val report =
             ProgressReport(
