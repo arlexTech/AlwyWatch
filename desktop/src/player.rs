@@ -29,6 +29,10 @@ pub struct PlayRequest {
     pub has_previous: bool,
     pub auto_skip_intro: bool,
     pub auto_next: bool,
+    /// How long the next-episode countdown lasts (Settings → Playback).
+    pub countdown: Duration,
+    /// Subtitle look (Settings → Audio & subtitles), as on Android.
+    pub sub_look: SubLook,
     /// Watching together: the room's play/pause/seek come in, ours go out.
     pub together: Option<TogetherLink>,
     /// Short messages shown on the video whatever plays (an invitation arrived).
@@ -36,6 +40,44 @@ pub struct PlayRequest {
     /// Draw inside the app's window and send what the controls show here; None: mpv's own
     /// window (also the fallback when the window can't host the video).
     pub view: Option<ViewLink>,
+}
+
+/// How text subtitles look: the same choices and keys as on Android.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SubLook {
+    /// "small", "normal", "large", "huge".
+    pub size: String,
+    /// "white" or "yellow".
+    pub color: String,
+    /// A dark box behind them (else an outline).
+    pub background: bool,
+    /// Higher on the screen.
+    pub raised: bool,
+}
+
+impl SubLook {
+    /// mpv's options for it (its defaults when nothing is chosen).
+    fn options(&self) -> Vec<(&'static str, &'static str)> {
+        let mut o = vec![(
+            "sub-font-size",
+            match self.size.as_str() {
+                "small" => "44",
+                "large" => "68",
+                "huge" => "84",
+                _ => "55",
+            },
+        )];
+        if self.color == "yellow" {
+            o.push(("sub-color", "#FFE600"));
+        }
+        if self.background {
+            o.push(("sub-back-color", "#B3000000"));
+        }
+        if self.raised {
+            o.push(("sub-margin-y", "90"));
+        }
+        o
+    }
 }
 
 /// The in-window player's link to the app.
@@ -145,9 +187,6 @@ pub enum Go {
     Previous,
 }
 
-/// Seconds of the credits countdown before the next episode starts by itself.
-const COUNTDOWN: Duration = Duration::from_secs(10);
-
 pub struct Progress {
     pub event: PlaybackEvent,
     pub position_ms: u64,
@@ -238,6 +277,15 @@ fn open(req: &PlayRequest, embed: bool) -> Result<(Arc<Mpv>, bool), String> {
     }
     if req.spdif {
         m.set_option("audio-spdif", "ac3,eac3,dts,dts-hd,truehd")?;
+    }
+    // Never fatal: an older mpv may not know one of them.
+    for (k, v) in req.sub_look.options() {
+        let _ = m.set_option(k, v);
+    }
+    if req.sub_look.background && m.set_option("sub-border-style", "background-box").is_err() {
+        // mpv before 0.37: the box takes the outline colour.
+        let _ = m.set_option("sub-border-style", "opaque-box");
+        let _ = m.set_option("sub-outline-color", "#B3000000");
     }
     if req.start_ms > 0 {
         m.set_option("start", &format!("{:.3}", req.start_ms as f64 / 1000.0))?;
@@ -763,7 +811,7 @@ fn run(req: PlayRequest, report: &dyn Fn(Progress)) -> Result<(), String> {
         }
         let text = if prompt.credits && req.auto_next && !cancelled && !paused {
             let since = *countdown.get_or_insert_with(Instant::now);
-            let left = COUNTDOWN.saturating_sub(since.elapsed());
+            let left = req.countdown.saturating_sub(since.elapsed());
             if left.is_zero() {
                 report(Progress {
                     go: Some(Go::Next),

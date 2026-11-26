@@ -649,6 +649,9 @@ component TrackRow inherits Rectangle {
 
 component PlayerOverlay inherits Rectangle {
     in property <string> title;
+    // Seconds ←/→ (and a double tap on a side) jump: Settings → Playback.
+    in property <int> step-back: 10;
+    in property <int> step-forward: 30;
     in property <int> pos;
     in property <int> dur;
     in property <int> cache;
@@ -678,7 +681,7 @@ component PlayerOverlay inherits Rectangle {
     property <float> drag: 0;
     property <bool> seeking;
     property <length> side: 56px;
-    // The "+30" / "−10" bubble: side, seconds added up while presses follow each other,
+    // The "+30" / "−10" bubble (the steps above): side, seconds added up while presses follow each other,
     // when the last press was (animation-tick), the arrow's turn, whether it shows.
     property <bool> bubble-forward;
     property <int> bubble-secs;
@@ -693,11 +696,11 @@ component PlayerOverlay inherits Rectangle {
     property <int> tap-idle;
 
     function seek-step(forward: bool) {
-        root.cmd("rel", forward ? "30" : "-10");
+        root.cmd("rel", forward ? root.step-forward : -root.step-back);
         if (root.bubble-live && root.bubble-forward == forward) {
-            root.bubble-secs += forward ? 30 : 10;
+            root.bubble-secs += forward ? root.step-forward : root.step-back;
         } else {
-            root.bubble-secs = forward ? 30 : 10;
+            root.bubble-secs = forward ? root.step-forward : root.step-back;
         }
         root.bubble-forward = forward;
         root.bubble-at = animation-tick();
@@ -2083,6 +2086,15 @@ export component AppWindow inherits Window {
         : root.settings-section == "admin" && !root.keep-admin ? "account"
         : root.settings-section;
     in property <string> audio-lang-label;
+    in property <string> countdown-label;
+    in property <string> seek-back-label;
+    in property <string> seek-forward-label;
+    in property <string> resume-rewind-label;
+    in property <string> still-watching-label;
+    in property <string> sub-size-label;
+    in property <string> sub-color-label;
+    in property <bool> sub-box;
+    in property <bool> sub-raised;
     in property <string> sub-mode-label;
     in property <string> sub-lang-label;
     callback cycle-setting(string); // next choice of a setting key
@@ -2116,6 +2128,8 @@ export component AppWindow inherits Window {
     // The in-window player (see PlayerOverlay).
     in-out property <bool> player-on;
     in property <string> player-title;
+    in property <int> player-step-back: 10;
+    in property <int> player-step-forward: 30;
     in property <int> player-pos;
     in property <int> player-dur;
     in property <int> player-cache;
@@ -3861,10 +3875,18 @@ export component AppWindow inherits Window {
                                 }
                                 SettingToggle {
                                     title: @tr("Play the next episode automatically");
-                                    subtitle: @tr("A 10 second countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode.");
+                                    subtitle: @tr("A countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode.");
                                     on: root.auto-next;
                                     clicked => { root.toggle-setting("player.auto_next"); }
                                 }
+                                SettingChoice { title: @tr("Next episode countdown"); subtitle: ""; value: root.countdown-label; clicked => { root.cycle-setting("player.countdown"); } }
+                            }
+                            Group {
+                                title: @tr("SKIPPING AND RESUMING");
+                                SettingChoice { title: @tr("Skip back"); subtitle: @tr("Left arrow, or a double click on the left of the picture."); value: root.seek-back-label; clicked => { root.cycle-setting("player.seek_back"); } }
+                                SettingChoice { title: @tr("Skip forward"); subtitle: @tr("Right arrow, or a double click on the right of the picture."); value: root.seek-forward-label; clicked => { root.cycle-setting("player.seek_forward"); } }
+                                SettingChoice { title: @tr("Rewind when resuming"); subtitle: ""; value: root.resume-rewind-label; clicked => { root.cycle-setting("player.resume_rewind"); } }
+                                SettingChoice { title: @tr("Are you still watching?"); subtitle: @tr("Pauses when no key or player button has been pressed for that long."); value: root.still-watching-label; clicked => { root.cycle-setting("player.still_watching"); } }
                             }
                             if root.keep-active : Group {
                                 title: @tr("WATCH TOGETHER");
@@ -3903,6 +3925,24 @@ export component AppWindow inherits Window {
                                 SettingChoice { title: @tr("Subtitles"); subtitle: @tr("Automatic: when the audio is not in your subtitle language."); value: root.sub-mode-label; clicked => { root.cycle-setting("player.sub_mode"); } }
                                 SettingChoice { title: @tr("Subtitle language"); subtitle: ""; value: root.sub-lang-label; clicked => { root.cycle-setting("player.sub_lang"); } }
                                 Text { text: @tr("A movie or show remembers the tracks picked for it while watching, and its next episodes follow."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
+                            }
+                            Group {
+                                title: @tr("SUBTITLE LOOK");
+                                SettingChoice { title: @tr("Size"); subtitle: ""; value: root.sub-size-label; clicked => { root.cycle-setting("player.sub_size"); } }
+                                SettingChoice { title: @tr("Colour"); subtitle: ""; value: root.sub-color-label; clicked => { root.cycle-setting("player.sub_color"); } }
+                                SettingToggle {
+                                    title: @tr("Background box");
+                                    subtitle: @tr("Otherwise a dark outline keeps them readable.");
+                                    on: root.sub-box;
+                                    clicked => { root.toggle-setting("player.sub_bg"); }
+                                }
+                                SettingToggle {
+                                    title: @tr("Raise subtitles");
+                                    subtitle: @tr("Higher on the screen (TVs that crop the edges).");
+                                    on: root.sub-raised;
+                                    clicked => { root.toggle-setting("player.sub_raised"); }
+                                }
+                                Text { text: @tr("For text subtitles; picture subtitles (DVD, Blu-ray) keep their own look."); color: Palette.muted; font-size: 12px; wrap: word-wrap; }
                             }
                             }
                             if root.shown-section == "device" : VerticalLayout {
@@ -4622,6 +4662,8 @@ export component AppWindow inherits Window {
         width: root.width;
         height: root.height;
         title: root.player-title;
+        step-back: root.player-step-back;
+        step-forward: root.player-step-forward;
         pos: root.player-pos;
         dur: root.player-dur;
         cache: root.player-cache;

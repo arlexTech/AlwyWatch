@@ -147,8 +147,57 @@ impl App {
         }
     }
 
+    /// "Are you still watching?": a new player counts as a press; then every half minute,
+    /// playing alone and nothing pressed for the chosen hours, it pauses and asks.
+    pub(super) fn watch_still_watching(self: &Rc<Self>) {
+        let mut st = self.state.borrow_mut();
+        st.player_input.get_or_insert_with(std::time::Instant::now);
+        if st.still_timer.is_some() {
+            return;
+        }
+        let timer = slint::Timer::default();
+        let this = Rc::downgrade(self);
+        timer.start(
+            slint::TimerMode::Repeated,
+            std::time::Duration::from_secs(30),
+            move || {
+                let Some(t) = this.upgrade() else { return };
+                let hours = t
+                    .core
+                    .get_setting("player.still_watching".into())
+                    .ok()
+                    .flatten()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(2);
+                let ui = t.ui();
+                if hours == 0 || !ui.get_player_on() || ui.get_player_paused() || t.in_room() {
+                    return;
+                }
+                let (mpv, notes, idle) = {
+                    let st = t.state.borrow();
+                    (
+                        st.player_mpv.clone(),
+                        st.player_notes.clone(),
+                        st.player_input.map(|i| i.elapsed()),
+                    )
+                };
+                if idle.is_some_and(|i| i.as_secs() >= hours * 3600)
+                    && let Some(m) = mpv
+                {
+                    let _ = m.command(&["set", "pause", "yes"]);
+                    if let Some(n) = notes {
+                        let _ = n.send(tr!("Are you still watching? Press Space to go on."));
+                    }
+                    t.state.borrow_mut().player_input = Some(std::time::Instant::now());
+                }
+            },
+        );
+        st.still_timer = Some(timer);
+    }
+
     /// A control was used (PlayerOverlay's `cmd`).
     pub(super) fn player_cmd(&self, cmd: &str, arg: &str) {
+        self.state.borrow_mut().player_input = Some(std::time::Instant::now());
         if cmd == "fullscreen" {
             // One switch for the app and the player: kept when the player closes.
             self.app_fullscreen_toggle();
@@ -231,6 +280,8 @@ impl App {
             has_previous: false,
             auto_skip_intro: false,
             auto_next: true,
+            countdown: std::time::Duration::from_secs(10),
+            sub_look: Default::default(),
             together: None,
             notes: None,
         };

@@ -157,6 +157,11 @@ struct State {
     player_notes: Option<std::sync::mpsc::Sender<String>>,
     /// The playing mpv, for the in-window controls.
     player_mpv: Option<Arc<crate::mpv::Mpv>>,
+    /// When a player control or key was last used (from one episode to the next): "Are you
+    /// still watching?" pauses after Settings → Playback's hours without one.
+    player_input: Option<std::time::Instant>,
+    /// Checks that every half minute while the app runs (made at the first playback).
+    still_timer: Option<slint::Timer>,
     /// What the player plays (account, item) and its link for watch together (every player
     /// has one, so a room can start from it without reloading).
     player_item: Option<(String, String)>,
@@ -350,6 +355,8 @@ impl App {
                 forever: None,
                 player_notes: None,
                 player_mpv: None,
+                player_input: None,
+                still_timer: None,
                 player_item: None,
                 quality: None,
                 quality_choices: vec![],
@@ -3479,9 +3486,17 @@ impl App {
         let codes: Vec<&str> = std::iter::once("")
             .chain(LANGUAGES.iter().copied())
             .collect();
-        let options: Vec<&str> = match key.as_str() {
-            "player.sub_mode" => vec!["auto", "forced", "always", "off"],
-            "player.audio_lang" | "player.sub_lang" => codes,
+        // The choices (as on Android), and the value when never set.
+        let (options, default): (Vec<&str>, &str) = match key.as_str() {
+            "player.sub_mode" => (vec!["auto", "forced", "always", "off"], ""),
+            "player.audio_lang" | "player.sub_lang" => (codes, ""),
+            "player.countdown" => (vec!["5", "10", "15", "30"], "10"),
+            "player.seek_back" => (vec!["5", "10", "15", "30"], "10"),
+            "player.seek_forward" => (vec!["10", "15", "30", "60"], "30"),
+            "player.resume_rewind" => (vec!["0", "5", "10", "30"], "0"),
+            "player.still_watching" => (vec!["0", "2", "3", "4"], "2"),
+            "player.sub_size" => (vec!["small", "normal", "large", "huge"], "normal"),
+            "player.sub_color" => (vec!["white", "yellow"], "white"),
             _ => return,
         };
         let now = self
@@ -3489,7 +3504,8 @@ impl App {
             .get_setting(key.clone())
             .ok()
             .flatten()
-            .unwrap_or_default();
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| default.to_owned());
         let at = options.iter().position(|o| *o == now).unwrap_or(0);
         let next = options[(at + 1) % options.len()];
         let _ = self.core.set_setting(key, next.to_owned());
@@ -3549,6 +3565,39 @@ impl App {
             None | Some("") => tr!("System language"),
 
             Some(c) => lang(c),
+        }));
+        let secs = |k: &str, default: u32| {
+            get(k)
+                .and_then(|v| v.parse::<u32>().ok())
+                .unwrap_or(default)
+        };
+        let seconds = |n: u32| match n {
+            0 => tr!("Off"),
+            60 => trn!("{n} minute", "{n} minutes", 1),
+            n => trn!("{n} second", "{n} seconds", n),
+        };
+        ui.set_countdown_label(sstr(seconds(secs("player.countdown", 10))));
+        ui.set_seek_back_label(sstr(seconds(secs("player.seek_back", 10))));
+        ui.set_seek_forward_label(sstr(seconds(secs("player.seek_forward", 30))));
+        ui.set_resume_rewind_label(sstr(seconds(secs("player.resume_rewind", 0))));
+        ui.set_sub_size_label(sstr(match get("player.sub_size").as_deref() {
+            Some("small") => tr!("Small"),
+            Some("large") => tr!("Large"),
+            Some("huge") => tr!("Huge"),
+            _ => tr!("Normal"),
+        }));
+        ui.set_sub_color_label(sstr(
+            if get("player.sub_color").as_deref() == Some("yellow") {
+                tr!("Yellow")
+            } else {
+                tr!("White")
+            },
+        ));
+        ui.set_sub_box(get("player.sub_bg").as_deref() == Some("1"));
+        ui.set_sub_raised(get("player.sub_raised").as_deref() == Some("1"));
+        ui.set_still_watching_label(sstr(match secs("player.still_watching", 2) {
+            0 => tr!("Never"),
+            h => trn!("After {n} hour", "After {n} hours", h),
         }));
         let r = self.core.together_rights();
         ui.set_together_title(r.change_title);
@@ -3646,6 +3695,31 @@ impl App {
         };
         let auto_skip_intro = setting("player.auto_skip_intro").as_deref() == Some("1");
         let auto_next = setting("player.auto_next").as_deref() != Some("0");
+        let secs = |k: &str, default: u64| {
+            setting(k)
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(default)
+        };
+        let countdown = std::time::Duration::from_secs(secs("player.countdown", 10).max(1));
+        let sub_look = player::SubLook {
+            size: setting("player.sub_size").unwrap_or_default(),
+            color: setting("player.sub_color").unwrap_or_default(),
+            background: setting("player.sub_bg").as_deref() == Some("1"),
+            raised: setting("player.sub_raised").as_deref() == Some("1"),
+        };
+        let ui = self.ui();
+        ui.set_player_step_back(secs("player.seek_back", 10).clamp(1, 600) as i32);
+        ui.set_player_step_forward(secs("player.seek_forward", 30).clamp(1, 600) as i32);
+        // Resuming alone: a few seconds earlier, to find the thread again (Settings →
+        // Playback). Never in a room (everyone is at the same place there).
+        let resumed = item
+            .as_ref()
+            .is_some_and(|i| i.user.position_ms > 0 && i.user.position_ms == start_ms);
+        let start_ms = if resumed && together == TogetherPlay::Alone {
+            start_ms.saturating_sub(secs("player.resume_rewind", 0) * 1000)
+        } else {
+            start_ms
+        };
         let local = self.core.downloaded_file(account.clone(), id.clone());
         // A quality picked in the menu (not in a room: everyone plays the same file there).
         let quality = self
@@ -3808,6 +3882,8 @@ impl App {
                 has_previous: previous.is_some(),
                 auto_skip_intro,
                 auto_next,
+                countdown,
+                sub_look,
                 together: None,
                 notes: None,
             };
@@ -3817,6 +3893,7 @@ impl App {
             req.notes = Some(notes_rx);
             if let Some(t) = this.upgrade() {
                 t.state.borrow_mut().player_notes = Some(notes_tx);
+                t.watch_still_watching();
             }
             if let Some(t) = this.upgrade() {
                 req.together = Some(t.player_link(together != TogetherPlay::Alone));
@@ -3891,6 +3968,11 @@ impl App {
                                 None if finished => next.map(|n| (n, true)),
                                 None => None,
                             };
+                            // Playback over: the next one starts as a press ("Are you still
+                            // watching?" counts across the episodes that follow each other).
+                            if then.is_none() {
+                                t.state.borrow_mut().player_input = None;
+                            }
                             match then {
                                 Some((n, from_start)) => t.play_for(acct, n, from_start),
                                 None if in_room => t.room_player_closed(None),
