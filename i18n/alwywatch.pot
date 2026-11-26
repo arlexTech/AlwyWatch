@@ -343,6 +343,7 @@ msgid "Leave"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
 msgid "Picture in picture"
 msgstr ""
 
@@ -363,19 +364,25 @@ msgid "Next episode in {seconds} s"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
 msgid "ends at {time}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: desktop/src/app/together.rs
+#: web/src/player.rs
 msgid "Only you so far"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
 msgid "{count} watching"
-msgstr ""
+msgid_plural "{count} watching"
+msgstr[0] ""
+msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
 #: desktop/ui/app.slint
 msgid "Audio, subtitles & quality"
 msgstr ""
@@ -7822,12 +7829,6 @@ msgid "No passkey was used."
 msgstr ""
 
 #: web/src/player.rs
-msgid "{n} watching · {names}"
-msgid_plural "{n} watching · {names}"
-msgstr[0] ""
-msgstr[1] ""
-
-#: web/src/player.rs
 msgid "The server has no file to play for this title."
 msgstr ""
 
@@ -7840,15 +7841,8 @@ msgid "S{season} E{episode} · {title}"
 msgstr ""
 
 #: web/src/player.rs
-msgid "Playing now"
-msgstr ""
-
-#: web/src/player.rs
-msgid "Converted by the server"
-msgstr ""
-
-#: web/src/player.rs
-msgid "Subtitles off"
+#: desktop/ui/app.slint
+msgid "Leave full screen"
 msgstr ""
 
 #: web/src/player.rs
@@ -7858,6 +7852,26 @@ msgstr ""
 
 #: web/src/player.rs
 msgid "Full screen (F)"
+msgstr ""
+
+#: web/src/player.rs
+msgid "Position"
+msgstr ""
+
+#: web/src/player.rs
+msgid "Sound on"
+msgstr ""
+
+#: web/src/player.rs
+msgid "Mute"
+msgstr ""
+
+#: web/src/player.rs
+msgid "Volume"
+msgstr ""
+
+#: web/src/player.rs
+msgid "Playing now"
 msgstr ""
 
 #: web/src/player.rs
@@ -8965,10 +8979,6 @@ msgstr ""
 
 #: desktop/ui/app.slint
 msgid "SERVER STATUS"
-msgstr ""
-
-#: desktop/ui/app.slint
-msgid "Leave full screen"
 msgstr ""
 
 #: desktop/ui/app.slint

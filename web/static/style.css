@@ -173,8 +173,6 @@ button:disabled { opacity: .5; cursor: default; }
 @keyframes seek-fwd { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 @keyframes seek-back { from { transform: scaleX(-1) rotate(0); } to { transform: scaleX(-1) rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .seek-bubble svg { animation: none; } }
-.player-top { position: absolute; top: 0; left: 0; right: 0; display: flex; gap: 16px; align-items: center;
-  padding: 18px 24px 40px; background: linear-gradient(#000c, transparent); transition: opacity .3s; }
 .player .icon { width: 44px; height: 44px; justify-content: center; padding: 0; font-size: 1.3rem; }
 .ptitle { font-weight: 600; font-size: 1.1rem; }
 .pill { background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: .8rem; color: var(--muted); }
@@ -266,7 +264,6 @@ h1, h2, .leaving-info strong, .triage-info h2 { overflow-wrap: anywhere; }
   .leaving-row img { width: 56px; }
   .triage-card { width: 100%; max-width: 260px; margin: 0 auto; }
   .triage-info { min-width: 0; }
-  .player-top { padding: 10px 12px 30px; gap: 8px; flex-wrap: wrap; }
   .pill.together { max-width: 60vw; }
   .skip, .skip-row { right: 12px; bottom: 70px; }
   .toast { left: 12px; right: 12px; bottom: 120px; }
@@ -442,9 +439,6 @@ code.wrap { overflow-wrap: anywhere; font-size: .85rem; background: var(--surfac
   .card { width: 128px; }
   .leaving-head .see-all { display: none; }
 }
-/* Player: the quality menu next to "Playing now". */
-.player-top select.quality { width: auto; max-width: 15em; padding: 6px 10px; font-size: 14px; background: rgba(0,0,0,.5); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; }
-@media (max-width: 720px) { .player-top .pill[title] { display: none; } }
 
 /* Admin dashboard: live streams first (each track: direct play, or what is converted), then
    graphs and the last days. */
@@ -518,38 +512,94 @@ code.wrap { overflow-wrap: anywhere; font-size: .85rem; background: var(--surfac
 .leaving-row > a { flex: none; line-height: 0; }
 .leaving-info a.leaving-title:hover strong, .leaving-info a.leaving-title:focus-visible strong { text-decoration: underline; }
 
-/* The player's bar: back and the title on the left, its controls on the right, in dark glass
-   over a soft shade; it fades after a few still seconds while playing. */
-.player-top { padding: 20px 28px 56px; gap: 10px; background: linear-gradient(#000000d9, #00000080 55%, transparent); }
-.player.idle .player-top { opacity: 0; pointer-events: none; }
+/* The player's controls, as in the apps: a shade over the picture, the title and close at the
+   top, play/pause in the middle, the seek bar, times and pills at the bottom; they fade after a
+   few still seconds while playing. */
+.pctl { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between;
+  background: linear-gradient(#000000b3, #00000026 30%, #00000026 60%, #000000cc); transition: opacity .3s; }
+.player.idle .pctl { opacity: 0; pointer-events: none; }
 .player.idle { cursor: none; }
-.pspacer { flex: 1; }
-.ptitles { min-width: 0; margin-left: 4px; }
+.pctl-top { display: flex; gap: 10px; align-items: center; padding: 20px 28px; }
+.ptitles { flex: 1; min-width: 0; margin-left: 4px; }
 .ptitle { font-size: 1.3rem; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .psub { color: #ffffffb3; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pbtn { width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; flex: none;
-  background: #ffffff1f; backdrop-filter: blur(10px); color: #fff; }
+  background: #ffffff1f; backdrop-filter: blur(10px); color: #fff; border: 0; }
 .pbtn:hover { background: #ffffff38; }
 .pbtn .icon { width: 24px; height: 24px; }
-.player-top .pill, .player-top select.chip, .player-top button.small { background-color: #ffffff1f; backdrop-filter: blur(10px);
-  color: #fff; border: 0; border-radius: 999px; font-size: .9rem; padding: 8px 14px; height: 38px; }
-.player-top select.chip { padding-right: 30px; max-width: 14em; text-overflow: ellipsis; }
-.player-top select.chip:hover, .player-top button.small:hover { background-color: #ffffff38; }
-.player-top .pill { color: #ffffffcc; display: inline-flex; align-items: center; }
-.player-top select.quality { border: 0; }
-/* One line each: a long label ("Converted by the server (…)") is cut, its whole text in the
-   tooltip, and the title keeps room. */
-.player-top .pill, .player-top button.small { white-space: nowrap; flex-shrink: 3; min-width: 0; }
-.player-top .pill { display: block; line-height: 22px; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
-.ptitles { flex: 0 1 auto; min-width: 7em; }
+.pbtn.small .icon { width: 22px; height: 22px; }
+.pbtn.small { width: 36px; height: 36px; background: transparent; }
+.pbtn.small:hover { background: #ffffff24; }
+.pbtn.off { opacity: .55; }
+.pctl-center { display: flex; align-items: center; justify-content: center; gap: 40px; }
+.pround, .pround-slot { width: 56px; height: 56px; flex: none; }
+.pround { border-radius: 50%; display: grid; place-items: center; padding: 0; border: 0;
+  background: #ffffff29; backdrop-filter: blur(10px); color: #fff; position: relative; }
+.pround:hover { background: #ffffff40; }
+.pround .icon { width: 30px; height: 30px; }
+.pround.big { width: 80px; height: 80px; background: #fff; color: #000; }
+.pround.big:hover { background: #fff; transform: scale(1.04); }
+.pround.big .icon { width: 44px; height: 44px; }
+.pround.loading::after { content: ""; position: absolute; inset: -6px; border-radius: 50%;
+  border: 3px solid transparent; border-top-color: var(--accent); animation: spin .9s linear infinite; }
+.pctl-bottom { padding: 0 28px 18px; display: flex; flex-direction: column; gap: 6px; }
+.pctl-row { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.ptime { font-variant-numeric: tabular-nums; font-size: .95rem; white-space: pre; color: #fff; }
+.pends { color: #ffffffb3; }
+.pspacer { flex: 1; }
+/* The seek bar: thin, accent up to here, lighter up to what is loaded, a white thumb. */
+.pseek { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; margin: 0; background: transparent; cursor: pointer; }
+.pseek::-webkit-slider-runnable-track { height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--accent) var(--p), #ffffff66 var(--p), #ffffff66 var(--b), #ffffff2e var(--b)); }
+.pseek::-moz-range-track { height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--accent) var(--p), #ffffff66 var(--p), #ffffff66 var(--b), #ffffff2e var(--b)); }
+.pseek::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: #fff; border: 0; }
+.pseek::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 0; }
+.pseek:hover::-webkit-slider-thumb { transform: scale(1.25); }
+.pseek:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.pvol { display: inline-flex; align-items: center; }
+.pvol input { width: 84px; height: 20px; margin: 0; accent-color: #fff; cursor: pointer; }
+.ppill { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 999px; border: 0;
+  background: #ffffff29; backdrop-filter: blur(10px); color: #fff; font-size: .92rem; white-space: nowrap; min-width: 0; }
+.ppill:hover { background: #ffffff40; }
+.ppill .icon { width: 20px; height: 20px; }
+.ppill.together { color: var(--accent); }
+.ppill .faces { display: inline-flex; }
+.ppill .faces > * + * { margin-left: -6px; }
+/* Audio, subtitles & quality (and who watches together): a panel on the right. */
+.ppanel-back { position: absolute; inset: 0; background: #0006; }
+.ppanel { position: absolute; top: 0; right: 0; bottom: 0; width: min(360px, 100%); overflow-y: auto;
+  background: #141418f2; backdrop-filter: blur(16px); padding: 12px 12px 24px; display: flex; flex-direction: column; gap: 2px; }
+.ppanel-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 8px 8px; }
+.ppanel h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 8px 4px; }
+.ppanel p { margin: 0 8px 6px; }
+.prow { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left;
+  padding: 12px; border-radius: 10px; background: transparent; border: 0; color: #fff; font-size: .95rem; }
+.prow:hover, .prow:focus-visible { background: #ffffff14; }
+.prow.on { color: var(--accent); }
+.prow .icon { width: 20px; height: 20px; }
+.ppanel .person-row { padding: 6px 8px; }
+.skip, .skip-row { bottom: 120px; }
+.toast { bottom: 120px; }
 @media (max-width: 720px) {
-  .player-top { padding: 10px 10px 36px; gap: 6px; }
+  .pctl-top { padding: 10px 10px; gap: 6px; }
   .ptitle { font-size: 1.05rem; }
   .psub { font-size: .85rem; }
-  .pspacer { flex-basis: 100%; order: 1; height: 0; }
-  .player-top > :nth-child(n+4) { order: 2; }
-  .player-top select.chip { max-width: 9em; height: 34px; padding: 6px 26px 6px 12px; font-size: .85rem; }
+  .pctl-center { gap: 28px; }
+  .pround, .pround-slot { width: 48px; height: 48px; }
+  .pround.big { width: 68px; height: 68px; }
+  .pctl-bottom { padding: 0 12px 10px; }
+  .pctl-row { flex-wrap: wrap; gap: 6px; }
+  .ptime { font-size: .85rem; }
+  .pvol { display: none; }
+  .pctl-row { flex-wrap: nowrap; }
+  .ppill { height: 36px; padding: 0 12px; font-size: .85rem; }
+  .ppill .plabel { display: none; }
+  .skip, .skip-row { bottom: 110px; }
+  .toast { bottom: 110px; }
 }
+@media (hover: none) { .pvol { display: none; } }
+@media (max-width: 420px) { .pends { display: none; } }
 /* The person's avatar in the top bar (one profile on this device). */
 .me-link { display: inline-flex; border-radius: 50%; }
 .me-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

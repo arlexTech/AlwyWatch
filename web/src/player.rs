@@ -1448,7 +1448,6 @@ fn PlayerView(
     });
     let (nav4, acc4, id4) = (navigate.clone(), acc.clone(), id.clone());
     let back = move |_| leave(&nav4, &acc4, &id4);
-    let nav5 = navigate.clone();
     let (nav6, acc6, id6) = (navigate.clone(), acc.clone(), id.clone());
 
     // Others' changes (not the one left over from the previous title).
@@ -1508,44 +1507,232 @@ fn PlayerView(
     // The tab closing or the page going away without the app's own Back: Stop all the same.
     let gone = window_event_listener(leptos::ev::pagehide, move |_| stop());
     on_cleanup(move || gone.remove());
-    // The bar over the picture fades after a few still seconds while playing (a move, a tap
-    // or a key brings it back; paused, it stays).
+    // The controls over the picture fade after a few still seconds while playing (a move, a
+    // tap or a key brings them back; paused, or with a panel open, they stay).
     let idle = RwSignal::new(false);
+    let panel = RwSignal::new(false);
+    let room_panel = RwSignal::new(false);
     let wake_seq = StoredValue::new(0u32);
     let wake = move || {
         idle.set(false);
         wake_seq.update_value(|n| *n += 1);
         let mine = wake_seq.get_value();
         spawn_local(async move {
-            state::sleep(3000).await;
+            state::sleep(4000).await;
             if wake_seq.try_get_value() == Some(mine)
                 && video.get_untracked().is_some_and(|v| !v.paused())
+                && !panel.get_untracked()
+                && !room_panel.get_untracked()
             {
                 idle.try_set(true);
             }
         });
     };
+    // What the controls show, from the video's own events.
+    let playing = RwSignal::new(false);
+    let buffering = RwSignal::new(true);
+    let duration = RwSignal::new(0f64);
+    let buffered_end = RwSignal::new(0f64);
+    let muted = RwSignal::new(false);
+    let volume = RwSignal::new(1f64);
+    // The seek bar while it is dragged (seconds): the video goes there on release.
+    let scrub = RwSignal::new(None::<f64>);
+    let is_fullscreen = RwSignal::new(false);
+    let fs_change = window_event_listener(
+        leptos::ev::Custom::<web_sys::Event>::new("fullscreenchange"),
+        move |_| {
+            is_fullscreen.try_set(leptos::prelude::document().fullscreen_element().is_some());
+        },
+    );
+    on_cleanup(move || fs_change.remove());
+    let toggle_play = move || {
+        if let Some(v) = video.get_untracked() {
+            if v.paused() {
+                play(&v);
+            } else {
+                let _ = v.pause();
+            }
+        }
+    };
+    // A click on the picture: play/pause with a mouse (a double click is full screen, so the
+    // single one waits a moment); a tap on a touch screen shows or hides the controls.
+    let last_touch = StoredValue::new(0f64);
+    let click_seq = StoredValue::new(0u32);
+    let on_surface = move |ev: web_sys::MouseEvent| {
+        let on_control = ev
+            .target()
+            .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+            .and_then(|e| {
+                e.closest("button, input, select, a, .ppanel, .dialog")
+                    .ok()
+                    .flatten()
+            })
+            .is_some();
+        if on_control {
+            return;
+        }
+        if js_sys::Date::now() - last_touch.get_value() < 700.0 {
+            if idle.get_untracked() {
+                wake();
+            } else if playing.get_untracked() {
+                idle.set(true);
+            }
+            return;
+        }
+        click_seq.update_value(|n| *n += 1);
+        let mine = click_seq.get_value();
+        set_timeout(
+            move || {
+                if click_seq.try_get_value() == Some(mine) {
+                    toggle_play();
+                    wake();
+                }
+            },
+            std::time::Duration::from_millis(250),
+        );
+    };
+    let on_double = move |_| {
+        click_seq.update_value(|n| *n += 1);
+        fullscreen();
+    };
+    let touch_end = move |ev: web_sys::TouchEvent| {
+        last_touch.set_value(js_sys::Date::now());
+        on_touch_end(ev);
+    };
+    let pip = move |_| {
+        let Some(v) = video.get_untracked() else {
+            return;
+        };
+        let doc = leptos::prelude::document();
+        let open = js_sys::Reflect::get(&doc, &"pictureInPictureElement".into())
+            .ok()
+            .is_some_and(|e| !e.is_null() && !e.is_undefined());
+        let (target, name): (JsValue, &str) = if open {
+            (doc.into(), "exitPictureInPicture")
+        } else {
+            (v.into(), "requestPictureInPicture")
+        };
+        if let Ok(f) = js_sys::Reflect::get(&target, &name.into())
+            && let Ok(f) = f.dyn_into::<js_sys::Function>()
+        {
+            let _ = f.call0(&target);
+        }
+    };
+    let pip_ok = js_sys::Reflect::get(
+        &leptos::prelude::document(),
+        &"pictureInPictureEnabled".into(),
+    )
+    .ok()
+    .and_then(|v| v.as_bool())
+    .unwrap_or(false);
+
+    // The panel's picks (the same as the apps' "Audio, subtitles & quality").
+    let pick_audio = move |i: i64| {
+        audio_pick.set(Some(i));
+        if let Some(Ok(l)) = loaded.get_untracked() {
+            remember_track(&l, crate::tracks::TrackKind::Audio, Some(i));
+        }
+        let Some(v) = video.get_untracked() else {
+            return;
+        };
+        // At the same place, from the server's conversion with this track.
+        convert(v, sub_pick.get_untracked(), true);
+    };
+    let pick_sub = move |pick: i64| {
+        sub_pick.set(pick);
+        let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else {
+            return;
+        };
+        remember_track(
+            &l,
+            crate::tracks::TrackKind::Subtitle,
+            Some(pick).filter(|p| *p >= 0),
+        );
+        // Converted and the server's part changes (burn another one, or stop burning): ask it
+        // again, at the same place.
+        if transcoding.get_untracked() && server_subtitle(&l, pick) != burned.get_value() {
+            return convert(v, pick, true);
+        }
+        // Playing the file itself, and this one only the server can draw.
+        if !transcoding.get_untracked()
+            && pick >= 0
+            && !text_subtitles(&l).iter().any(|(i, _)| *i == pick)
+        {
+            return convert(v, pick, true);
+        }
+        spawn_local(async move { show_subtitle(&l, &v, pick, sub_pick).await });
+    };
+    let start_together = move |_| {
+        let Some(Ok(l)) = loaded.get_untracked() else {
+            return;
+        };
+        // Paused, the room over the video: invite, then start from here.
+        if let Some(v) = video.get_untracked() {
+            let _ = v.pause();
+            dialog_at.set((v.current_time() * 1000.0) as u64);
+        }
+        dialog.set(true);
+        spawn_local(async move {
+            if let Err(e) = together::create_room(l.srv.clone(), l.item.clone()).await {
+                dialog.try_set(false);
+                room.note
+                    .try_set(Some(tr!("Watch together unavailable: {error}", error = e)));
+            } else if !dialog.try_get_untracked().unwrap_or(false) {
+                // Cancelled meanwhile.
+                room.leave("", true);
+            }
+        });
+    };
+    let go_next_btn = go_next.clone();
+    // "ends at 22:41", in this device's time.
+    let ends_at = move || {
+        let left = duration.get() - pos.get() as f64 / 1000.0;
+        (duration.get() > 0.0 && left > 0.0).then(|| {
+            let d = js_sys::Date::new_0();
+            d.set_time(d.get_time() + left * 1000.0);
+            tr!(
+                "ends at {time}",
+                time = format!("{}:{:02}", d.get_hours(), d.get_minutes())
+            )
+        })
+    };
+    let check = |on: bool| on.then(|| view! { <crate::icons::Icon path=crate::icons::CHECK /> });
     view! {
         <div class="player" node_ref=shell class:idle=move || idle.get()
             on:mousemove=move |_| wake() on:touchstart=move |_| wake() on:keydown=move |_| wake()
             on:focusin=move |_| wake()>
-            <video node_ref=video controls autoplay playsinline controlslist="nofullscreen"
-                on:dblclick=move |_| fullscreen() on:touchend=on_touch_end
-                on:loadedmetadata=on_meta on:timeupdate=on_time on:error=on_error
+            <video node_ref=video autoplay playsinline
+                on:click=on_surface on:dblclick=on_double on:touchend=touch_end
+                on:loadedmetadata=move |ev| { if let Some(v) = video.get_untracked() { duration.set(v.duration()) } on_meta(ev) }
+                on:durationchange=move |_| if let Some(v) = video.get_untracked() { duration.set(v.duration()) }
+                on:timeupdate=on_time on:error=on_error
+                on:progress=move |_| if let Some(v) = video.get_untracked() {
+                    let b = v.buffered();
+                    let t = v.current_time();
+                    let end = (0..b.length())
+                        .filter_map(|i| Some((b.start(i).ok()?, b.end(i).ok()?)))
+                        .find(|(s, e)| *s <= t + 0.5 && t <= *e)
+                        .map_or(t, |(_, e)| e);
+                    buffered_end.set(end);
+                }
+                on:waiting=move |_| buffering.set(true)
+                on:canplay=move |_| buffering.set(false)
+                on:volumechange=move |_| if let Some(v) = video.get_untracked() { muted.set(v.muted()); volume.set(v.volume()) }
                 on:playing=move |_| {
+                    buffering.set(false);
                     // Start once; later "playing" (after a pause or buffering) is a resume.
                     if !alive() { return }
                     let first = !start_sent.get_value();
                     start_sent.set_value(true);
                     report(if first { PlaybackEvent::Start } else { PlaybackEvent::Progress });
                 }
-                on:play=move |_| { on_play(); wake() }
+                on:play=move |_| { playing.set(true); on_play(); wake() }
                 on:seeked=move |_| if alive() {
                     local_action();
                     // Closing the tab right after a seek keeps the new position.
                     if start_sent.get_value() && !stopped.get_value() { report(PlaybackEvent::Progress) }
                 }
-                on:pause=move |_| { idle.set(false); if alive() && !stopped.get_value() { report(PlaybackEvent::Pause); local_action() } }
+                on:pause=move |_| { playing.set(false); idle.set(false); if alive() && !stopped.get_value() { report(PlaybackEvent::Pause); local_action() } }
                 on:ended=move |_| {
                     // The next episode only with the setting on and the countdown not cancelled.
                     if auto_next && !cancelled.get_untracked() {
@@ -1563,154 +1750,203 @@ fn PlayerView(
                     <span>{if forward { format!("+{seconds}") } else { format!("−{seconds}") }}</span>
                 </div>
             })}
-            <div class="player-top">
-                <button class="pbtn" on:click=back.clone() aria-label=tr!("Back") title=tr!("Back")><crate::icons::Icon path=crate::icons::ARROW_BACK /></button>
-                {move || match loaded.get() {
-                    Some(Ok(l)) => {
-                        let i = &l.item;
-                        let sub = (i.kind == ItemKind::Episode).then(|| tr!("S{season} E{episode} · {title}",
-                            season = i.season_number.unwrap_or(0), episode = i.episode_number.unwrap_or(0), title = i.title));
-                        let title = i.series_title.clone().filter(|_| i.kind == ItemKind::Episode).unwrap_or(i.title.clone());
-                        view! { <div class="ptitles"><div class="ptitle">{title}</div><div class="psub">{sub}</div></div> }.into_any()
-                    }
-                    Some(Err(_)) => ().into_any(),
-                    None => view! { <div class="ptitles psub">{tr!("Loading…")}</div> }.into_any(),
-                }}
-                <div class="pspacer" />
-                // Quality: what plays now, and a menu to pick another size.
-                {move || {
-                    let src = original.get().and_then(|i| i.sources.into_iter().next());
-                    // Any server file: the server converts on request (Jellyfin lists no
-                    // conversion for a file it thinks plays as is).
-                    match src {
-                        Some(src) => {
-                            let converted = transcoding.get();
-                            let chosen = quality.get();
-                            let now = media_api::quality::quality_label(&src, converted, chosen.filter(|_| converted));
-                            let choices = media_api::quality::quality_choices(&src);
-                            let picks: Vec<Option<Quality>> = choices.iter().map(|c| c.quality).collect();
-                            view! {
-                                <span class="pill" title=format!("{}: {now}", tr!("Playing now"))>{now.clone()}</span>
-                                <select class="chip small quality" aria-label=tr!("Quality")
-                                    on:change=move |ev| {
-                                        if let Some(q) = event_target_value(&ev).parse::<usize>().ok().and_then(|i| picks.get(i)) {
-                                            pick_quality(*q);
-                                        }
-                                    }>
-                                    {choices.into_iter().enumerate().map(|(i, c)| view! {
-                                        <option value=i.to_string() selected=c.quality == chosen>{c.label}</option>
-                                    }).collect_view()}
-                                </select>
-                            }.into_any()
+            <div class="pctl" on:click=on_surface on:dblclick=on_double on:touchend=touch_end>
+                // Top: what is playing; picture in picture, full screen and close.
+                <div class="pctl-top">
+                    {move || match loaded.get() {
+                        Some(Ok(l)) => {
+                            let i = &l.item;
+                            let sub = (i.kind == ItemKind::Episode).then(|| tr!("S{season} E{episode} · {title}",
+                                season = i.season_number.unwrap_or(0), episode = i.episode_number.unwrap_or(0), title = i.title));
+                            let title = i.series_title.clone().filter(|_| i.kind == ItemKind::Episode).unwrap_or(i.title.clone());
+                            view! { <div class="ptitles"><div class="ptitle">{title}</div><div class="psub">{sub}</div></div> }.into_any()
                         }
-                        None => transcoding.get().then(|| view! { <span class="pill">{tr!("Converted by the server")}</span> }).into_any(),
-                    }
-                }}
-                {move || match room.state.get().filter(|_| { room.code.track(); joined() }) {
-                    Some(s) => {
-                        let people = together::group_members(&s);
-                        let names = people.iter().map(|p| p.member.name.clone()).collect::<Vec<_>>().join(", ");
-                        let shown = people.len();
-                        view! {
-                            <span class="pill together" title=names.clone()>
-                                <span class="faces">
-                                    {people.into_iter().take(4).map(|p| view! {
-                                        <Avatar user_key=p.member.user_key.clone() name=p.member.name.clone() avatar=p.member.avatar.clone() size=20 />
-                                    }).collect_view()}
-                                </span>
-                                {trn!("{n} watching · {names}", "{n} watching · {names}", shown, names = names)}
-                            </span>
-                            <button class="small" on:click=move |_| room.leave(&tr!("You left watch together"), true)>{tr!("Leave")}</button>
-                        }.into_any()
-                    }
-                    None => {
-                        let can = state::ctx().keep.get().is_some() && loaded.with(|l| matches!(l, Some(Ok(l))
-                            if matches!(l.item.kind, ItemKind::Movie | ItemKind::Episode)));
-                        let _ = &nav5;
-                        (can && room.code.get().is_none()).then(|| view! {
-                            <button class="small" on:click=move |_| {
-                                let Some(Ok(l)) = loaded.get_untracked() else { return };
-                                // Paused, the room over the video: invite, then start from here.
-                                if let Some(v) = video.get_untracked() {
-                                    let _ = v.pause();
-                                    dialog_at.set((v.current_time() * 1000.0) as u64);
-                                }
-                                dialog.set(true);
-                                spawn_local(async move {
-                                    if let Err(e) = together::create_room(l.srv.clone(), l.item.clone()).await {
-                                        dialog.try_set(false);
-                                        room.note.try_set(Some(tr!("Watch together unavailable: {error}", error = e)));
-                                    } else if !dialog.try_get_untracked().unwrap_or(false) {
-                                        // Cancelled meanwhile.
-                                        room.leave("", true);
-                                    }
-                                });
-                            }>{tr!("Watch together")}</button>
-                        }).into_any()
-                    }
-                }}
-                {move || {
-                    let tracks = loaded.with(|l| match l {
-                        Some(Ok(l)) => l.info.sources.first().map(|src| {
-                            let list: Vec<_> = src.streams.iter().filter(|s| s.kind == StreamKind::Audio)
-                                .map(|s| (s.index, s.display_title.clone().or(s.title.clone()).or(s.language.clone())
-                                    .unwrap_or_else(|| tr!("Track {number}", number = s.index))))
-                                .collect();
-                            (list, src.default_audio_index)
-                        }),
-                        _ => None,
-                    });
-                    let (list, default) = tracks?;
-                    (list.len() > 1).then(|| view! {
-                        <select class="chip subs" aria-label=tr!("Audio") title=tr!("Audio")
-                            prop:value=move || audio_pick.get().or(default).map(|i| i.to_string()).unwrap_or_default()
-                            on:change=move |ev| {
-                                let Ok(i) = event_target_value(&ev).parse::<i64>() else { return };
-                                audio_pick.set(Some(i));
-                                if let Some(Ok(l)) = loaded.get_untracked() {
-                                    remember_track(&l, crate::tracks::TrackKind::Audio, Some(i));
-                                }
-                                let Some(v) = video.get_untracked() else { return };
-                                // At the same place, from the server's conversion with this track.
-                                convert(v, sub_pick.get_untracked(), true);
-                            }>
-                            {list.into_iter().map(|(i, label)| view! { <option value=i.to_string()>{label}</option> }).collect_view()}
-                        </select>
-                    })
-                }}
-                {move || {
-                    let converting = transcoding.get();
-                    // Every one: those the page can't draw (PGS, VobSub) are burned in by the
-                    // server's conversion when picked.
-                    let _ = converting;
-                    let subs = loaded.with(|l| match l {
-                        Some(Ok(l)) => menu_subtitles(l, true),
-                        _ => Vec::new(),
-                    });
-                    (!subs.is_empty()).then(|| view! {
-                        <select class="chip subs" aria-label=tr!("Subtitles") title=tr!("Subtitles") prop:value=move || sub_pick.get().to_string() on:change=move |ev| {
-                            let pick: i64 = event_target_value(&ev).parse().unwrap_or(-1);
-                            sub_pick.set(pick);
-                            let (Some(Ok(l)), Some(v)) = (loaded.get_untracked(), video.get_untracked()) else { return };
-                            remember_track(&l, crate::tracks::TrackKind::Subtitle, Some(pick).filter(|p| *p >= 0));
-                            // Converted and the server's part changes (burn another one, or stop
-                            // burning): ask it again, at the same place.
-                            if transcoding.get_untracked() && server_subtitle(&l, pick) != burned.get_value() {
-                                return convert(v, pick, true);
+                        Some(Err(_)) => view! { <div class="ptitles" /> }.into_any(),
+                        None => view! { <div class="ptitles psub">{tr!("Loading…")}</div> }.into_any(),
+                    }}
+                    {pip_ok.then(|| view! {
+                        <button class="pbtn" on:click=pip aria-label=tr!("Picture in picture") title=tr!("Picture in picture")><crate::icons::Icon path=crate::icons::PIP /></button>
+                    })}
+                    <button class="pbtn" on:click=move |_| fullscreen()
+                        aria-label=move || if is_fullscreen.get() { tr!("Leave full screen") } else { tr!("Full screen") }
+                        title=tr!("Full screen (F)")><crate::icons::Icon path=crate::icons::FULLSCREEN /></button>
+                    <button class="pbtn" on:click=back.clone() aria-label=tr!("Close") title=tr!("Close")><crate::icons::Icon path=crate::icons::CLOSE /></button>
+                </div>
+                // Center: play/pause (the loading ring around it), the next episode beside it.
+                <div class="pctl-center">
+                    <span class="pround-slot" />
+                    <button class="pround big" class:loading=move || buffering.get() && !loaded.with(|l| matches!(l, Some(Err(_))))
+                        on:click=move |_| { toggle_play(); wake() }
+                        aria-label=move || if playing.get() { tr!("Pause") } else { tr!("Play") }>
+                        {move || if playing.get() {
+                            view! { <crate::icons::Icon path=crate::icons::PAUSE /> }.into_any()
+                        } else {
+                            view! { <crate::icons::Icon path=crate::icons::PLAY /> }.into_any()
+                        }}
+                    </button>
+                    {move || {
+                        let go = go_next_btn.clone();
+                        if has_next() {
+                            view! { <button class="pround" on:click=move |_| go() aria-label=tr!("Next episode") title=tr!("Next episode")><crate::icons::Icon path=crate::icons::SKIP_NEXT /></button> }.into_any()
+                        } else {
+                            view! { <span class="pround-slot" /> }.into_any()
+                        }
+                    }}
+                </div>
+                // Bottom: the seek bar, the times, then watch together and the tracks.
+                <div class="pctl-bottom">
+                    <input type="range" class="pseek" min="0" step="0.1" aria-label=tr!("Position")
+                        prop:max=move || duration.get().max(0.0).to_string()
+                        prop:value=move || scrub.get().unwrap_or(pos.get() as f64 / 1000.0).to_string()
+                        style=move || {
+                            let d = duration.get();
+                            let pct = |x: f64| if d > 0.0 { (x / d * 100.0).clamp(0.0, 100.0) } else { 0.0 };
+                            format!("--p:{:.2}%;--b:{:.2}%", pct(scrub.get().unwrap_or(pos.get() as f64 / 1000.0)), pct(buffered_end.get()))
+                        }
+                        on:input=move |ev| { scrub.set(event_target_value(&ev).parse().ok()); wake() }
+                        on:change=move |ev| {
+                            if let (Some(v), Ok(t)) = (video.get_untracked(), event_target_value(&ev).parse::<f64>()) {
+                                v.set_current_time(t);
+                                pos.set((t * 1000.0) as u64);
                             }
-                            // Playing the file itself, and this one only the server can draw.
-                            if !transcoding.get_untracked() && pick >= 0 && !text_subtitles(&l).iter().any(|(i, _)| *i == pick) {
-                                return convert(v, pick, true);
+                            scrub.set(None);
+                        } />
+                    <div class="pctl-row">
+                        <span class="ptime">
+                            {move || format!("{}  /  {}", fmt_time(scrub.get().map_or(pos.get(), |s| (s * 1000.0) as u64)),
+                                fmt_time(if duration.get().is_finite() { (duration.get().max(0.0) * 1000.0) as u64 } else { 0 }))}
+                            {move || ends_at().map(|e| view! { <span class="pends">"  ·  "{e}</span> })}
+                        </span>
+                        <span class="pspacer" />
+                        <span class="pvol">
+                            <button class="pbtn small" on:click=move |_| if let Some(v) = video.get_untracked() { v.set_muted(!v.muted()) }
+                                aria-label=move || if muted.get() { tr!("Sound on") } else { tr!("Mute") } class:off=move || muted.get()>
+                                <crate::icons::Icon path=crate::icons::VOLUME />
+                            </button>
+                            <input type="range" min="0" max="1" step="0.05" aria-label=tr!("Volume")
+                                prop:value=move || if muted.get() { "0".to_string() } else { volume.get().to_string() }
+                                on:input=move |ev| if let (Some(v), Ok(x)) = (video.get_untracked(), event_target_value(&ev).parse::<f64>()) {
+                                    v.set_volume(x);
+                                    v.set_muted(x == 0.0);
+                                } />
+                        </span>
+                        {move || match room.state.get().filter(|_| { room.code.track(); joined() }) {
+                            Some(s) => {
+                                let people = together::group_members(&s);
+                                let n = people.len();
+                                view! {
+                                    <button class="ppill together" on:click=move |_| room_panel.update(|o| *o = !*o)>
+                                        <span class="faces">
+                                            {people.into_iter().take(4).map(|p| view! {
+                                                <Avatar user_key=p.member.user_key.clone() name=p.member.name.clone() avatar=p.member.avatar.clone() size=20 />
+                                            }).collect_view()}
+                                        </span>
+                                        {if n <= 1 { tr!("Only you so far") } else { trn!("{count} watching", "{count} watching", n, count = n) }}
+                                    </button>
+                                }.into_any()
                             }
-                            spawn_local(async move { show_subtitle(&l, &v, pick, sub_pick).await });
-                        }>
-                            <option value="-1">{tr!("Subtitles off")}</option>
-                            {subs.into_iter().map(|(i, label)| view! { <option value=i.to_string()>{label}</option> }).collect_view()}
-                        </select>
-                    })
-                }}
-                <button class="pbtn" on:click=move |_| fullscreen() aria-label=tr!("Full screen") title=tr!("Full screen (F)")><crate::icons::Icon path=crate::icons::FULLSCREEN /></button>
+                            None => {
+                                let can = state::ctx().keep.get().is_some() && loaded.with(|l| matches!(l, Some(Ok(l))
+                                    if matches!(l.item.kind, ItemKind::Movie | ItemKind::Episode)));
+                                (can && room.code.get().is_none()).then(|| view! {
+                                    <button class="ppill" on:click=start_together>
+                                        <crate::icons::Icon path=crate::icons::GROUP />{tr!("Watch together")}
+                                    </button>
+                                }).into_any()
+                            }
+                        }}
+                        <button class="ppill" on:click=move |_| { panel.update(|o| *o = !*o); wake() } aria-expanded=move || panel.get().to_string()>
+                            <crate::icons::Icon path=crate::icons::SUBTITLES />
+                            <span class="plabel">{tr!("Audio, subtitles & quality")}</span>
+                        </button>
+                    </div>
+                </div>
             </div>
+            // Audio, subtitles & quality: a panel on the right, like the apps'.
+            {move || panel.get().then(|| {
+                let (audio, default, subs) = loaded.with(|l| match l {
+                    Some(Ok(l)) => {
+                        let src = l.info.sources.first();
+                        let audio: Vec<(i64, String)> = src.map(|src| src.streams.iter().filter(|s| s.kind == StreamKind::Audio)
+                            .map(|s| (s.index, s.display_title.clone().or(s.title.clone()).or(s.language.clone())
+                                .unwrap_or_else(|| tr!("Track {number}", number = s.index))))
+                            .collect()).unwrap_or_default();
+                        (audio, src.and_then(|s| s.default_audio_index), menu_subtitles(l, true))
+                    }
+                    _ => (Vec::new(), None, Vec::new()),
+                });
+                let src = original.get_untracked().and_then(|i| i.sources.into_iter().next());
+                let converted = transcoding.get_untracked();
+                let chosen = quality.get_untracked();
+                let quality_now = src.as_ref().map(|s| media_api::quality::quality_label(s, converted, chosen.filter(|_| converted)));
+                let choices = src.as_ref().map(media_api::quality::quality_choices).unwrap_or_default();
+                let audio_now = audio_pick.get_untracked().or(default);
+                view! {
+                    <div class="ppanel-back" on:click=move |_| panel.set(false) />
+                    <aside class="ppanel" role="dialog" aria-label=tr!("Audio, subtitles & quality")>
+                        <div class="ppanel-head">
+                            <strong>{tr!("Audio, subtitles & quality")}</strong>
+                            <button class="pbtn small" on:click=move |_| panel.set(false) aria-label=tr!("Close")><crate::icons::Icon path=crate::icons::CLOSE /></button>
+                        </div>
+                        {(audio.len() > 1).then(|| view! {
+                            <h3>{tr!("Audio")}</h3>
+                            {audio.into_iter().map(|(i, label)| view! {
+                                <button class="prow" class:on=audio_now == Some(i) on:click=move |_| { pick_audio(i); panel.set(false) }>
+                                    <span>{label}</span>{check(audio_now == Some(i))}
+                                </button>
+                            }).collect_view()}
+                        })}
+                        <h3>{tr!("Subtitles")}</h3>
+                        {
+                            let now = sub_pick.get_untracked();
+                            view! {
+                                <button class="prow" class:on=now < 0 on:click=move |_| { pick_sub(-1); panel.set(false) }>
+                                    <span>{tr!("Off")}</span>{check(now < 0)}
+                                </button>
+                                {subs.into_iter().map(|(i, label)| view! {
+                                    <button class="prow" class:on=now == i on:click=move |_| { pick_sub(i); panel.set(false) }>
+                                        <span>{label}</span>{check(now == i)}
+                                    </button>
+                                }).collect_view()}
+                            }
+                        }
+                        {(!choices.is_empty()).then(|| view! {
+                            <h3>{tr!("Quality")}</h3>
+                            {quality_now.map(|q| view! { <p class="muted small">{tr!("Playing now")}": "{q}</p> })}
+                            {choices.into_iter().map(|c| {
+                                let q = c.quality;
+                                view! {
+                                    <button class="prow" class:on=q == chosen on:click=move |_| { pick_quality(q); panel.set(false) }>
+                                        <span>{c.label}</span>{check(q == chosen)}
+                                    </button>
+                                }
+                            }).collect_view()}
+                        })}
+                    </aside>
+                }
+            })}
+            // Watch together: who is here, and leaving.
+            {move || (room_panel.get() && joined()).then(|| {
+                let s = room.state.get();
+                view! {
+                    <div class="ppanel-back" on:click=move |_| room_panel.set(false) />
+                    <aside class="ppanel" role="dialog" aria-label=tr!("Watch together")>
+                        <div class="ppanel-head">
+                            <strong>{tr!("Watch together")}</strong>
+                            <button class="pbtn small" on:click=move |_| room_panel.set(false) aria-label=tr!("Close")><crate::icons::Icon path=crate::icons::CLOSE /></button>
+                        </div>
+                        {s.map(|s| together::group_members(&s).into_iter().map(|p| view! {
+                            <div class="person-row">
+                                <Avatar user_key=p.member.user_key.clone() name=p.member.name.clone() avatar=p.member.avatar.clone() size=32 />
+                                <span class="pname">{p.member.name.clone()}</span>
+                            </div>
+                        }).collect_view())}
+                        <button class="prow" on:click=move |_| { room_panel.set(false); room.leave(&tr!("You left watch together"), true) }>
+                            <span>{tr!("Leave")}</span>
+                        </button>
+                    </aside>
+                }
+            })}
             {move || {
                 let e = failure.get().or_else(|| loaded.with(|l| l.as_ref().and_then(|l| l.as_ref().err().cloned())));
                 e.map(|e| view! {

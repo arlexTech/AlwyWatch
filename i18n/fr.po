@@ -348,6 +348,7 @@ msgid "Leave"
 msgstr "Quitter"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
 msgid "Picture in picture"
 msgstr "Image dans l'image"
 
@@ -368,19 +369,25 @@ msgid "Next episode in {seconds} s"
 msgstr "Épisode suivant dans {seconds} s"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
 msgid "ends at {time}"
 msgstr "se termine à {time}"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: desktop/src/app/together.rs
+#: web/src/player.rs
 msgid "Only you so far"
 msgstr "Vous seul pour l'instant"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
 msgid "{count} watching"
-msgstr "{count} spectateurs"
+msgid_plural "{count} watching"
+msgstr[0] "{count} regarde"
+msgstr[1] "{count} regardent"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
 #: desktop/ui/app.slint
 msgid "Audio, subtitles & quality"
 msgstr "Audio, sous-titres et qualité"
@@ -7827,12 +7834,6 @@ msgid "No passkey was used."
 msgstr "Aucune clé d'accès n'a été utilisée."
 
 #: web/src/player.rs
-msgid "{n} watching · {names}"
-msgid_plural "{n} watching · {names}"
-msgstr[0] "{n} spectateur · {names}"
-msgstr[1] "{n} spectateurs · {names}"
-
-#: web/src/player.rs
 msgid "The server has no file to play for this title."
 msgstr "Le serveur n'a aucun fichier à lire pour ce titre."
 
@@ -7845,16 +7846,9 @@ msgid "S{season} E{episode} · {title}"
 msgstr "S{season} E{episode} · {title}"
 
 #: web/src/player.rs
-msgid "Playing now"
-msgstr "En cours de lecture"
-
-#: web/src/player.rs
-msgid "Converted by the server"
-msgstr "Converti par le serveur"
-
-#: web/src/player.rs
-msgid "Subtitles off"
-msgstr "Sans sous-titres"
+#: desktop/ui/app.slint
+msgid "Leave full screen"
+msgstr "Quitter le plein écran"
 
 #: web/src/player.rs
 #: desktop/ui/app.slint
@@ -7864,6 +7858,26 @@ msgstr "Plein écran"
 #: web/src/player.rs
 msgid "Full screen (F)"
 msgstr "Plein écran (F)"
+
+#: web/src/player.rs
+msgid "Position"
+msgstr "Position"
+
+#: web/src/player.rs
+msgid "Sound on"
+msgstr "Activer le son"
+
+#: web/src/player.rs
+msgid "Mute"
+msgstr "Couper le son"
+
+#: web/src/player.rs
+msgid "Volume"
+msgstr "Volume"
+
+#: web/src/player.rs
+msgid "Playing now"
+msgstr "En cours de lecture"
 
 #: web/src/player.rs
 #: desktop/ui/app.slint
@@ -8973,10 +8987,6 @@ msgid "SERVER STATUS"
 msgstr "ÉTAT DU SERVEUR"
 
 #: desktop/ui/app.slint
-msgid "Leave full screen"
-msgstr "Quitter le plein écran"
-
-#: desktop/ui/app.slint
 msgid "Minimize"
 msgstr "Réduire"
 
@@ -9134,6 +9144,17 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "{n} watching · {names}"
+#~ msgid_plural "{n} watching · {names}"
+#~ msgstr[0] "{n} spectateur · {names}"
+#~ msgstr[1] "{n} spectateurs · {names}"
+
+#~ msgid "Converted by the server"
+#~ msgstr "Converti par le serveur"
+
+#~ msgid "Subtitles off"
+#~ msgstr "Sans sous-titres"
 
 #~ msgid "Only text subtitles can be shown in the browser. These settings are kept in this browser."
 #~ msgstr "Seuls les sous-titres texte peuvent s'afficher dans le navigateur. Ces paramètres sont enregistrés dans ce navigateur."
