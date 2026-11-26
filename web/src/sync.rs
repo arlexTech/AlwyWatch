@@ -213,6 +213,12 @@ pub async fn sync() -> Result<Outcome, String> {
     }
     // Per-title audio/subtitle choices: the newer side wins, key by key.
     push.extend(crate::tracks::merge(&remote));
+    // Titles taken out of Continue watching (the apps hide them the same way).
+    push.extend(crate::tracks::merge_prefix(
+        &remote,
+        "hidden.",
+        crate::browse::SYNCED_HIDDEN,
+    ));
     state::save(SERVERS, &list);
     state::save(META, &meta);
     let pushed = push.len() as u32;

@@ -5,7 +5,7 @@
 //! change wins (each carries its time).
 //!
 //! Only what is about the viewer travels (languages, subtitle mode, skip choices, per-title
-//! tracks, which servers the home shows); what depends on the screen or the hardware stays on
+//! tracks, titles taken out of Continue watching, which servers the home shows); what depends on the screen or the hardware stays on
 //! the device (refresh rate, passthrough, subtitle size, clock, scroll positions…).
 
 use std::collections::HashMap;
@@ -49,7 +49,10 @@ pub(crate) fn synced(key: &str) -> bool {
         "together.others_play",
         "together.others_seek",
     ];
-    KEYS.contains(&key) || key.starts_with("tracks.") || key.starts_with("version.")
+    KEYS.contains(&key)
+        || key.starts_with("tracks.")
+        || key.starts_with("version.")
+        || key.starts_with("hidden.")
 }
 
 fn now_ms() -> i64 {
@@ -272,6 +275,7 @@ mod tests {
     fn only_viewer_settings_travel() {
         assert!(synced("player.sub_mode"));
         assert!(synced("tracks.plex:1:2.345"));
+        assert!(synced("hidden.jellyfin:1:2.345"));
         assert!(synced("ui.combined"));
         assert!(!synced("player.match_rate"));
         assert!(!synced("player.sub_size"));

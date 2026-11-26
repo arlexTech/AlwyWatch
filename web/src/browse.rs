@@ -118,10 +118,45 @@ async fn load_server(c: &state::Ctx, acc: String, srv: AnyServer) -> ServerHome 
 /// Titles taken out of Continue watching in this browser: "account|id" → when (seconds).
 const HIDDEN: &str = "aw.hidden";
 
+/// The same on every device of the viewer (synced with the apps): "hidden.<sign-in>.<id>" →
+/// "change time (ms) ␟ when (s)", the apps' setting.
+pub const SYNCED_HIDDEN: &str = "aw.sync.hidden";
+
+fn synced_hidden_key(acc: &str, id: &str) -> Option<String> {
+    let s = state::ctx().session(acc)?;
+    Some(format!("hidden.{}.{id}", crate::tracks::account_id(&s)))
+}
+
 pub fn hide_from_continue(acc: &str, id: &str) {
+    let now = js_sys::Date::now();
     let mut h = state::load::<HashMap<String, i64>>(HIDDEN).unwrap_or_default();
-    h.insert(format!("{acc}|{id}"), (js_sys::Date::now() / 1000.0) as i64);
+    h.insert(format!("{acc}|{id}"), (now / 1000.0) as i64);
     state::save(HIDDEN, &h);
+    if let Some(k) = synced_hidden_key(acc, id) {
+        let mut s = state::load::<HashMap<String, String>>(SYNCED_HIDDEN).unwrap_or_default();
+        s.insert(k, format!("{}\u{1f}{}", now as i64, (now / 1000.0) as i64));
+        state::save(SYNCED_HIDDEN, &s);
+        leptos::task::spawn_local(async {
+            let _ = crate::sync::sync().await;
+        });
+    }
+}
+
+/// When a title was taken out of Continue watching, here or on another device.
+fn hidden_at(
+    local: &HashMap<String, i64>,
+    synced: &HashMap<String, String>,
+    acc: &str,
+    id: &str,
+) -> Option<i64> {
+    let mine = local.get(&format!("{acc}|{id}")).copied();
+    let shared = synced_hidden_key(acc, id)
+        .and_then(|k| synced.get(&k).cloned())
+        .and_then(|v| {
+            v.split_once('\u{1f}')
+                .and_then(|(_, at)| at.parse::<i64>().ok())
+        });
+    mine.max(shared)
 }
 
 /// Whether the home's last copy shows this title in Continue watching (its next episode too).
@@ -184,10 +219,10 @@ async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
     });
     // Taken out here (Jellyfin's "next up" can't be): until watched again since.
     let hidden = state::load::<HashMap<String, i64>>(HIDDEN).unwrap_or_default();
+    let synced = state::load::<HashMap<String, String>>(SYNCED_HIDDEN).unwrap_or_default();
     let shown = |(acc, i): &(String, Item)| {
-        hidden
-            .get(&format!("{acc}|{}", i.id))
-            .is_none_or(|&at| i.user.last_played_at.unwrap_or(0) > at)
+        hidden_at(&hidden, &synced, acc, &i.id)
+            .is_none_or(|at| i.user.last_played_at.unwrap_or(0) > at)
     };
     resume.retain(shown);
     next.retain(shown);

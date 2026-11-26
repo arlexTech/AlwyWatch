@@ -24,7 +24,7 @@ fn parse(v: &str) -> Option<(i64, &str)> {
 }
 
 /// The sign-in as the apps name it ("jellyfin:<server>:<user>").
-fn account_id(s: &Session) -> String {
+pub fn account_id(s: &Session) -> String {
     let kind = match s.kind {
         ServerKind::Jellyfin => "jellyfin",
         ServerKind::Plex => "plex",
@@ -78,9 +78,19 @@ pub fn save(s: &Session, item: &Item, pref: &TrackPref) {
 /// Takes the shared `tracks.*` values that are newer than ours; returns ours that are newer
 /// than the shared ones (to send).
 pub fn merge(remote: &HashMap<String, String>) -> HashMap<String, String> {
-    let mut store = state::load::<HashMap<String, String>>(STORE).unwrap_or_default();
+    merge_prefix(remote, "tracks.", STORE)
+}
+
+/// The same, for the shared values whose keys start with `prefix`, kept here under `store_key`
+/// ("time ␟ value" each, as on the server).
+pub fn merge_prefix(
+    remote: &HashMap<String, String>,
+    prefix: &str,
+    store_key: &str,
+) -> HashMap<String, String> {
+    let mut store = state::load::<HashMap<String, String>>(store_key).unwrap_or_default();
     let mut push = HashMap::new();
-    for (k, rv) in remote.iter().filter(|(k, _)| k.starts_with("tracks.")) {
+    for (k, rv) in remote.iter().filter(|(k, _)| k.starts_with(prefix)) {
         let rt = parse(rv).map_or(0, |(t, _)| t);
         let lt = store.get(k).and_then(|v| parse(v)).map_or(-1, |(t, _)| t);
         if rt >= lt {
@@ -94,7 +104,7 @@ pub fn merge(remote: &HashMap<String, String>) -> HashMap<String, String> {
             push.insert(k.clone(), lv.clone());
         }
     }
-    state::save(STORE, &store);
+    state::save(store_key, &store);
     push
 }
 

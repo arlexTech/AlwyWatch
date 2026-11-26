@@ -4492,9 +4492,14 @@ impl App {
                 self.state.borrow_mut().cw_pending = Some((id, row));
                 let ui = self.ui();
                 ui.set_mark_confirm_ok_label(sstr(tr!("Remove")));
+                // An episode with its show, as in the other apps.
+                let title = match (&i.kind, &i.series_title) {
+                    (ItemKind::Episode, Some(show)) => format!("{show} · {}", i.title),
+                    _ => i.title.clone(),
+                };
                 ui.set_mark_confirm(sstr(tr!(
                     "Remove “{title}” from Continue watching?",
-                    title = i.title
+                    title = title
                 )));
                 return;
             }

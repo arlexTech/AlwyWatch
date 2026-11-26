@@ -723,12 +723,16 @@ impl Core {
         items
             .into_iter()
             .filter(|i| {
-                let hidden_at = self
-                    .store
-                    .setting(&hidden_key(account, &i.id))
-                    .ok()
-                    .flatten()
-                    .and_then(|v| v.parse::<i64>().ok());
+                let at = |k: String| {
+                    self.store
+                        .setting(&k)
+                        .ok()
+                        .flatten()
+                        .and_then(|v| v.parse::<i64>().ok())
+                };
+                // Also the key used before hiding followed the viewer (this device only).
+                let hidden_at = at(hidden_key(account, &i.id))
+                    .max(at(format!("cw-hidden\u{1f}{account}\u{1f}{}", i.id)));
                 match hidden_at {
                     None => true,
                     // Its show (or itself) was watched after hiding it: back in the list.
@@ -1434,7 +1438,7 @@ impl AlwyWatch {
     }
 
     /// Takes an item out of "continue watching": on the server when it can (Plex; Jellyfin
-    /// for titles in progress), else hidden on this device until it is watched again.
+    /// for titles in progress), else hidden on the viewer's devices until it is watched again.
     pub async fn remove_from_continue_watching(
         &self,
         account_id: String,
@@ -1446,8 +1450,10 @@ impl AlwyWatch {
                 .remove_from_continue_watching(&item_id)
                 .await?;
             if !done {
-                c.store
-                    .set_setting(&hidden_key(&account_id, &item_id), &unix_now().to_string())?;
+                // Hidden on every device of the viewer (a synced setting).
+                let k = hidden_key(&account_id, &item_id);
+                c.store.set_setting(&k, &unix_now().to_string())?;
+                c.setting_changed(&k);
             }
             c.store.cache_mark_stale(&key(&account_id, &["home"]))?;
             Ok(())
@@ -3324,8 +3330,9 @@ fn internal(e: impl std::fmt::Display) -> CoreError {
     }
 }
 
-fn hidden_key(account: &str, item_id: &str) -> String {
-    format!("cw-hidden\u{1f}{account}\u{1f}{item_id}")
+/// A title taken out of "continue watching" (synced: `settings_sync`); its value is when.
+pub(crate) fn hidden_key(account: &str, item_id: &str) -> String {
+    format!("hidden.{account}.{item_id}")
 }
 
 fn watched_key(account: &str, item_id: &str) -> String {
