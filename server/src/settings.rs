@@ -43,7 +43,8 @@ pub struct StoredServer {
     pub public_url: String,
     /// How this server reaches it (Docker network); the public address when empty.
     pub internal_url: Option<String>,
-    /// Jellyfin: the API key AlwyWatch uses ("until watched", invitations).
+    /// Jellyfin: the API key AlwyWatch uses ("until watched", invitations, signing devices
+    /// in). Plex: the owner's plex.tv token (signing users' devices in).
     pub api_key: Option<String>,
 }
 

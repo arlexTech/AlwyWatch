@@ -7,6 +7,11 @@
 //! - `DELETE /v1/me/links/{user_key}` → `[LinkedIdentity]`: that sign-in is its own (new,
 //!   empty) account again. The canonical sign-in cannot be removed (409).
 //!
+//! - `POST /v1/account/server-sign-in` (account session) with [`ServerSignInRequest`] →
+//!   [`ServerSignIn`]: signs this device in to a linked server without typing anything
+//!   (Jellyfin: the server approves the device's Quick Connect code; Plex: it hands over that
+//!   user's server token).
+//!
 //! `GET /v1/me` (and every answer that is a `Me`) also carries `identities`; read it with
 //! [`crate::KeepClient::me_with_identities`]. Details and merge rules: `docs/keep-protocol.md`,
 //! "Linked identities"; app flows: `docs/identity-apps.md`.
@@ -58,6 +63,45 @@ impl std::fmt::Debug for LinkRequest {
         f.debug_struct("LinkRequest")
             .field("server_id", &self.server_id)
             .field("token", &"<redacted>")
+            .finish()
+    }
+}
+
+/// `POST /v1/account/server-sign-in` body.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServerSignInRequest {
+    /// A served server one of my sign-ins is on.
+    pub server_id: String,
+    /// Jellyfin: the Quick Connect code this device just started (the server approves it as
+    /// my user there). Plex: none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+}
+
+/// `POST /v1/account/server-sign-in` answer. `Debug` never shows the token.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServerSignIn {
+    pub kind: ServerType,
+    pub server_id: String,
+    pub server_name: String,
+    /// The server's public address.
+    pub url: String,
+    pub user_id: String,
+    pub user_name: String,
+    pub is_admin: bool,
+    /// Plex: my token for this server (to use like any Plex server token). Jellyfin: none,
+    /// the Quick Connect code was approved: poll it as usual.
+    #[serde(default)]
+    pub token: Option<String>,
+}
+
+impl std::fmt::Debug for ServerSignIn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerSignIn")
+            .field("kind", &self.kind)
+            .field("server_id", &self.server_id)
+            .field("user_id", &self.user_id)
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
             .finish()
     }
 }

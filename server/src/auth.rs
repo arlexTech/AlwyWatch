@@ -59,6 +59,11 @@ pub struct Auth {
 }
 
 impl Auth {
+    /// plex.tv's address (mocked in tests).
+    pub fn plex_tv(&self) -> &str {
+        &self.plex_tv
+    }
+
     pub fn new(http: Client, plex_tv: &str) -> Self {
         Self {
             http,

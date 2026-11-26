@@ -29,7 +29,7 @@ Lightweight, fast, open source media client for **Jellyfin and Plex**, with **Se
 
 ## Auth and users
 - Users sign in with their existing **Jellyfin or Plex** account on the servers the app is configured for. Since 2026-11-22 (owner's request) there are also **AlwyWatch accounts** on the backend: username + password, passkeys or Pocket ID, invitation-only sign-up; an account alone only holds profile settings and the user's server list, and Quick Connect (code + QR) signs devices in (docs/keep-protocol.md "AlwyWatch accounts").
-- The backend only serves the **servers I have selected** (those already running on my server). It validates the user's Jellyfin/Plex token against the matching server and identifies the user from that; it never stores media-server passwords or tokens (AlwyWatch account passwords are stored as Argon2id hashes).
+- The backend only serves the **servers I have selected** (those already running on my server). It validates the user's Jellyfin/Plex token against the matching server and identifies the user from that; it never stores media-server passwords or user tokens, only server-level credentials (the Jellyfin API key, and since 2026-11-26, owner's choice, the Plex owner's plex.tv token, used to sign the users' new devices in from their AlwyWatch account; docs/keep-protocol.md "Signing devices in to linked servers"). AlwyWatch account passwords are stored as Argon2id hashes.
 - Server list is a backend config (allow-list), and the app can fetch it so users don't type URLs.
 
 ## My server

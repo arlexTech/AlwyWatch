@@ -137,6 +137,10 @@ pub fn router(state: Shared) -> Router {
         )
         .route("/v1/account/link", post(account_api::link_media))
         .route(
+            "/v1/account/server-sign-in",
+            post(crate::server_sign_in::server_sign_in),
+        )
+        .route(
             "/v1/account/invites",
             post(crate::invites::create).get(crate::invites::list),
         )

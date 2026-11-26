@@ -81,7 +81,8 @@ async fn env_at(db: Db, dry_run: bool) -> Env {
         seerr.uri()
     );
     let mut config = Config::parse(&toml).unwrap();
-    config.secrets = Secrets::for_tests("jf-admin-key", "taut-key");
+    config.secrets =
+        Secrets::for_tests("jf-admin-key", "taut-key").with_plex_token("plexsrv", "px-owner");
     config.dry_run = dry_run;
     config.accounts = crate::config::AccountsConf {
         rp: crate::passkey::RelyingParty::from_url("https://watch.example"),
@@ -2614,6 +2615,114 @@ async fn linking_merges_two_accounts_into_one_jellyfin_person() {
         log.iter()
             .all(|l| !l.contains("jf-bob") && !l.contains("px-friend"))
     );
+}
+
+#[tokio::test]
+async fn a_new_device_signs_in_to_linked_servers_from_the_account() {
+    let e = env().await;
+    let e = &e;
+    e.me_as("jfsrv", "jf-bob").await;
+    let (s, _) = e.link("jfsrv", "jf-bob", ("plexsrv", "px-friend")).await;
+    assert_eq!(s, StatusCode::OK);
+    // An AlwyWatch account session (a new device signed in with username and password).
+    let session = |server: &'static str, token: &'static str, user: &'static str| async move {
+        let (st, v) = e
+            .call(
+                "POST",
+                "/v1/account/claim",
+                server,
+                token,
+                Some(json!({"username": user, "password": "password1"})),
+            )
+            .await;
+        assert_eq!(st, StatusCode::OK, "{v}");
+        let (st, _, r) = e
+            .anon(
+                "POST",
+                "/v1/account/login",
+                None,
+                Some(json!({"username": user, "password": "password1"})),
+            )
+            .await;
+        assert_eq!(st, StatusCode::OK);
+        r["token"].as_str().unwrap().to_owned()
+    };
+    let bob = session("jfsrv", "jf-bob", "bob").await;
+    let sign_in = |session: String, body: Value| async move {
+        let (st, _, v) = e
+            .anon(
+                "POST",
+                "/v1/account/server-sign-in",
+                Some(&session),
+                Some(body),
+            )
+            .await;
+        (st, v)
+    };
+    // Plex: my token for that server, read from plex.tv with the owner's sign-in.
+    Mock::given(method("GET"))
+        .and(path("/api/servers/plexsrv/shared_servers"))
+        .and(header("X-Plex-Token", "px-owner"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"<MediaContainer><SharedServer id="5" userID="2" accessToken="srv-friend" name="HomePlex"/></MediaContainer>"#,
+        ))
+        .mount(&e.plextv)
+        .await;
+    let (s, v) = sign_in(bob.clone(), json!({"server_id": "plexsrv"})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["token"], "srv-friend");
+    assert_eq!(v["user_id"], "2");
+    assert_eq!(v["url"], "https://plex.example");
+    assert_eq!(v["is_admin"], false);
+    // Jellyfin: the server approves this device's Quick Connect code as my user there.
+    Mock::given(method("POST"))
+        .and(path("/QuickConnect/Authorize"))
+        .and(query_param("code", "123456"))
+        .and(query_param("userId", "jb"))
+        .and(header(
+            "Authorization",
+            "MediaBrowser Token=\"jf-admin-key\"",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(true))
+        .expect(1)
+        .mount(&e.jf)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/QuickConnect/Authorize"))
+        .and(query_param("code", "999999"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&e.jf)
+        .await;
+    let (s, v) = sign_in(bob.clone(), json!({"server_id": "jfsrv", "code": "123456"})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["token"], Value::Null);
+    assert_eq!(v["user_id"], "jb");
+    let (s, _) = sign_in(bob.clone(), json!({"server_id": "jfsrv", "code": "999999"})).await;
+    assert_eq!(s, StatusCode::CONFLICT, "an expired code");
+    let (s, _) = sign_in(bob.clone(), json!({"server_id": "jfsrv"})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "no code");
+    // Nothing of mine on that server, or not served.
+    let (s, _) = sign_in(bob.clone(), json!({"server_id": "jf2", "code": "123456"})).await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = sign_in(bob.clone(), json!({"server_id": "nope"})).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    // Only an account session: a media sign-in can't be traded for another server's.
+    let (s, _) = e
+        .call(
+            "POST",
+            "/v1/account/server-sign-in",
+            "jfsrv",
+            "jf-bob",
+            Some(json!({"server_id": "plexsrv"})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    // The owner gets their own sign-in back.
+    let owner = session("plexsrv", "px-owner", "owner").await;
+    let (s, v) = sign_in(owner, json!({"server_id": "plexsrv"})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["token"], "px-owner");
+    assert_eq!(v["is_admin"], true);
 }
 
 #[tokio::test]

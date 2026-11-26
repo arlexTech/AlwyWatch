@@ -18,7 +18,9 @@ pub mod settings;
 pub mod together;
 pub mod transfer;
 
-pub use identity::{LinkRequest, LinkedIdentity, MeWithIdentities};
+pub use identity::{
+    LinkRequest, LinkedIdentity, MeWithIdentities, ServerSignIn, ServerSignInRequest,
+};
 pub use profile::{Avatar, AvatarChoice, AvatarPreset, DisplayNameRequest};
 
 use net::Result;
@@ -684,6 +686,22 @@ impl KeepClient {
             server_id: server_id.to_owned(),
             token: token.to_owned(),
         }))
+        .await
+    }
+
+    /// Account session: signs this device in to `server_id` as my linked user there (see
+    /// [`ServerSignInRequest`]): Jellyfin approves `code`, Plex returns my token.
+    pub async fn server_sign_in(
+        &self,
+        server_id: &str,
+        code: Option<&str>,
+    ) -> Result<ServerSignIn> {
+        net::send_json(self.req(Method::POST, "/account/server-sign-in").json(
+            &ServerSignInRequest {
+                server_id: server_id.to_owned(),
+                code: code.map(str::to_owned),
+            },
+        ))
         .await
     }
 

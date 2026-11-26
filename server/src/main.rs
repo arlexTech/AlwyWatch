@@ -23,6 +23,7 @@ mod passkey;
 mod remote;
 mod seerr;
 mod server_settings;
+mod server_sign_in;
 mod settings;
 mod together;
 mod transfer;

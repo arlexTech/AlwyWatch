@@ -240,6 +240,9 @@ pub struct Secrets {
     pub seerr_api_key: Option<String>,
     jellyfin_keys: Vec<(String, String)>,
     jellyfin_default: Option<String>,
+    /// Plex servers: the owner's plex.tv token, saved when the owner adds the server (to sign
+    /// users' new devices in, see `server_sign_in`).
+    plex_tokens: Vec<(String, String)>,
 }
 
 impl Secrets {
@@ -249,6 +252,13 @@ impl Secrets {
             .find(|(id, _)| id.eq_ignore_ascii_case(server_id))
             .map(|(_, k)| k.as_str())
             .or(self.jellyfin_default.as_deref())
+    }
+
+    pub fn plex_owner_token(&self, server_id: &str) -> Option<&str> {
+        self.plex_tokens
+            .iter()
+            .find(|(id, _)| id == server_id)
+            .map(|(_, k)| k.as_str())
     }
 }
 
@@ -462,6 +472,7 @@ impl Secrets {
             seerr_api_key: get("SEERR_API_KEY"),
             jellyfin_keys,
             jellyfin_default: get("JELLYFIN_API_KEY"),
+            plex_tokens: vec![],
         }
     }
 
@@ -475,9 +486,16 @@ impl Secrets {
             jellyfin_keys: st
                 .servers
                 .iter()
+                .filter(|x| x.kind != Some(keep_service::ServerType::Plex))
                 .filter_map(|x| clean(&x.api_key).map(|k| (x.id.clone(), k)))
                 .collect(),
             jellyfin_default: None,
+            plex_tokens: st
+                .servers
+                .iter()
+                .filter(|x| x.kind == Some(keep_service::ServerType::Plex))
+                .filter_map(|x| clean(&x.api_key).map(|k| (x.id.clone(), k)))
+                .collect(),
         }
     }
 
@@ -490,7 +508,14 @@ impl Secrets {
             seerr_api_key: Some("seerr-key".into()),
             jellyfin_keys: vec![],
             jellyfin_default: Some(jellyfin.into()),
+            plex_tokens: vec![],
         }
+    }
+
+    #[cfg(test)]
+    pub fn with_plex_token(mut self, server_id: &str, token: &str) -> Self {
+        self.plex_tokens.push((server_id.into(), token.into()));
+        self
     }
 }
 

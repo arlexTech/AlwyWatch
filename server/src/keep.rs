@@ -83,6 +83,8 @@ pub struct Limits {
     pub together_creates: crate::limit::Limiter,
     /// Identity link attempts, per person (each validates a second token).
     pub links: crate::limit::Limiter,
+    /// Devices signed in to a media server from the account, per person.
+    pub server_sign_ins: crate::limit::Limiter,
     /// Failed account sign-ins, per client address.
     pub account_logins: crate::limit::Limiter,
     /// Failed account sign-ins, per username from every address together.
@@ -118,6 +120,7 @@ impl Default for Limits {
             together_creates: Limiter::new(20, min(60)),
             profile_changes: Limiter::new(20, min(10)),
             links: Limiter::new(10, min(10)),
+            server_sign_ins: Limiter::new(20, min(10)),
             account_logins: Limiter::new(10, min(10)),
             username_logins: Limiter::new(200, min(60)),
             account_signups: Limiter::new(5, min(60)),

@@ -234,7 +234,9 @@ pub struct AddPlex {
     url: String,
     #[serde(default)]
     internal_url: Option<String>,
-    /// The Plex sign-in of the server's owner (the app's own, never stored).
+    /// The Plex sign-in of the server's owner. Kept as the server's credential: with it
+    /// AlwyWatch signs the users' new devices in (their server token from plex.tv, as Tautulli
+    /// reads it), so nobody signs in to Plex again on each device.
     token: String,
 }
 
@@ -483,7 +485,7 @@ async fn plex_server(s: &Shared, r: &AddPlex) -> Result<StoredServer, Error> {
         name: conf.name,
         public_url: public,
         internal_url: internal,
-        api_key: None,
+        api_key: Some(r.token.clone()),
     })
 }
 

@@ -556,6 +556,7 @@ Server environment: `ALWYWATCH_PUBLIC_URL` (needed for passkeys and Pocket ID),
 | PUT | `/v1/account/username` | session | `{username}` → 204; 409 taken |
 | DELETE | `/v1/account/sessions/{id}` | session | signs a device out |
 | POST | `/v1/account/link` | session | `{server_id, token}` → account: merges that media sign-in |
+| POST | `/v1/account/server-sign-in` | session | `{server_id, code?}` → `{kind, server_id, server_name, url, user_id, user_name, is_admin, token?}`: signs this device in to a linked server, see [Signing devices in](#signing-devices-in-to-linked-servers) |
 | POST | `/v1/account/claim` | user (media) | `{username, password}` → account: the person can sign in without the media server |
 | POST | `/v1/account/invites` | admin | `{days?, uses?}` → `{code, url, expires_in_days, uses}` |
 | POST | `/v1/account/passkeys/register/start` · `/finish` | session | → `{flow_id, options}` · `{flow_id, name?, credential}` |
@@ -579,6 +580,31 @@ Server environment: `ALWYWATCH_PUBLIC_URL` (needed for passkeys and Pocket ID),
 * The last way into an account with no media sign-in cannot be removed (409).
 * Limits: 10 failed sign-ins per address and per username in 10 minutes; 5 sign-ups per
   address per hour.
+
+### Signing devices in to linked servers
+
+A device signed in to the account signs in to the person's linked Jellyfin and Plex logins
+with nothing to type (the apps do it right after the account sign-in, and offer "Sign in" on
+each linked login not signed in on the device). Only **server-level credentials** are used;
+no user's media token is ever stored:
+
+* **Jellyfin:** the device starts Quick Connect on the server's public address and sends the
+  code; the AlwyWatch server approves it as the person's Jellyfin user there
+  (`POST /QuickConnect/Authorize?code=&userId=` with its API key), then the device polls as
+  usual and gets its own token. `token` is absent. Needs Quick Connect on in Jellyfin. 409:
+  the code expired; 400: no code.
+* **Plex:** with the owner's plex.tv token (kept when the owner adds or renews the server in
+  the server settings), the AlwyWatch server reads the person's token for that server from
+  plex.tv (`GET /api/servers/{machine id}/shared_servers`, as Tautulli does) and returns it;
+  the owner gets their own. The device builds its session with it (checked against
+  `/identity`); the plex.tv watchlist still needs a plex.tv sign-in on the device. 404: the
+  server is no longer shared with that user (Plex Home managed users are not listed there).
+  503: the owner's sign-in is missing or refused (renew it).
+* Only an account session may ask (a media sign-in can't be traded for another server's); the
+  person's most recently used login on that server is used; 404 when none is linked there.
+  20 per person in 10 minutes. Each one is in the activity log.
+* A deliberate sign-out on a device is not undone: the apps only sign in by themselves right
+  after an account sign-in.
 
 ## Settings across devices
 
