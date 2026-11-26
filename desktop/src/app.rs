@@ -598,14 +598,11 @@ impl App {
         let others = i.counts.forever + i.counts.until_watched + i.counts.days;
         LeavingRow {
             key: sstr(&i.key),
-            title: sstr(
-                [
-                    i.title.clone(),
-                    i.year.map(|y| y.to_string()).unwrap_or_default(),
-                ]
-                .join(" ")
-                .trim(),
-            ),
+            // "Title · 2013": a bare year ran into titles ending in a number.
+            title: sstr(match i.year {
+                Some(y) => format!("{} · {y}", i.title),
+                None => i.title.clone(),
+            }),
             when: sstr(when),
             vote: sstr(vote),
             others: sstr(if others > 0 {
@@ -1476,6 +1473,7 @@ impl App {
                 })
                 .collect();
             this.seerr_cards(cards, AppWindow::set_seerr_mine);
+            this.ui().set_seerr_mine_loaded(true);
         };
         if let Ok(Some(list)) = self.core.cached_seerr_requests(false) {
             render(self, list);

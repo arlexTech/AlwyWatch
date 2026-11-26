@@ -4046,7 +4046,7 @@ msgstr "Chargement des demandes…"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/RequestsScreen.kt
 #: web/src/request.rs
-#: ios/AlwyWatch/Requests.swift
+#: desktop/ui/app.slint
 msgid "No requests."
 msgstr "Aucune demande."
 

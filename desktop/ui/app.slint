@@ -1727,6 +1727,8 @@ export component AppWindow inherits Window {
     in property <string> seerr-message;
     in property <[Card]> seerr-results;
     in property <[Card]> seerr-mine;
+    // My requests were loaded once (cache or server): an empty list then says so.
+    in property <bool> seerr-mine-loaded;
     in property <SeerrPanel> seerr-panel;
     in property <[NamedId]> seerr-seasons;
     in property <SeerrPage> seerr-title;
@@ -2915,6 +2917,7 @@ export component AppWindow inherits Window {
                                 }
                             }
                             if root.seerr-results.length == 0 : Text { text: @tr("My requests"); color: Palette.text; font-size: 20px; font-weight: 700; }
+                            if root.seerr-results.length == 0 && root.seerr-mine.length == 0 && root.seerr-mine-loaded : Text { text: @tr("No requests."); color: Palette.muted; }
                             if root.seerr-results.length == 0 : mine := Rectangle {
                                 property <int> cols: max(1, floor((self.width - 10px) / 176px));
                                 height: ceil(root.seerr-mine.length / self.cols) * 312px;
