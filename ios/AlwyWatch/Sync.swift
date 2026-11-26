@@ -315,10 +315,10 @@ struct HistoryCopyView: View {
                 ].compactMap { $0 }.joined(separator: " · "))
                 .font(.headline)
             let notes = [
-                p.upToDate > 0 ? tr("{count} already up to date", ["count": p.upToDate]) : nil,
-                p.notFound.isEmpty ? nil : tr("{count} not on that server", ["count": p.notFound.count]),
+                p.upToDate > 0 ? trn("{n} already up to date", "{n} already up to date", Int(p.upToDate)) : nil,
+                p.notFound.isEmpty ? nil : trn("{n} not on that server", "{n} not on that server", p.notFound.count),
                 // Deleted from the disk: the source still lists them, nothing to copy.
-                p.gone.isEmpty ? nil : tr("{count} no longer on either server", ["count": p.gone.count]),
+                p.gone.isEmpty ? nil : trn("{n} no longer on either server", "{n} no longer on either server", p.gone.count),
             ].compactMap { $0 }
             if !notes.isEmpty { Text(notes.joined(separator: " · ")).foregroundStyle(Palette.muted) }
             if !p.changes.isEmpty, !jobs.copying {

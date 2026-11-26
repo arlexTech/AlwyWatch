@@ -2924,6 +2924,30 @@ msgstr[1] ""
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
 #: ios/AlwyWatch/Sync.swift
+msgid "{n} already up to date"
+msgid_plural "{n} already up to date"
+msgstr[0] ""
+msgstr[1] ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
+msgid "{n} not on that server"
+msgid_plural "{n} not on that server"
+msgstr[0] ""
+msgstr[1] ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
+msgid "{n} no longer on either server"
+msgid_plural "{n} no longer on either server"
+msgstr[0] ""
+msgstr[1] ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "Copy {n} title"
 msgid_plural "Copy {n} titles"
 msgstr[0] ""
@@ -2980,21 +3004,6 @@ msgstr ""
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: ios/AlwyWatch/Sync.swift
 msgid "{count} to mark as watched"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
-#: ios/AlwyWatch/Sync.swift
-msgid "{count} already up to date"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
-#: ios/AlwyWatch/Sync.swift
-msgid "{count} not on that server"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
-#: ios/AlwyWatch/Sync.swift
-msgid "{count} no longer on either server"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
@@ -5709,24 +5718,6 @@ msgstr ""
 #: desktop/src/app/history.rs
 msgid "{n} to mark as watched"
 msgid_plural "{n} to mark as watched"
-msgstr[0] ""
-msgstr[1] ""
-
-#: desktop/src/app/history.rs
-msgid "{n} already up to date"
-msgid_plural "{n} already up to date"
-msgstr[0] ""
-msgstr[1] ""
-
-#: desktop/src/app/history.rs
-msgid "{n} not on that server"
-msgid_plural "{n} not on that server"
-msgstr[0] ""
-msgstr[1] ""
-
-#: desktop/src/app/history.rs
-msgid "{n} no longer on either server"
-msgid_plural "{n} no longer on either server"
 msgstr[0] ""
 msgstr[1] ""
 

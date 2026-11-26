@@ -146,10 +146,10 @@ fun HistoryCopyScreen() {
             )
             Text(
                 listOfNotNull(
-                    tr("{count} already up to date", "count" to p.upToDate).takeIf { p.upToDate > 0u },
-                    tr("{count} not on that server", "count" to p.notFound.size).takeIf { p.notFound.isNotEmpty() },
+                    trn("{n} already up to date", "{n} already up to date", p.upToDate.toLong()).takeIf { p.upToDate > 0u },
+                    trn("{n} not on that server", "{n} not on that server", p.notFound.size).takeIf { p.notFound.isNotEmpty() },
                     // Deleted from the disk: the source still lists them, nothing to copy.
-                    tr("{count} no longer on either server", "count" to p.gone.size).takeIf { p.gone.isNotEmpty() },
+                    trn("{n} no longer on either server", "{n} no longer on either server", p.gone.size).takeIf { p.gone.isNotEmpty() },
                 ).joinToString(" · "),
                 color = Muted,
             )

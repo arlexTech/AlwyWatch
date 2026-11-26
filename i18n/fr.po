@@ -2929,6 +2929,30 @@ msgstr[1] "{n} points de reprise"
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/src/app/history.rs
 #: ios/AlwyWatch/Sync.swift
+msgid "{n} already up to date"
+msgid_plural "{n} already up to date"
+msgstr[0] "{n} déjà à jour"
+msgstr[1] "{n} déjà à jour"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
+msgid "{n} not on that server"
+msgid_plural "{n} not on that server"
+msgstr[0] "{n} absent de ce serveur"
+msgstr[1] "{n} absents de ce serveur"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
+msgid "{n} no longer on either server"
+msgid_plural "{n} no longer on either server"
+msgstr[0] "{n} absent des deux serveurs"
+msgstr[1] "{n} absents des deux serveurs"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
+#: desktop/src/app/history.rs
+#: ios/AlwyWatch/Sync.swift
 msgid "Copy {n} title"
 msgid_plural "Copy {n} titles"
 msgstr[0] "Copier {n} titre"
@@ -2986,21 +3010,6 @@ msgstr "Rien à copier : tout y est déjà."
 #: ios/AlwyWatch/Sync.swift
 msgid "{count} to mark as watched"
 msgstr "{count} à marquer comme vus"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
-#: ios/AlwyWatch/Sync.swift
-msgid "{count} already up to date"
-msgstr "{count} déjà à jour"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
-#: ios/AlwyWatch/Sync.swift
-msgid "{count} not on that server"
-msgstr "{count} absents de ce serveur"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
-#: ios/AlwyWatch/Sync.swift
-msgid "{count} no longer on either server"
-msgstr "{count} absents des deux serveurs"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/HistoryCopyScreen.kt
 #: desktop/ui/app.slint
@@ -5716,24 +5725,6 @@ msgid "{n} to mark as watched"
 msgid_plural "{n} to mark as watched"
 msgstr[0] "{n} à marquer comme vu"
 msgstr[1] "{n} à marquer comme vus"
-
-#: desktop/src/app/history.rs
-msgid "{n} already up to date"
-msgid_plural "{n} already up to date"
-msgstr[0] "{n} déjà à jour"
-msgstr[1] "{n} déjà à jour"
-
-#: desktop/src/app/history.rs
-msgid "{n} not on that server"
-msgid_plural "{n} not on that server"
-msgstr[0] "{n} absent de ce serveur"
-msgstr[1] "{n} absents de ce serveur"
-
-#: desktop/src/app/history.rs
-msgid "{n} no longer on either server"
-msgid_plural "{n} no longer on either server"
-msgstr[0] "{n} absent des deux serveurs"
-msgstr[1] "{n} absents des deux serveurs"
 
 #: desktop/src/app/history.rs
 msgid "Couldn't check the history: {error}"
@@ -9308,6 +9299,15 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "{count} already up to date"
+#~ msgstr "{count} déjà à jour"
+
+#~ msgid "{count} not on that server"
+#~ msgstr "{count} absents de ce serveur"
+
+#~ msgid "{count} no longer on either server"
+#~ msgstr "{count} absents des deux serveurs"
 
 #~ msgid "Deletion paused"
 #~ msgstr "Suppression suspendue"
