@@ -669,6 +669,12 @@ final class Playback: ObservableObject {
     private var ownHoldUntil = Date.distantPast
     /// No corrections (and no "I moved" sent) before this: a seek landing.
     private var seekHoldUntil = Date.distantPast
+    /// How late our seeks land while playing: the next ones aim that far ahead, learnt (by
+    /// halves) from where the last ones landed. `reseeks`: checks left after a seek or a join's
+    /// loading (`reseekLearns` false: that lateness was the loading, not a seek's).
+    private var seekLead: Int64 = 0
+    private var reseeks = 0
+    private var reseekLearns = false
     private var roomSending = 0
     /// Playing or paused as the room last said (a different rate is the viewer's doing).
     private var appliedPlaying: Bool?
@@ -727,6 +733,20 @@ final class Playback: ObservableObject {
         let session = TogetherSession.shared
         let before = lastSeen
         lastSeen = s
+        // Joined (or a new start): check where the loading landed.
+        if before == nil || before?.round != s.round {
+            reseeks = 2
+            reseekLearns = false
+        }
+        // Someone changed something: speed corrections get a new chance (a check spoiled by a
+        // seek in between must not leave a whole second of tolerance for good).
+        if !rateWorks {
+            rateWorks = true
+            if roomRate != 1 {
+                roomRate = 1
+                if player.rate > 0 { player.rate = 1 }
+            }
+        }
         // The host went back to the waiting room (to pick something else): so do we, also on
         // the host's other devices (only the seat that sent it is already leaving).
         if !s.started {
@@ -793,10 +813,26 @@ final class Playback: ObservableObject {
         guard now >= seekHoldUntil, player.currentItem?.status == .readyToPlay else { return }
         let actual = positionMs
         let drift = abs(Int64(actual) - Int64(expected))
+        // Just landed after a seek (or a join's loading): still apart by more than a speed
+        // change closes quickly, so aim further ahead and try again.
+        if reseeks > 0 {
+            let behind = Int64(expected) - Int64(actual)
+            if s.playing, (250..<3_000).contains(drift) {
+                if reseekLearns { seekLead = min(max(seekLead + behind / 2, 0), 3_000) }
+                reseekLearns = true
+                reseeks -= 1
+                seekHoldUntil = now.addingTimeInterval(1.5)
+                seekTo(UInt64(Int64(expected) + seekLead))
+                return
+            }
+            reseeks = 0
+        }
         let c = togetherCorrection(expectedMs: expected, actualMs: actual, playing: s.playing, currentRate: Double(roomRate), canChangeRate: rateWorks)
         if let to = c.seekToMs {
-            seekHoldUntil = now.addingTimeInterval(2)
-            seekTo(to)
+            seekHoldUntil = now.addingTimeInterval(1.5)
+            seekTo(s.playing ? UInt64(Int64(to) + seekLead) : to)
+            reseeks = s.playing ? 2 : 0
+            reseekLearns = true
         }
         if Float(c.rate) != roomRate {
             if roomRate == 1 {

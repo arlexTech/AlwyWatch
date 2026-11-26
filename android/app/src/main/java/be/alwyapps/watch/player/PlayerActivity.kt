@@ -1433,6 +1433,20 @@ class PlayerActivity : ComponentActivity() {
         val before = lastSeen
         lastSeen = s
         showRoom(s)
+        // Joined (or a new start): check where the loading landed.
+        if (before == null || before.round != s.round) {
+            reseeks = 2
+            reseekLearns = false
+        }
+        // Someone changed something: speed corrections get a new chance (a check spoiled by a
+        // seek in between must not leave a whole second of tolerance for good).
+        if (!rateWorks) {
+            rateWorks = true
+            if (roomRate != 1.0) {
+                roomRate = 1.0
+                player?.setPlaybackSpeed(1f)
+            }
+        }
         // The host went back to the waiting room (to pick something else): so do we, also on
         // the host's other devices (only the seat that sent it is already leaving).
         if (!s.started) {
@@ -1501,6 +1515,15 @@ class PlayerActivity : ComponentActivity() {
     private var seekHoldUntil = 0L
 
     /**
+     * How late our seeks land while playing: the next ones aim that far ahead, learnt (by halves)
+     * from where the last ones landed. [reseeks]: checks left after a seek or a join's loading
+     * ([reseekLearns] false: that lateness was the loading, not a seek's).
+     */
+    private var seekLead = 0L
+    private var reseeks = 0
+    private var reseekLearns = false
+
+    /**
      * Plays or pauses like the room and stays in step with it, every half second: small drifts
      * by playing slightly faster or slower, a seek past 2 s (the core's `togetherCorrection`).
      */
@@ -1527,6 +1550,19 @@ class PlayerActivity : ComponentActivity() {
             if (p.playWhenReady != s.playing) p.playWhenReady = s.playing
             if (now < seekHoldUntil || p.playbackState != Player.STATE_READY) return
             val drift = p.currentPosition - expected
+            // Just landed after a seek (or a join's loading): still apart by more than a speed
+            // change closes quickly, so aim further ahead and try again.
+            if (reseeks > 0) {
+                if (s.playing && abs(drift) in 250L until 3_000L) {
+                    if (reseekLearns) seekLead = (seekLead - drift / 2).coerceIn(0L, 3_000L)
+                    reseekLearns = true
+                    reseeks--
+                    p.seekTo(expected + seekLead)
+                    seekHoldUntil = now + 1_500
+                    return
+                }
+                reseeks = 0
+            }
             val c =
                 be.alwyapps.watch.core.togetherCorrection(
                     expected.coerceAtLeast(0).toULong(),
@@ -1536,8 +1572,10 @@ class PlayerActivity : ComponentActivity() {
                     rateWorks,
                 )
             c.seekToMs?.let {
-                p.seekTo(it.toLong())
-                seekHoldUntil = now + 2_000
+                p.seekTo(it.toLong() + if (s.playing) seekLead else 0L)
+                reseeks = if (s.playing) 2 else 0
+                reseekLearns = true
+                seekHoldUntil = now + 1_500
             }
             if (c.rate != roomRate) {
                 if (roomRate == 1.0) {
