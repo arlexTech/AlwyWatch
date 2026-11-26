@@ -77,6 +77,7 @@ import be.alwyapps.watch.ui.LocalDimens
 import be.alwyapps.watch.ui.LocalInitialFocusDone
 import be.alwyapps.watch.ui.LocalItemOwners
 import be.alwyapps.watch.ui.LocalNavigator
+import be.alwyapps.watch.ui.MinimalScrollSpec
 import be.alwyapps.watch.ui.Muted
 import be.alwyapps.watch.ui.Navigator
 import be.alwyapps.watch.ui.OnSurface
@@ -640,188 +641,193 @@ fun RoomScreen(code: String) {
             if (d.isTv) scope.launch { runCatching { inviteButton.requestFocus() } }
         }
     }
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = d.gutter, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        item(key = "title") {
-            PageTitle(
-                tr("Watch together"),
-                subtitle =
-                    if (state == null) {
-                        null
-                    } else if (started) {
-                        tr("Watching now")
-                    } else {
-                        tr("Waiting room")
-                    },
-            )
-        }
-        if (state == null || seat == null) {
-            item(key = "wait") {
-                Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(problem ?: tr("Opening the room…"), style = MaterialTheme.typography.bodyLarge)
-                    if (problem != null) ActionButton(tr("Back"), { nav.pop() }, Modifier.initialFocus(), primary = true, icon = Icons.Back)
-                }
+    // TV: no scrolling by a third of the screen when the buttons take the focus (that pushed
+    // the title off the top).
+    MinimalScrollSpec {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = d.gutter, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            item(key = "title") {
+                PageTitle(
+                    tr("Watch together"),
+                    subtitle =
+                        if (state == null) {
+                            null
+                        } else if (started) {
+                            tr("Watching now")
+                        } else {
+                            tr("Waiting room")
+                        },
+                )
             }
-            return@LazyColumn
-        }
-        val host = state.members.firstOrNull { it.id == state.host }
-        val hostName = host?.name ?: tr("the host")
-        val isHost =
-            be.alwyapps.watch.core
-                .togetherIsHost(state, seat.memberId)
-        val myKey = state.members.firstOrNull { it.id == seat.memberId }?.userKey
-        val untitled = state.media.untitled()
-        item(key = "media") {
-            Row(Modifier.widthIn(max = 760.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoomPoster(state.media, if (d.isTv) 110.dp else 88.dp)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(state.media.label(), style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        if (isHost) tr("You're the host") else tr("Hosted by {name}", "name" to hostName),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Muted,
-                    )
-                    if (!started) {
+            if (state == null || seat == null) {
+                item(key = "wait") {
+                    Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text(problem ?: tr("Opening the room…"), style = MaterialTheme.typography.bodyLarge)
+                        if (problem != null) ActionButton(tr("Back"), { nav.pop() }, Modifier.initialFocus(), primary = true, icon = Icons.Back)
+                    }
+                }
+                return@LazyColumn
+            }
+            val host = state.members.firstOrNull { it.id == state.host }
+            val hostName = host?.name ?: tr("the host")
+            val isHost =
+                be.alwyapps.watch.core
+                    .togetherIsHost(state, seat.memberId)
+            val myKey = state.members.firstOrNull { it.id == seat.memberId }?.userKey
+            val untitled = state.media.untitled()
+            item(key = "media") {
+                Row(Modifier.widthIn(max = 760.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RoomPoster(state.media, if (d.isTv) 110.dp else 88.dp)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(state.media.label(), style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         Text(
-                            when {
-                                untitled && isHost ->
-                                    tr("Open a movie or an episode and choose Watch in your room. The people you invite can join in the meantime.")
-                                untitled -> tr("{name} is choosing what to watch", "name" to hostName)
-                                isHost && again ->
-                                    tr(
-                                        "Start this again, or pick another title: open a movie or an episode and choose Watch in your room. Everyone stays here.",
-                                    )
-                                isHost -> tr("Invite people, then start when everyone is here. Play, pause and seeking follow everyone.")
-                                again -> tr("{name} is picking what to watch next", "name" to hostName)
-                                else -> tr("Waiting for {name} to start", "name" to hostName)
-                            },
+                            if (isHost) tr("You're the host") else tr("Hosted by {name}", "name" to hostName),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (isHost) Muted else OnSurface,
+                            color = Muted,
                         )
+                        if (!started) {
+                            Text(
+                                when {
+                                    untitled && isHost ->
+                                        tr("Open a movie or an episode and choose Watch in your room. The people you invite can join in the meantime.")
+                                    untitled -> tr("{name} is choosing what to watch", "name" to hostName)
+                                    isHost && again ->
+                                        tr(
+                                            "Start this again, or pick another title: open a movie or an episode and choose Watch in your room. Everyone stays here.",
+                                        )
+                                    isHost -> tr("Invite people, then start when everyone is here. Play, pause and seeking follow everyone.")
+                                    again -> tr("{name} is picking what to watch next", "name" to hostName)
+                                    else -> tr("Waiting for {name} to start", "name" to hostName)
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (isHost) Muted else OnSurface,
+                            )
+                        }
                     }
                 }
             }
-        }
-        item(key = "actions") {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                androidx.compose.foundation.layout.FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    fun start(from: Long) {
-                        if (busy) return
-                        busy = true
-                        problem = null
-                        scope.launch {
-                            try {
-                                TogetherSession.accept(core.togetherStart(code, seat.memberId, from.coerceAtLeast(0).toULong()))
-                            } catch (e: CoreException) {
-                                problem = friendly(e)
-                            } finally {
-                                busy = false
+            item(key = "actions") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        fun start(from: Long) {
+                            if (busy) return
+                            busy = true
+                            problem = null
+                            scope.launch {
+                                try {
+                                    TogetherSession.accept(core.togetherStart(code, seat.memberId, from.coerceAtLeast(0).toULong()))
+                                } catch (e: CoreException) {
+                                    problem = friendly(e)
+                                } finally {
+                                    busy = false
+                                }
                             }
                         }
-                    }
-                    // Host, nobody else in the room or invited yet: Invite first (OK by reflex
-                    // must not start an empty room); Start once someone is there.
-                    val alone = state.members.all { it.userKey == myKey } && state.invited.isEmpty()
-                    when {
-                        started ->
-                            ActionButton(tr("Watch with them"), {
-                                scope.launch { openRoomPlayer(ctx, core)?.let { problem = it } }
-                            }, Modifier.initialFocus(), primary = true, icon = Icons.Play)
-                        isHost && untitled ->
-                            ActionButton(
-                                tr("Choose what to watch"),
-                                { nav.reset(Route.Home) },
-                                if (alone) Modifier else Modifier.initialFocus(),
-                                primary = !alone,
-                                // Not Play: it opens the libraries to pick a title.
-                                icon = Icons.Library,
-                            )
-                        isHost -> {
-                            val resume = TogetherSession.startAt
-                            ActionButton(
-                                if (busy) {
-                                    tr("Starting…")
-                                } else if (resume > 0) {
-                                    tr("Start at {time}", "time" to formatTime(resume))
-                                } else {
-                                    tr("Start watching")
-                                },
-                                { start(resume) },
-                                if (alone) Modifier else Modifier.initialFocus(),
-                                primary = !alone,
-                                icon = Icons.Play,
-                            )
-                            if (resume > 0) ActionButton(tr("From the beginning"), { start(0) })
+                        // Host, nobody else in the room or invited yet: Invite first (OK by reflex
+                        // must not start an empty room); Start once someone is there.
+                        val alone = state.members.all { it.userKey == myKey } && state.invited.isEmpty()
+                        when {
+                            // Takes the focus when the room starts (it was on Leave in the waiting room).
+                            started ->
+                                ActionButton(tr("Watch with them"), {
+                                    scope.launch { openRoomPlayer(ctx, core)?.let { problem = it } }
+                                }, Modifier.focusOnAppear(), primary = true, icon = Icons.Play)
+                            isHost && untitled ->
+                                ActionButton(
+                                    tr("Choose what to watch"),
+                                    { nav.reset(Route.Home) },
+                                    if (alone) Modifier else Modifier.initialFocus(),
+                                    primary = !alone,
+                                    // Not Play: it opens the libraries to pick a title.
+                                    icon = Icons.Library,
+                                )
+                            isHost -> {
+                                val resume = TogetherSession.startAt
+                                ActionButton(
+                                    if (busy) {
+                                        tr("Starting…")
+                                    } else if (resume > 0) {
+                                        tr("Start at {time}", "time" to formatTime(resume))
+                                    } else {
+                                        tr("Start watching")
+                                    },
+                                    { start(resume) },
+                                    if (alone) Modifier else Modifier.initialFocus(),
+                                    primary = !alone,
+                                    icon = Icons.Play,
+                                )
+                                if (resume > 0) ActionButton(tr("From the beginning"), { start(0) })
+                            }
                         }
-                    }
-                    if (isHost) {
+                        if (isHost) {
+                            ActionButton(
+                                tr("Invite people"),
+                                { inviting = true },
+                                Modifier.focusRequester(inviteButton).then(if (alone && !started) Modifier.initialFocus() else Modifier),
+                                primary = alone && !started,
+                                icon = Icons.Add,
+                            )
+                        }
                         ActionButton(
-                            tr("Invite people"),
-                            { inviting = true },
-                            Modifier.focusRequester(inviteButton).then(if (alone && !started) Modifier.initialFocus() else Modifier),
-                            primary = alone && !started,
-                            icon = Icons.Add,
+                            tr("Leave"),
+                            { confirmLeave = true },
+                            if (!isHost && !started) Modifier.initialFocus() else Modifier,
+                            icon = Icons.Close,
                         )
                     }
-                    ActionButton(
-                        tr("Leave"),
-                        { confirmLeave = true },
-                        if (!isHost && !started) Modifier.initialFocus() else Modifier,
-                        icon = Icons.Close,
-                    )
-                }
-                (problem ?: TogetherSession.problem.takeIf { started })?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodyMedium) }
-            }
-        }
-        item(key = "members") {
-            val people = state.members.people()
-            Group(if (people.size == 1) tr("In the room") else tr("In the room · {count}", "count" to people.size), Modifier.widthIn(max = 760.dp)) {
-                people.forEachIndexed { i, (m, devices) ->
-                    if (i > 0) Divider()
-                    ListRow(
-                        if (m.userKey == myKey) tr("{name} (you)", "name" to m.name) else m.name,
-                        subtitle =
-                            listOfNotNull(
-                                tr("Host").takeIf { host != null && m.userKey == host.userKey },
-                                trn("on {n} device", "on {n} devices", devices).takeIf { devices > 1 },
-                            ).joinToString(" · ").ifEmpty { null },
-                        leading = { Avatar(m.avatar, m.name, m.userKey, if (d.isTv) 44.dp else 40.dp) },
-                    )
+                    (problem ?: TogetherSession.problem.takeIf { started })?.let { Text(it, color = Danger, style = MaterialTheme.typography.bodyMedium) }
                 }
             }
-        }
-        if (state.invited.isNotEmpty()) {
-            item(key = "invited") {
-                Group(tr("Invited"), Modifier.widthIn(max = 760.dp), footer = tr("They can join until they say no.")) {
-                    state.invited.forEachIndexed { i, p ->
+            item(key = "members") {
+                val people = state.members.people()
+                Group(if (people.size == 1) tr("In the room") else tr("In the room · {count}", "count" to people.size), Modifier.widthIn(max = 760.dp)) {
+                    people.forEachIndexed { i, (m, devices) ->
                         if (i > 0) Divider()
                         ListRow(
-                            p.name,
-                            subtitle = tr("Hasn't joined yet"),
-                            leading = { Avatar(p.avatar, p.name, p.userKey, if (d.isTv) 44.dp else 40.dp) },
-                            trailing =
-                                if (isHost) {
-                                    {
-                                        IconAction(Icons.Close, tr("Remove {name}", "name" to p.name), {
-                                            scope.launch {
-                                                try {
-                                                    TogetherSession.accept(core.togetherUninvite(code, seat.memberId, p.userKey))
-                                                } catch (e: CoreException) {
-                                                    problem = friendly(e)
-                                                }
-                                            }
-                                        })
-                                    }
-                                } else {
-                                    null
-                                },
+                            if (m.userKey == myKey) tr("{name} (you)", "name" to m.name) else m.name,
+                            subtitle =
+                                listOfNotNull(
+                                    tr("Host").takeIf { host != null && m.userKey == host.userKey },
+                                    trn("on {n} device", "on {n} devices", devices).takeIf { devices > 1 },
+                                ).joinToString(" · ").ifEmpty { null },
+                            leading = { Avatar(m.avatar, m.name, m.userKey, if (d.isTv) 44.dp else 40.dp) },
                         )
+                    }
+                }
+            }
+            if (state.invited.isNotEmpty()) {
+                item(key = "invited") {
+                    Group(tr("Invited"), Modifier.widthIn(max = 760.dp), footer = tr("They can join until they say no.")) {
+                        state.invited.forEachIndexed { i, p ->
+                            if (i > 0) Divider()
+                            ListRow(
+                                p.name,
+                                subtitle = tr("Hasn't joined yet"),
+                                leading = { Avatar(p.avatar, p.name, p.userKey, if (d.isTv) 44.dp else 40.dp) },
+                                trailing =
+                                    if (isHost) {
+                                        {
+                                            IconAction(Icons.Close, tr("Remove {name}", "name" to p.name), {
+                                                scope.launch {
+                                                    try {
+                                                        TogetherSession.accept(core.togetherUninvite(code, seat.memberId, p.userKey))
+                                                    } catch (e: CoreException) {
+                                                        problem = friendly(e)
+                                                    }
+                                                }
+                                            })
+                                        }
+                                    } else {
+                                        null
+                                    },
+                            )
+                        }
                     }
                 }
             }
