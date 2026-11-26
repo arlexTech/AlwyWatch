@@ -359,6 +359,14 @@ impl App {
         let fresh = {
             let mut st = self.state.borrow_mut();
             let lists = &mut st.lists;
+            // A room gone from the list may invite me again later (the host left it to someone
+            // who invites me back): that invitation is a new one, shown and announced.
+            lists
+                .shown
+                .retain(|c| list.rooms.iter().any(|r| &r.code == c && r.invited));
+            lists
+                .gone
+                .retain(|c| list.rooms.iter().any(|r| &r.code == c));
             let invited: Vec<&TogetherRoom> = list.rooms.iter().filter(|r| r.invited).collect();
             let fresh = invited
                 .iter()

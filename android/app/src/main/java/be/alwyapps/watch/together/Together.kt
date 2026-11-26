@@ -337,6 +337,7 @@ object TogetherInbox {
     suspend fun refresh(core: AlwyWatch) {
         try {
             val r = core.togetherRooms()
+            prune(r)
             known += r.rooms.filter { it.invited }.map { it.code }
             rooms = r
             unreachable = false
@@ -381,8 +382,23 @@ object TogetherInbox {
             }
     }
 
+    /**
+     * A room gone from the list may invite me again later (the host left it to someone who
+     * invites me back): that invitation is a new one, prompted like any other.
+     */
+    private fun prune(r: TogetherRooms) {
+        known.retainAll(
+            r.rooms
+                .filter { it.invited }
+                .map { it.code }
+                .toSet(),
+        )
+        gone.retainAll(r.rooms.map { it.code }.toSet())
+    }
+
     private fun take(r: TogetherRooms) {
         rooms = r
+        prune(r)
         val invited = r.rooms.filter { it.invited }
         val fresh = invited.filter { it.code !in known && it.code !in gone }
         known += invited.map { it.code }

@@ -308,6 +308,7 @@ final class TogetherInbox: ObservableObject {
     func refresh(_ core: AlwyWatch) async {
         do {
             let r = try await core.togetherRooms()
+            prune(r)
             for room in r.rooms where room.invited { known.insert(room.code) }
             rooms = r
             unreachable = false
@@ -316,8 +317,16 @@ final class TogetherInbox: ObservableObject {
         }
     }
 
+    /// A room gone from the list may invite me again later (the host left it to someone who
+    /// invites me back): that invitation is a new one, prompted like any other.
+    private func prune(_ r: TogetherRooms) {
+        known = known.filter { c in r.rooms.contains { $0.code == c && $0.invited } }
+        gone = gone.filter { c in r.rooms.contains { $0.code == c } }
+    }
+
     private func take(_ r: TogetherRooms) {
         rooms = r
+        prune(r)
         let invited = r.rooms.filter(\.invited)
         let fresh = invited.filter { !known.contains($0.code) && !gone.contains($0.code) }
         for room in invited { known.insert(room.code) }
