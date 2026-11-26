@@ -305,7 +305,7 @@ msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
 msgid "Are you still watching?"
 msgstr ""
 
@@ -2343,7 +2343,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/ui/app.slint
 msgid "Size"
 msgstr ""
 
@@ -4302,8 +4302,8 @@ msgid "It can't be requested."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: web/src/prefs.rs
-#: ios/AlwyWatch/SettingsScreen.swift
 msgid "{n} second"
 msgid_plural "{n} seconds"
 msgstr[0] ""
@@ -4317,7 +4317,8 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "After {n} hour"
 msgid_plural "After {n} hours"
 msgstr[0] ""
@@ -4635,7 +4636,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/prefs.rs
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/ui/app.slint
 msgid "Next episode countdown"
 msgstr ""
 
@@ -4645,22 +4646,26 @@ msgid "Remote and resuming"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Skip back"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Skip forward"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Rewind when resuming"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "Never"
 msgstr ""
 
@@ -4731,8 +4736,8 @@ msgid "A movie or show remembers the tracks picked for it (on its page or while 
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/prefs.rs
 #: desktop/ui/app.slint
-#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Audio language"
 msgstr ""
 
@@ -4765,61 +4770,73 @@ msgid "Device language ({language})"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/prefs.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Subtitle look"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Small"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Normal"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Large"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Huge"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Colour"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "White"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "Yellow"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Background box"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Otherwise a dark outline keeps them readable."
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/ui/app.slint
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Raise subtitles"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/ui/app.slint
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Higher on the screen (TVs that crop the edges)."
 msgstr ""
@@ -5499,6 +5516,7 @@ msgstr ""
 
 #: core/media-api/src/quality.rs
 #: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "Original"
 msgstr ""
 
@@ -5729,6 +5747,11 @@ msgstr ""
 #: desktop/src/app/links.rs
 #: web/src/links.rs
 msgid "{name} on {server} ({kind})"
+msgstr ""
+
+#: desktop/src/app/playback.rs
+#: web/src/player.rs
+msgid "Are you still watching? Press Space to go on."
 msgstr ""
 
 #: desktop/src/app/profiles.rs
@@ -7912,11 +7935,32 @@ msgid "A countdown during the credits, which Cancel stops. Off: playback stops a
 msgstr ""
 
 #: web/src/prefs.rs
+msgid "Skipping and resuming"
+msgstr ""
+
+#: web/src/prefs.rs
+msgid "Left arrow, or a double tap on the left of the picture."
+msgstr ""
+
+#: web/src/prefs.rs
+msgid "Right arrow, or a double tap on the right of the picture."
+msgstr ""
+
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
+msgid "Pauses when no key or player button has been pressed for that long."
+msgstr ""
+
+#: web/src/prefs.rs
 msgid "Browser language ({language})"
 msgstr ""
 
 #: web/src/prefs.rs
 msgid "Subtitles the browser can't draw (styled or image ones) are added to the picture by the server. A movie's or show's own choice, made here or in the apps, comes first."
+msgstr ""
+
+#: web/src/prefs.rs
+msgid "The size follows the browser's own caption settings."
 msgstr ""
 
 #: web/src/profile.rs
@@ -8902,7 +8946,19 @@ msgid "Send Dolby/DTS untouched to an HDMI or S/PDIF receiver. This device only.
 msgstr ""
 
 #: desktop/ui/app.slint
-msgid "A 10 second countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode."
+msgid "A countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode."
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "SKIPPING AND RESUMING"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Left arrow, or a double click on the left of the picture."
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "Right arrow, or a double click on the right of the picture."
 msgstr ""
 
 #: desktop/ui/app.slint
@@ -8911,6 +8967,14 @@ msgstr ""
 
 #: desktop/ui/app.slint
 msgid "A movie or show remembers the tracks picked for it while watching, and its next episodes follow."
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "SUBTITLE LOOK"
+msgstr ""
+
+#: desktop/ui/app.slint
+msgid "For text subtitles; picture subtitles (DVD, Blu-ray) keep their own look."
 msgstr ""
 
 #: desktop/ui/app.slint

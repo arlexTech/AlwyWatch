@@ -23,9 +23,17 @@ use crate::profile::Avatar;
 use crate::state::{self, fmt_time};
 use crate::together::{self, Room};
 
-/// −10 s / +30 s, like the apps' defaults.
-const SEEK_BACK_S: u32 = 10;
-const SEEK_FORWARD_S: u32 = 30;
+thread_local! {
+    /// When a key or a player control was last used (ms), from one episode to the next: "Are
+    /// you still watching?" pauses after the chosen hours without one. 0: a new playback.
+    static LAST_INPUT: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+    /// The next player was opened by the countdown (no press).
+    static CHAINED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn pressed() {
+    LAST_INPUT.with(|l| l.set(js_sys::Date::now()));
+}
 /// How long the bubble stays, and presses on its side keep adding to it.
 const SEEK_BUBBLE_MS: u64 = 900;
 
@@ -521,7 +529,7 @@ fn start_tracks(l: &Loaded, prefs: &prefs::PlayerPrefs) -> (Option<i64>, Option<
         prefs.sub_lang.clone()
     };
     let pref = crate::tracks::pref(l.srv.session(), &l.item);
-    crate::tracks::start(pref, &prefs.sub_mode, &lang, src)
+    crate::tracks::start(pref, &prefs.audio_lang, &prefs.sub_mode, &lang, src)
 }
 
 /// Remembers a track picked in the player for this movie or show (here and in the apps).
@@ -601,6 +609,19 @@ fn PlayerView(
     let prefs = prefs::load();
     let (auto_skip, auto_next, countdown_s) =
         (prefs.auto_skip_intro, prefs.auto_next, prefs.countdown_s);
+    let (seek_back_s, seek_forward_s) = (prefs.seek_back_s.max(1), prefs.seek_forward_s.max(1));
+    let (sub_yellow, sub_box) = (prefs.sub_color == "yellow", prefs.sub_bg);
+    let still_h = prefs.still_watching_h;
+    // Opened by hand: that's a press. Opened by the countdown: the time keeps counting.
+    if !CHAINED.with(|c| c.replace(false)) || LAST_INPUT.with(|l| l.get()) == 0.0 {
+        pressed();
+    }
+    // Resuming alone: a few seconds earlier, to find the thread again. Not in a room.
+    let start_ms = if start_ms > 0 && room_code.with_value(|c| c.is_none()) {
+        start_ms.saturating_sub(u64::from(prefs.resume_rewind_s) * 1000)
+    } else {
+        start_ms
+    };
     // The video element outlives this page a little: its "pause" and "timeupdate" (sent when
     // it leaves the page) would find this page's state gone. Every handler checks this first.
     let alive = StoredValue::new(());
@@ -629,14 +650,14 @@ fn PlayerView(
     let original = RwSignal::new(None::<PlaybackInfo>);
     let quality = RwSignal::new(None::<Quality>);
     let quality_switch = StoredValue::new(false);
-    // ←/→ and double taps on the picture: −10 s / +30 s, added up in a bubble on that side.
+    // ←/→ and double taps on the picture: the steps from Settings (−10 s / +30 s by default), added up in a bubble on that side.
     let bubble = RwSignal::new(None::<SeekBubble>);
     let bubble_shape = Memo::new(move |_| bubble.with(|b| b.map(|b| (b.forward, b.seconds, b.n))));
     let seek_by = move |forward: bool| {
         let Some(v) = video.get_untracked() else {
             return;
         };
-        let secs = if forward { SEEK_FORWARD_S } else { SEEK_BACK_S };
+        let secs = if forward { seek_forward_s } else { seek_back_s };
         let dur = v.duration();
         let step = f64::from(secs);
         let mut to = v.current_time() + if forward { step } else { -step };
@@ -675,6 +696,7 @@ fn PlayerView(
         }
     };
     let keys = window_event_listener(leptos::ev::keydown, move |ev| {
+        pressed();
         let typing = ev
             .target()
             .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
@@ -1311,6 +1333,30 @@ fn PlayerView(
         on_cleanup(move || h.clear());
     }
 
+    // "Are you still watching?": playing alone, nothing pressed for the chosen hours.
+    let still_asked = StoredValue::new(false);
+    if still_h > 0 {
+        let check = move || {
+            if !alive() || joined() {
+                return;
+            }
+            let Some(v) = video.get_untracked() else {
+                return;
+            };
+            let idle = js_sys::Date::now() - LAST_INPUT.with(|l| l.get());
+            if !v.paused() && idle >= f64::from(still_h) * 3_600_000.0 {
+                let _ = v.pause();
+                pressed();
+                still_asked.set_value(true);
+                room.note
+                    .try_set(Some(tr!("Are you still watching? Press Space to go on.")));
+            }
+        };
+        if let Ok(h) = set_interval_with_handle(check, std::time::Duration::from_secs(30)) {
+            on_cleanup(move || h.clear());
+        }
+    }
+
     // Plays or pauses like the room, then follows its position.
     let sync = move || {
         if !joined() {
@@ -1486,6 +1532,7 @@ fn PlayerView(
     Effect::new(move |_| {
         if countdown.get() == Some(0) {
             cancelled.set(true);
+            CHAINED.with(|c| c.set(true));
             go_next3();
         }
     });
@@ -1741,7 +1788,9 @@ fn PlayerView(
     let check = |on: bool| on.then(|| view! { <crate::icons::Icon path=crate::icons::CHECK /> });
     view! {
         <div class="player" node_ref=shell class:idle=move || idle.get()
-            on:mousemove=move |_| wake() on:touchstart=move |_| wake() on:keydown=move |_| wake()
+            class:sub-yellow=sub_yellow class:sub-box=sub_box
+            on:mousemove=move |_| wake() on:touchstart=move |_| { pressed(); wake() } on:keydown=move |_| { pressed(); wake() }
+            on:pointerdown=move |_| pressed()
             on:focusin=move |_| wake()>
             <video node_ref=video autoplay playsinline
                 on:click=on_surface on:dblclick=on_double on:touchend=touch_end
@@ -1768,7 +1817,14 @@ fn PlayerView(
                     start_sent.set_value(true);
                     report(if first { PlaybackEvent::Start } else { PlaybackEvent::Progress });
                 }
-                on:play=move |_| { playing.set(true); on_play(); wake() }
+                on:play=move |_| {
+                    playing.set(true);
+                    if still_asked.try_update_value(std::mem::take).unwrap_or(false) {
+                        room.note.set(None);
+                    }
+                    on_play();
+                    wake()
+                }
                 on:seeked=move |_| if alive() {
                     let ours = room_seek.get_value().zip(video.get_untracked())
                         .is_some_and(|(t, v)| (v.current_time() - t).abs() < 1.0);

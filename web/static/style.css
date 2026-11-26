@@ -188,7 +188,11 @@ select.chip option { background: #1a1a1f; color: var(--text); }
 .person-card img { width: 100%; height: 100%; object-fit: cover; }
 .person-card .title, .person-card .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .9rem; }
 .person-card .sub { color: var(--muted); font-size: .8rem; }
-video::cue { background: #000a; }
+/* Subtitles: an outline by default, a box or yellow text as chosen (Settings → Audio &
+   subtitles, the apps' keys). */
+video::cue { background: transparent; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000, 1px 1px 2px #000; }
+.player.sub-box video::cue { background: #000b; text-shadow: none; }
+.player.sub-yellow video::cue { color: #ffe600; }
 
 /* Seerr state badge, on title pages and on posters. */
 .state { display: inline-block; background: var(--surface-high); border-radius: 999px; padding: 3px 12px; font-size: .85rem; }

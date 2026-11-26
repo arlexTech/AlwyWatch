@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Playback preferences, kept in this browser: same names, defaults and rules as the apps'
-//! Playback settings (skip intros, next episode countdown, subtitle mode and language).
+//! Playback settings (skip intros, next episode countdown, skip steps, resuming, "Are you
+//! still watching?", languages and the subtitle look).
 
 use i18n::{tr, trn};
 use leptos::prelude::*;
@@ -25,6 +26,19 @@ pub struct PlayerPrefs {
     pub sub_lang: String,
     /// What others may do in watch together rooms created here.
     pub together: keep_service::together::TogetherRights,
+    /// Audio language (ISO 639-2), or "" for the file's own.
+    pub audio_lang: String,
+    /// Seconds ←/→ (and a double tap on a side) jump.
+    pub seek_back_s: u32,
+    pub seek_forward_s: u32,
+    /// Seconds played again when resuming.
+    pub resume_rewind_s: u32,
+    /// Hours without a press before playback pauses and asks (0: never).
+    pub still_watching_h: u32,
+    /// Subtitle colour: "white" or "yellow".
+    pub sub_color: String,
+    /// A dark box behind subtitles (else an outline).
+    pub sub_bg: bool,
 }
 
 impl Default for PlayerPrefs {
@@ -36,6 +50,13 @@ impl Default for PlayerPrefs {
             sub_mode: "auto".into(),
             sub_lang: String::new(),
             together: Default::default(),
+            audio_lang: String::new(),
+            seek_back_s: 10,
+            seek_forward_s: 30,
+            resume_rewind_s: 0,
+            still_watching_h: 2,
+            sub_color: "white".into(),
+            sub_bg: false,
         }
     }
 }
@@ -132,6 +153,14 @@ pub fn browser_language() -> String {
 
 /// Seconds left of the next episode countdown, started when the credits showed at
 /// `from_ms` (playback time, so pausing pauses it too).
+fn seconds(n: u32) -> String {
+    match n {
+        0 => tr!("Off"),
+        60 => trn!("{n} minute", "{n} minutes", 1),
+        n => trn!("{n} second", "{n} seconds", n),
+    }
+}
+
 pub fn countdown_left(countdown_s: u32, from_ms: u64, pos_ms: u64) -> u32 {
     let gone = (pos_ms.saturating_sub(from_ms) / 1000) as u32;
     countdown_s.saturating_sub(gone)
@@ -164,6 +193,42 @@ pub fn PlaybackSettings() -> impl IntoView {
                     prop:value=move || prefs.with(|p| p.countdown_s.to_string())
                     on:change=move |ev| { let s: u32 = event_target_value(&ev).parse().unwrap_or(10); change(&|p| p.countdown_s = s) }>
                     {[5u32, 10, 15, 30].map(|s| view! { <option value=s.to_string()>{trn!("{n} second", "{n} seconds", s)}</option> }).collect_view()}
+                </select>
+            </div>
+        </section>
+        <section class="group">
+            <h2>{tr!("Skipping and resuming")}</h2>
+            <div class="row">
+                <div>{tr!("Skip back")}<div class="muted small">{tr!("Left arrow, or a double tap on the left of the picture.")}</div></div>
+                <select class="chip" aria-label=tr!("Skip back")
+                    prop:value=move || prefs.with(|p| p.seek_back_s.to_string())
+                    on:change=move |ev| { let s: u32 = event_target_value(&ev).parse().unwrap_or(10); change(&|p| p.seek_back_s = s) }>
+                    {[5u32, 10, 15, 30].map(|s| view! { <option value=s.to_string()>{seconds(s)}</option> }).collect_view()}
+                </select>
+            </div>
+            <div class="row">
+                <div>{tr!("Skip forward")}<div class="muted small">{tr!("Right arrow, or a double tap on the right of the picture.")}</div></div>
+                <select class="chip" aria-label=tr!("Skip forward")
+                    prop:value=move || prefs.with(|p| p.seek_forward_s.to_string())
+                    on:change=move |ev| { let s: u32 = event_target_value(&ev).parse().unwrap_or(30); change(&|p| p.seek_forward_s = s) }>
+                    {[10u32, 15, 30, 60].map(|s| view! { <option value=s.to_string()>{seconds(s)}</option> }).collect_view()}
+                </select>
+            </div>
+            <div class="row">
+                <span>{tr!("Rewind when resuming")}</span>
+                <select class="chip" aria-label=tr!("Rewind when resuming")
+                    prop:value=move || prefs.with(|p| p.resume_rewind_s.to_string())
+                    on:change=move |ev| { let s: u32 = event_target_value(&ev).parse().unwrap_or(0); change(&|p| p.resume_rewind_s = s) }>
+                    {[0u32, 5, 10, 30].map(|s| view! { <option value=s.to_string()>{seconds(s)}</option> }).collect_view()}
+                </select>
+            </div>
+            <div class="row">
+                <div>{tr!("Are you still watching?")}<div class="muted small">{tr!("Pauses when no key or player button has been pressed for that long.")}</div></div>
+                <select class="chip" aria-label=tr!("Are you still watching?")
+                    prop:value=move || prefs.with(|p| p.still_watching_h.to_string())
+                    on:change=move |ev| { let h: u32 = event_target_value(&ev).parse().unwrap_or(2); change(&|p| p.still_watching_h = h) }>
+                    <option value="0">{tr!("Never")}</option>
+                    {[2u32, 3, 4].map(|h| view! { <option value=h.to_string()>{trn!("After {n} hour", "After {n} hours", h)}</option> }).collect_view()}
                 </select>
             </div>
         </section>
@@ -202,6 +267,15 @@ pub fn AudioSettings() -> impl IntoView {
         <section class="group">
             <h2>{tr!("Languages")}</h2>
             <div class="row">
+                <span>{tr!("Audio language")}</span>
+                <select class="chip" aria-label=tr!("Audio language")
+                    prop:value=move || prefs.with(|p| p.audio_lang.clone())
+                    on:change=move |ev| { let l = event_target_value(&ev); change(&|p| p.audio_lang = l.clone()) }>
+                    <option value="">{tr!("Original")}</option>
+                    {LANGUAGES.iter().map(|(code, ..)| view! { <option value=*code>{language_label(code)}</option> }).collect_view()}
+                </select>
+            </div>
+            <div class="row">
                 <div>{tr!("Subtitles")}<div class="muted small">{tr!("Automatic: when the audio is not in your subtitle language.")}</div></div>
                 <select class="chip" aria-label=tr!("Subtitles")
                     prop:value=move || prefs.with(|p| p.sub_mode.clone())
@@ -222,6 +296,24 @@ pub fn AudioSettings() -> impl IntoView {
                 </select>
             </div>
             <p class="muted small">{tr!("Subtitles the browser can't draw (styled or image ones) are added to the picture by the server. A movie's or show's own choice, made here or in the apps, comes first.")}</p>
+        </section>
+        <section class="group">
+            <h2>{tr!("Subtitle look")}</h2>
+            <div class="row">
+                <span>{tr!("Colour")}</span>
+                <select class="chip" aria-label=tr!("Colour")
+                    prop:value=move || prefs.with(|p| p.sub_color.clone())
+                    on:change=move |ev| { let c = event_target_value(&ev); change(&|p| p.sub_color = c.clone()) }>
+                    <option value="white">{tr!("White")}</option>
+                    <option value="yellow">{tr!("Yellow")}</option>
+                </select>
+            </div>
+            <label class="row toggle">
+                <div>{tr!("Background box")}<div class="muted small">{tr!("Otherwise a dark outline keeps them readable.")}</div></div>
+                <input type="checkbox" prop:checked=move || prefs.with(|p| p.sub_bg)
+                    on:change=move |ev| { let on = event_target_checked(&ev); change(&|p| p.sub_bg = on) } />
+            </label>
+            <p class="muted small">{tr!("The size follows the browser's own caption settings.")}</p>
         </section>
     }
 }

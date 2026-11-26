@@ -102,6 +102,7 @@ pub fn merge(remote: &HashMap<String, String>) -> HashMap<String, String> {
 /// the subtitle stream (None: off).
 pub fn start(
     pref: Option<TrackPref>,
+    audio_lang: &str,
     sub_mode: &str,
     sub_lang: &str,
     source: &MediaSource,
@@ -109,7 +110,7 @@ pub fn start(
     let sel = rules::conversion_tracks(
         pref,
         TrackRules {
-            audio_language: String::new(),
+            audio_language: audio_lang.to_owned(),
             subtitle_mode: sub_mode.to_owned(),
             subtitle_language: sub_lang.to_owned(),
             default_audio: None,

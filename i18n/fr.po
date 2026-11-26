@@ -310,7 +310,7 @@ msgstr[1] "{count} regardent"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
 msgid "Are you still watching?"
 msgstr "Êtes-vous toujours là ?"
 
@@ -2348,7 +2348,7 @@ msgstr "Conteneur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/ui/app.slint
 msgid "Size"
 msgstr "Taille"
 
@@ -4307,8 +4307,8 @@ msgid "It can't be requested."
 msgstr "Impossible de le demander."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: web/src/prefs.rs
-#: ios/AlwyWatch/SettingsScreen.swift
 msgid "{n} second"
 msgid_plural "{n} seconds"
 msgstr[0] "{n} seconde"
@@ -4322,7 +4322,8 @@ msgstr[0] "{n} profil"
 msgstr[1] "{n} profils"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "After {n} hour"
 msgid_plural "After {n} hours"
 msgstr[0] "Après {n} heure"
@@ -4640,7 +4641,7 @@ msgstr "Un compte à rebours pendant le générique, annulable avec Retour. Dés
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
 #: web/src/prefs.rs
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/ui/app.slint
 msgid "Next episode countdown"
 msgstr "Compte à rebours avant l'épisode suivant"
 
@@ -4650,22 +4651,26 @@ msgid "Remote and resuming"
 msgstr "Télécommande et reprise"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Skip back"
 msgstr "Reculer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Skip forward"
 msgstr "Avancer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Rewind when resuming"
 msgstr "Reculer à la reprise"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "Never"
 msgstr "Jamais"
 
@@ -4736,8 +4741,8 @@ msgid "A movie or show remembers the tracks picked for it (on its page or while 
 msgstr "Un film ou une série retient les pistes choisies pour lui (sur sa page ou pendant la lecture), et les épisodes suivants font de même."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/prefs.rs
 #: desktop/ui/app.slint
-#: ios/AlwyWatch/SettingsScreen.swift
 msgid "Audio language"
 msgstr "Langue audio"
 
@@ -4770,61 +4775,73 @@ msgid "Device language ({language})"
 msgstr "Langue de l'appareil ({language})"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: web/src/prefs.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Subtitle look"
 msgstr "Apparence des sous-titres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Small"
 msgstr "Petite"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Normal"
 msgstr "Normale"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Large"
 msgstr "Grande"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/src/app.rs
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Huge"
 msgstr "Très grande"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Colour"
 msgstr "Couleur"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "White"
 msgstr "Blanc"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "Yellow"
 msgstr "Jaune"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Background box"
 msgstr "Fond derrière le texte"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
-#: ios/AlwyWatch/SettingsScreen.swift
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
 msgid "Otherwise a dark outline keeps them readable."
 msgstr "Sinon, un contour sombre les garde lisibles."
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/ui/app.slint
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Raise subtitles"
 msgstr "Remonter les sous-titres"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
+#: desktop/ui/app.slint
 #: ios/AlwyWatch/SettingsScreen.swift
 msgid "Higher on the screen (TVs that crop the edges)."
 msgstr "Plus haut sur l'écran (pour les téléviseurs qui rognent les bords)."
@@ -5504,6 +5521,7 @@ msgstr "Converti par le serveur (cet appareil ne lit pas l'original)"
 
 #: core/media-api/src/quality.rs
 #: desktop/src/app.rs
+#: web/src/prefs.rs
 msgid "Original"
 msgstr "Langue d'origine"
 
@@ -5735,6 +5753,11 @@ msgstr "Votre serveur AlwyWatch a rencontré un problème : réessayez dans un 
 #: web/src/links.rs
 msgid "{name} on {server} ({kind})"
 msgstr "{name} sur {server} ({kind})"
+
+#: desktop/src/app/playback.rs
+#: web/src/player.rs
+msgid "Are you still watching? Press Space to go on."
+msgstr "Êtes-vous toujours là ? Appuyez sur Espace pour continuer."
 
 #: desktop/src/app/profiles.rs
 msgid "Me"
@@ -7917,12 +7940,33 @@ msgid "A countdown during the credits, which Cancel stops. Off: playback stops a
 msgstr "Un compte à rebours pendant le générique, qu'Annuler arrête. Désactivé : la lecture s'arrête à la fin de l'épisode."
 
 #: web/src/prefs.rs
+msgid "Skipping and resuming"
+msgstr "Sauts et reprise"
+
+#: web/src/prefs.rs
+msgid "Left arrow, or a double tap on the left of the picture."
+msgstr "Flèche gauche, ou un double appui à gauche de l'image."
+
+#: web/src/prefs.rs
+msgid "Right arrow, or a double tap on the right of the picture."
+msgstr "Flèche droite, ou un double appui à droite de l'image."
+
+#: web/src/prefs.rs
+#: desktop/ui/app.slint
+msgid "Pauses when no key or player button has been pressed for that long."
+msgstr "Met en pause quand aucune touche ni aucun bouton du lecteur n'a été utilisé pendant ce temps."
+
+#: web/src/prefs.rs
 msgid "Browser language ({language})"
 msgstr "Langue du navigateur ({language})"
 
 #: web/src/prefs.rs
 msgid "Subtitles the browser can't draw (styled or image ones) are added to the picture by the server. A movie's or show's own choice, made here or in the apps, comes first."
 msgstr "Les sous-titres que le navigateur ne sait pas afficher (stylés ou en image) sont incrustés dans l'image par le serveur. Le choix propre à un film ou une série, fait ici ou dans les applis, passe en premier."
+
+#: web/src/prefs.rs
+msgid "The size follows the browser's own caption settings."
+msgstr "La taille suit les réglages de sous-titres du navigateur."
 
 #: web/src/profile.rs
 msgid "This picture couldn't be prepared. Try another one."
@@ -8907,8 +8951,20 @@ msgid "Send Dolby/DTS untouched to an HDMI or S/PDIF receiver. This device only.
 msgstr "Envoie le Dolby/DTS tel quel à un ampli HDMI ou S/PDIF. Cet appareil uniquement."
 
 #: desktop/ui/app.slint
-msgid "A 10 second countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode."
-msgstr "Un compte à rebours de 10 secondes pendant le générique, que Continuer à regarder annule. Désactivé : la lecture s'arrête à la fin de l'épisode."
+msgid "A countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode."
+msgstr "Un compte à rebours pendant le générique, que Continuer à regarder annule. Désactivé : la lecture s'arrête à la fin de l'épisode."
+
+#: desktop/ui/app.slint
+msgid "SKIPPING AND RESUMING"
+msgstr "SAUTS ET REPRISE"
+
+#: desktop/ui/app.slint
+msgid "Left arrow, or a double click on the left of the picture."
+msgstr "Flèche gauche, ou un double clic à gauche de l'image."
+
+#: desktop/ui/app.slint
+msgid "Right arrow, or a double click on the right of the picture."
+msgstr "Flèche droite, ou un double clic à droite de l'image."
 
 #: desktop/ui/app.slint
 msgid "LANGUAGES"
@@ -8917,6 +8973,14 @@ msgstr "LANGUES"
 #: desktop/ui/app.slint
 msgid "A movie or show remembers the tracks picked for it while watching, and its next episodes follow."
 msgstr "Un film ou une série retient les pistes choisies pendant le visionnage, et les épisodes suivants font de même."
+
+#: desktop/ui/app.slint
+msgid "SUBTITLE LOOK"
+msgstr "APPARENCE DES SOUS-TITRES"
+
+#: desktop/ui/app.slint
+msgid "For text subtitles; picture subtitles (DVD, Blu-ray) keep their own look."
+msgstr "Pour les sous-titres texte ; les sous-titres en image (DVD, Blu-ray) gardent leur apparence."
 
 #: desktop/ui/app.slint
 msgid "PROFILES"
@@ -9176,6 +9240,9 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "A 10 second countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode."
+#~ msgstr "Un compte à rebours de 10 secondes pendant le générique, que Continuer à regarder annule. Désactivé : la lecture s'arrête à la fin de l'épisode."
 
 #~ msgid "Only the server's owner can add it: AlwyWatch checks it with the owner's Plex sign-in."
 #~ msgstr "Seule la personne qui gère le serveur peut l'ajouter : AlwyWatch le vérifie avec sa connexion Plex."

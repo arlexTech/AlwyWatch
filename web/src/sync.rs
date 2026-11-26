@@ -37,6 +37,13 @@ fn local_values(p: &PlayerPrefs) -> Vec<(&'static str, String)> {
         ("player.countdown", p.countdown_s.to_string()),
         ("player.sub_mode", p.sub_mode.clone()),
         ("player.sub_lang", p.sub_lang.clone()),
+        ("player.audio_lang", p.audio_lang.clone()),
+        ("player.seek_back", p.seek_back_s.to_string()),
+        ("player.seek_forward", p.seek_forward_s.to_string()),
+        ("player.resume_rewind", p.resume_rewind_s.to_string()),
+        ("player.still_watching", p.still_watching_h.to_string()),
+        ("player.sub_color", p.sub_color.clone()),
+        ("player.sub_bg", flag(p.sub_bg)),
         ("together.others_title", flag(p.together.change_title)),
         ("together.others_play", flag(p.together.play_pause)),
         ("together.others_seek", flag(p.together.seek)),
@@ -55,6 +62,21 @@ fn apply(p: &mut PlayerPrefs, key: &str, v: &str) -> bool {
         },
         "player.sub_mode" => p.sub_mode = v.to_owned(),
         "player.sub_lang" => p.sub_lang = v.to_owned(),
+        "player.audio_lang" => p.audio_lang = v.to_owned(),
+        "player.seek_back"
+        | "player.seek_forward"
+        | "player.resume_rewind"
+        | "player.still_watching" => {
+            let Ok(n) = v.parse() else { return false };
+            match key {
+                "player.seek_back" => p.seek_back_s = n,
+                "player.seek_forward" => p.seek_forward_s = n,
+                "player.resume_rewind" => p.resume_rewind_s = n,
+                _ => p.still_watching_h = n,
+            }
+        }
+        "player.sub_color" => p.sub_color = v.to_owned(),
+        "player.sub_bg" => p.sub_bg = v == "1",
         "together.others_title" => p.together.change_title = on,
         "together.others_play" => p.together.play_pause = on,
         "together.others_seek" => p.together.seek = on,
