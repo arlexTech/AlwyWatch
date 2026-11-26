@@ -610,8 +610,43 @@ fn image(
     });
 }
 
-fn convert_item(d: BaseItemDto) -> Item {
+/// "Show - S02E05 - Title.mkv" → (2, 5): the season and episode a file name says.
+fn numbers_in_file_name(path: &str) -> Option<(u32, u32)> {
+    let name = path.rsplit(['/', '\\']).next()?.as_bytes();
+    let digits = |from: usize| {
+        let n = name[from..]
+            .iter()
+            .take_while(|c| c.is_ascii_digit())
+            .count();
+        let v = std::str::from_utf8(&name[from..from + n])
+            .ok()?
+            .parse()
+            .ok()?;
+        Some((v, from + n))
+    };
+    (0..name.len()).find_map(|i| {
+        let after_letter = i == 0 || !name[i - 1].is_ascii_alphanumeric();
+        if !after_letter || !name[i].eq_ignore_ascii_case(&b's') {
+            return None;
+        }
+        let (season, end) = digits(i + 1).filter(|&(_, e)| e > i + 1)?;
+        if !name.get(end)?.eq_ignore_ascii_case(&b'e') {
+            return None;
+        }
+        let (episode, e2) = digits(end + 1).filter(|&(_, e)| e > end + 1)?;
+        Some((season, episode)).filter(|_| e2 > end + 1)
+    })
+}
+
+fn convert_item(mut d: BaseItemDto) -> Item {
     let kind = kind_of(d.kind.as_deref());
+    if kind == ItemKind::Episode
+        && d.index_number.is_none()
+        && let Some((s, e)) = d.path.as_deref().and_then(numbers_in_file_name)
+    {
+        d.parent_index_number.get_or_insert(s);
+        d.index_number = Some(e);
+    }
     let mut images = Vec::new();
     let h = &d.image_blur_hashes;
     if let Some(tag) = d.image_tags.get("Primary") {
@@ -962,6 +997,10 @@ impl MediaServer for JellyfinClient {
         let path = format!("/Shows/{}/Episodes", net::percent_encode(series_id));
         let mut p = self.list_params();
         p.push(("seasonId", season_id.to_owned()));
+        // The file name gives the number of an episode Jellyfin's metadata left unnumbered.
+        if let Some((_, fields)) = p.iter_mut().find(|(k, _)| *k == "fields") {
+            fields.push_str(",Path");
+        }
         Ok(self.convert_all(self.query(&path, &p).await?.items))
     }
 
@@ -1527,6 +1566,28 @@ mod chapter_tests {
         assert_eq!(chapter_kind("Credits End"), None);
         assert_eq!(chapter_kind("Chapter 2"), None);
         assert_eq!(chapter_kind("Operation Overlord"), None);
+    }
+
+    #[test]
+    fn unnumbered_episodes_take_the_number_in_their_file_name() {
+        assert_eq!(
+            numbers_in_file_name("/media/Show (2022)/Season 2/Show (2022) - S02E05 - Spree.mkv"),
+            Some((2, 5))
+        );
+        assert_eq!(
+            numbers_in_file_name("C:\\tv\\show.s1e12.mkv"),
+            Some((1, 12))
+        );
+        assert_eq!(numbers_in_file_name("/tv/Sisters S01/Episode 3.mkv"), None);
+        assert_eq!(numbers_in_file_name("/tv/Stranger Season 1.mkv"), None);
+        let d = BaseItemDto {
+            kind: Some("Episode".into()),
+            parent_index_number: Some(2),
+            path: Some("/s/Show - S02E07 - x.mkv".into()),
+            ..Default::default()
+        };
+        let i = convert_item(d);
+        assert_eq!((i.season_number, i.episode_number), (Some(2), Some(7)));
     }
 
     #[test]
