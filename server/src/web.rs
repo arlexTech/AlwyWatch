@@ -34,10 +34,12 @@ fn mime(p: &Path) -> &'static str {
 /// sign-ins kept in the browser anywhere through one: scripts and styles only from this site
 /// (the app is WebAssembly, hence `wasm-unsafe-eval`; Leptos sets `style` attributes, hence
 /// inline styles), no plugins, frames or `<base>`. Pictures, video and API calls go to the
-/// media servers each user added, which are not known here, so those stay open.
+/// media servers each user added, which are not known here, so those stay open. The video
+/// player (hls.js) demuxes converted streams in a worker it starts from a `blob:` of its own
+/// code (it takes a script already running here, so nothing new can run through it).
 const CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; \
     style-src 'self' 'unsafe-inline'; img-src * data: blob:; media-src * blob:; \
-    connect-src *; font-src 'self'; manifest-src 'self'; worker-src 'self'; \
+    connect-src *; font-src 'self'; manifest-src 'self'; worker-src 'self' blob:; \
     base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 fn not_found() -> Response {
