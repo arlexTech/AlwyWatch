@@ -295,6 +295,10 @@ fn upsert(st: &mut Stored, mut server: StoredServer) -> Result<(), Error> {
         if server.api_key.is_none() {
             server.api_key = old.api_key.take();
         }
+        // Renewing a key from the server list sends no internal address: keep the one set.
+        if server.internal_url.is_none() {
+            server.internal_url = old.internal_url.take();
+        }
         *old = server;
     } else {
         st.servers.push(server);
@@ -711,13 +715,18 @@ mod tests {
         let mut st = Stored {
             servers: vec![StoredServer {
                 api_key: Some("key".into()),
+                internal_url: Some("http://jellyfin:8096".into()),
                 ..server("abc", "https://jf.example.org")
             }],
             ..Default::default()
         };
-        // Same server, same address: the key is renewed (or kept).
+        // Same server, same address: the key is renewed (or kept), the internal address too.
         assert!(upsert(&mut st, server("abc", "https://jf.example.org/")).is_ok());
         assert_eq!(st.servers[0].api_key.as_deref(), Some("key"));
+        assert_eq!(
+            st.servers[0].internal_url.as_deref(),
+            Some("http://jellyfin:8096")
+        );
         // Same id elsewhere, or as another kind: refused.
         assert!(upsert(&mut st, server("abc", "https://evil.example.org")).is_err());
         let mut plex = server("abc", "https://jf.example.org");
