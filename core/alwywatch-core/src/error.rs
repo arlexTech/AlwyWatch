@@ -49,6 +49,11 @@ impl std::fmt::Display for CoreError {
                 "The server couldn't do this (HTTP {status}). Try again in a moment.",
                 status = status
             ),
+            // A certificate "not valid yet" or "expired" is almost always this device's clock
+            // (TV boxes often have it wrong): "check your connection" would mislead.
+            CoreError::Network { detail } if clock_problem(detail) => tr!(
+                "The server's security certificate doesn't match this device's date and time. Check the date and time in this device's settings."
+            ),
             CoreError::Network { .. } => tr!("Can't reach the server. Check your connection."),
             CoreError::Pending => tr!("Still waiting for approval."),
             CoreError::Invalid { detail } => detail.clone(),
@@ -70,6 +75,15 @@ impl std::fmt::Display for CoreError {
 }
 
 impl std::error::Error for CoreError {}
+
+/// A TLS failure that comes from the date (rustls: `NotValidYet`, `Expired`, or their
+/// "not valid yet" / "expired" wording).
+fn clock_problem(detail: &str) -> bool {
+    let d = detail.to_ascii_lowercase();
+    d.contains("notvalidyet")
+        || d.contains("not valid yet")
+        || (d.contains("certificate") && d.contains("expired"))
+}
 
 impl CoreError {
     pub fn is_transient(&self) -> bool {
@@ -107,3 +121,24 @@ impl From<store::Error> for CoreError {
 }
 
 pub type Result<T, E = CoreError> = std::result::Result<T, E>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_wrong_clock_is_named_as_such() {
+        let tls = |m: &str| CoreError::Network {
+            detail: format!(
+                "error sending request: client error (Connect): invalid peer certificate: {m}"
+            ),
+        };
+        assert!(tls("NotValidYet").to_string().contains("date and time"));
+        assert!(tls("Expired").to_string().contains("date and time"));
+        assert!(!tls("UnknownIssuer").to_string().contains("date and time"));
+        let refused = CoreError::Network {
+            detail: "error sending request: Connection refused".into(),
+        };
+        assert!(refused.to_string().contains("Check your connection"));
+    }
+}
