@@ -280,7 +280,7 @@ impl Core {
         }
     }
 
-    fn signed_in(&self, session: Session) -> Result<SignedIn> {
+    pub(crate) fn signed_in(&self, session: Session) -> Result<SignedIn> {
         let s = self.register(session);
         self.store.put_account(&s.account.id, &s.account)?;
         Ok(s)

@@ -887,3 +887,83 @@ fn a_track_choice_follows_the_title_to_other_servers() {
         .and_then(|p| p.subs);
     assert_eq!(own.as_deref(), Some("fre"));
 }
+
+#[test]
+fn an_account_signs_a_new_device_in_to_its_linked_servers() {
+    let env = Env::new();
+    let app = env.app();
+    let keep = env.block(MockServer::start());
+    let at = |m: Mock| env.block(m.mount(&keep));
+    at(
+        Mock::given(path("/v1/account")).respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({
+                "id": "a1", "username": "alice", "name": "Alice", "user_key": "jellyfin:srv:u1",
+                "has_password": true,
+                "linked": [
+                    {"server_id": "srv", "kind": "jellyfin", "name": "alice"},
+                    {"server_id": "gone", "kind": "plex", "name": "alice"}
+                ]
+            }),
+        )),
+    );
+    at(
+        Mock::given(path("/v1/servers")).respond_with(ResponseTemplate::new(200).set_body_json(
+            json!([
+                {"id": "srv", "kind": "jellyfin", "name": "HomeJelly", "url": env.server.uri()}
+            ]),
+        )),
+    );
+    at(Mock::given(method("POST"))
+        .and(path("/v1/account/server-sign-in"))
+        .and(wiremock::matchers::body_json(
+            json!({"server_id": "srv", "code": "424242"}),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "kind": "jellyfin", "server_id": "srv", "server_name": "HomeJelly",
+            "url": env.server.uri(), "user_id": "u1", "user_name": "alice", "is_admin": false
+        })))
+        .expect(1));
+    env.mount(
+        Mock::given(method("POST"))
+            .and(path("/QuickConnect/Initiate"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"Secret": "sec", "Code": "424242"})),
+            ),
+    );
+    env.mount(
+        Mock::given(path("/QuickConnect/Connect"))
+            .and(query_param("secret", "sec"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    json!({"Secret": "sec", "Code": "424242", "Authenticated": true}),
+                ),
+            ),
+    );
+    env.mount(
+        Mock::given(method("POST"))
+            .and(path("/Users/AuthenticateWithQuickConnect"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "User": {"Id": "u1", "Name": "alice"}, "AccessToken": "qc-tok", "ServerId": "srv"
+            }))),
+    );
+    env.mount(Mock::given(path("/System/Info/Public")).respond_with(
+        ResponseTemplate::new(200).set_body_json(json!({"Id": "srv", "ServerName": "JF"})),
+    ));
+
+    env.block(app.account_use_token(keep.uri(), "aws_session".into()))
+        .unwrap();
+    // Only served servers this device is not signed in to.
+    let linked = env.block(app.account_linked_servers()).unwrap();
+    assert_eq!(linked.len(), 1);
+    assert_eq!(
+        (linked[0].server_name.as_str(), linked[0].user_name.as_str()),
+        ("HomeJelly", "alice")
+    );
+    let signed = env.block(app.account_sign_in_linked()).unwrap();
+    assert_eq!(signed.len(), 1);
+    assert_eq!(signed[0].token, "qc-tok");
+    assert_eq!(app.accounts().unwrap()[0].server_id, "srv");
+    // Signed in now: nothing left to offer.
+    assert!(env.block(app.account_linked_servers()).unwrap().is_empty());
+}

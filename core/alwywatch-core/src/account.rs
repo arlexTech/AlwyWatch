@@ -9,7 +9,11 @@ use keep_service::KeepClient;
 use keep_service::account::{self, SERVERS_SETTING, SavedServer};
 use serde::{Deserialize, Serialize};
 
-use crate::app::{AlwyWatch, Core};
+use keep_service::ServerType;
+use media_api::jellyfin::JellyfinAuth;
+use media_api::plex::{PlexAuth, PlexConnection, PlexServerResource, PlexUser};
+
+use crate::app::{AlwyWatch, Core, SignedIn};
 use crate::error::{CoreError, Result};
 
 const ACCOUNT_KEY: &str = "account.session";
@@ -43,6 +47,18 @@ pub struct KnownServer {
     pub kind: String,
     pub url: String,
     pub name: String,
+}
+
+/// A media-server user linked to my AlwyWatch account, on a served server this device is not
+/// signed in to: [`AlwyWatch::account_sign_in_server`] signs it in without typing anything.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct LinkedServer {
+    pub server_id: String,
+    /// "jellyfin" or "plex".
+    pub kind: String,
+    pub server_name: String,
+    /// My user name there.
+    pub user_name: String,
 }
 
 /// A QR code: `size`×`size` modules, row by row, true = dark. No quiet zone included.
@@ -597,6 +613,116 @@ impl AlwyWatch {
             }
         })
         .await
+    }
+
+    /// My linked sign-ins on served servers this device is not signed in to (empty without an
+    /// AlwyWatch account).
+    pub async fn account_linked_servers(&self) -> Result<Vec<LinkedServer>> {
+        let here: Vec<String> = self.accounts()?.into_iter().map(|a| a.server_id).collect();
+        self.run(|c| async move {
+            let Some(k) = c.account_client() else {
+                return Ok(vec![]);
+            };
+            let v = k.account_me().await.map_err(|e| explain(e, false))?;
+            let served = KeepClient::servers(&c.http, k.base_url()).await?;
+            let mut out: Vec<LinkedServer> = vec![];
+            for l in v.linked {
+                let Some(srv) = served.iter().find(|x| x.id == l.server_id) else {
+                    continue;
+                };
+                if here.contains(&l.server_id) || out.iter().any(|o| o.server_id == l.server_id) {
+                    continue;
+                }
+                out.push(LinkedServer {
+                    server_id: l.server_id,
+                    kind: l.kind,
+                    server_name: srv.name.clone(),
+                    user_name: l.name,
+                });
+            }
+            Ok(out)
+        })
+        .await
+    }
+
+    /// Signs this device in to `server_id` as my linked user there, through my AlwyWatch
+    /// account (nothing to type: Jellyfin approves this device's Quick Connect code, Plex hands
+    /// over my server token). Store the token like after any sign-in; `plex_account_token` is
+    /// none (the Plex watchlist needs a plex.tv sign-in).
+    pub async fn account_sign_in_server(&self, server_id: String) -> Result<SignedIn> {
+        self.run(|c| async move {
+            let k = c.account_client().ok_or(CoreError::NotSignedIn {
+                account_id: "account".into(),
+            })?;
+            let served = KeepClient::servers(&c.http, k.base_url()).await?;
+            let srv = served
+                .into_iter()
+                .find(|x| x.id == server_id)
+                .ok_or(CoreError::NotFound)?;
+            let url = net::normalize_base_url(&srv.url)?;
+            match srv.kind {
+                ServerType::Jellyfin => {
+                    let auth = JellyfinAuth::new(c.http.clone(), c.client.clone());
+                    let qc = auth.quick_connect_start(&url).await?;
+                    k.server_sign_in(&server_id, Some(&qc.code))
+                        .await
+                        .map_err(|e| explain(e, false))?;
+                    // Approved already: the first poll normally signs in.
+                    let mut tries = 0;
+                    loop {
+                        match auth.quick_connect_poll(&url, &qc.secret).await {
+                            Ok(session) => return c.signed_in(session),
+                            Err(media_api::Error::Pending) if tries < 5 => {
+                                tries += 1;
+                                tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    }
+                }
+                ServerType::Plex => {
+                    let r = k
+                        .server_sign_in(&server_id, None)
+                        .await
+                        .map_err(|e| explain(e, false))?;
+                    let token = r.token.ok_or(CoreError::NotFound)?;
+                    let server = PlexServerResource {
+                        name: r.server_name,
+                        machine_id: r.server_id,
+                        owned: r.is_admin,
+                        access_token: token,
+                        connections: vec![PlexConnection {
+                            uri: net::normalize_base_url(&r.url)?,
+                            local: false,
+                            relay: false,
+                        }],
+                    };
+                    let user = PlexUser {
+                        id: r.user_id,
+                        username: r.user_name.clone(),
+                        title: r.user_name,
+                    };
+                    let session = PlexAuth::new(c.http.clone(), c.client.clone())
+                        .connect(&server, &user, None)
+                        .await?;
+                    c.signed_in(session)
+                }
+            }
+        })
+        .await
+    }
+
+    /// Right after signing in to my AlwyWatch account on a new device: signs in to every linked
+    /// server too ([`Self::account_sign_in_server`]). The ones that fail are left out (the
+    /// user can still sign in to them by hand).
+    pub async fn account_sign_in_linked(&self) -> Result<Vec<SignedIn>> {
+        let mut out = vec![];
+        for l in self.account_linked_servers().await? {
+            if let Ok(s) = self.account_sign_in_server(l.server_id).await {
+                out.push(s);
+            }
+        }
+        Ok(out)
     }
 
     /// The servers of my other devices (synced list) not signed in here yet.
