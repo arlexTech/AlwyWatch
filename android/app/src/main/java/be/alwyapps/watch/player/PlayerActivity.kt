@@ -1433,9 +1433,11 @@ class PlayerActivity : ComponentActivity() {
         val before = lastSeen
         lastSeen = s
         showRoom(s)
-        // The host went back to the waiting room (to pick something else): so do we.
+        // The host went back to the waiting room (to pick something else): so do we, also on
+        // the host's other devices (only the seat that sent it is already leaving).
         if (!s.started) {
-            if (!TogetherSession.isHost()) {
+            val fromHere = s.by == TogetherSession.seat?.memberId
+            if (!TogetherSession.isHost() || (before?.started == true && !fromHere)) {
                 val host = s.members.firstOrNull { it.id == s.host }?.name
                 val text = host?.let { tr("{name} went back to the waiting room", "name" to it) } ?: tr("The host went back to the waiting room")
                 TogetherSession.problem = null

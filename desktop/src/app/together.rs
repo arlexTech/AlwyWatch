@@ -1568,10 +1568,11 @@ impl App {
             self.open_if_new_round();
             return;
         }
-        // The host went back to the waiting room (to pick something else): so do we.
+        // The host went back to the waiting room (to pick something else): so do we, also on
+        // the host's other devices (only the seat that sent it is already leaving).
         if !s.started {
             if before.as_ref().is_some_and(|b| b.started)
-                && !together_is_host(s.clone(), member.clone())
+                && (s.by != member || !together_is_host(s.clone(), member.clone()))
             {
                 let host = s
                     .members

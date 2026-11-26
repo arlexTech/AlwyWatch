@@ -727,9 +727,10 @@ final class Playback: ObservableObject {
         let session = TogetherSession.shared
         let before = lastSeen
         lastSeen = s
-        // The host went back to the waiting room (to pick something else): so do we.
+        // The host went back to the waiting room (to pick something else): so do we, also on
+        // the host's other devices (only the seat that sent it is already leaving).
         if !s.started {
-            if !session.isHost {
+            if !session.isHost || (before?.started == true && s.by != room.memberId) {
                 session.problem = nil
                 onFinished?()
             }

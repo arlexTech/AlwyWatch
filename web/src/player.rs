@@ -1100,6 +1100,17 @@ fn PlayerView(
     let dialog = RwSignal::new(false);
     let dialog_at = RwSignal::new(0u64);
     let picking = RwSignal::new(false);
+    // How long a seek takes to land while playing (a converted stream reloads): the next seek
+    // aims that far ahead. Learnt from where the last seeks landed; `reseeks` = tries left.
+    let seek_lead = StoredValue::new(0u64);
+    let reseeks = StoredValue::new(0u8);
+    // Where the room's last seek here aims (seconds): landing there is no move of the viewer's
+    // own, so it isn't sent back to the room (a late landing would pull everyone back).
+    let room_seek = StoredValue::new(None::<f64>);
+    let seek_room = move |v: &web_sys::HtmlVideoElement, ms: u64| {
+        room_seek.set_value(Some(ms as f64 / 1000.0));
+        v.set_current_time(ms as f64 / 1000.0);
+    };
     let started = StoredValue::new(false);
     let on_meta = move |_| {
         if !alive() {
@@ -1132,7 +1143,13 @@ fn PlayerView(
             && room.plays(&item)
             && let Some((exp, playing)) = room.expected()
         {
-            v.set_current_time(exp as f64 / 1000.0);
+            if playing {
+                // Lands later than asked (loading): aim ahead, then check where it landed.
+                seek_room(&v, exp + seek_lead.get_value());
+                reseeks.set_value(2);
+            } else {
+                seek_room(&v, exp);
+            }
             if !playing {
                 let _ = v.pause();
             }
@@ -1164,7 +1181,7 @@ fn PlayerView(
         }
         let cur = (v.current_time() * 1000.0) as u64;
         if !v.seeking() && v.ready_state() >= 1 && cur.abs_diff(at) > 300 {
-            v.set_current_time(at as f64 / 1000.0);
+            seek_room(&v, at);
         }
         match &phase {
             together::Phase::StartsIn(ms) => {
@@ -1243,6 +1260,20 @@ fn PlayerView(
             return;
         }
         let at = (v.current_time() * 1000.0) as u64;
+        if reseeks.get_value() > 0 {
+            // Just landed after a seek: still apart by more than a speed change closes quickly,
+            // so aim further ahead next time and try again.
+            let behind = exp as i64 - at as i64;
+            if playing && (250..3_000).contains(&behind.abs()) {
+                let lead = (seek_lead.get_value() as i64 + behind).clamp(0, 3_000) as u64;
+                seek_lead.set_value(lead);
+                reseeks.update_value(|n| *n -= 1);
+                seek_room(&v, exp + lead);
+                seek_hold.set_value(now + 1_500.0);
+                return;
+            }
+            reseeks.set_value(0);
+        }
         let current = v.playback_rate();
         let c = keep_service::together::together_correction(
             exp,
@@ -1252,8 +1283,10 @@ fn PlayerView(
             rate_works.get_value(),
         );
         if let Some(to) = c.seek_to_ms {
-            v.set_current_time(to as f64 / 1000.0);
-            seek_hold.set_value(now + 2_000.0);
+            let lead = if playing { seek_lead.get_value() } else { 0 };
+            seek_room(&v, to + lead);
+            seek_hold.set_value(now + 1_500.0);
+            reseeks.set_value(if playing { 2 } else { 0 });
         }
         let drift = at.abs_diff(exp);
         if (c.rate - current).abs() > 0.0001 {
@@ -1459,11 +1492,10 @@ fn PlayerView(
         }
         match incoming {
             // The host went back to the waiting room: so do we (the room stays).
+            // (Also the host's other devices: only the seat that sent it is already leaving.)
             Some((false, s)) if !s.started => {
-                if !room.hosting_untracked() {
-                    switching.set_value(true);
-                    nav3(&together::room_href(&s.code), Default::default());
-                }
+                switching.set_value(true);
+                nav3(&together::room_href(&s.code), Default::default());
             }
             Some((false, _)) => sync(),
             // The room moved to another title: find it on our servers and play it.
@@ -1728,7 +1760,10 @@ fn PlayerView(
                 }
                 on:play=move |_| { playing.set(true); on_play(); wake() }
                 on:seeked=move |_| if alive() {
-                    local_action();
+                    let ours = room_seek.get_value().zip(video.get_untracked())
+                        .is_some_and(|(t, v)| (v.current_time() - t).abs() < 1.0);
+                    room_seek.set_value(None);
+                    if !ours { local_action() }
                     // Closing the tab right after a seek keeps the new position.
                     if start_sent.get_value() && !stopped.get_value() { report(PlaybackEvent::Progress) }
                 }
