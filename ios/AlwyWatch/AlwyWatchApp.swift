@@ -124,6 +124,23 @@ struct RootView: View {
         .background(Palette.background.ignoresSafeArea())
         // Play: "This phone" or one of my TVs; the mini remote.
         .remoteChooser()
+        // A card's "Remove from Continue watching", asked first.
+        .confirmationDialog(
+            tr("Remove from Continue watching?"),
+            isPresented: Binding(get: { model.removing != nil }, set: { if !$0 { model.removing = nil } }),
+            titleVisibility: .visible,
+            presenting: model.removing
+        ) { r in
+            Button(tr("Remove"), role: .destructive) {
+                Task {
+                    try? await model.core.removeFromContinueWatching(accountId: r.account, itemId: r.item.id)
+                    r.changed()
+                }
+            }
+            Button(tr("Cancel"), role: .cancel) {}
+        } message: { r in
+            Text(r.item.kind == .episode ? "\(r.item.seriesTitle ?? "") · \(r.item.title)" : r.item.title)
+        }
         // Once per account: how others see you (name and picture).
         .fullScreenCover(isPresented: Binding(get: { my.welcomeShowing }, set: { if !$0 { my.welcomeClosed = true } })) {
             if let me = my.me { WelcomeView(me: me).environmentObject(model) }

@@ -547,6 +547,17 @@ msgid "{time} left"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: ios/AlwyWatch/AlwyWatchApp.swift
+msgid "Remove from Continue watching?"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+msgid "Remove"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: desktop/src/app.rs
 msgid "Play from start"
 msgstr ""
@@ -585,7 +596,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: desktop/src/app.rs
-#: web/src/ui.rs
+#: web/src/extra.rs
 msgid "Remove from Continue watching"
 msgstr ""
 
@@ -775,12 +786,6 @@ msgstr ""
 #: desktop/src/app/account.rs
 #: ios/AlwyWatch/Account.swift
 msgid "Choose a picture"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
-msgid "Remove"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
@@ -6130,6 +6135,11 @@ msgid "Keep the next 3 episodes downloaded"
 msgstr ""
 
 #: desktop/src/app.rs
+#: web/src/extra.rs
+msgid "Remove “{title}” from Continue watching?"
+msgstr ""
+
+#: desktop/src/app.rs
 msgid "Mark all episodes of {title} unwatched? This forgets where you stopped."
 msgstr ""
 
@@ -7554,6 +7564,10 @@ msgstr ""
 
 #: web/src/extra.rs
 msgid "☆ Add to my list"
+msgstr ""
+
+#: web/src/extra.rs
+msgid "Removed from Continue watching."
 msgstr ""
 
 #: web/src/extra.rs

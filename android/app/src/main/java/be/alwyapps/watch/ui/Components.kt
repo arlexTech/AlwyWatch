@@ -236,7 +236,6 @@ fun ItemMenu(
     val nav = LocalNavigator.current
     val d = LocalDimens.current
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val played = item.user.played
     // A whole show: unwatched asks first (it forgets where every episode stopped).
     var confirmUnwatched by remember { mutableStateOf(false) }
@@ -245,6 +244,25 @@ fun ItemMenu(
             confirmUnwatched = false
             onDismiss()
         }, askUnwatchedOnly = true)
+    }
+    // Out of Continue watching asks first, as in every app.
+    var confirmRemove by remember { mutableStateOf(false) }
+    if (confirmRemove) {
+        ConfirmDialog(
+            tr("Remove from Continue watching?"),
+            if (item.kind == ItemKind.EPISODE) "${item.seriesTitle ?: ""} · ${item.title}" else item.title,
+            confirm = tr("Remove"),
+            onConfirm = {
+                ctx.services.scope.launch {
+                    runCatching { core.removeFromContinueWatching(account, item.id) }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { ItemsChanged.bump() }
+                }
+            },
+            onDismiss = {
+                confirmRemove = false
+                onDismiss()
+            },
+        )
     }
     val series = item.kind == ItemKind.SERIES
     androidx.compose.material3.ModalBottomSheet(
@@ -283,11 +301,12 @@ fun ItemMenu(
                 overflow = TextOverflow.Ellipsis,
             )
 
+            // Not tied to the sheet: closing it cancels its scope, and the change with it.
             fun act(block: suspend () -> Unit) {
                 onDismiss()
-                scope.launch {
+                ctx.services.scope.launch {
                     runCatching { block() }
-                    ItemsChanged.bump()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { ItemsChanged.bump() }
                 }
             }
             val started = item.user.positionMs > 0u
@@ -337,7 +356,7 @@ fun ItemMenu(
             // (A watched title can sit there too, when it was started again.)
             if ((!played || inContinueWatching) && (started || inContinueWatching) && (item.kind == ItemKind.EPISODE || item.kind == ItemKind.MOVIE)) {
                 ListRow(tr("Remove from Continue watching"), icon = Icons.Close, onClick = {
-                    act { core.removeFromContinueWatching(account, item.id) }
+                    confirmRemove = true
                 })
             }
             val sid = item.seriesId

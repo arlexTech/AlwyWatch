@@ -1906,6 +1906,7 @@ export component AppWindow inherits Window {
     callback mark-many(string, bool);
     /// "Mark … unwatched?" asked first: its question, "" when closed.
     in property <string> mark-confirm;
+    in property <string> mark-confirm-ok-label: @tr("Mark unwatched");
     callback mark-confirm-ok();
     callback mark-confirm-cancel();
     callback search(string);
@@ -4545,7 +4546,7 @@ export component AppWindow inherits Window {
                         alignment: end;
                         spacing: 10px;
                         Button { label: @tr("Cancel"); autofocus: true; clicked => { root.mark-confirm-cancel(); } }
-                        Button { label: @tr("Mark unwatched"); clicked => { root.mark-confirm-ok(); } }
+                        Button { label: root.mark-confirm-ok-label; clicked => { root.mark-confirm-ok(); } }
                     }
                 }
             }

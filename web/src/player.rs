@@ -880,6 +880,11 @@ fn PlayerView(
             reencode: false,
         };
         let stop_old = restart.then(|| build_report(PlaybackEvent::Stop)).flatten();
+        // Where the viewer is (a seek that made the original fail lands there, not back at
+        // the start): the conversion resumes from it.
+        if v.ready_state() > 0 || v.current_time() > 0.0 {
+            pos.set((v.current_time() * 1000.0) as u64);
+        }
         transcoding.set(true);
         spawn_local(async move {
             if let Some((srv, r)) = stop_old {
@@ -958,7 +963,8 @@ fn PlayerView(
                 });
                 // Paused (autoplay refused, or the viewer paused): nothing to judge.
                 let trying = !v.paused();
-                let stuck = trying && v.ready_state() < 2;
+                // A seek of the viewer's still landing is no stuck file.
+                let stuck = trying && v.ready_state() < 2 && !v.seeking();
                 let no_picture = has_video && v.ready_state() >= 1 && v.video_width() == 0;
                 let prop = |name: &str| {
                     js_sys::Reflect::get(&v, &name.into())
@@ -1423,6 +1429,11 @@ fn PlayerView(
         let Some(v) = video.get_untracked() else {
             return;
         };
+        // A source being swapped (the original failed, a quality switch) reads 0 until the new
+        // one loads: that is not where the viewer is (the switch resumes from `pos`).
+        if v.ready_state() == 0 {
+            return;
+        }
         let t = v.current_time();
         let p = (t * 1000.0) as u64;
         pos.set(p);

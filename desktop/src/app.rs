@@ -156,6 +156,8 @@ struct State {
     forever: Option<keep_service::ForeverStats>,
     /// "Mark unwatched" waiting for its confirmation: (season or series id, its label).
     mark_pending: Option<String>,
+    /// "Remove from Continue watching" waiting for its confirmation: the card menu's item, row.
+    cw_pending: Option<(String, String)>,
     /// Short messages for the open player (an invitation arrived).
     player_notes: Option<std::sync::mpsc::Sender<String>>,
     /// The playing mpv, for the in-window controls.
@@ -368,6 +370,7 @@ impl App {
                 player_tx: None,
                 continue_items: vec![],
                 mark_pending: None,
+                cw_pending: None,
                 admin_users: vec![],
                 admin_seerr: vec![],
                 armed: None,
@@ -4484,6 +4487,17 @@ impl App {
                 return self.navigate(Route::Detail(series));
             }
             "" => return,
+            // Asked first, as in every app (the shared "Mark … unwatched?" dialog).
+            "remove_cw" => {
+                self.state.borrow_mut().cw_pending = Some((id, row));
+                let ui = self.ui();
+                ui.set_mark_confirm_ok_label(sstr(tr!("Remove")));
+                ui.set_mark_confirm(sstr(tr!(
+                    "Remove “{title}” from Continue watching?",
+                    title = i.title
+                )));
+                return;
+            }
             "dl_season" | "dl_show" | "dl_auto" | "dl_auto_off" => {
                 let season = self.state.borrow().season.clone();
                 let (core, this, title) = (self.core.clone(), Rc::downgrade(self), i.title.clone());
@@ -4527,7 +4541,7 @@ impl App {
                 "unwatched" | "all_unwatched" => {
                     core.set_played(account.clone(), id.clone(), false).await
                 }
-                "remove_cw" => {
+                "remove_cw_ok" => {
                     core.remove_from_continue_watching(account.clone(), id.clone())
                         .await
                 }
@@ -4652,7 +4666,17 @@ impl App {
 
     fn mark_confirmed(self: &Rc<Self>, ok: bool) {
         let target = self.state.borrow_mut().mark_pending.take();
-        self.ui().set_mark_confirm(SharedString::new());
+        let cw = self.state.borrow_mut().cw_pending.take();
+        let ui = self.ui();
+        ui.set_mark_confirm(SharedString::new());
+        ui.set_mark_confirm_ok_label(sstr(tr!("Mark unwatched")));
+        if let Some(menu) = cw {
+            if ok {
+                self.state.borrow_mut().card_menu = Some(menu);
+                self.card_menu_pick("remove_cw_ok".into());
+            }
+            return;
+        }
         if let (true, Some(t)) = (ok, target) {
             self.mark_now(t, false);
         }

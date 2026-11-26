@@ -104,9 +104,6 @@ button:disabled { opacity: .5; cursor: default; }
 .grid .card, .episodes .card { width: auto; }
 .card.wide { width: 260px; }
 .card[hidden] { display: none; }
-.card .card-x { position: absolute; top: 6px; right: 6px; z-index: 1; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 0; background: #000a; color: #fff; font-size: 14px; cursor: pointer; opacity: 0; transition: opacity .15s; }
-.card:hover .card-x, .card:focus-within .card-x, .card .card-x:focus-visible { opacity: 1; }
-@media (hover: none) { .card .card-x { opacity: 1; } }
 .card .art { position: relative; aspect-ratio: 2/3; border-radius: var(--radius); overflow: hidden; background: var(--surface); }
 .card.wide .art { aspect-ratio: 16/9; }
 .card img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }

@@ -191,7 +191,7 @@ struct ItemMenu: View {
         }
         if playable && (!item.user.played || inContinue) && (started || inContinue) {
             Button {
-                act { try await model.core.removeFromContinueWatching(accountId: account, itemId: item.id) }
+                model.removing = .init(account: account, item: item, changed: changed)
             } label: {
                 Label(tr("Remove from Continue watching"), systemImage: "xmark")
             }

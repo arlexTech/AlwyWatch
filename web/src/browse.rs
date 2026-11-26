@@ -124,6 +124,36 @@ pub fn hide_from_continue(acc: &str, id: &str) {
     state::save(HIDDEN, &h);
 }
 
+/// Whether the home's last copy shows this title in Continue watching (its next episode too).
+pub fn in_continue(acc: &str, id: &str) -> bool {
+    state::load::<Rails>(state::HOME).is_some_and(|r| {
+        r.iter()
+            .filter(|(_, _, _, _, l)| l == "/continue")
+            .any(|(_, items, _, _, _)| items.iter().any(|(a, i)| a == acc && i.id == id))
+    })
+}
+
+/// Takes a title out of Continue watching: on the server (Plex, or what Jellyfin has in
+/// progress), else in this browser until it is played again; gone from the home's copy at once.
+pub async fn remove_from_continue(acc: &str, id: &str) {
+    if let Some(srv) = state::ctx().server(acc) {
+        use media_api::MediaServer;
+        if !srv.remove_from_continue_watching(id).await.unwrap_or(false) {
+            hide_from_continue(acc, id);
+        }
+    } else {
+        hide_from_continue(acc, id);
+    }
+    if let Some(mut r) = state::load::<Rails>(state::HOME) {
+        for (_, items, _, _, l) in r.iter_mut() {
+            if l == "/continue" {
+                items.retain(|(a, i)| !(a == acc && i.id == id));
+            }
+        }
+        state::save(state::HOME, &r);
+    }
+}
+
 async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
     let parts = state::join_all(
         c.servers()
@@ -234,7 +264,7 @@ pub fn Home() -> impl IntoView {
             }.into_any(),
             // Leaving soon right after "Continue watching", as in the apps.
             Some(r) => r.into_iter().enumerate().map(|(n, (t, items, wide, notes, link))| view! {
-                <Rail title=t items=items wide=wide notes=notes removable={link == "/continue"} see_all=link />
+                <Rail title=t items=items wide=wide notes=notes see_all=link />
                 {(n == 0).then(|| view! { <crate::keep::LeavingRail /> })}
             }).collect_view().into_any(),
         }}
@@ -954,7 +984,7 @@ pub fn ContinueWatching() -> impl IntoView {
         {move || match items.get() {
             None => view! { <Loading /> }.into_any(),
             Some(l) if l.is_empty() => view! { <p class="muted">{tr!("Nothing in progress.")}</p> }.into_any(),
-            Some(l) => view! { <Grid items=l removable=true /> }.into_any(),
+            Some(l) => view! { <Grid items=l /> }.into_any(),
         }}
     }
 }

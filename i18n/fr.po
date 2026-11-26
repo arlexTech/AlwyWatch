@@ -552,6 +552,17 @@ msgid "{time} left"
 msgstr "{time} restantes"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: ios/AlwyWatch/AlwyWatchApp.swift
+msgid "Remove from Continue watching?"
+msgstr "Retirer de Reprendre ?"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+msgid "Remove"
+msgstr "Retirer"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: desktop/src/app.rs
 msgid "Play from start"
 msgstr "Lire depuis le début"
@@ -590,7 +601,7 @@ msgstr "Marquer comme non vu"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/Components.kt
 #: desktop/src/app.rs
-#: web/src/ui.rs
+#: web/src/extra.rs
 msgid "Remove from Continue watching"
 msgstr "Retirer de Reprendre"
 
@@ -781,12 +792,6 @@ msgstr "Importer une image"
 #: ios/AlwyWatch/Account.swift
 msgid "Choose a picture"
 msgstr "Choisir une image"
-
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/ProfileScreens.kt
-msgid "Remove"
-msgstr "Retirer"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/SettingsScreen.kt
@@ -6135,6 +6140,11 @@ msgid "Keep the next 3 episodes downloaded"
 msgstr "Garder les 3 prochains épisodes téléchargés"
 
 #: desktop/src/app.rs
+#: web/src/extra.rs
+msgid "Remove “{title}” from Continue watching?"
+msgstr "Retirer « {title} » de Reprendre ?"
+
+#: desktop/src/app.rs
 msgid "Mark all episodes of {title} unwatched? This forgets where you stopped."
 msgstr "Marquer tous les épisodes de {title} comme non vus ? L'endroit où vous vous êtes arrêté sera oublié."
 
@@ -7560,6 +7570,10 @@ msgstr "★ Dans ma liste · retirer"
 #: web/src/extra.rs
 msgid "☆ Add to my list"
 msgstr "☆ Ajouter à ma liste"
+
+#: web/src/extra.rs
+msgid "Removed from Continue watching."
+msgstr "Retiré de Reprendre."
 
 #: web/src/extra.rs
 msgid "Can't reach your servers right now."

@@ -19,6 +19,7 @@ pub fn ItemActions(acc: String, item: Item) -> impl IntoView {
     let id = item.id.clone();
     let (a1, i1) = (acc.clone(), id.clone());
     let a2 = acc.clone();
+    let a3 = acc.clone();
     let toggle_played = move |_| {
         let (acc, id, want) = (a1.clone(), i1.clone(), !played.get_untracked());
         error.set(None);
@@ -57,6 +58,30 @@ pub fn ItemActions(acc: String, item: Item) -> impl IntoView {
     };
     let can_list =
         matches!(item.kind, ItemKind::Movie | ItemKind::Series) && (!plex || plex_tv.is_some());
+    // Out of Continue watching, as in the apps' menus: what is started, or shown there (the
+    // next episode of a show), after a confirmation.
+    let playable = matches!(item.kind, ItemKind::Movie | ItemKind::Episode);
+    let started = item.user.position_ms > 0;
+    let in_cw = playable && crate::browse::in_continue(&a3, &item.id);
+    let removable = RwSignal::new(playable && (!item.user.played || in_cw) && (started || in_cw));
+    let removed = RwSignal::new(false);
+    let t4 = match (&item.kind, &item.series_title) {
+        (ItemKind::Episode, Some(show)) => format!("{show} · {}", item.title),
+        _ => item.title.clone(),
+    };
+    let (a4, i4) = (a3.clone(), item.id.clone());
+    let remove_cw = move |_| {
+        if !crate::account::confirm(&tr!("Remove “{title}” from Continue watching?", title = t4))
+        {
+            return;
+        }
+        let (acc, id) = (a4.clone(), i4.clone());
+        removable.set(false);
+        spawn_local(async move {
+            crate::browse::remove_from_continue(&acc, &id).await;
+            removed.set(true);
+        });
+    };
     // A show: every episode at once, both ways (a partly watched show can go either way).
     let show = item.kind == ItemKind::Series;
     let (show_acc, show_id, show_title) = (a2, item.id.clone(), item.title.clone());
@@ -75,7 +100,11 @@ pub fn ItemActions(acc: String, item: Item) -> impl IntoView {
                     {move || if listed.get() { tr!("★ In my list · remove") } else { tr!("☆ Add to my list") }}
                 </button>
             })}
+            {move || removable.get().then(|| view! {
+                <button on:click=remove_cw.clone()>{tr!("Remove from Continue watching")}</button>
+            })}
         </div>
+        {move || removed.get().then(|| view! { <p class="muted">{tr!("Removed from Continue watching.")}</p> })}
         {move || error.get().map(|e| view! { <ErrorText text=e /> })}
     }
 }

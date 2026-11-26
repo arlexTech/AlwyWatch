@@ -24,6 +24,15 @@ final class AppModel: ObservableObject {
 
     func chooseForRoom() { tabRequest = 0 }
 
+    /// "Remove from Continue watching" waiting for its confirmation (RootView asks), as in
+    /// every app. A card's menu can't hold the question itself.
+    struct PendingRemoval {
+        let account: String
+        let item: Item
+        let changed: () -> Void
+    }
+    @Published var removing: PendingRemoval?
+
     private var ended: NSObjectProtocol?
 
     /// Another profile takes over: this one's downloads and observers stop.
