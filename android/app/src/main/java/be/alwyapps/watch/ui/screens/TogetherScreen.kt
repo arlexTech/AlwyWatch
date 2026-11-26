@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -903,6 +904,7 @@ internal fun InvitePeopleDialog(
             }
         }
     }
+    val sendFocus = remember { FocusRequester() }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onClose,
         containerColor = Background,
@@ -945,7 +947,9 @@ internal fun InvitePeopleDialog(
                                 val on = p.userKey in selected
                                 ListRow(
                                     p.name,
-                                    if (i == 0) Modifier.focusRequester(firstRow) else Modifier,
+                                    (if (i == 0) Modifier.focusRequester(firstRow) else Modifier)
+                                        // Down from the last person: Send, not Cancel (the nearest one).
+                                        .then(if (i == shown.lastIndex) Modifier.focusProperties { down = sendFocus } else Modifier),
                                     subtitle =
                                         listOfNotNull(
                                             p.mediaName.takeIf { it.isNotEmpty() && !it.equals(p.name, true) },
@@ -971,6 +975,7 @@ internal fun InvitePeopleDialog(
                     else -> trn("Send {n} invitation", "Send {n} invitations", n)
                 },
                 { send() },
+                Modifier.focusRequester(sendFocus),
                 primary = n > 0,
             )
         },
