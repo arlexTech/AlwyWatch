@@ -279,6 +279,8 @@ pub fn tautulli_stream(server_id: &str, v: &Value) -> Stream {
         image: nonempty(thumb).map(|t| format!("plex:{t}")),
         duration_ms: n(v, "duration"),
         position_ms: n(v, "view_offset"),
+        // Tautulli doesn't say when Plex last heard from the player.
+        position_at_ms: None,
         state: state.into(),
         product: s(v, "product"),
         device: nonempty(s(v, "player")).unwrap_or_else(|| s(v, "device")),
@@ -463,6 +465,12 @@ pub fn jellyfin_stream(server_id: &str, v: &Value) -> Option<Stream> {
         image: nonempty(image_id).map(|id| format!("jf:item:{id}")),
         duration_ms: ticks_ms(item, "RunTimeTicks"),
         position_ms: ticks_ms(&play, "PositionTicks"),
+        // The player's last progress report (a year 1 date: never).
+        position_at_ms: v
+            .get("LastPlaybackCheckIn")
+            .and_then(Value::as_str)
+            .and_then(parse_iso_ms)
+            .filter(|t| *t > 0),
         state: state.into(),
         product: s(v, "Client"),
         device: s(v, "DeviceName"),
@@ -758,6 +766,16 @@ pub fn parse_iso(x: &str) -> Option<i64> {
     Some(days * 86_400 + h * 3600 + mi * 60 + se)
 }
 
+/// `2026-11-20T07:17:28.6041526Z` → unix milliseconds.
+pub fn parse_iso_ms(x: &str) -> Option<i64> {
+    let ms = x
+        .get(20..23)
+        .filter(|_| x.as_bytes().get(19) == Some(&b'.'))
+        .and_then(|f| f.parse::<i64>().ok())
+        .unwrap_or(0);
+    Some(parse_iso(x)? * 1000 + ms)
+}
+
 // ---------------------------------------------------------------- fetching
 
 impl State {
@@ -953,6 +971,9 @@ impl State {
             samples,
             ram_total_mb: memory().map(|m| m.1).unwrap_or(0),
             cpus: cpus(),
+            now_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as i64),
         }
     }
 

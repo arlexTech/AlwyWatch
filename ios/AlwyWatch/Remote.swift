@@ -165,6 +165,8 @@ private struct RemoteControls: View {
     @State private var gone = false
     @State private var now: Int64 = 0
     @State private var dragging: Double?
+    @State private var clock = RemoteClock()
+    @State private var playing = false
 
     var body: some View {
         ScrollView {
@@ -187,10 +189,11 @@ private struct RemoteControls: View {
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: deviceId) { await follow() }
-        .task(id: state?.version) {
+        .task(id: deviceId) {
             while !Task.isCancelled {
-                if let s = state { now = remotePositionNow(state: s) }
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                now = clock.now()
+                playing = clock.playing
+                try? await Task.sleep(nanoseconds: 200_000_000)
             }
         }
     }
@@ -223,10 +226,10 @@ private struct RemoteControls: View {
             Spacer()
             Button { send(.seek, position: max(now - 10000, 0)) } label: { Image(systemName: "gobackward.10").font(.title) }
                 .accessibilityLabel(tr("Back 10 seconds"))
-            Button { send(r.playing ? .pause : .resume) } label: {
-                Image(systemName: r.playing ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 64))
+            Button { send(playing ? .pause : .resume) } label: {
+                Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill").font(.system(size: 64))
             }
-            .accessibilityLabel(r.playing ? tr("Pause") : tr("Play"))
+            .accessibilityLabel(playing ? tr("Pause") : tr("Play"))
             Button { send(.seek, position: min(now + 30000, r.durationMs)) } label: { Image(systemName: "goforward.30").font(.title) }
                 .accessibilityLabel(tr("Forward 30 seconds"))
             Spacer()
@@ -270,6 +273,14 @@ private struct RemoteControls: View {
     }
 
     private func send(_ action: RemoteAction, position: Int64? = nil, index: Int32? = nil) {
+        switch action {
+        case .pause: clock.acted(playing: false)
+        case .resume: clock.acted(playing: true)
+        case .seek: clock.acted(position: position)
+        default: break
+        }
+        now = clock.now()
+        playing = clock.playing
         Task { try? await model.core.remoteControl(deviceId: deviceId, action: action, positionMs: position, index: index) }
     }
 
@@ -280,6 +291,7 @@ private struct RemoteControls: View {
         while !Task.isCancelled {
             do {
                 let s = try await model.core.remoteState(deviceId: deviceId, after: after)
+                clock.take(s)
                 state = s
                 after = s.version
                 gone = false
@@ -293,5 +305,43 @@ private struct RemoteControls: View {
                 try? await Task.sleep(nanoseconds: min(failures * 2_000_000_000, 15_000_000_000))
             }
         }
+    }
+}
+
+/// Where the TV is, here: a local clock set by each report and moved on while the TV plays
+/// (smooth between reports), and moved at once by this phone's buttons. Reports the TV sent
+/// before the last button press are stale for the position and play state.
+final class RemoteClock {
+    private var base: Int64 = 0
+    private var baseAt: TimeInterval = 0
+    private var duration: Int64 = 0
+    private var receivedAt: TimeInterval = 0
+    private var serverNow: Int64 = 0
+    private var actedAt = Int64.min
+    private(set) var playing = false
+
+    private func mono() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
+
+    func take(_ s: RemoteState) {
+        let t = mono()
+        serverNow = s.nowMs
+        receivedAt = t
+        duration = s.report.durationMs
+        guard s.atMs >= actedAt else { return }
+        base = remotePositionNow(state: s)
+        baseAt = t
+        playing = s.report.playing && !s.report.loading
+    }
+
+    func now() -> Int64 {
+        let p = playing ? base + Int64((mono() - baseAt) * 1000) : base
+        return duration > 0 ? min(max(p, 0), duration) : max(p, 0)
+    }
+
+    func acted(playing: Bool? = nil, position: Int64? = nil) {
+        base = position ?? now()
+        baseAt = mono()
+        if let playing { self.playing = playing }
+        actedAt = serverNow + Int64((mono() - receivedAt) * 1000) + 250
     }
 }

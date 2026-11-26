@@ -200,6 +200,10 @@ are the host the AlwyWatch server runs on (`/proc`).
   (`direct_play`, `direct_stream`, `transcode` and what it becomes), and readings of the last
   15 minutes (bandwidth local/remote, CPU %, RAM %). The server reads every 30 s on its own and at
   most every 4 s while someone asks.
+  Each stream's `position_ms` was true at `position_at_ms` (Jellyfin's last report from the
+  player; none through Tautulli) and `now_ms` is the server's clock: the apps run a clock per
+  stream, set by `Stream::position_now` at each answer (exact with a sample time; without one an
+  old sample never pulls a playing clock back) and moved on every second while it plays.
 - `GET /v1/admin/dashboard/stats?server=&days=1..90&tz={minutes east of UTC}` → `Stats`: plays per
   day (movies, episodes), top users (merged across servers by linked identity), top movies and
   shows, direct play vs converted (Plex only), and `since` when a server's history is shorter
@@ -485,6 +489,10 @@ sign-in): for anyone else a device id answers 404, like an unknown one.
   1000 in all.
 * Phones move the position on from the report while it plays: `position_ms + now_ms - at_ms`
   (`remote_position_now`).
+* The phone shows the TV's position from a local clock: each report sets it (moved on by
+  `now_ms - at_ms`, `remote_position_now`) and the phone's own buttons move it at once; a report
+  sent before the last button press (`at_ms` older) is ignored for position and play state. The
+  TV reports at once on play, pause, seek and buffering, one report at a time.
 * Android: a TV listens while an AlwyWatch screen is in front (`remote/RemoteTv.kt`; the player
   reports every second while something changes, else every 5 s). A phone asks for its TVs every
   20 s while in front (`remote/RemotePhone.kt`); with one there, the home shows a TV button (the

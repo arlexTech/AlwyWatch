@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Play on the TV, the TV side (docs/keep-protocol.md "Play on the TV"): while AlwyWatch is open
@@ -41,6 +42,7 @@ object RemoteTv {
 
     /** What the player said last (sent again with each report, and cleared when it closes). */
     @Volatile private var last: RemoteReport? = null
+    private val sending = kotlinx.coroutines.sync.Mutex()
 
     /** MainActivity or PlayerActivity in front, on a TV. */
     fun activityStarted(
@@ -71,12 +73,16 @@ object RemoteTv {
     }
 
     /** The player's state (an empty title: nothing playing). Sent when it changes. */
-    fun report(r: RemoteReport) {
-        if (r == last) return
+    fun report(
+        r: RemoteReport,
+        force: Boolean = false,
+    ) {
+        if (r == last && !force) return
         last = r
         val c = core ?: return
+        // One at a time, in order: a slow older report never lands after a newer one.
         scope.launch(Dispatchers.IO) {
-            runCatching { if (c.keepActive()) c.remoteReport(r) }
+            sending.withLock { runCatching { if (c.keepActive() && last === r) c.remoteReport(r) } }
         }
     }
 

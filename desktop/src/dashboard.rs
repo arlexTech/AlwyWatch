@@ -26,6 +26,36 @@ pub struct Dash {
     generation: u64,
     live: Option<Live>,
     stats: Option<Stats>,
+    /// Each stream's clock (position, set at mono ms): moved on between answers.
+    clocks: std::collections::HashMap<String, (i64, i64)>,
+}
+
+fn mono_ms() -> i64 {
+    thread_local! {
+        static START: std::time::Instant = std::time::Instant::now();
+    }
+    START.with(|s| s.elapsed().as_millis() as i64)
+}
+
+fn stream_key(s: &Stream) -> String {
+    format!(
+        "{}|{}|{}|{}|{}",
+        s.server_id, s.user, s.device, s.title, s.subtitle
+    )
+}
+
+/// Where a stream's clock is now.
+fn shown(s: &Stream, (base, at): (i64, i64)) -> i64 {
+    let p = if s.state == "playing" {
+        base + mono_ms() - at
+    } else {
+        base
+    };
+    if s.duration_ms > 0 {
+        p.clamp(0, s.duration_ms)
+    } else {
+        p.max(0)
+    }
 }
 
 fn rgb(hex: u32) -> Color {
@@ -146,7 +176,15 @@ impl App {
                 if t.dash.borrow().server == server {
                     match r {
                         Ok(l) => {
-                            t.dash.borrow_mut().live = Some(l);
+                            let mut d = t.dash.borrow_mut();
+                            for s in &l.streams {
+                                let k = stream_key(s);
+                                let was = d.clocks.get(&k).map(|c| shown(s, *c));
+                                d.clocks
+                                    .insert(k, (s.position_now(l.now_ms, was), mono_ms()));
+                            }
+                            d.live = Some(l);
+                            drop(d);
                             t.ui().set_dash_message(Default::default());
                             t.dash_render_live();
                         }
@@ -154,7 +192,22 @@ impl App {
                     }
                 }
                 drop(t);
-                async_sleep(POLL).await;
+                // The positions move every second; the server is asked every POLL.
+                for _ in 0..POLL.as_secs() {
+                    async_sleep(Duration::from_secs(1)).await;
+                    let Some(t) = this.upgrade() else { return };
+                    if t.dash.borrow().generation != generation {
+                        return;
+                    }
+                    if t.dash
+                        .borrow()
+                        .live
+                        .as_ref()
+                        .is_some_and(|l| l.streams.iter().any(|s| s.state == "playing"))
+                    {
+                        t.dash_render_live();
+                    }
+                }
             }
         })
         .ok();
@@ -309,6 +362,12 @@ impl App {
             .streams
             .iter()
             .map(|s| {
+                let position = self
+                    .dash
+                    .borrow()
+                    .clocks
+                    .get(&stream_key(s))
+                    .map_or(s.position_ms, |c| shown(s, *c));
                 let server = l.servers.iter().find(|x| x.id == s.server_id);
                 let tracks: Vec<DashTrack> = [
                     (tr!("Video"), &s.video),
@@ -350,14 +409,14 @@ impl App {
                     kind: sstr(server.map(|x| x.kind.as_str()).unwrap_or_default()),
                     poster: self.dash_image(&s.server_id, s.image.as_deref()),
                     progress: if s.duration_ms > 0 {
-                        (s.position_ms as f32 / s.duration_ms as f32).clamp(0.0, 1.0)
+                        (position as f32 / s.duration_ms as f32).clamp(0.0, 1.0)
                     } else {
                         0.0
                     },
                     player: sstr(format!("{} — {}", s.product, s.device)),
                     state: sstr(format!(
                         "{state} — {} / {}",
-                        clock(s.position_ms),
+                        clock(position),
                         clock(s.duration_ms)
                     )),
                     r#where: sstr(place),

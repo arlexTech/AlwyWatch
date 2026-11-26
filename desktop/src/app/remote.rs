@@ -20,8 +20,61 @@ pub(super) struct RemoteUi {
     generation: u64,
     /// A seek was sent then (ms, mono): the slider stays where it was dropped meanwhile.
     seek_at: i64,
+    /// Where the TV is, moved on here between its reports.
+    clock: Clock,
     /// The last Play or button that failed.
     error: String,
+}
+
+/// Where the TV is, here: a local clock set by each report and moved on while the TV plays
+/// (smooth between reports), and moved at once by this app's buttons. Reports the TV sent
+/// before the last button press are stale for the position and play state.
+#[derive(Default)]
+struct Clock {
+    base: i64,
+    base_at: i64,
+    duration: i64,
+    received_at: i64,
+    server_now: i64,
+    acted_at: Option<i64>,
+    playing: bool,
+}
+
+impl Clock {
+    fn take(&mut self, s: &RemoteState) {
+        let t = together::mono_ms();
+        self.server_now = s.now_ms;
+        self.received_at = t;
+        self.duration = s.report.duration_ms;
+        if self.acted_at.is_some_and(|a| s.at_ms < a) {
+            return;
+        }
+        self.base = remote_position_now(s);
+        self.base_at = t;
+        self.playing = s.report.playing && !s.report.loading;
+    }
+
+    fn now(&self) -> i64 {
+        let p = if self.playing {
+            self.base + together::mono_ms() - self.base_at
+        } else {
+            self.base
+        };
+        if self.duration > 0 {
+            p.clamp(0, self.duration)
+        } else {
+            p.max(0)
+        }
+    }
+
+    fn acted(&mut self, playing: Option<bool>, position: Option<i64>) {
+        self.base = position.unwrap_or_else(|| self.now());
+        self.base_at = together::mono_ms();
+        if let Some(p) = playing {
+            self.playing = p;
+        }
+        self.acted_at = Some(self.server_now + together::mono_ms() - self.received_at + 250);
+    }
 }
 
 /// The card menu row of a "Play on" choice: from the start or not.
@@ -201,6 +254,7 @@ impl App {
                         after = s.version;
                         failures = 0;
                         let mut st = t.state.borrow_mut();
+                        st.remote.clock.take(&s);
                         st.remote.state = Some(s);
                         st.remote.gone = false;
                         0
@@ -225,7 +279,7 @@ impl App {
         let this = Rc::downgrade(self);
         slint::spawn_local(async move {
             loop {
-                async_sleep(Duration::from_millis(500)).await;
+                async_sleep(Duration::from_millis(250)).await;
                 let Some(t) = live(&this) else { return };
                 t.show_remote();
             }
@@ -311,7 +365,7 @@ impl App {
             .filter(|s| !s.report.title.is_empty() && !r.gone)
         {
             let rep = &s.report;
-            let now = remote_position_now(s).max(0);
+            let now = r.clock.now();
             p.has_title = true;
             p.title = rep.title.clone().into();
             p.subtitle = rep
@@ -325,7 +379,7 @@ impl App {
                     }
                 })
                 .into();
-            p.playing = rep.playing;
+            p.playing = r.clock.playing;
             p.position_ms = now as f32;
             p.duration_ms = rep.duration_ms.max(1) as f32;
             p.elapsed = clock(now as u64).into();
@@ -333,8 +387,8 @@ impl App {
             p.audio = named(&rep.audio, rep.audio_index);
             p.subtitles = named(&rep.subtitles, rep.subtitle_index);
             p.subtitles_off = rep.subtitle_index.is_none();
-            // The slider stays where it was dropped until the TV has moved there.
-            if together::mono_ms() - r.seek_at > 2500 {
+            // Not while the slider is dragged (and a moment after).
+            if together::mono_ms() - r.seek_at > 1000 {
                 ui.set_remote_position(now as f32);
             }
         }
@@ -348,12 +402,7 @@ impl App {
             let Some(d) = st.remote.device.clone() else {
                 return;
             };
-            let (now, duration) = st
-                .remote
-                .state
-                .as_ref()
-                .map_or((0, 0), |s| (remote_position_now(s), s.report.duration_ms));
-            (d, now, duration)
+            (d, st.remote.clock.now(), st.remote.clock.duration)
         };
         let (action, position) = match action.as_str() {
             "pause" => (RemoteAction::Pause, None),
@@ -363,20 +412,39 @@ impl App {
             "fwd30" => (RemoteAction::Seek, Some((now + 30_000).min(duration))),
             _ => return,
         };
-        if position.is_some() {
-            self.state.borrow_mut().remote.seek_at = together::mono_ms();
-            if let Some(p) = position {
-                self.ui().set_remote_position(p as f32);
+        {
+            let mut st = self.state.borrow_mut();
+            match action {
+                RemoteAction::Pause => st.remote.clock.acted(Some(false), None),
+                RemoteAction::Resume => st.remote.clock.acted(Some(true), None),
+                RemoteAction::Seek => {
+                    st.remote.clock.acted(None, position);
+                    st.remote.seek_at = together::mono_ms();
+                }
+                _ => {}
             }
         }
+        if let Some(p) = position {
+            self.ui().set_remote_position(p as f32);
+        }
+        self.show_remote();
         self.remote_send(device, action, position, None);
+    }
+
+    /// The slider moves under the finger: the clock leaves it alone meanwhile.
+    pub(super) fn remote_drag(&self) {
+        self.state.borrow_mut().remote.seek_at = together::mono_ms();
     }
 
     pub(super) fn remote_seek(self: &Rc<Self>, position_ms: f32) {
         let Some(device) = self.state.borrow().remote.device.clone() else {
             return;
         };
-        self.state.borrow_mut().remote.seek_at = together::mono_ms();
+        {
+            let mut st = self.state.borrow_mut();
+            st.remote.seek_at = together::mono_ms();
+            st.remote.clock.acted(None, Some(position_ms as i64));
+        }
         self.remote_send(device, RemoteAction::Seek, Some(position_ms as i64), None);
     }
 

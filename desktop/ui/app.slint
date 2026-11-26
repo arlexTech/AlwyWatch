@@ -1868,6 +1868,7 @@ export component AppWindow inherits Window {
     /// pause, resume, back10, fwd30, stop.
     callback remote-action(string);
     callback remote-seek(float);
+    callback remote-drag();
     /// "audio" or "subtitles", the track's index ("": subtitles off).
     callback remote-track(string, string);
     callback prefetch(string);
@@ -4764,6 +4765,7 @@ export component AppWindow inherits Window {
                                 minimum: 0;
                                 maximum: root.remote.duration-ms;
                                 value <=> root.remote-position;
+                                changed(v) => { root.remote-drag(); }
                                 released(v) => { root.remote-seek(v); }
                             }
                             HorizontalLayout {

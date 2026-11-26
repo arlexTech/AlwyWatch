@@ -5909,6 +5909,7 @@ impl App {
         on!(on_remote_close, |a| a.remote_close());
         on!(on_remote_action, |a, action| a.remote_action(action.into()));
         on!(on_remote_seek, |a, ms| a.remote_seek(ms));
+        on!(on_remote_drag, |a| a.remote_drag());
         on!(on_remote_track, |a, kind, index| a
             .remote_track(kind.into(), index.into()));
         on!(on_card_menu_open, |a, id, row| a

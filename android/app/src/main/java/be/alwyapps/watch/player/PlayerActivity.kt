@@ -657,6 +657,7 @@ class PlayerActivity : ComponentActivity() {
         object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 ui.playing = isPlaying
+                remoteNudge.trySend(Unit)
                 refreshPip()
                 // Paused by the user: show the controls. Not while buffering after a seek
                 // (←/→ with hidden controls must keep them hidden).
@@ -677,11 +678,13 @@ class PlayerActivity : ComponentActivity() {
                 newPosition: Player.PositionInfo,
                 reason: Int,
             ) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) remoteNudge.trySend(Unit)
                 if (!applyingRoom && reason == Player.DISCONTINUITY_REASON_SEEK) sendRoom()
             }
 
             override fun onPlaybackStateChanged(state: Int) {
                 ui.buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
+                remoteNudge.trySend(Unit)
                 if (state == Player.STATE_READY) networkRetries = 0
                 if (state == Player.STATE_ENDED) {
                     report(PlaybackEvent.STOP)
@@ -1197,6 +1200,9 @@ class PlayerActivity : ComponentActivity() {
     // ----- play on the TV --------------------------------------------------------------------
 
     private var remoteJob: Job? = null
+
+    /** The player played, paused or seeked: report now (the phone's clock follows it). */
+    private val remoteNudge = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
     private var remoteServer: Pair<String, String?>? = null
 
     /** On a TV: the phone's commands for this player, and what it plays, for the phone. */
@@ -1210,17 +1216,19 @@ class PlayerActivity : ComponentActivity() {
                 launch { tv.commands.collect { applyRemote(it) } }
                 var lastKey: Any? = null
                 var lastSent = 0L
+                var nudged = false
                 while (true) {
                     val r = remoteReport()
                     val key = listOf(r.title, r.playing, r.loading, r.audioIndex, r.subtitleIndex, r.audio, r.subtitles, r.durationMs)
                     val now = android.os.SystemClock.uptimeMillis()
-                    // Changes at once; the position every few seconds (the phone moves it itself).
-                    if (key != lastKey || now - lastSent > 5_000) {
-                        tv.report(r)
+                    // Play, pause and seeks at once (the player's events); other changes within
+                    // a second; the position every few seconds (the phone moves it on itself).
+                    if (nudged || key != lastKey || now - lastSent > 5_000) {
+                        tv.report(r, force = nudged)
                         lastKey = key
                         lastSent = now
                     }
-                    kotlinx.coroutines.delay(1_000)
+                    nudged = kotlinx.coroutines.withTimeoutOrNull(1_000) { remoteNudge.receive() } != null
                 }
             }
     }

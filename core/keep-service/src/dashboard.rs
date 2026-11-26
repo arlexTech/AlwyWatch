@@ -62,6 +62,10 @@ pub struct Stream {
     pub image: Option<String>,
     pub duration_ms: i64,
     pub position_ms: i64,
+    /// When `position_ms` was true (server time, Unix ms), when the media server says
+    /// (Jellyfin); clients move a playing stream on from there.
+    #[serde(default)]
+    pub position_at_ms: Option<i64>,
     /// "playing", "paused" or "buffering".
     pub state: String,
     /// The app ("Plex for Android (TV)", "AlwyWatch").
@@ -79,6 +83,40 @@ pub struct Stream {
     pub audio: Option<StreamTrack>,
     #[serde(default)]
     pub subtitle_track: Option<StreamTrack>,
+}
+
+impl Stream {
+    /// Where this stream is now (ms), for a clock that moves it on while it plays.
+    /// `now_ms`: the server time of the answer ([`Live::now_ms`]); `shown`: what the clock
+    /// shows now (None the first time). With the media server's sample time (Jellyfin) the
+    /// answer is exact; without it (Plex through Tautulli) a sample is a few seconds old, so a
+    /// playing stream only goes back for a real seek, never for an old sample.
+    pub fn position_now(&self, now_ms: i64, shown: Option<i64>) -> i64 {
+        let playing = self.state == "playing";
+        let end = if self.duration_ms > 0 {
+            self.duration_ms
+        } else {
+            i64::MAX
+        };
+        let sampled = match self.position_at_ms {
+            Some(at) if playing && now_ms > 0 => self.position_ms + (now_ms - at).clamp(0, 60_000),
+            _ => self.position_ms,
+        };
+        let fresh = match shown {
+            // Under a second and a half apart: the clock is right, no tiny jumps.
+            Some(p) if playing && (p - sampled).abs() < 1_500 => p,
+            // An old sample (no sample time): the clock is ahead, as it should be.
+            Some(p)
+                if playing
+                    && self.position_at_ms.is_none()
+                    && (0..15_000).contains(&(p - sampled)) =>
+            {
+                p
+            }
+            _ => sampled,
+        };
+        fresh.clamp(0, end)
+    }
 }
 
 /// One point of the live graphs.
@@ -110,6 +148,9 @@ pub struct Live {
     pub ram_total_mb: u64,
     #[serde(default)]
     pub cpus: u32,
+    /// Server time of this answer (Unix ms): with `position_at_ms`, where streams are now.
+    #[serde(default)]
+    pub now_ms: i64,
 }
 
 /// A person's watching over the period.
@@ -186,4 +227,49 @@ pub struct Stats {
 pub struct ServerSince {
     pub server_id: String,
     pub since: i64,
+}
+
+#[cfg(test)]
+mod position_tests {
+    use super::Stream;
+
+    fn stream(state: &str, pos: i64, at: Option<i64>) -> Stream {
+        Stream {
+            state: state.into(),
+            position_ms: pos,
+            position_at_ms: at,
+            duration_ms: 3_600_000,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_sample_with_its_time_is_moved_on_to_now() {
+        assert_eq!(
+            stream("playing", 60_000, Some(1_000)).position_now(8_000, None),
+            67_000
+        );
+        // Paused: where it is.
+        assert_eq!(
+            stream("paused", 60_000, Some(1_000)).position_now(8_000, None),
+            60_000
+        );
+    }
+
+    #[test]
+    fn the_clock_stays_when_close_and_follows_a_seek() {
+        let s = stream("playing", 60_000, Some(1_000));
+        assert_eq!(s.position_now(8_000, Some(67_800)), 67_800);
+        assert_eq!(s.position_now(8_000, Some(200_000)), 67_000);
+    }
+
+    #[test]
+    fn an_old_sample_without_time_never_pulls_back_a_playing_clock() {
+        let s = stream("playing", 60_000, None);
+        assert_eq!(s.position_now(0, Some(66_000)), 66_000);
+        // Ahead by more than any sample's age: a seek back.
+        assert_eq!(s.position_now(0, Some(90_000)), 60_000);
+        // Behind: a seek forward (or the first sample).
+        assert_eq!(s.position_now(0, Some(30_000)), 60_000);
+    }
 }

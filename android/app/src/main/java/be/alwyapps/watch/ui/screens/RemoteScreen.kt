@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -30,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import be.alwyapps.watch.core.CoreException
 import be.alwyapps.watch.core.keep.RemoteAction
 import be.alwyapps.watch.core.keep.RemoteState
-import be.alwyapps.watch.core.remotePositionNow
 import be.alwyapps.watch.player.formatTime
 import be.alwyapps.watch.remote.RemotePhone
 import be.alwyapps.watch.ui.Accent
@@ -96,6 +96,12 @@ fun RemoteScreen(deviceId: String?) {
     var gone by remember(id) { mutableStateOf(false) }
     // The position shown: the TV's, moving on while it plays (or where the slider is dragged).
     var now by remember(id) { mutableLongStateOf(0L) }
+    val clock =
+        remember(id) {
+            be.alwyapps.watch.remote
+                .RemoteClock()
+        }
+    var playing by remember(id) { mutableStateOf(false) }
     var dragging by remember { mutableStateOf<Float?>(null) }
     var picking by remember { mutableStateOf<RemoteAction?>(null) }
     LaunchedEffect(id) {
@@ -104,6 +110,7 @@ fun RemoteScreen(deviceId: String?) {
         while (true) {
             try {
                 val s = core.remoteState(id, after)
+                clock.take(s)
                 state = s
                 after = s.version
                 gone = false
@@ -117,10 +124,11 @@ fun RemoteScreen(deviceId: String?) {
             }
         }
     }
-    LaunchedEffect(state) {
+    LaunchedEffect(id) {
         while (true) {
-            state?.let { now = remotePositionNow(it) }
-            delay(500)
+            now = clock.now()
+            playing = clock.playing
+            delay(200)
         }
     }
 
@@ -129,6 +137,14 @@ fun RemoteScreen(deviceId: String?) {
         position: Long? = null,
         index: Int? = null,
     ) {
+        when (action) {
+            RemoteAction.PAUSE -> clock.acted(playing = false)
+            RemoteAction.RESUME -> clock.acted(playing = true)
+            RemoteAction.SEEK -> clock.acted(position = position)
+            else -> {}
+        }
+        now = clock.now()
+        playing = clock.playing
         scope.launch { runCatching { core.remoteControl(id, action, position, index) } }
     }
 
@@ -177,10 +193,13 @@ fun RemoteScreen(deviceId: String?) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconAction(Icons.Replay10, tr("Back 10 seconds"), { send(RemoteAction.SEEK, (now - 10_000).coerceAtLeast(0)) })
-                        if (r.playing) {
-                            ActionButton(tr("Pause"), { send(RemoteAction.PAUSE) }, primary = true, icon = Icons.Pause)
-                        } else {
-                            ActionButton(tr("Play"), { send(RemoteAction.RESUME) }, primary = true, icon = Icons.Play)
+                        // A fixed width: the jump buttons stay put when Pause turns into Play.
+                        androidx.compose.foundation.layout.Box(Modifier.width(150.dp), contentAlignment = Alignment.Center) {
+                            if (playing) {
+                                ActionButton(tr("Pause"), { send(RemoteAction.PAUSE) }, primary = true, icon = Icons.Pause)
+                            } else {
+                                ActionButton(tr("Play"), { send(RemoteAction.RESUME) }, primary = true, icon = Icons.Play)
+                            }
                         }
                         IconAction(Icons.Forward30, tr("Forward 30 seconds"), { send(RemoteAction.SEEK, (now + 30_000).coerceAtMost(r.durationMs)) })
                     }

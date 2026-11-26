@@ -409,6 +409,32 @@ private fun NowPlaying(
             ).joinToString(" · ")
         }
     val d = LocalDimens.current
+    // Each stream's clock: set by each answer (see dashStreamPosition), moved on here every
+    // second while it plays, so positions don't jump between answers.
+    val clocks = remember { HashMap<String, Pair<Long, Long>>() }
+
+    fun mono() = android.os.SystemClock.elapsedRealtime()
+
+    fun key(s: Stream) = "${s.serverId}|${s.user}|${s.device}|${s.title}|${s.subtitle}"
+
+    fun shown(
+        s: Stream,
+        c: Pair<Long, Long>,
+    ) = if (s.state == "playing") c.first + (mono() - c.second) else c.first
+    remember(l) {
+        l.streams.forEach { s ->
+            val k = key(s)
+            clocks[k] = be.alwyapps.watch.core
+                .dashStreamPosition(s, l.nowMs, clocks[k]?.let { shown(s, it) }) to mono()
+        }
+    }
+    var tick by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1_000)
+            tick = mono()
+        }
+    }
     Panel(tr("Now playing"), summary) {
         BoxWithConstraints {
             // Phones: two compact cards per row; TV and tablets: wide cards.
@@ -418,7 +444,22 @@ private fun NowPlaying(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 l.streams.forEach { s ->
                     val server = l.servers.firstOrNull { it.id == s.serverId }
-                    StreamCard(s, server?.kind ?: "", server?.name?.takeIf { merged }, cardWidth < 260.dp, Modifier.width(cardWidth))
+                    val position =
+                        tick.let {
+                            clocks[key(s)]?.let { c ->
+                                shown(s, c).let { v ->
+                                    if (s.durationMs >
+                                        0
+                                    ) {
+                                        v.coerceIn(0, s.durationMs)
+                                    } else {
+                                        v.coerceAtLeast(0)
+                                    }
+                                }
+                            }
+                                ?: s.positionMs
+                        }
+                    StreamCard(s, position, server?.kind ?: "", server?.name?.takeIf { merged }, cardWidth < 260.dp, Modifier.width(cardWidth))
                 }
             }
         }
@@ -428,6 +469,8 @@ private fun NowPlaying(
 @Composable
 private fun StreamCard(
     s: Stream,
+    /** Where it is now (moved on from the answer). */
+    position: Long,
     kind: String,
     serverName: String?,
     compact: Boolean,
@@ -472,7 +515,7 @@ private fun StreamCard(
                 serverName?.let { Text(it, color = Subtle, style = small, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
         }
-        val pct = if (s.durationMs > 0) (s.positionMs.toFloat() / s.durationMs).coerceIn(0f, 1f) else 0f
+        val pct = if (s.durationMs > 0) (position.toFloat() / s.durationMs).coerceIn(0f, 1f) else 0f
         Box(Modifier.fillMaxWidth().height(3.dp).background(SurfaceHigh)) {
             Box(Modifier.fillMaxWidth(pct).height(3.dp).background(Accent))
         }
@@ -490,7 +533,7 @@ private fun StreamCard(
                     "buffering" -> tr("Buffering")
                     else -> tr("Playing")
                 }
-            Text("$state — ${clock(s.positionMs)} / ${clock(s.durationMs)}", color = Muted, style = MaterialTheme.typography.bodySmall)
+            Text("$state — ${clock(position)} / ${clock(s.durationMs)}", color = Muted, style = MaterialTheme.typography.bodySmall)
             val where = if (s.local) tr("Local") else tr("Remote")
             val ip = if (s.ip.isNotEmpty()) " (${s.ip})" else ""
             val rate = if (s.kbps > 0u) " — ${mbps(s.kbps.toLong())}" else ""

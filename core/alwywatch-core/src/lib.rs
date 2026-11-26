@@ -56,7 +56,7 @@ pub use media_api::quality::QualityChoice;
 pub use media_api::recent::{RailNote, recently_added};
 pub use merge::{AccountHome, MergedHome, merge_homes, same_as};
 pub use playback::{PlaybackPrompt, playback_prompt};
-pub use remote::{RemotePlay, remote_position_now};
+pub use remote::{RemotePlay, dash_stream_position, remote_position_now};
 pub use seerr::{
     Availability, QuickConnect as SeerrQuickConnect, RequestStatus, SeasonChoice, SeasonPlan,
     SeasonState, SeerrCast, SeerrCollection, SeerrCollectionRef, SeerrDetails, SeerrInfo,

@@ -68,3 +68,53 @@ object RemotePhone {
         startMs: Long,
     ) = ctx.startActivity(PlayerActivity.intent(ctx, account, itemId, startMs))
 }
+
+/**
+ * Where the TV is, on the phone: a local clock set by each report and moved on here while
+ * the TV plays (smooth, no jumps between reports), and moved at once by this phone's own
+ * buttons (a pause stops it now, not when the TV's report comes back). Reports the TV sent
+ * before the last button press are stale for the position and play state.
+ */
+class RemoteClock {
+    private var base = 0L
+    private var baseAt = 0L
+    private var duration = 0L
+    private var receivedAt = 0L
+    private var serverNow = 0L
+    private var actedAt = Long.MIN_VALUE
+
+    var playing = false
+        private set
+
+    private fun mono() = android.os.SystemClock.elapsedRealtime()
+
+    fun take(s: be.alwyapps.watch.core.keep.RemoteState) {
+        val t = mono()
+        serverNow = s.nowMs
+        receivedAt = t
+        duration = s.report.durationMs
+        if (s.atMs < actedAt) return
+        base =
+            be.alwyapps.watch.core
+                .remotePositionNow(s)
+        baseAt = t
+        playing = s.report.playing && !s.report.loading
+    }
+
+    fun now(): Long {
+        val p = if (playing) base + (mono() - baseAt) else base
+        return if (duration > 0) p.coerceIn(0, duration) else p.coerceAtLeast(0)
+    }
+
+    /** A button here: [playing] and [position] as they will be on the TV. */
+    fun acted(
+        playing: Boolean? = null,
+        position: Long? = null,
+    ) {
+        base = position ?: now()
+        baseAt = mono()
+        playing?.let { this.playing = it }
+        // The server's time now, give or take the trip: reports from before it are stale.
+        actedAt = serverNow + (mono() - receivedAt) + 250
+    }
+}

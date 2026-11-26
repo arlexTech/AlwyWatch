@@ -211,11 +211,75 @@ fn track_row(kind: String, t: Option<StreamTrack>) -> impl IntoView {
     })
 }
 
-fn stream_card(s: Stream, server: String, kind: String, merged: bool) -> impl IntoView {
-    let pct = if s.duration_ms > 0 {
-        (s.position_ms * 100 / s.duration_ms).clamp(0, 100)
+thread_local! {
+    /// Each stream's clock (position, set at Date.now()): moved on between answers.
+    static CLOCKS: RefCell<HashMap<String, (i64, f64)>> = RefCell::new(HashMap::new());
+}
+
+fn stream_key(s: &Stream) -> String {
+    format!(
+        "{}|{}|{}|{}|{}",
+        s.server_id, s.user, s.device, s.title, s.subtitle
+    )
+}
+
+fn shown(s: &Stream, (base, at): (i64, f64)) -> i64 {
+    let p = if s.state == "playing" {
+        base + (js_sys::Date::now() - at) as i64
     } else {
-        0
+        base
+    };
+    if s.duration_ms > 0 {
+        p.clamp(0, s.duration_ms)
+    } else {
+        p.max(0)
+    }
+}
+
+/// A new answer: each stream's clock set again (see `Stream::position_now`).
+fn set_clocks(l: &Live) {
+    CLOCKS.with(|c| {
+        let mut c = c.borrow_mut();
+        for s in &l.streams {
+            let k = stream_key(s);
+            let was = c.get(&k).map(|v| shown(s, *v));
+            c.insert(k, (s.position_now(l.now_ms, was), js_sys::Date::now()));
+        }
+    });
+}
+
+fn position(s: &Stream) -> i64 {
+    CLOCKS.with(|c| {
+        c.borrow()
+            .get(&stream_key(s))
+            .map_or(s.position_ms, |v| shown(s, *v))
+    })
+}
+
+fn stream_card(
+    s: Stream,
+    server: String,
+    kind: String,
+    merged: bool,
+    tick: RwSignal<u64>,
+) -> impl IntoView {
+    let pos = {
+        let s = s.clone();
+        move || {
+            tick.track();
+            position(&s)
+        }
+    };
+    let duration = s.duration_ms;
+    let pct = {
+        let pos = pos.clone();
+        move || {
+            if duration > 0 {
+                (pos() * 100 / duration).clamp(0, 100)
+            } else {
+                0
+            }
+        }
     };
     let state = match s.state.as_str() {
         "paused" => tr!("Paused"),
@@ -233,6 +297,7 @@ fn stream_card(s: Stream, server: String, kind: String, merged: bool) -> impl In
         .map(|c| c.to_uppercase().to_string())
         .unwrap_or_default();
     let sid = s.server_id.clone();
+    let (pct_now, pct_bar) = (pct.clone(), pct);
     view! {
         <article class="stream" class:converted=converted>
             <div class="stream-head">
@@ -247,13 +312,13 @@ fn stream_card(s: Stream, server: String, kind: String, merged: bool) -> impl In
                     {merged.then(|| view! { <span class="server-tag">{server.clone()}</span> })}
                 </div>
             </div>
-            <div class="progress" role="progressbar" aria-valuenow=pct aria-valuemin="0" aria-valuemax="100">
-                <span style=format!("width:{pct}%")></span>
+            <div class="progress" role="progressbar" aria-valuenow=pct_now aria-valuemin="0" aria-valuemax="100">
+                <span style=move || format!("width:{}%", pct_bar())></span>
             </div>
             <div class="stream-body">
                 <div class="stream-player">
                     <strong>{s.product.clone()}" — "{s.device.clone()}</strong>
-                    <span class="muted small">{state}" — "{clock(s.position_ms)}" / "{clock(s.duration_ms)}</span>
+                    <span class="muted small">{state}" — "{move || clock(pos())}" / "{clock(s.duration_ms)}</span>
                     <span class="muted small">{where_}{(!s.ip.is_empty()).then(|| format!(" ({})", s.ip))}{(s.kbps > 0).then(|| format!(" — {}", mbps(s.kbps)))}</span>
                 </div>
                 {track_row(tr!("Video"), s.video.clone())}
@@ -428,7 +493,11 @@ fn kbps_fmt(v: f64) -> String {
 }
 
 #[component]
-fn LivePanels(live: RwSignal<Option<Live>>, merged: Signal<bool>) -> impl IntoView {
+fn LivePanels(
+    live: RwSignal<Option<Live>>,
+    merged: Signal<bool>,
+    tick: RwSignal<u64>,
+) -> impl IntoView {
     let samples = Signal::derive(move || {
         live.with(|l| l.as_ref().map(|l| l.samples.clone()).unwrap_or_default())
     });
@@ -468,7 +537,7 @@ fn LivePanels(live: RwSignal<Option<Live>>, merged: Signal<bool>) -> impl IntoVi
                 let found = l.servers.iter().find(|x| x.id == s.server_id);
                 let name = found.map(|x| x.name.clone()).unwrap_or_default();
                 let kind = found.map(|x| x.kind.clone()).unwrap_or_default();
-                stream_card(s, name, kind, m)
+                stream_card(s, name, kind, m, tick)
             })
             .collect();
         Some(view! {
@@ -690,6 +759,8 @@ pub fn Dashboard() -> impl IntoView {
     let server = RwSignal::new(remembered_server());
     // The last good reading stays on screen when a poll fails (a note says so).
     let live = RwSignal::new(None::<Live>);
+    // Every second: the streams' positions move on.
+    let tick = RwSignal::new(0u64);
     let error = RwSignal::new(None::<String>);
     // Kept apart from the readings: a failed poll or a new pick leaves the chips in place.
     let servers = RwSignal::new(Vec::<DashServer>::new());
@@ -732,6 +803,7 @@ pub fn Dashboard() -> impl IntoView {
                                     }
                                 }
                             });
+                            set_clocks(&l);
                             live.set(Some(l));
                             error.set(None);
                         }
@@ -744,8 +816,11 @@ pub fn Dashboard() -> impl IntoView {
                 }
             }
             // Wake early when the server choice changes.
-            for _ in 0..(POLL_MS / 250) {
+            for i in 0..(POLL_MS / 250) {
                 state::sleep(250).await;
+                if i % 4 == 3 {
+                    let _ = tick.try_update(|t| *t += 1);
+                }
                 if !open() || server.try_get_untracked().as_ref() != Some(&asked) {
                     break;
                 }
@@ -783,7 +858,7 @@ pub fn Dashboard() -> impl IntoView {
             (true, None) => ().into_any(),
         }}
         <Show when=move || live.with(Option::is_some)>
-            <LivePanels live=live merged=merged />
+            <LivePanels live=live merged=merged tick=tick />
         </Show>
         <StatsPanels server=server.into() servers=servers.into() />
     }

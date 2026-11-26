@@ -70,7 +70,9 @@ struct DashboardView: View {
             live = nil
             while !Task.isCancelled {
                 do {
-                    live = try await model.core.keepAdminDashboardLive(server: server)
+                    let l = try await model.core.keepAdminDashboardLive(server: server)
+                    StreamClocks.shared.take(l)
+                    live = l
                     liveError = nil
                 } catch {
                     liveError = error.localizedDescription
@@ -112,7 +114,10 @@ struct DashboardView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 12)], spacing: 12) {
                 ForEach(Array(l.streams.enumerated()), id: \.offset) { _, s in
                     let server = l.servers.first { $0.id == s.serverId }
-                    StreamCard(s: s, kind: server?.kind ?? "", serverName: self.server == "all" ? server?.name : nil)
+                    // The position moves every second between answers.
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        StreamCard(s: s, position: StreamClocks.shared.position(s), kind: server?.kind ?? "", serverName: self.server == "all" ? server?.name : nil)
+                    }
                 }
             }
         }
@@ -270,8 +275,33 @@ private struct Panel<Content: View>: View {
     }
 }
 
+/// Each stream's clock: set by each answer (`dashStreamPosition`), moved on while it plays.
+final class StreamClocks {
+    static let shared = StreamClocks()
+    private var clocks: [String: (Int64, TimeInterval)] = [:]
+
+    private func key(_ s: Stream) -> String { "\(s.serverId)|\(s.user)|\(s.device)|\(s.title)|\(s.subtitle)" }
+
+    private func shown(_ s: Stream, _ c: (Int64, TimeInterval)) -> Int64 {
+        let p = s.state == "playing" ? c.0 + Int64((ProcessInfo.processInfo.systemUptime - c.1) * 1000) : c.0
+        return s.durationMs > 0 ? min(max(p, 0), s.durationMs) : max(p, 0)
+    }
+
+    func take(_ l: Live) {
+        for s in l.streams {
+            let k = key(s)
+            let was = clocks[k].map { shown(s, $0) }
+            clocks[k] = (dashStreamPosition(stream: s, nowMs: l.nowMs, shown: was), ProcessInfo.processInfo.systemUptime)
+        }
+    }
+
+    func position(_ s: Stream) -> Int64 { clocks[key(s)].map { shown(s, $0) } ?? s.positionMs }
+}
+
 private struct StreamCard: View {
     let s: Stream
+    /// Where it is now (moved on from the answer).
+    let position: Int64
     let kind: String
     let serverName: String?
 
@@ -297,14 +327,14 @@ private struct StreamCard: View {
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Palette.surfaceHigh
-                    Palette.accent.frame(width: s.durationMs > 0 ? g.size.width * CGFloat(min(1, max(0, Double(s.positionMs) / Double(s.durationMs)))) : 0)
+                    Palette.accent.frame(width: s.durationMs > 0 ? g.size.width * CGFloat(min(1, max(0, Double(position) / Double(s.durationMs)))) : 0)
                 }
             }
             .frame(height: 3)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(s.product) — \(s.device)").font(.subheadline.weight(.semibold))
                 let state = s.state == "paused" ? tr("Paused") : s.state == "buffering" ? tr("Buffering") : tr("Playing")
-                Text("\(state) — \(clock(s.positionMs)) / \(clock(s.durationMs))").font(.footnote).foregroundStyle(Palette.muted)
+                Text("\(state) — \(clock(position)) / \(clock(s.durationMs))").font(.footnote).foregroundStyle(Palette.muted)
                 Text((s.local ? tr("Local") : tr("Remote")) + (s.ip.isEmpty ? "" : " (\(s.ip))") + (s.kbps > 0 ? " — \(mbps(UInt64(s.kbps)))" : ""))
                     .font(.footnote).foregroundStyle(Palette.muted)
                 TrackLine(kind: tr("Video"), t: s.video)

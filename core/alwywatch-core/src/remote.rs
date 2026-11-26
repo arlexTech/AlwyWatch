@@ -152,6 +152,16 @@ impl AlwyWatch {
     }
 }
 
+/// Where a dashboard stream is now (ms), see `Stream::position_now`.
+#[uniffi::export]
+pub fn dash_stream_position(
+    stream: &keep_service::dashboard::Stream,
+    now_ms: i64,
+    shown: Option<i64>,
+) -> i64 {
+    stream.position_now(now_ms, shown)
+}
+
 /// Where a TV's title is now (ms): its report moved on while it plays.
 #[uniffi::export]
 pub fn remote_position_now(state: &RemoteState) -> i64 {
