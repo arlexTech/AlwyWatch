@@ -6021,10 +6021,6 @@ msgid "Downloaded · {path}"
 msgstr "Téléchargé · {path}"
 
 #: desktop/src/app.rs
-msgid "Deletion paused"
-msgstr "Suppression suspendue"
-
-#: desktop/src/app.rs
 msgid "{when} (extended)"
 msgstr "{when} (prolongé)"
 
@@ -9276,6 +9272,9 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "Deletion paused"
+#~ msgstr "Suppression suspendue"
 
 #~ msgid "A 10 second countdown during the credits, which Keep watching cancels. Off: playback stops at the end of the episode."
 #~ msgstr "Un compte à rebours de 10 secondes pendant le générique, que Continuer à regarder annule. Désactivé : la lecture s'arrête à la fin de l'épisode."

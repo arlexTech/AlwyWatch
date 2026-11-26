@@ -110,12 +110,13 @@ fun LeavingItem.leavesLabel(): String {
 /** Under the keep buttons: how one person's choice weighs. Same sentence in every app. */
 fun keepHint(): String = tr("Everyone's choices count and the longest one wins. “Fine to delete”: it only goes if nobody else keeps it.")
 
-/** Short countdown for poster badges: "3 days", "Today", "Overdue", "No date", "Kept". */
+/** Short countdown for poster badges: "3 days", "Today", "Kept"; "" (no badge) while paused. */
 fun LeavingItem.shortLabel(): Pair<String, Boolean> {
     val now = System.currentTimeMillis() / 1000
     if (protection == Protection.FOREVER || protection == Protection.UNTIL_WATCHED) return tr("Kept") to false
-    // Past its date but deletion isn't turned on for its collection: nothing is planned yet.
-    if (paused(now)) return tr("No date") to false
+    // Past its date but deletion isn't turned on for its collection: nothing is planned yet,
+    // so no badge (as on the web: a row of "No date" read as broken).
+    if (paused(now)) return "" to false
     val d = effectiveDeletionDate ?: return tr("Soon") to false
     val days = (d - now) / DAY
     return when {

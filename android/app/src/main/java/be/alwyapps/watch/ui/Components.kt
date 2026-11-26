@@ -440,6 +440,8 @@ fun Badge(
     color: Color = Color.Black.copy(alpha = 0.55f),
     textColor: Color = Color.White,
 ) {
+    // Nothing to say (a Leaving soon title whose deletion is paused): no empty pill.
+    if (text.isEmpty()) return
     Text(
         text.uppercase(),
         modifier

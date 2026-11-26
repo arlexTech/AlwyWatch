@@ -75,7 +75,8 @@ extension LeavingItem: Identifiable {
     var shortLabel: (String, Bool) {
         let now = nowSeconds()
         if protection == .forever || protection == .untilWatched { return (tr("Kept"), false) }
-        if paused(now) { return (tr("No date"), false) }
+        // Deletion paused: no badge (as on the web: a row of "No date" read as broken).
+        if paused(now) { return ("", false) }
         guard let d = effectiveDeletionDate else { return (tr("Soon"), false) }
         let days = (d - now) / day
         switch days {
@@ -116,6 +117,12 @@ struct KeepBadge: View {
     var dark = false
 
     var body: some View {
+        if !text.isEmpty {
+            badge
+        }
+    }
+
+    private var badge: some View {
         Text(text)
             .font(.caption.weight(.bold))
             .padding(.horizontal, 8)

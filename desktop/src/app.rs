@@ -578,9 +578,10 @@ impl App {
             Protection::UntilWatched => tr!("Kept until watched"),
             p => match i.effective_deletion_date {
                 None => tr!("No date"),
-                // Date passed but the owner has not turned deletion on: nothing happens yet.
+                // Date passed but the owner has not turned deletion on: nothing happens yet
+                // (the words of the other apps).
                 Some(d) if d < now && !i.collection_active && p == Protection::None => {
-                    tr!("Deletion paused")
+                    tr!("Not scheduled for deletion")
                 }
                 Some(d) => {
                     let days = (d - now).div_euclid(86_400);

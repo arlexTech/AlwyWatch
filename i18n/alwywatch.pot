@@ -6016,10 +6016,6 @@ msgid "Downloaded · {path}"
 msgstr ""
 
 #: desktop/src/app.rs
-msgid "Deletion paused"
-msgstr ""
-
-#: desktop/src/app.rs
 msgid "{when} (extended)"
 msgstr ""
 

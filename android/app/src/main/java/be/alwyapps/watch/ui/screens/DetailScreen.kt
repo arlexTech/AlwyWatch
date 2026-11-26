@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -388,27 +390,32 @@ fun DetailScreen(
     Box(Modifier.fillMaxSize().ambientGlow(item?.ambient())) {
         LazyColumn(Modifier.fillMaxSize()) {
             item(key = "hero") {
-                Box(Modifier.fillMaxWidth().height(heroH)) {
+                // Phones: at least the artwork's height, taller when its content needs it (it
+                // grew upwards under the back button and onto bright artwork).
+                Box(Modifier.fillMaxWidth().then(if (d.isTv) Modifier.height(heroH) else Modifier.heightIn(min = heroH))) {
                     if (item != null) {
                         RemoteImage(
                             item.id,
                             item.backdrop() ?: item.poster(),
                             1280.dp,
-                            Modifier.fillMaxSize().fadeEdges(bottomFrom = 0.5f, leftTo = if (d.isTv) 0.45f else 0f),
+                            Modifier.matchParentSize().fadeEdges(bottomFrom = 0.5f, leftTo = if (d.isTv) 0.45f else 0f),
                             background = Color.Transparent,
                         )
                     }
                     // Top: status bar legibility. Bottom: the title and buttons stay readable on
                     // bright artwork.
                     Box(
-                        Modifier.fillMaxSize().background(
+                        Modifier.matchParentSize().background(
                             Brush.verticalGradient(
                                 0f to Color.Black.copy(alpha = 0.5f),
                                 0.2f to Color.Transparent,
-                                0.45f to Color.Transparent,
+                                0.3f to Color.Transparent,
+                                0.5f to
+                                    be.alwyapps.watch.ui.Background
+                                        .copy(alpha = 0.8f),
                                 1f to
                                     be.alwyapps.watch.ui.Background
-                                        .copy(alpha = 0.9f),
+                                        .copy(alpha = 0.95f),
                             ),
                         ),
                     )
@@ -417,7 +424,9 @@ fun DetailScreen(
                             Modifier
                                 .align(Alignment.BottomStart)
                                 .fillMaxWidth(if (d.isTv) 0.75f else 1f)
-                                .padding(horizontal = d.gutter, vertical = if (d.isTv) 24.dp else 8.dp),
+                                .padding(horizontal = d.gutter, vertical = if (d.isTv) 24.dp else 8.dp)
+                                // Phones: below the back button and the top of the artwork.
+                                .padding(top = if (d.isTv) 0.dp else heroH * 0.4f),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             if (item.kind == ItemKind.EPISODE) {
@@ -1225,15 +1234,19 @@ private fun Chip(text: String) {
 
 /** Round button with a caption under it (the action row of phone detail pages, like Plex). */
 @Composable
-private fun CaptionAction(
+private fun androidx.compose.foundation.layout.RowScope.CaptionAction(
     caption: String,
     onClick: () -> Unit,
     highlighted: Boolean = false,
     icon: @Composable () -> Unit,
 ) {
     Column(
+        // An equal share of the row, at most 84 dp: five actions fit a narrow phone (fixed
+        // widths overflowed it, squeezing the last ones into broken words).
         Modifier
-            .width(84.dp)
+            .weight(1f, fill = false)
+            .widthIn(max = 84.dp)
+            .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 6.dp),
@@ -1277,7 +1290,7 @@ private fun downloadCaption(
  * downloading, remove (after asking) once downloaded. Episodes open the sheet instead.
  */
 @Composable
-private fun DownloadAction(
+private fun androidx.compose.foundation.layout.RowScope.DownloadAction(
     item: Item,
     dl: be.alwyapps.watch.core.downloads.Download?,
     toggle: Boolean,
@@ -1292,7 +1305,7 @@ private fun DownloadAction(
 
 /** A show's download action: what is downloading or downloaded for it. */
 @Composable
-private fun SeriesDownloadAction(
+private fun androidx.compose.foundation.layout.RowScope.SeriesDownloadAction(
     series: Item,
     mine: List<be.alwyapps.watch.core.downloads.Download>,
     onOpen: () -> Unit,
