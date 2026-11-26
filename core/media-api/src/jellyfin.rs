@@ -633,8 +633,8 @@ fn numbers_in_file_name(path: &str) -> Option<(u32, u32)> {
         if !name.get(end)?.eq_ignore_ascii_case(&b'e') {
             return None;
         }
-        let (episode, e2) = digits(end + 1).filter(|&(_, e)| e > end + 1)?;
-        Some((season, episode)).filter(|_| e2 > end + 1)
+        let (episode, _) = digits(end + 1).filter(|&(_, e)| e > end + 1)?;
+        Some((season, episode))
     })
 }
 
