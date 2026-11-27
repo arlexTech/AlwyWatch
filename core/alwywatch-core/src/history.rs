@@ -92,6 +92,17 @@ fn same_title_in<'a>(src: &Item, candidates: &'a [Item]) -> Option<&'a Item> {
 }
 
 /// What to write on the target for `src`, given the target's state; None when up to date.
+/// An item's watch state as copied and synced. A watched film with a place is a rewatch in
+/// progress; a watched episode's place is not (Plex leaves stale ones and never lists them:
+/// the show's next episode is what continues), so it counts as just watched.
+pub(crate) fn watch_state(i: &Item) -> UserData {
+    let mut u = i.user.clone();
+    if u.played && i.kind != ItemKind::Movie {
+        u.position_ms = 0;
+    }
+    u
+}
+
 fn decide(src: &UserData, target: Option<&UserData>) -> Option<WatchState> {
     if let Some(t) = target.filter(|t| t.played) {
         // Watched there: only a rewatch begun on the source since then carries over.
@@ -139,7 +150,7 @@ fn plan_from(
             }
             continue;
         };
-        match decide(&src.user, target_state.get(&t.id)) {
+        match decide(&watch_state(src), target_state.get(&t.id)) {
             Some(w) => plan.changes.push(HistoryChange {
                 item_id: t.id.clone(),
                 label: label(src),
@@ -243,7 +254,7 @@ impl Core {
             .watch_history()
             .await?
             .into_iter()
-            .map(|i| (i.id, i.user))
+            .map(|i| (i.id.clone(), watch_state(&i)))
             .collect())
     }
 
@@ -451,6 +462,23 @@ mod tests {
         // Same place, or further on the target: nothing.
         assert_eq!(decide(&at(600_000), Some(&at(590_000))), None);
         assert_eq!(decide(&at(600_000), Some(&at(900_000))), None);
+    }
+
+    #[test]
+    fn a_watched_episode_place_is_not_a_rewatch() {
+        let user = UserData {
+            played: true,
+            position_ms: 900_000,
+            ..Default::default()
+        };
+        assert_eq!(
+            watch_state(&item("1", ItemKind::Episode, "E", user.clone())).position_ms,
+            0
+        );
+        assert_eq!(
+            watch_state(&item("2", ItemKind::Movie, "M", user)).position_ms,
+            900_000
+        );
     }
 
     #[test]

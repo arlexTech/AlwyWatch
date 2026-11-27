@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::{AlwyWatch, Core};
 use crate::error::{CoreError, Result};
-use crate::history::{SAME_PLACE_MS, label};
+use crate::history::{SAME_PLACE_MS, label, watch_state};
 
 /// A title's state as far as sync is concerned.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -197,11 +197,11 @@ impl Core {
         let hist_b = self.server(b)?.watch_history().await?;
         let state_a: HashMap<&str, St> = hist_a
             .iter()
-            .map(|i| (i.id.as_str(), St::from(&i.user)))
+            .map(|i| (i.id.as_str(), St::from(&watch_state(i))))
             .collect();
         let state_b: HashMap<&str, St> = hist_b
             .iter()
-            .map(|i| (i.id.as_str(), St::from(&i.user)))
+            .map(|i| (i.id.as_str(), St::from(&watch_state(i))))
             .collect();
 
         // Links: titles in either history, matched on the other server.
@@ -314,7 +314,7 @@ impl Core {
             let Ok(now) = srv.item(&item).await else {
                 continue;
             };
-            let st = St::from(&now.user);
+            let st = St::from(&watch_state(&now));
             if snap.get(&key).is_some_and(|l| same(*l, st)) {
                 continue;
             }

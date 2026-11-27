@@ -3289,10 +3289,12 @@ fn shows_not_episodes(items: Vec<Item>) -> Vec<Item> {
 
 /// A watched title that was reopened for a moment (servers keep that position and list it
 /// as "in progress"): not something to continue. Its show's next episode takes the place.
-/// A real rewatch counts once it is past two minutes or 5 % of the title.
+/// A real rewatch counts once it is past two minutes or 5 % of the title, and only for films:
+/// a watched episode is never continued (as on Plex, which leaves such places but doesn't list
+/// them; see `history::watch_state`).
 pub(crate) fn finished_and_barely_reopened(i: &Item) -> bool {
     let limit = (i.runtime_ms.unwrap_or(0) / 20).max(120_000);
-    i.user.played && i.user.position_ms < limit
+    i.user.played && (i.kind != ItemKind::Movie || i.user.position_ms < limit)
 }
 
 /// Merges in-progress items and next episodes into one list by recency (see
@@ -3429,7 +3431,7 @@ mod continue_watching_tests {
     }
 
     #[test]
-    fn a_watched_episode_reopened_for_a_moment_gives_way_to_the_next_one() {
+    fn a_watched_episode_gives_way_to_the_next_one_a_watched_film_resumes() {
         let now = unix_now();
         // Episode 5 is watched but the server kept a position 1:42 into it; episode 6 is next.
         let mut reopened = ep("e5", "S", Some(now - 60), 102_000);
@@ -3442,9 +3444,16 @@ mod continue_watching_tests {
                 .collect()
         };
         assert_eq!(ids(&[reopened.clone()]), ["e6"]);
-        // A real rewatch (past two minutes) stays.
+        // Even far into it: as on Plex, the show continues with its next episode.
         reopened.user.position_ms = 600_000;
-        assert_eq!(ids(&[reopened]), ["e5"]);
+        assert_eq!(ids(&[reopened.clone()]), ["e6"]);
+        // A watched film being watched again (past two minutes) resumes; reopened, it doesn't.
+        let mut film = reopened;
+        film.kind = ItemKind::Movie;
+        film.series_id = None;
+        assert_eq!(ids(std::slice::from_ref(&film)), ["e5", "e6"]);
+        film.user.position_ms = 102_000;
+        assert_eq!(ids(&[film]), ["e6"]);
     }
 }
 
