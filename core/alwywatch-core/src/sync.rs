@@ -28,26 +28,47 @@ struct St {
 
 impl From<&UserData> for St {
     fn from(u: &UserData) -> Self {
+        // A watched title keeps its position: a rewatch in progress (Continue watching).
         St {
             played: u.played,
-            position_ms: if u.played { 0 } else { u.position_ms },
+            position_ms: u.position_ms,
             last_played_at: u.last_played_at,
         }
     }
 }
 
-/// Same state: both watched, or both unwatched at about the same place.
+/// Same state: both watched or both not, at about the same place (0 for most watched titles).
 fn same(a: St, b: St) -> bool {
-    a.played == b.played && (a.played || a.position_ms.abs_diff(b.position_ms) <= SAME_PLACE_MS)
+    a.played == b.played && a.position_ms.abs_diff(b.position_ms) <= SAME_PLACE_MS
 }
 
-/// The more advanced of two states.
+/// The more advanced of two states: watched if either is, at the place of the one played
+/// last (a rewatch started on either side carries over); not watched on either: further on.
 fn ahead(a: St, b: St) -> St {
-    match (a.played, b.played) {
-        (true, _) => a,
-        (_, true) => b,
-        _ if a.position_ms >= b.position_ms => a,
-        _ => b,
+    if !a.played && !b.played {
+        return if a.position_ms >= b.position_ms { a } else { b };
+    }
+    let latest = match (a.last_played_at, b.last_played_at) {
+        (Some(x), Some(y)) if x != y => {
+            if x > y {
+                a
+            } else {
+                b
+            }
+        }
+        (Some(_), None) => a,
+        (None, Some(_)) => b,
+        // No dates to tell: the watched side, else the further one.
+        _ => match (a.played, b.played) {
+            (true, false) => a,
+            (false, true) => b,
+            _ if a.position_ms >= b.position_ms => a,
+            _ => b,
+        },
+    };
+    St {
+        played: true,
+        ..latest
     }
 }
 
@@ -396,6 +417,34 @@ mod tests {
         assert!(same(at(100_000), at(120_000)));
         // Agreed (within 30 s): nothing to write.
         assert_eq!(merge(at(100_000), at(120_000), Some(at(0))), at(100_000));
+    }
+
+    #[test]
+    fn a_rewatch_in_progress_carries_over_either_way() {
+        let on = |ms: u64, played: bool, t: i64| St {
+            played,
+            position_ms: ms,
+            last_played_at: Some(t),
+        };
+        // Watched on both, started again on A since: B resumes there too, still watched.
+        assert_eq!(
+            merge(
+                on(1_500_000, true, 200),
+                on(0, true, 100),
+                Some(on(0, true, 100))
+            ),
+            on(1_500_000, true, 200)
+        );
+        // First sync: watched long ago on B, started on A lately: watched, at A's place.
+        assert_eq!(
+            merge(on(600_000, false, 200), on(0, true, 100), None),
+            on(600_000, true, 200)
+        );
+        // Finished on B after A's old start: watched, nothing to resume.
+        assert_eq!(
+            merge(on(600_000, false, 100), on(0, true, 200), None),
+            on(0, true, 200)
+        );
     }
 
     #[test]

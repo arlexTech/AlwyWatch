@@ -1349,7 +1349,8 @@ impl MediaServer for JellyfinClient {
     async fn set_watch_state(&self, item_id: &str, state: &WatchState) -> Result<()> {
         let mut body = serde_json::json!({
             "Played": state.played,
-            "PlaybackPositionTicks": if state.played { 0 } else { state.position_ms as i64 * 10_000 },
+            // Kept when played too: a rewatch in progress.
+            "PlaybackPositionTicks": state.position_ms as i64 * 10_000,
         });
         if state.played {
             body["PlayCount"] = 1.into();

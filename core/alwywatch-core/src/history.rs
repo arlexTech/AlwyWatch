@@ -93,13 +93,24 @@ fn same_title_in<'a>(src: &Item, candidates: &'a [Item]) -> Option<&'a Item> {
 
 /// What to write on the target for `src`, given the target's state; None when up to date.
 fn decide(src: &UserData, target: Option<&UserData>) -> Option<WatchState> {
-    if target.is_some_and(|t| t.played) {
-        return None;
+    if let Some(t) = target.filter(|t| t.played) {
+        // Watched there: only a rewatch begun on the source since then carries over.
+        let newer = match (src.last_played_at, t.last_played_at) {
+            (Some(s), Some(t)) => s > t,
+            (Some(_), None) => true,
+            _ => false,
+        };
+        return (newer && src.position_ms > t.position_ms + SAME_PLACE_MS).then_some(WatchState {
+            played: true,
+            position_ms: src.position_ms,
+            last_played_at: src.last_played_at,
+        });
     }
     if src.played {
+        // With its rewatch in progress, if any.
         return Some(WatchState {
             played: true,
-            position_ms: 0,
+            position_ms: src.position_ms,
             last_played_at: src.last_played_at,
         });
     }
@@ -440,6 +451,27 @@ mod tests {
         // Same place, or further on the target: nothing.
         assert_eq!(decide(&at(600_000), Some(&at(590_000))), None);
         assert_eq!(decide(&at(600_000), Some(&at(900_000))), None);
+    }
+
+    #[test]
+    fn a_rewatch_begun_since_carries_over_to_a_watched_title() {
+        let rewatch = UserData {
+            played: true,
+            position_ms: 1_500_000,
+            last_played_at: Some(1_800_000_000),
+            ..Default::default()
+        };
+        // Watched on the target before: resumes there too, still watched.
+        let w = decide(&rewatch, Some(&played())).unwrap();
+        assert_eq!((w.played, w.position_ms), (true, 1_500_000));
+        // Not on the target yet: watched, with the place.
+        assert_eq!(decide(&rewatch, None).unwrap().position_ms, 1_500_000);
+        // Started before the target was watched: nothing.
+        let old = UserData {
+            last_played_at: Some(1_600_000_000),
+            ..rewatch
+        };
+        assert_eq!(decide(&old, Some(&played())), None);
     }
 
     #[test]

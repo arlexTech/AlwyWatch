@@ -1503,12 +1503,10 @@ impl MediaServer for PlexClient {
     }
 
     async fn set_watch_state(&self, item_id: &str, state: &WatchState) -> Result<()> {
-        if state.played {
-            return self.set_played(item_id, true).await;
-        }
-        // Not watched (a sync may unmark it), then Plex's own resume point (no session
-        // needed); its last-viewed date can't be set.
-        self.set_played(item_id, false).await?;
+        // Watched or not first (a sync may unmark it; marking clears the resume point), then
+        // Plex's own resume point (no session needed): on a watched title, a rewatch in
+        // progress. Its last-viewed date can't be set.
+        self.set_played(item_id, state.played).await?;
         if state.position_ms == 0 {
             return Ok(());
         }

@@ -298,7 +298,9 @@ record! {
     /// What a viewer did with an item, to copy it to another server (history copy).
     pub struct WatchState {
         pub played: bool,
-        /// Resume position; 0 when played or not started.
+        /// Resume position; 0 when not started, or watched and not being watched again. A
+        /// watched title with a position is a rewatch in progress (both servers show it in
+        /// Continue watching).
         pub position_ms: u64,
         /// Unix seconds.
         pub last_played_at: Option<i64>,
