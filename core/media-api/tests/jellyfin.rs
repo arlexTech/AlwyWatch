@@ -202,10 +202,19 @@ async fn libraries_and_paged_items() {
 #[tokio::test]
 async fn episode_falls_back_to_series_images() {
     let s = MockServer::start().await;
-    Mock::given(path("/Shows/NextUp"))
+    // Next up: S1E1 was finished, so S1E2.
+    Mock::given(path("/Items"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": [{
-            "Id": "e1", "Name": "Pilot", "Type": "Episode", "SeriesId": "s1", "SeriesName": "Show",
-            "SeasonId": "se1", "ParentIndexNumber": 1, "IndexNumber": 1,
+            "Id": "e0", "Name": "Pilot", "Type": "Episode", "SeriesId": "s1",
+            "ParentIndexNumber": 1, "IndexNumber": 1,
+            "UserData": {"Played": true, "LastPlayedDate": "2026-11-01T20:00:00Z"}
+        }]})))
+        .mount(&s)
+        .await;
+    Mock::given(path("/Shows/s1/Episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": [{
+            "Id": "e1", "Name": "Two", "Type": "Episode", "SeriesId": "s1", "SeriesName": "Show",
+            "SeasonId": "se1", "ParentIndexNumber": 1, "IndexNumber": 2,
             "SeriesPrimaryImageTag": "stag", "ParentBackdropItemId": "s1",
             "ParentBackdropImageTags": ["sb"]
         }]})))
@@ -214,7 +223,7 @@ async fn episode_falls_back_to_series_images() {
     let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
     let items = c.next_up(10).await.unwrap();
     let e = &items[0];
-    assert_eq!((e.season_number, e.episode_number), (Some(1), Some(1)));
+    assert_eq!((e.season_number, e.episode_number), (Some(1), Some(2)));
     let img = |k: ImageKind| {
         e.images
             .iter()
@@ -794,4 +803,41 @@ async fn a_refusal_for_this_account_is_not_a_lost_sign_in() {
         c.prepare_subtitle("m1", "m1", 2).await,
         Err(net::Error::Unauthorized)
     );
+}
+
+#[tokio::test]
+async fn next_up_follows_the_episode_finished_last_as_plex_does() {
+    // Black Mirror watched out of order: S7E6 long ago, S3E1 lately (S3E2 to S3E4 already
+    // watched). Jellyfin's own Next Up has nothing after S7E6; Plex offers S3E5.
+    let s = MockServer::start().await;
+    let ep = |id: &str, se: u32, e: u32, played: bool, at: Option<&str>| {
+        json!({"Id": id, "Name": id, "Type": "Episode", "SeriesId": "bm",
+               "ParentIndexNumber": se, "IndexNumber": e,
+               "UserData": {"Played": played, "LastPlayedDate": at}})
+    };
+    Mock::given(path("/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": [
+            ep("s3e1", 3, 1, true, Some("2026-08-23T20:00:00Z")),
+            ep("s7e6", 7, 6, true, Some("2025-06-05T20:00:00Z")),
+        ]})))
+        .mount(&s)
+        .await;
+    Mock::given(path("/Shows/bm/Episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": [
+            ep("s7e6", 7, 6, true, None),
+            ep("special", 0, 1, false, None),
+            ep("s3e1", 3, 1, true, None),
+            ep("s3e2", 3, 2, true, None),
+            ep("s2e3", 2, 3, false, None),
+            ep("s3e5", 3, 5, false, None),
+            ep("s3e4", 3, 4, true, None),
+        ]})))
+        .mount(&s)
+        .await;
+    let c = JellyfinClient::new(session(&s.uri()), client_info(), http());
+    let next = c.next_up(10).await.unwrap();
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].id, "s3e5");
+    // Dated with the finish it follows (the home row drops shows left for too long).
+    assert_eq!(next[0].user.last_played_at, Some(1_787_515_200));
 }

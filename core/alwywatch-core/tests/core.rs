@@ -692,16 +692,22 @@ fn continue_watching_hides_removed_next_episodes_until_watched_again() {
         Mock::given(path("/UserItems/Resume"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": []}))),
     );
-    env.mount(Mock::given(path("/Shows/NextUp")).respond_with(
+    // Next up: episode 1 finished yesterday, so episode 2.
+    env.mount(
+        Mock::given(path("/Items")).respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"Items": [
+                {"Id": "n0", "Name": "One", "Type": "Episode", "SeriesId": "show",
+                 "ParentIndexNumber": 1, "IndexNumber": 1,
+                 "UserData": {"Played": true, "LastPlayedDate": iso_days_ago(1)}}
+            ]}),
+        )),
+    );
+    env.mount(Mock::given(path("/Shows/show/Episodes")).respond_with(
         ResponseTemplate::new(200).set_body_json(json!({"Items": [
-            {"Id": "n1", "Name": "Next", "Type": "Episode", "SeriesId": "show", "SeriesName": "Show"}
+            {"Id": "n1", "Name": "Next", "Type": "Episode", "SeriesId": "show", "SeriesName": "Show",
+             "ParentIndexNumber": 1, "IndexNumber": 2}
         ]})),
     ));
-    // Show last watched: no finished episode yet.
-    env.mount(
-        Mock::given(path("/Items"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": []}))),
-    );
     env.mount(
         Mock::given(method("DELETE"))
             .and(path("/UserPlayedItems/n1"))
@@ -967,4 +973,24 @@ fn an_account_signs_a_new_device_in_to_its_linked_servers() {
     assert_eq!(app.accounts().unwrap()[0].server_id, "srv");
     // Signed in now: nothing left to offer.
     assert!(env.block(app.account_linked_servers()).unwrap().is_empty());
+}
+
+/// "2026-11-26T12:00:00Z"-style date `days` before now.
+fn iso_days_ago(days: i64) -> String {
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+        - days * 86_400;
+    // Days to civil date (Howard Hinnant's algorithm).
+    let z = t.div_euclid(86_400) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}T12:00:00Z")
 }

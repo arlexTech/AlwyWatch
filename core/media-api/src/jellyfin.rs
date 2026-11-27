@@ -404,6 +404,39 @@ impl JellyfinClient {
         Ok(())
     }
 
+    /// Shows by when an episode of theirs was last finished (most recent first, at most
+    /// `limit`), with that date and the episode's (season, number). One request: the 300
+    /// most recently finished episodes. (LastPlayedDate also moves when an episode is merely
+    /// started: only played ones count.)
+    async fn last_finished(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<(String, i64, (Option<u32>, Option<u32>))>> {
+        let mut p = self.list_params();
+        p.push(("recursive", "true".into()));
+        p.push(("includeItemTypes", "Episode".into()));
+        p.push(("filters", "IsPlayed".into()));
+        p.push(("sortBy", "DatePlayed".into()));
+        p.push(("sortOrder", "Descending".into()));
+        p.push(("limit", "300".into()));
+        p.push(("enableTotalRecordCount", "false".into()));
+        if let Some((_, fields)) = p.iter_mut().find(|(k, _)| *k == "fields") {
+            fields.push_str(",Path");
+        }
+        let mut out: Vec<(String, i64, (Option<u32>, Option<u32>))> = Vec::new();
+        for e in self.convert_all(self.query("/Items", &p).await?.items) {
+            if let (Some(s), Some(at)) = (e.series_id, e.user.last_played_at)
+                && !out.iter().any(|(x, ..)| *x == s)
+            {
+                out.push((s, at, (e.season_number, e.episode_number)));
+                if out.len() >= limit as usize {
+                    break;
+                }
+            }
+        }
+        Ok(out)
+    }
+
     fn uid(&self) -> &str {
         &self.session.user_id
     }
@@ -914,30 +947,13 @@ impl MediaServer for JellyfinClient {
         &self,
         series_ids: &[String],
     ) -> Result<std::collections::HashMap<String, i64>> {
-        // One request: the most recently finished episodes; the first one per show is its date.
-        // (LastPlayedDate also moves when an episode is merely started: only played ones count.)
-        let mut p = self.list_params();
-        p.push(("recursive", "true".into()));
-        p.push(("includeItemTypes", "Episode".into()));
-        p.push(("filters", "IsPlayed".into()));
-        p.push(("sortBy", "DatePlayed".into()));
-        p.push(("sortOrder", "Descending".into()));
-        p.push(("limit", "300".into()));
-        p.push(("enableTotalRecordCount", "false".into()));
-        let mut out = std::collections::HashMap::new();
-        for d in self.query("/Items", &p).await?.items {
-            let at = d
-                .user_data
-                .as_ref()
-                .and_then(|u| u.last_played_date.as_deref())
-                .and_then(iso_to_unix);
-            if let (Some(s), Some(at)) = (d.series_id.clone(), at)
-                && series_ids.contains(&s)
-            {
-                out.entry(s).or_insert(at);
-            }
-        }
-        Ok(out)
+        Ok(self
+            .last_finished(u32::MAX)
+            .await?
+            .into_iter()
+            .filter(|(s, ..)| series_ids.contains(s))
+            .map(|(s, at, _)| (s, at))
+            .collect())
     }
 
     async fn remove_from_continue_watching(&self, item_id: &str) -> Result<bool> {
@@ -1008,10 +1024,30 @@ impl MediaServer for JellyfinClient {
     }
 
     async fn next_up(&self, limit: u32) -> Result<Vec<Item>> {
-        let mut p = self.list_params();
-        p.push(("limit", limit.to_string()));
-        p.push(("enableTotalRecordCount", "false".into()));
-        Ok(self.convert_all(self.query("/Shows/NextUp", &p).await?.items))
+        // Plex's On Deck rule, not Jellyfin's Next Up (which goes on after the furthest
+        // watched episode, so a show rewatched out of order has none): per show, by when it
+        // was last watched, the first unwatched episode after the one finished last, dated
+        // with that finish (callers drop shows left for too long).
+        let mut out = Vec::new();
+        for (series, at, after) in self.last_finished(limit).await? {
+            let path = format!("/Shows/{}/Episodes", net::percent_encode(&series));
+            let mut p = self.list_params();
+            if let Some((_, fields)) = p.iter_mut().find(|(k, _)| *k == "fields") {
+                fields.push_str(",Path");
+            }
+            let mut eps = self.convert_all(self.query(&path, &p).await?.items);
+            eps.retain(|e| e.season_number.is_some_and(|s| s > 0));
+            eps.sort_by_key(|e| (e.season_number, e.episode_number));
+            if let Some(mut next) = eps
+                .into_iter()
+                .filter(|e| (e.season_number, e.episode_number) > after)
+                .find(|e| !e.user.played)
+            {
+                next.user.last_played_at = Some(at);
+                out.push(next);
+            }
+        }
+        Ok(out)
     }
 
     async fn latest(&self, library_id: &str, limit: u32) -> Result<Vec<Item>> {
