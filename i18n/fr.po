@@ -2657,6 +2657,22 @@ msgid "Deletes them once watched"
 msgstr "Les supprime une fois vus"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+msgid "Signed out"
+msgstr "Déconnecté"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+msgid "Downloads not allowed"
+msgstr "Téléchargement refusé"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+msgid "Not on the server"
+msgstr "Absent du serveur"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+msgid "Server error"
+msgstr "Erreur du serveur"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
 #: ios/AlwyWatch/Downloads.swift
 msgid "Queued · {progress}"
 msgstr "En file d'attente · {progress}"

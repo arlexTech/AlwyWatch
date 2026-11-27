@@ -1326,7 +1326,7 @@ private fun downloadCaption(
         dl.state == DownloadState.COMPLETED -> tr("Downloaded · {progress}", "progress" to dl.progressLabel())
         dl.state == DownloadState.PAUSED -> tr("Paused · {progress}", "progress" to dl.progressLabel())
         dl.state == DownloadState.WAITING -> tr("Waiting for network")
-        dl.state == DownloadState.FAILED -> tr("Download failed")
+        dl.state == DownloadState.FAILED -> dl.failedReason() ?: tr("Download failed")
         dl.downloaded == 0uL -> tr("Starting…")
         else -> tr("Downloading {progress}", "progress" to dl.progressLabel())
     }

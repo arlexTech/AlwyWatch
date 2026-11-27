@@ -2652,6 +2652,22 @@ msgid "Deletes them once watched"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+msgid "Signed out"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+msgid "Downloads not allowed"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+msgid "Not on the server"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
+msgid "Server error"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DownloadsHome.kt
 #: ios/AlwyWatch/Downloads.swift
 msgid "Queued · {progress}"
 msgstr ""

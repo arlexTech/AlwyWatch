@@ -149,6 +149,25 @@ private fun Download.episodeTitle(): String = title.split(" · ").last()
 
 private fun gb(b: ULong) = tr("{size} GB", "size" to "%.1f".format(b.toDouble() / 1e9))
 
+private val HTTP_STATUS = Regex("""HTTP (\d{3})""")
+
+/**
+ * Why a download failed, in a few words (it sits under a 84 dp button), when the server's answer
+ * says it: the core stores "server refused the download (HTTP 403)". Null for anything else.
+ */
+fun Download.failedReason(): String? {
+    val match = error?.let { HTTP_STATUS.find(it) } ?: return null
+    val status = match.groupValues[1].toInt()
+    return when {
+        status == 401 -> tr("Signed out")
+        // Jellyfin: the user's "Allow media downloading" is off (its public demo does that).
+        status == 403 -> tr("Downloads not allowed")
+        status == 404 -> tr("Not on the server")
+        status >= 500 -> tr("Server error")
+        else -> null
+    }
+}
+
 fun Download.status(): String {
     // "42% · 0.8 GB" (the total size), or what is there when the size is unknown.
     val size =
@@ -159,7 +178,7 @@ fun Download.status(): String {
         DownloadState.PAUSED -> tr("Paused · {progress}", "progress" to size)
         DownloadState.PAUSED_NO_SPACE -> tr("Paused: storage full. Free some space, then resume.")
         DownloadState.WAITING -> tr("Waiting for the network · {progress}", "progress" to size)
-        DownloadState.FAILED -> tr("Failed: {reason}", "reason" to (error ?: tr("unknown error")))
+        DownloadState.FAILED -> failedReason() ?: tr("Failed: {reason}", "reason" to (error ?: tr("unknown error")))
         DownloadState.COMPLETED ->
             listOfNotNull(
                 total?.let(::gb),
@@ -272,6 +291,9 @@ fun DownloadStateIcon(
     val t = dl?.total?.toLong() ?: 0L
     when {
         dl == null && !pending -> Icon(Icons.Download, tr("Download"), Modifier.size(22.dp))
+        // Before the "starting" spinner: a refused download has 0 bytes too. Tapping it removes it.
+        dl?.state == DownloadState.FAILED ->
+            Icon(Icons.Close, tr("Download failed"), Modifier.size(22.dp), tint = be.alwyapps.watch.ui.Danger)
         dl == null || (!dl.done && (dl.downloaded == 0uL || t == 0L) && dl.state != DownloadState.PAUSED) ->
             androidx.compose.material3.CircularProgressIndicator(
                 Modifier.size(size),
@@ -280,7 +302,7 @@ fun DownloadStateIcon(
                 strokeWidth = 3.dp,
             )
         dl.done -> Icon(Icons.Download, tr("Downloaded"), Modifier.size(22.dp), tint = Color.Black)
-        dl.state == DownloadState.PAUSED || dl.state == DownloadState.PAUSED_NO_SPACE || dl.state == DownloadState.FAILED ->
+        dl.state == DownloadState.PAUSED || dl.state == DownloadState.PAUSED_NO_SPACE ->
             Box(contentAlignment = Alignment.Center) {
                 ProgressRing(dl.downloaded.toLong().toFloat() / t.coerceAtLeast(1), size)
                 Icon(Icons.Pause, tr("Paused"), Modifier.size(16.dp), tint = Muted)
@@ -320,7 +342,7 @@ fun Download.summary(): String =
         done -> tr("Downloaded · {size}", "size" to gb(total ?: downloaded))
         state == DownloadState.WAITING -> tr("Waiting for the network · {progress}", "progress" to progressLabel())
         state == DownloadState.PAUSED -> tr("Paused · {progress}", "progress" to progressLabel())
-        state == DownloadState.FAILED -> tr("Download failed")
+        state == DownloadState.FAILED -> failedReason() ?: tr("Download failed")
         state == DownloadState.PAUSED_NO_SPACE -> tr("Paused: storage full")
         else ->
             total?.let {
