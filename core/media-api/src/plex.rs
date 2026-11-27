@@ -1230,6 +1230,16 @@ impl MediaServer for PlexClient {
         Ok(self.convert_all(mc.metadata))
     }
 
+    async fn similar(&self, item_id: &str, limit: u32) -> Result<Vec<Item>> {
+        let mc = self
+            .get(
+                &format!("/library/metadata/{}/similar", net::percent_encode(item_id)),
+                &[("count", limit.to_string()), ("includeGuids", "1".into())],
+            )
+            .await?;
+        Ok(self.convert_all(mc.metadata))
+    }
+
     async fn search(&self, query: &str, limit: u32) -> Result<Vec<Item>> {
         let mc = self
             .get(

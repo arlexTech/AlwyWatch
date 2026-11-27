@@ -87,6 +87,22 @@ pub struct LibraryTitle {
     pub item_id: String,
 }
 
+/// What to watch after a movie: the next film of its saga, else one like it.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct UpNextMovie {
+    pub title: String,
+    /// The next film of the saga (else a similar movie on the same server).
+    pub saga: bool,
+    /// Where it plays, when it is on a signed-in server.
+    pub on_server: Option<LibraryTitle>,
+    /// Its TMDB id: the request page when it is on no server.
+    pub tmdb_id: Option<i64>,
+    /// The server's item when it is on one (its poster, progress), else none.
+    pub item: Option<Item>,
+    /// TMDB's poster (through Seerr) when it is on no server.
+    pub poster_url: Option<String>,
+}
+
 /// Result of a sign-in: the platform stores `token` in secure storage (Android Keystore,
 /// OS keyring) and passes it back through `activate_account` on the next start.
 #[derive(Debug, Clone, uniffi::Record)]
@@ -2431,6 +2447,88 @@ impl AlwyWatch {
         .await
     }
 
+    /// What to suggest when a movie ends: the next released film of its saga (through Seerr),
+    /// on a server or to request, else the first unwatched similar movie on the same server.
+    /// None for anything but a movie, or with nothing to suggest.
+    pub async fn up_next_movie(
+        &self,
+        account_id: String,
+        item_id: String,
+    ) -> Result<Option<UpNextMovie>> {
+        let item = self
+            .refresh_item(account_id.clone(), item_id.clone(), false)
+            .await?
+            .item;
+        if item.kind != ItemKind::Movie {
+            return Ok(None);
+        }
+        let tmdb = item
+            .provider_ids
+            .tmdb
+            .as_deref()
+            .and_then(|t| t.parse::<i64>().ok());
+        if let Some(tmdb) = tmdb {
+            let next = self
+                .run(|c| async move {
+                    let seerr = c.seerr()?;
+                    let Some(saga) = seerr.title(SeerrMediaType::Movie, tmdb).await?.collection
+                    else {
+                        return Ok(None);
+                    };
+                    let parts = seerr.collection(saga.id).await?.parts;
+                    Ok(next_released(parts, tmdb, unix_now()))
+                })
+                .await
+                .ok()
+                .flatten();
+            if let Some(next) = next {
+                let on_server = self
+                    .library_title(SeerrMediaType::Movie, next.tmdb_id, Some(account_id))
+                    .await
+                    .ok()
+                    .flatten();
+                let item = match &on_server {
+                    Some(at) => self
+                        .refresh_item(at.account_id.clone(), at.item_id.clone(), false)
+                        .await
+                        .ok()
+                        .map(|r| r.item),
+                    None => None,
+                };
+                return Ok(Some(UpNextMovie {
+                    // The server's title (its language) when it has the film, else TMDB's.
+                    title: item.as_ref().map_or(next.title, |i| i.title.clone()),
+                    saga: true,
+                    on_server,
+                    tmdb_id: Some(next.tmdb_id),
+                    poster_url: next.poster_url,
+                    item,
+                }));
+            }
+        }
+        let similar = self
+            .run(|c| {
+                let account_id = account_id.clone();
+                async move { Ok(c.server(&account_id)?.similar(&item_id, 12).await?) }
+            })
+            .await
+            .unwrap_or_default();
+        Ok(similar
+            .into_iter()
+            .find(|i| i.kind == ItemKind::Movie && !i.user.played)
+            .map(|i| UpNextMovie {
+                tmdb_id: i.provider_ids.tmdb.as_deref().and_then(|t| t.parse().ok()),
+                title: i.title.clone(),
+                saga: false,
+                on_server: Some(LibraryTitle {
+                    account_id,
+                    item_id: i.id.clone(),
+                }),
+                poster_url: None,
+                item: Some(i),
+            }))
+    }
+
     /// A saga (TMDB collection) with its films.
     pub async fn seerr_collection(&self, id: i64) -> Result<SeerrCollection> {
         self.run(|c| async move { Ok(c.seerr()?.collection(id).await?) })
@@ -3350,6 +3448,23 @@ fn watched_key(account: &str, item_id: &str) -> String {
     format!("watched\u{1f}{account}\u{1f}{item_id}")
 }
 
+/// The film after `tmdb` in a saga (release order), skipping those not out yet: a year
+/// after this one, or none known.
+fn next_released(
+    parts: Vec<seerr::SeerrResult>,
+    tmdb: i64,
+    now: i64,
+) -> Option<seerr::SeerrResult> {
+    let this_year = 1970 + now / 31_556_952;
+    let at = parts.iter().position(|p| p.tmdb_id == tmdb)?;
+    parts.into_iter().skip(at + 1).find(|p| {
+        p.year
+            .as_deref()
+            .and_then(|y| y.get(..4)?.parse::<i64>().ok())
+            .is_some_and(|y| y <= this_year)
+    })
+}
+
 fn unix_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4136,4 +4251,58 @@ pub enum OriginalLayout {
     },
     /// Only the server's conversion plays it.
     Convert,
+}
+
+#[cfg(test)]
+mod up_next_tests {
+    use super::*;
+
+    fn film(tmdb: i64, year: Option<&str>) -> seerr::SeerrResult {
+        seerr::SeerrResult {
+            tmdb_id: tmdb,
+            media_type: SeerrMediaType::Movie,
+            title: format!("Film {tmdb}"),
+            year: year.map(str::to_owned),
+            overview: None,
+            poster_url: None,
+            availability: seerr::Availability::Unknown,
+            download_progress: None,
+        }
+    }
+
+    // 2026-11-27.
+    const NOW: i64 = 1_795_737_600;
+
+    #[test]
+    fn next_film_of_the_saga() {
+        let saga = vec![
+            film(1, Some("1979")),
+            film(2, Some("1986")),
+            film(3, Some("1992")),
+        ];
+        assert_eq!(
+            next_released(saga.clone(), 1, NOW).map(|f| f.tmdb_id),
+            Some(2)
+        );
+        assert_eq!(
+            next_released(saga.clone(), 2, NOW).map(|f| f.tmdb_id),
+            Some(3)
+        );
+        // The last one: nothing (the caller falls back to a similar movie).
+        assert_eq!(next_released(saga.clone(), 3, NOW), None);
+        // Not in the saga's list.
+        assert_eq!(next_released(saga, 9, NOW), None);
+    }
+
+    #[test]
+    fn skips_films_not_out_yet() {
+        let saga = vec![film(1, Some("2024")), film(2, Some("2028")), film(3, None)];
+        assert_eq!(next_released(saga, 1, NOW), None);
+        let saga = vec![
+            film(1, Some("2001")),
+            film(2, None),
+            film(3, Some("2003-05-15")),
+        ];
+        assert_eq!(next_released(saga, 1, NOW).map(|f| f.tmdb_id), Some(3));
+    }
 }

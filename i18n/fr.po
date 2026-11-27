@@ -291,7 +291,7 @@ msgstr "Pause"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerActivity.kt
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/UpNext.kt
 msgid "Play"
 msgstr "Lecture"
 
@@ -371,12 +371,6 @@ msgstr "Épisode suivant"
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: web/src/player.rs
-#: ios/AlwyWatch/PlayerView.swift
-msgid "Next episode in {seconds} s"
-msgstr "Épisode suivant dans {seconds} s"
-
-#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
-#: web/src/player.rs
 msgid "ends at {time}"
 msgstr "se termine à {time}"
 
@@ -448,6 +442,12 @@ msgstr "Maintenant : {quality}"
 #: ios/AlwyWatch/Together.swift
 msgid "Selected"
 msgstr "Sélectionné"
+
+#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
+#: ios/AlwyWatch/PlayerView.swift
+msgid "Next episode in {seconds} s"
+msgstr "Épisode suivant dans {seconds} s"
 
 #: android/app/src/main/java/be/alwyapps/watch/remote/RemoteTv.kt
 msgid "Not on this TV's servers"
@@ -757,6 +757,18 @@ msgstr "Paramètres"
 #: web/src/profiles.rs
 msgid "Switch profile"
 msgstr "Changer de profil"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/UpNext.kt
+msgid "Next in the saga"
+msgstr "Suite de la saga"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/UpNext.kt
+msgid "Up next"
+msgstr "À suivre"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/UpNext.kt
+msgid "Not on your servers · request it"
+msgstr "Absent de vos serveurs · à demander"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt
 msgid "You can set a custom picture from your phone, computer or the web app."
@@ -9317,6 +9329,9 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "Up next: {title}"
+#~ msgstr "À suivre : {title}"
 
 #~ msgid "Also deleting the account: on your phone or computer, at {address}"
 #~ msgstr "Pour supprimer aussi le compte : sur votre téléphone ou ordinateur, à l'adresse {address}"

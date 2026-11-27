@@ -286,7 +286,7 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerActivity.kt
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
-#: android/app/src/main/java/be/alwyapps/watch/ui/screens/DetailScreen.kt
+#: android/app/src/main/java/be/alwyapps/watch/ui/UpNext.kt
 msgid "Play"
 msgstr ""
 
@@ -366,12 +366,6 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
 #: web/src/player.rs
-#: ios/AlwyWatch/PlayerView.swift
-msgid "Next episode in {seconds} s"
-msgstr ""
-
-#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
-#: web/src/player.rs
 msgid "ends at {time}"
 msgstr ""
 
@@ -442,6 +436,12 @@ msgstr ""
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/TogetherScreen.kt
 #: ios/AlwyWatch/Together.swift
 msgid "Selected"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/player/PlayerControls.kt
+#: web/src/player.rs
+#: ios/AlwyWatch/PlayerView.swift
+msgid "Next episode in {seconds} s"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/remote/RemoteTv.kt
@@ -751,6 +751,18 @@ msgstr ""
 #: android/app/src/main/java/be/alwyapps/watch/ui/Scaffold.kt
 #: web/src/profiles.rs
 msgid "Switch profile"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/UpNext.kt
+msgid "Next in the saga"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/UpNext.kt
+msgid "Up next"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/UpNext.kt
+msgid "Not on your servers · request it"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/AccountProfile.kt

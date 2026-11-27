@@ -112,6 +112,15 @@ class PlayerUi {
     /** "Skip intro", "Skip credits"… while inside a skippable segment, else null. */
     var skipLabel by mutableStateOf<String?>(null)
 
+    /** A movie's suggestion (the next film of its saga, or one like it), else null. */
+    var upNextMovie by mutableStateOf<be.alwyapps.watch.core.UpNextMovie?>(null)
+
+    /** The core, for [upNextMovie]'s poster (the overlay is outside the app's screens). */
+    var core: be.alwyapps.watch.core.AlwyWatch? = null
+
+    /** A movie's last minutes (its credits): the controls show [upNextMovie] with its poster. */
+    var movieEnding by mutableStateOf(false)
+
     /** Seconds before the next episode starts by itself (during the credits), else null. */
     var upNextIn by mutableStateOf<Int?>(null)
     var playing by mutableStateOf(false)
@@ -397,15 +406,26 @@ fun PlayerOverlay(
                         }
                     }
                     Spacer(Modifier.weight(1f))
+                    // A movie ending (its credits): what to watch next, with its poster, in place of
+                    // "Skip credits" (which would only end it).
+                    val core = ui.core
+                    val suggestion = ui.upNextMovie?.takeIf { ui.movieEnding && core != null }
+                    if (suggestion != null && core != null) {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.End) {
+                            androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalCore provides core) {
+                                be.alwyapps.watch.ui
+                                    .UpNextCard(suggestion, onNext)
+                            }
+                        }
+                    }
                     // "Skip intro" / "Next episode": above the seek bar, at the right (where it
                     // floats when the controls hide). Same place on every platform.
                     val upNext = ui.nearEnd
                     val skip = ui.skipLabel
-                    if (upNext || skip != null) {
+                    if (suggestion == null && (upNext || skip != null)) {
                         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.End) {
                             if (upNext) {
-                                val text = ui.upNextIn?.let { tr("Next episode in {seconds} s", "seconds" to it) } ?: tr("Next episode")
-                                PillButton(Icons.SkipNext, text, onNext)
+                                PillButton(Icons.SkipNext, ui.nextLabel(), onNext)
                             } else if (skip != null) {
                                 PillButton(Icons.SkipNext, skip, onSkip)
                             }
@@ -466,7 +486,7 @@ fun PlayerOverlay(
         val prompt =
             when {
                 ui.visible || ui.tracksOpen -> null
-                ui.nearEnd -> tr("Next episode")
+                ui.nearEnd -> ui.nextLabel()
                 else -> ui.skipLabel
             }
         AnimatedVisibility(
@@ -479,8 +499,8 @@ fun PlayerOverlay(
             val label = prompt ?: return@AnimatedVisibility
             LaunchedEffect(label) { runCatching { focus.requestFocus() } }
             Box(Modifier.focusRequester(focus)) {
-                if (label == tr("Next episode")) {
-                    PillButton(Icons.SkipNext, ui.upNextIn?.let { tr("Next episode in {seconds} s", "seconds" to it) } ?: label, onNext)
+                if (ui.nearEnd) {
+                    PillButton(Icons.SkipNext, label, onNext)
                 } else {
                     PillButton(Icons.SkipNext, label, onSkip)
                 }
@@ -1069,3 +1089,6 @@ private fun SeekBubble(ui: PlayerUi) {
         }
     }
 }
+
+/** The prompt near an episode's end, with its countdown. */
+private fun PlayerUi.nextLabel(): String = upNextIn?.let { tr("Next episode in {seconds} s", "seconds" to it) } ?: tr("Next episode")

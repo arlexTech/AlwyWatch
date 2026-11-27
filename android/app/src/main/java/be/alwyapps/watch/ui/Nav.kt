@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package be.alwyapps.watch.ui
 
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import be.alwyapps.watch.core.AlwyWatch
 
@@ -222,6 +225,13 @@ class Navigator(
         save()
     }
 
+    /** Swaps the current screen for [route] (BACK then skips it). */
+    fun replace(route: Route) {
+        stack[stack.lastIndex] = route
+        returning = false
+        save()
+    }
+
     /** Replaces the whole stack (e.g. after sign-in). */
     fun reset(route: Route) {
         returning = false
@@ -253,6 +263,14 @@ class Navigator(
                 ?.mapNotNull(Route::decode)
                 .orEmpty()
     }
+}
+
+/**
+ * Where the app goes when the player closes at the end of a title: the page of what played
+ * (the show at its season for an episode), then maybe the request page of what comes next.
+ */
+object PlayerReturn {
+    var routes by mutableStateOf<List<Route>>(emptyList())
 }
 
 val LocalNavigator = staticCompositionLocalOf<Navigator> { error("no navigator") }

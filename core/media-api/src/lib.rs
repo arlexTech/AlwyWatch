@@ -68,6 +68,12 @@ pub trait MediaServer: Send + Sync {
         query: &str,
         limit: u32,
     ) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
+    /// Titles like this one on the same server ("more like this"), best match first.
+    fn similar(
+        &self,
+        item_id: &str,
+        limit: u32,
+    ) -> impl Future<Output = Result<Vec<Item>>> + MaybeSend;
     /// When each of these shows last had an episode watched to the end (unix seconds); shows
     /// never finished an episode of are left out. Orders "continue watching".
     fn shows_last_watched(
@@ -236,6 +242,9 @@ impl MediaServer for AnyServer {
     }
     async fn search(&self, query: &str, limit: u32) -> Result<Vec<Item>> {
         dispatch!(self, c => c.search(query, limit).await)
+    }
+    async fn similar(&self, item_id: &str, limit: u32) -> Result<Vec<Item>> {
+        dispatch!(self, c => c.similar(item_id, limit).await)
     }
     async fn genres(&self, library_id: &str) -> Result<Vec<Genre>> {
         dispatch!(self, c => c.genres(library_id).await)

@@ -68,6 +68,7 @@ import be.alwyapps.watch.ui.fadeEdges
 import be.alwyapps.watch.ui.focusOnAppear
 import be.alwyapps.watch.ui.tr
 import be.alwyapps.watch.ui.trn
+import kotlinx.coroutines.launch
 
 /** The state of a title as one label ("Available", "Requested", "Downloading 42%"…). */
 private fun SeerrDetails.stateLabel(): String? = downloadProgress?.let { tr("Downloading {percent}%", "percent" to (it * 100).toInt()) } ?: availability.label()
@@ -95,6 +96,12 @@ fun SeerrTitleScreen(
     var message by remember { mutableStateOf<String?>(null) }
     // Shows: season by season (some may be on the server or requested while others are not).
     var seasonPlan by remember { mutableStateOf<be.alwyapps.watch.core.seerr.SeasonPlan?>(null) }
+    // On a server: its own page instead (to play it), whatever opened this one.
+    val account = be.alwyapps.watch.ui.LocalAccount.current
+    LaunchedEffect(tmdbId) {
+        val at = runCatching { core.libraryTitle(type, tmdbId, account) }.getOrNull() ?: return@LaunchedEffect
+        if (nav.current == Route.SeerrTitle(mediaType, tmdbId)) nav.replace(Route.Detail(at.itemId, account = at.accountId))
+    }
     LaunchedEffect(reload) {
         try {
             title = core.seerrTitle(type, tmdbId)
@@ -300,6 +307,8 @@ fun SeerrSagaScreen(
     val nav = LocalNavigator.current
     val d = LocalDimens.current
     var saga by remember { mutableStateOf<SeerrCollection?>(null) }
+    val account = be.alwyapps.watch.ui.LocalAccount.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(reload) {
@@ -325,7 +334,15 @@ fun SeerrSagaScreen(
             }
         }
         error?.let { msg -> item(span = { GridItemSpan(maxLineSpan) }) { ErrorBanner(msg) { reload++ } } }
-        items(saga?.parts.orEmpty(), key = { it.tmdbId }) { r -> SeerrPoster(r) { nav.push(Route.SeerrTitle("movie", r.tmdbId)) } }
+        items(saga?.parts.orEmpty(), key = { it.tmdbId }) { r ->
+            // The film's own page when it is on a server (to play it), else Seerr's (to request it).
+            SeerrPoster(r) {
+                scope.launch {
+                    val at = runCatching { core.libraryTitle(SeerrMediaType.MOVIE, r.tmdbId, account) }.getOrNull()
+                    nav.push(if (at != null) Route.Detail(at.itemId, account = at.accountId) else Route.SeerrTitle("movie", r.tmdbId))
+                }
+            }
+        }
     }
 }
 

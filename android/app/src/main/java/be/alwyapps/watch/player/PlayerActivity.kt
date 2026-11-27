@@ -47,6 +47,7 @@ import be.alwyapps.watch.services
 import be.alwyapps.watch.together.TogetherInbox
 import be.alwyapps.watch.together.TogetherSession
 import be.alwyapps.watch.together.friendly
+import be.alwyapps.watch.ui.PlayerReturn
 import be.alwyapps.watch.ui.tr
 import be.alwyapps.watch.ui.trn
 import io.github.peerless2012.ass.media.kt.buildWithAssSupport
@@ -82,6 +83,12 @@ class PlayerActivity : ComponentActivity() {
     private var source: MediaSource? = null
     private var progressJob: Job? = null
     private var nextEpisodeId: String? = null
+
+    /** A movie: what to suggest at its end (the next film of its saga, or one like it). */
+    private var upNextMovie: be.alwyapps.watch.core.UpNextMovie? = null
+
+    /** The page of what plays (the show at its season for an episode): where the end leads. */
+    private var pageRoute: be.alwyapps.watch.ui.Route? = null
     private var previousEpisodeId: String? = null
     private var nextStartMs = 0L
     private var previousStartMs = 0L
@@ -256,6 +263,7 @@ class PlayerActivity : ComponentActivity() {
         trackKey = item?.let { TrackPrefs.titleKey(it) } ?: id
         showTitle(id)
         findAdjacent(id)
+        findUpNextMovie(id, item?.kind)
         loadSegments(id)
         // Downloaded: play the local original file (works offline; progress is queued).
         core.downloadedFile(account, id)?.let { path ->
@@ -703,6 +711,8 @@ class PlayerActivity : ComponentActivity() {
                         announceTitle = room != null
                         lifecycleScope.launch { load(next, freshStart(next, nextStartMs)) }
                     } else if (room == null) {
+                        // Closed by the end: the title's page, not the screen it was started from.
+                        pageRoute?.let { PlayerReturn.routes = listOf(it) }
                         finish()
                     }
                 }
@@ -846,6 +856,24 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    /** A movie's suggestion for its end, alone only (a room plays what its host picks). */
+    private fun findUpNextMovie(
+        id: String,
+        kind: ItemKind?,
+    ) {
+        upNextMovie = null
+        ui.upNextMovie = null
+        ui.movieEnding = false
+        if (room != null || kind == ItemKind.EPISODE) return
+        lifecycleScope.launch {
+            val next = runCatching { core.upNextMovie(account, id) }.getOrNull() ?: return@launch
+            if (itemId != id) return@launch
+            upNextMovie = next
+            ui.core = core
+            ui.upNextMovie = next
+        }
+    }
+
     /** Where an episode was left (servers clear the position when it is finished), like the Resume button. */
     private fun resumeAt(item: be.alwyapps.watch.core.media.Item): Long = item.user.positionMs.toLong()
 
@@ -890,6 +918,11 @@ class PlayerActivity : ComponentActivity() {
         val prompt = prompt(p)
         val seg = prompt.skip
         ui.nearEnd = prompt.nextEpisode
+        // A movie: its suggestion from the credits (or the last 40 s), shown with the controls.
+        ui.movieEnding = upNextMovie != null &&
+            be.alwyapps.watch.core
+                .playbackPrompt(segments, p.currentPosition.coerceAtLeast(0).toULong(), p.duration.takeIf { it > 0 }?.toULong(), true)
+                .nextEpisode
         if (seg != null && autoSkipIntro && seg.kind in AUTO_SKIP && autoSkipped.add(seg.startMs)) {
             p.seekTo(seg.endMs.toLong())
             ui.skipLabel = null
@@ -905,7 +938,8 @@ class PlayerActivity : ComponentActivity() {
                 SegmentKind.COMMERCIAL -> tr("Skip")
             }
         // Credits with a next episode: count down, then play it (unless Back cancelled it).
-        if (prompt.credits && autoPlayNext && !countdownCancelled && p.isPlaying) {
+        // Episodes only: a movie's suggestion waits to be picked.
+        if (prompt.credits && nextEpisodeId != null && autoPlayNext && !countdownCancelled && p.isPlaying) {
             val from =
                 countdownFrom ?: android.os.SystemClock
                     .uptimeMillis()
@@ -992,12 +1026,38 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun playNext() {
-        val next = nextEpisodeId ?: return
+        val next = nextEpisodeId ?: return playUpNextMovie()
         report(PlaybackEvent.STOP)
         ui.hasNext = false
         announceTitle = room != null
         val start = nextStartMs
         lifecycleScope.launch { load(next, freshStart(next, start)) }
+    }
+
+    /**
+     * The movie suggestion: on a server, it plays here (from its resume point); else the player
+     * closes on this movie's page with the suggestion's request page on top.
+     */
+    private fun playUpNextMovie() {
+        val next = upNextMovie ?: return
+        val at = next.onServer
+        report(PlaybackEvent.STOP)
+        if (at != null) {
+            ui.upNextMovie = null
+            ui.movieEnding = false
+            upNextMovie = null
+            account = at.accountId
+            lifecycleScope.launch { load(at.itemId, freshStart(at.itemId, 0L)) }
+        } else {
+            val tmdb = next.tmdbId ?: return
+            PlayerReturn.routes =
+                listOfNotNull(
+                    pageRoute,
+                    be.alwyapps.watch.ui.Route
+                        .SeerrTitle("movie", tmdb),
+                )
+            finish()
+        }
     }
 
     private fun playPrevious() {
@@ -1864,6 +1924,15 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun showItem(item: be.alwyapps.watch.core.media.Item) {
+        val series = item.seriesId
+        pageRoute =
+            if (item.kind == ItemKind.EPISODE && series != null) {
+                be.alwyapps.watch.ui.Route
+                    .Detail(series, item.seasonId, account)
+            } else {
+                be.alwyapps.watch.ui.Route
+                    .Detail(item.id, account = account)
+            }
         if (item.kind == ItemKind.EPISODE) {
             ui.title = item.seriesTitle ?: item.title
             ui.subtitle =

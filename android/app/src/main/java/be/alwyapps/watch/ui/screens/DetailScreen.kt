@@ -334,6 +334,12 @@ fun DetailScreen(
             }
         }
     }
+    // A watched movie (as when its end closed the player): what to watch next, with its poster.
+    val watchedMovie = item?.kind == ItemKind.MOVIE && item.user.played
+    var upNext by remember(itemId) { mutableStateOf<be.alwyapps.watch.core.UpNextMovie?>(null) }
+    if (watchedMovie) {
+        LaunchedEffect(itemId) { upNext = runCatching { core.upNextMovie(account, itemId) }.getOrNull() }
+    }
     // Keep status (Leaving soon): from the cached list at once, then refreshed.
     val keepOn =
         remember { runCatching { core.keepActive() }.getOrDefault(false) } &&
@@ -647,6 +653,17 @@ fun DetailScreen(
                             target?.let { t -> TrackPills(account, t) }
                             target?.remaining()?.let { left ->
                                 Text(left, style = MaterialTheme.typography.bodySmall, color = Muted)
+                            }
+                            upNext?.takeIf { watchedMovie }?.let { n ->
+                                be.alwyapps.watch.ui.UpNextCard(n, {
+                                    val at = n.onServer
+                                    val next = n.item
+                                    when {
+                                        at != null && next != null -> play(ctx, at.accountId, next, fromStart = false)
+                                        at != null -> nav.push(Route.Detail(at.itemId, account = at.accountId))
+                                        else -> n.tmdbId?.let { nav.push(Route.SeerrTitle("movie", it)) }
+                                    }
+                                })
                             }
                         }
                     }

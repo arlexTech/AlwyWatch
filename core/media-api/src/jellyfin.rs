@@ -1084,6 +1084,13 @@ impl MediaServer for JellyfinClient {
         Ok(self.convert_all(self.query("/Items", &p).await?.items))
     }
 
+    async fn similar(&self, item_id: &str, limit: u32) -> Result<Vec<Item>> {
+        let mut p = self.list_params();
+        p.push(("limit", limit.to_string()));
+        let path = format!("/Items/{}/Similar", net::percent_encode(item_id));
+        Ok(self.convert_all(self.query(&path, &p).await?.items))
+    }
+
     async fn playback_info_with(
         &self,
         item_id: &str,

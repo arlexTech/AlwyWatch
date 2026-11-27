@@ -291,6 +291,14 @@ private fun Root(core: AlwyWatch) {
                             .followShownLogin(core, appCtx, acct)
                     }
                 }
+                // The player ended a title: its page (not the screen it was started from).
+                val afterPlayer = be.alwyapps.watch.ui.PlayerReturn.routes
+                androidx.compose.runtime.LaunchedEffect(afterPlayer) {
+                    if (afterPlayer.isNotEmpty()) {
+                        be.alwyapps.watch.ui.PlayerReturn.routes = emptyList()
+                        afterPlayer.forEach(nav::push)
+                    }
+                }
                 val openRoom = be.alwyapps.watch.together.TogetherInbox.openRoom
                 androidx.compose.runtime.LaunchedEffect(openRoom) {
                     if (openRoom != null) {

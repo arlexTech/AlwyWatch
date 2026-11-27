@@ -61,6 +61,7 @@ The web app links `media-api`, `seerr`, `keep-service` and `net` directly, witho
 | `cached_watchlist` / `refresh_watchlist`, `is_watchlisted`, `set_watchlisted` | Jellyfin favorites, Plex's plex.tv watchlist |
 | `people`, `cached_people`, `trailers`, `theme_song` | Title page extras |
 | `adjacent_episodes(account, item)` | Previous and next episode across seasons; works offline from cache |
+| `up_next_movie(account, item)` | After a movie: the next released film of its saga (Seerr), on a server or to request, else the first unwatched similar movie on the same server (`MediaServer::similar`); `None` for anything but a movie |
 | `search(account, query, limit)`, `set_played(...)`, `remove_from_continue_watching(...)` | |
 | `merge_homes(homes)`, `same_as(item)` | Free functions: several servers' homes as one; the cross-server identity of a title |
 | `cached_image` / `image(...)`, `cached_remote_image` / `remote_image(url)` | Disk-cached files (size-capped LRU), by width bucket; return a local path |
