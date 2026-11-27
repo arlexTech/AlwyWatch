@@ -422,10 +422,15 @@ impl JellyfinClient {
         }
         let mut out: Vec<LastFinished> = Vec::new();
         for e in self.convert_all(self.query("/Items", &p).await?.items) {
-            if let (Some(s), Some(at)) = (e.series_id, e.user.last_played_at)
-                && !out.iter().any(|(x, ..)| *x == s)
+            if let (Some(series), Some(at)) = (e.series_id, e.user.last_played_at)
+                && !out.iter().any(|l| l.series == series)
             {
-                out.push((s, at, (e.season_number, e.episode_number)));
+                out.push(LastFinished {
+                    series,
+                    at,
+                    episode: e.id,
+                    number: (e.season_number, e.episode_number),
+                });
                 if out.len() >= limit as usize {
                     break;
                 }
@@ -596,8 +601,13 @@ pub(crate) fn iso_to_unix(s: &str) -> Option<i64> {
 }
 
 /// ISO-8601 UTC from Unix seconds (inverse of `iso_to_unix`).
-/// A show, when an episode of it was last finished, and that episode's (season, number).
-type LastFinished = (String, i64, (Option<u32>, Option<u32>));
+/// A show, when an episode of it was last finished, and that episode.
+struct LastFinished {
+    series: String,
+    at: i64,
+    episode: String,
+    number: (Option<u32>, Option<u32>),
+}
 
 pub(crate) fn unix_to_iso(t: i64) -> String {
     let (days, secs) = (t.div_euclid(86_400), t.rem_euclid(86_400));
@@ -951,8 +961,8 @@ impl MediaServer for JellyfinClient {
             .last_finished(u32::MAX)
             .await?
             .into_iter()
-            .filter(|(s, ..)| series_ids.contains(s))
-            .map(|(s, at, _)| (s, at))
+            .filter(|l| series_ids.contains(&l.series))
+            .map(|l| (l.series, l.at))
             .collect())
     }
 
@@ -1029,9 +1039,12 @@ impl MediaServer for JellyfinClient {
         // was last watched, the first unwatched episode after the one finished last, dated
         // with that finish (callers drop shows left for too long).
         let mut out = Vec::new();
-        for (series, at, after) in self.last_finished(limit).await? {
-            let path = format!("/Shows/{}/Episodes", net::percent_encode(&series));
+        for l in self.last_finished(limit).await? {
+            let path = format!("/Shows/{}/Episodes", net::percent_encode(&l.series));
             let mut p = self.list_params();
+            // From the finished one on, in the show's order (enough to pass a few watched ones).
+            p.push(("startItemId", l.episode.clone()));
+            p.push(("limit", "30".into()));
             if let Some((_, fields)) = p.iter_mut().find(|(k, _)| *k == "fields") {
                 fields.push_str(",Path");
             }
@@ -1040,10 +1053,10 @@ impl MediaServer for JellyfinClient {
             eps.sort_by_key(|e| (e.season_number, e.episode_number));
             if let Some(mut next) = eps
                 .into_iter()
-                .filter(|e| (e.season_number, e.episode_number) > after)
+                .filter(|e| (e.season_number, e.episode_number) > l.number)
                 .find(|e| !e.user.played)
             {
-                next.user.last_played_at = Some(at);
+                next.user.last_played_at = Some(l.at);
                 out.push(next);
             }
         }

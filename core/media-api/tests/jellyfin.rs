@@ -823,6 +823,7 @@ async fn next_up_follows_the_episode_finished_last_as_plex_does() {
         .mount(&s)
         .await;
     Mock::given(path("/Shows/bm/Episodes"))
+        .and(query_param("startItemId", "s3e1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"Items": [
             ep("s7e6", 7, 6, true, None),
             ep("special", 0, 1, false, None),

@@ -495,7 +495,7 @@ impl Core {
     async fn fetch_home(&self, account: &str) -> Result<Home> {
         let srv = self.server(account)?;
         let (libraries, resume, next_up) =
-            tokio::join!(srv.libraries(), srv.resume(20), srv.next_up(20));
+            tokio::join!(srv.libraries(), srv.resume(50), srv.next_up(20));
         let libraries = libraries?;
         let mut set = tokio::task::JoinSet::new();
         for (i, lib) in libraries
