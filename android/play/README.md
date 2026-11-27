@@ -27,8 +27,9 @@ cd android && ./gradlew bundleRelease
 | App icon, 512×512 32-bit PNG | `icon-512.png` |
 | Feature graphic, 1024×500 | `feature-graphic-1024x500.png` |
 | Android TV banner, 1280×720 | `tv-banner-1280x720.png` |
-| Phone screenshots (2–8, 16:9 or 9:16) | to take: demo server below |
-| Android TV screenshots (1920×1080) | to take: demo server below |
+| Phone screenshots (2–8, 16:9 or 9:16) | `screenshots/phone-*.png` |
+| 7- and 10-inch tablet screenshots | `screenshots/tablet-*.png` (2560×1600, emulator in tablet size) |
+| Android TV screenshots (1920×1080) | `screenshots/tv-*.png` |
 
 Screenshots: use Jellyfin's public demo server (below), not a private library: its films
 are free to show.
@@ -92,10 +93,14 @@ are free to show.
 
 ## App content (Policy → App content)
 
-- **App access**: "All or some functionality is restricted". Instructions for reviewers:
-  > The app needs a media server. On the first screen choose Jellyfin, enter the server
-  > address `https://demo.jellyfin.org/stable`, user name `demo`, no password (Jellyfin's
-  > public demo server). On Android TV the same screens work with the remote.
+- **App access**: "All or some functionality is restricted", entry "Any Plex account (plex.tv)".
+  No server or account is provided to reviewers (AlwyWatch is a client, as AlwyChat is):
+  > AlwyWatch is a client for Jellyfin and Plex media servers: users sign in with their own
+  > account on the server of their choice. No account or server is provided; anyone can
+  > create a Plex account for free.
+  > 1. On the first screen, choose "Jellyfin or Plex only", then "Plex".
+  > 2. Sign in on the plex.tv page that opens, or tap "Create account" there (free).
+  > 3. You return to AlwyWatch automatically.
 - **Ads**: no ads.
 - **Content rating** (IARC questionnaire): category "Reference, News, or Educational" does
   not fit; choose "All other app types" and answer that the app streams content from the
@@ -114,8 +119,13 @@ are free to show.
   - Users can request deletion: yes, `https://arlextech.github.io/AlwyWatch/delete-account`.
 - **Account deletion URL**: `https://arlextech.github.io/AlwyWatch/delete-account`.
   In the app: Settings → Account → Delete account.
-- **Foreground service** (`FOREGROUND_SERVICE_DATA_SYNC`): "Data sync / user-initiated
-  download". Video to record: start a download of an episode and show its notification.
+- **Foreground service** (`FOREGROUND_SERVICE_DATA_SYNC`): "Network processing → Other",
+  user-initiated downloads for offline viewing. Video:
+  `https://arlextech.github.io/AlwyWatch/play/download-foreground-service.mp4`
+  (`docs/play/`). Jellyfin's demo server refuses downloads (HTTP 403), so record on a
+  server that allows them.
+- **AI labels**: icon, feature graphic and TV banner are labeled as AI-made; screenshots
+  are real captures.
 - **Permissions**: camera (scanning a sign-in QR code, on device), microphone (voice search,
   device speech service), notifications (download progress).
 
