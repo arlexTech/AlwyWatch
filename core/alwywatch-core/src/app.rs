@@ -3287,6 +3287,10 @@ fn shows_not_episodes(items: Vec<Item>) -> Vec<Item> {
         .collect()
 }
 
+/// Plex's default "Weeks to consider for Continue Watching": a show not watched for longer
+/// leaves the row (its episode keeps its place).
+pub const SHOW_CONTINUE_WEEKS: i64 = 16;
+
 /// A watched title that was reopened for a moment (servers keep that position and list it
 /// as "in progress"): not something to continue. Its show's next episode takes the place.
 /// A real rewatch counts once it is past two minutes or 5 % of the title, and only for films:
@@ -3301,11 +3305,16 @@ pub(crate) fn finished_and_barely_reopened(i: &Item) -> bool {
 /// [`Home::continue_watching`]): in-progress items by their own date, next episodes by when
 /// their show was last watched (set by `fetch_home`); undated next episodes last, in the
 /// server's order (the sort is stable).
+///
+/// As Plex's On Deck (and so the same on every server): films in progress stay however old,
+/// a show only while it was watched in the last [`SHOW_CONTINUE_WEEKS`] weeks.
 pub fn continue_watching(resume: &[Item], next_up: &[Item]) -> Vec<Item> {
+    let since = unix_now() - SHOW_CONTINUE_WEEKS * 7 * 86_400;
     let mut all: Vec<Item> = resume
         .iter()
         .filter(|i| !finished_and_barely_reopened(i))
         .chain(next_up)
+        .filter(|i| i.kind == ItemKind::Movie || i.user.last_played_at.is_none_or(|t| t >= since))
         .cloned()
         .collect();
     all.sort_by_key(|i| std::cmp::Reverse(i.user.last_played_at.unwrap_or(0)));
@@ -3428,6 +3437,25 @@ mod continue_watching_tests {
             .collect();
         // Newest first, one per show (b2 is more recent than b), undated d last.
         assert_eq!(ids, ["c", "a", "b2", "e", "d"]);
+    }
+
+    #[test]
+    fn a_show_not_watched_for_16_weeks_leaves_a_film_stays() {
+        let now = unix_now();
+        let old = now - 17 * 7 * 86_400;
+        let mut film = ep("f", "", Some(old), 600_000);
+        film.kind = ItemKind::Movie;
+        film.series_id = None;
+        let resume = [ep("a", "A", Some(old), 600_000), film];
+        let next = [
+            ep("b", "B", Some(old), 0),
+            ep("c", "C", Some(now - 86_400), 0),
+        ];
+        let ids: Vec<String> = continue_watching(&resume, &next)
+            .into_iter()
+            .map(|i| i.id)
+            .collect();
+        assert_eq!(ids, ["c", "f"]);
     }
 
     #[test]

@@ -212,11 +212,17 @@ async fn load_home(c: &state::Ctx) -> Option<(Rails, Vec<LibLink>)> {
     resume.sort_by_key(|(_, i)| std::cmp::Reverse(i.user.last_played_at.unwrap_or(0)));
     // One row, like the apps: what is in progress, then the next episode of the shows that
     // have nothing in progress (the servers' "next up" repeats the in-progress ones).
-    // A watched title reopened for a moment is not "in progress" (same rule as the apps:
-    // under two minutes or 5 %).
+    // Same rules as the apps (and Plex's On Deck): a watched title reopened for a moment is
+    // not "in progress" (under two minutes or 5 %), a watched episode never is (its show's
+    // next one is), and a show leaves the row after 16 weeks unwatched; films stay.
+    let since = (js_sys::Date::now() / 1000.0) as i64 - 16 * 7 * 86_400;
     resume.retain(|(_, i)| {
-        !(i.user.played && i.user.position_ms < (i.runtime_ms.unwrap_or(0) / 20).max(120_000))
+        let film = i.kind == ItemKind::Movie;
+        !(i.user.played
+            && (!film || i.user.position_ms < (i.runtime_ms.unwrap_or(0) / 20).max(120_000)))
+            && (film || i.user.last_played_at.is_none_or(|t| t >= since))
     });
+    next.retain(|(_, i)| i.user.last_played_at.is_none_or(|t| t >= since));
     // Taken out here (Jellyfin's "next up" can't be): until watched again since.
     let hidden = state::load::<HashMap<String, i64>>(HIDDEN).unwrap_or_default();
     let synced = state::load::<HashMap<String, String>>(SYNCED_HIDDEN).unwrap_or_default();
