@@ -16,6 +16,9 @@
     <!-- Only to scan another device's sign-in QR code; asked when that button is pressed. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- The CAMERA permission alone makes Play require a camera (TVs have none). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <!-- One APK for phone, tablet and TV: neither touch nor leanback is required. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
