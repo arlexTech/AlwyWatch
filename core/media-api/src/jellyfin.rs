@@ -408,10 +408,7 @@ impl JellyfinClient {
     /// `limit`), with that date and the episode's (season, number). One request: the 300
     /// most recently finished episodes. (LastPlayedDate also moves when an episode is merely
     /// started: only played ones count.)
-    async fn last_finished(
-        &self,
-        limit: u32,
-    ) -> Result<Vec<(String, i64, (Option<u32>, Option<u32>))>> {
+    async fn last_finished(&self, limit: u32) -> Result<Vec<LastFinished>> {
         let mut p = self.list_params();
         p.push(("recursive", "true".into()));
         p.push(("includeItemTypes", "Episode".into()));
@@ -423,7 +420,7 @@ impl JellyfinClient {
         if let Some((_, fields)) = p.iter_mut().find(|(k, _)| *k == "fields") {
             fields.push_str(",Path");
         }
-        let mut out: Vec<(String, i64, (Option<u32>, Option<u32>))> = Vec::new();
+        let mut out: Vec<LastFinished> = Vec::new();
         for e in self.convert_all(self.query("/Items", &p).await?.items) {
             if let (Some(s), Some(at)) = (e.series_id, e.user.last_played_at)
                 && !out.iter().any(|(x, ..)| *x == s)
@@ -599,6 +596,9 @@ pub(crate) fn iso_to_unix(s: &str) -> Option<i64> {
 }
 
 /// ISO-8601 UTC from Unix seconds (inverse of `iso_to_unix`).
+/// A show, when an episode of it was last finished, and that episode's (season, number).
+type LastFinished = (String, i64, (Option<u32>, Option<u32>));
+
 pub(crate) fn unix_to_iso(t: i64) -> String {
     let (days, secs) = (t.div_euclid(86_400), t.rem_euclid(86_400));
     // Civil from days (Howard Hinnant's algorithm).
