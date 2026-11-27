@@ -654,17 +654,8 @@ fun DetailScreen(
                             target?.remaining()?.let { left ->
                                 Text(left, style = MaterialTheme.typography.bodySmall, color = Muted)
                             }
-                            upNext?.takeIf { watchedMovie }?.let { n ->
-                                be.alwyapps.watch.ui.UpNextCard(n, {
-                                    val at = n.onServer
-                                    val next = n.item
-                                    when {
-                                        at != null && next != null -> play(ctx, at.accountId, next, fromStart = false)
-                                        at != null -> nav.push(Route.Detail(at.itemId, account = at.accountId))
-                                        else -> n.tmdbId?.let { nav.push(Route.SeerrTitle("movie", it)) }
-                                    }
-                                })
-                            }
+                            // Phones: under the buttons. TV: first below (the hero has a fixed height).
+                            if (!d.isTv) upNext?.takeIf { watchedMovie }?.let { UpNextAction(it) }
                         }
                     }
                     if (!d.isTv) {
@@ -684,6 +675,7 @@ fun DetailScreen(
                         Modifier.padding(horizontal = d.gutter, vertical = 12.dp).fillMaxWidth(if (d.isTv) 0.6f else 1f),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
+                        if (d.isTv) upNext?.takeIf { watchedMovie }?.let { UpNextAction(it) }
                         item.overview?.let { Overview(item.title, it) }
                         if (item.genres.isNotEmpty()) {
                             androidx.compose.foundation.layout.FlowRow(
@@ -1768,3 +1760,19 @@ private fun sagaLabel(name: String): String =
 
 /** A season's name in the app's language when the server's is only "Season N" (see [seasonLabel]). */
 private fun be.alwyapps.watch.core.media.Item.seasonLabel(): String = seasonNumber?.let { seasonLabel(it, title) } ?: title
+
+/** The movie suggestion on a watched movie's page: plays it, else opens its page or request page. */
+@Composable
+private fun UpNextAction(n: be.alwyapps.watch.core.UpNextMovie) {
+    val ctx = LocalContext.current
+    val nav = LocalNavigator.current
+    be.alwyapps.watch.ui.UpNextCard(n, {
+        val at = n.onServer
+        val next = n.item
+        when {
+            at != null && next != null -> play(ctx, at.accountId, next, fromStart = false)
+            at != null -> nav.push(Route.Detail(at.itemId, account = at.accountId))
+            else -> n.tmdbId?.let { nav.push(Route.SeerrTitle("movie", it)) }
+        }
+    })
+}

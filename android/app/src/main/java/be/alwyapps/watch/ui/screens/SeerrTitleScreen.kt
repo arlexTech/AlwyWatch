@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -307,6 +308,19 @@ fun SeerrSagaScreen(
     val nav = LocalNavigator.current
     val d = LocalDimens.current
     var saga by remember { mutableStateOf<SeerrCollection?>(null) }
+    // TV: the first film has the focus when the films arrive (nothing showed it before).
+    val firstFocus =
+        remember {
+            androidx.compose.ui.focus
+                .FocusRequester()
+        }
+    val firstId = saga?.parts?.firstOrNull()?.tmdbId
+    if (d.isTv && firstId != null) {
+        LaunchedEffect(firstId) {
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { firstFocus.requestFocus() }
+        }
+    }
     val account = be.alwyapps.watch.ui.LocalAccount.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
@@ -336,7 +350,7 @@ fun SeerrSagaScreen(
         error?.let { msg -> item(span = { GridItemSpan(maxLineSpan) }) { ErrorBanner(msg) { reload++ } } }
         items(saga?.parts.orEmpty(), key = { it.tmdbId }) { r ->
             // The film's own page when it is on a server (to play it), else Seerr's (to request it).
-            SeerrPoster(r) {
+            SeerrPoster(r, if (r.tmdbId == firstId) Modifier.focusRequester(firstFocus) else Modifier) {
                 scope.launch {
                     val at = runCatching { core.libraryTitle(SeerrMediaType.MOVIE, r.tmdbId, account) }.getOrNull()
                     nav.push(if (at != null) Route.Detail(at.itemId, account = at.accountId) else Route.SeerrTitle("movie", r.tmdbId))

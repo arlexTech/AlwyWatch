@@ -304,6 +304,7 @@ fun PlayerOverlay(
         }
     }
     val playFocus = remember { FocusRequester() }
+    val upNextFocus = remember { FocusRequester() }
     // Touch: a double tap on the left half goes back 10 s, on the right half forward 30 s.
     // Each further tap on the same side soon after repeats it, so taps add up (−10, −20…),
     // counted in the bubble on that side.
@@ -414,8 +415,11 @@ fun PlayerOverlay(
                         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.End) {
                             androidx.compose.runtime.CompositionLocalProvider(be.alwyapps.watch.ui.LocalCore provides core) {
                                 be.alwyapps.watch.ui
-                                    .UpNextCard(suggestion, onNext)
+                                    .UpNextCard(suggestion, onNext, Modifier.focusRequester(upNextFocus))
                             }
+                            // Takes the focus from Play/Pause when it shows (after it, in the
+                            // tree): OK on a remote starts it, ↑/← go back to the buttons.
+                            LaunchedEffect(Unit) { runCatching { upNextFocus.requestFocus() } }
                         }
                     }
                     // "Skip intro" / "Next episode": above the seek bar, at the right (where it
