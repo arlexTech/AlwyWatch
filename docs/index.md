@@ -76,3 +76,5 @@ chmod +x AlwyWatch-linux-x86_64.AppImage
 - [Source code](https://github.com/arlexTech/alwywatch)
 - [Set up the server](deploy)
 - [Build it yourself](build)
+- [Privacy policy](privacy)
+- [Delete your AlwyWatch account](delete-account)

@@ -1856,6 +1856,12 @@ msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: web/src/account.rs
+#: ios/AlwyWatch/Account.swift
+msgid "Delete account"
+msgstr ""
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: web/src/account.rs
 #: desktop/ui/app.slint
 msgid "Password & passkeys"
 msgstr ""
@@ -1872,12 +1878,12 @@ msgid "Connected"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
-msgid "Also deleting the account: on your phone or computer, at {address}"
+msgid "On your phone or computer, at {address}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: ios/AlwyWatch/Account.swift
-msgid "Also deleting the account: opens {address}"
+msgid "Opens {address}"
 msgstr ""
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
@@ -6822,10 +6828,6 @@ msgstr ""
 
 #: web/src/account.rs
 msgid "The password is wrong."
-msgstr ""
-
-#: web/src/account.rs
-msgid "Delete account"
 msgstr ""
 
 #: web/src/account.rs

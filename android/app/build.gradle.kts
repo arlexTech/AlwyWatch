@@ -67,6 +67,17 @@ val signingProps =
         .takeIf { it.isFile }
         ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
 
+val appVersionCode: Int =
+    providers.gradleProperty("versionCode").orNull?.toInt()
+        ?: runCatching {
+            providers
+                .exec { commandLine("git", "rev-list", "--count", "HEAD") }
+                .standardOutput.asText
+                .get()
+                .trim()
+                .toInt()
+        }.getOrDefault(1)
+
 // `./gradlew bundleRelease`: the Play Store bundle (.aab) instead of direct-download APKs.
 val playBundle = gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
 
@@ -79,7 +90,9 @@ android {
         applicationId = "be.alwyapps.watch"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
+        // Play takes only a higher code than the last upload: the commit count only grows
+        // (`-PversionCode=…` overrides it; a shallow clone counts 1).
+        versionCode = appVersionCode
         versionName = "0.1.0"
         // Libraries bring native code for CPUs the Rust core isn't built for: a bundle with
         // those would install there and crash. (APK builds get this from the ABI splits.)

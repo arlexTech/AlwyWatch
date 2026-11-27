@@ -1861,6 +1861,12 @@ msgstr "Se déconnecter"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: web/src/account.rs
+#: ios/AlwyWatch/Account.swift
+msgid "Delete account"
+msgstr "Supprimer le compte"
+
+#: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
+#: web/src/account.rs
 #: desktop/ui/app.slint
 msgid "Password & passkeys"
 msgstr "Mot de passe et clés d'accès"
@@ -1877,13 +1883,13 @@ msgid "Connected"
 msgstr "Connecté"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
-msgid "Also deleting the account: on your phone or computer, at {address}"
-msgstr "Pour supprimer aussi le compte : sur votre téléphone ou ordinateur, à l'adresse {address}"
+msgid "On your phone or computer, at {address}"
+msgstr "Sur votre téléphone ou ordinateur, à {address}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: ios/AlwyWatch/Account.swift
-msgid "Also deleting the account: opens {address}"
-msgstr "Pour supprimer aussi le compte : ouvre {address}"
+msgid "Opens {address}"
+msgstr "Ouvre {address}"
 
 #: android/app/src/main/java/be/alwyapps/watch/ui/screens/ConnectionSettings.kt
 #: web/src/account.rs
@@ -6830,10 +6836,6 @@ msgid "The password is wrong."
 msgstr "Le mot de passe est incorrect."
 
 #: web/src/account.rs
-msgid "Delete account"
-msgstr "Supprimer le compte"
-
-#: web/src/account.rs
 msgid "This deletes your AlwyWatch account: its username, password, passkeys and the devices signed in with it. You keep using AlwyWatch with your Plex or Jellyfin sign-in, and your profile and keep requests stay with it."
 msgstr "Cela supprime votre compte AlwyWatch : son nom d'utilisateur, son mot de passe, ses clés d'accès et les appareils connectés avec lui. Vous continuez à utiliser AlwyWatch avec votre connexion Plex ou Jellyfin, qui garde votre profil et vos choix de conservation."
 
@@ -9299,6 +9301,12 @@ msgstr "Ce fichier ne peut pas être lu sur cet appareil."
 #: ios/AlwyWatch/Sync.swift
 msgid "Keep AlwyWatch open until it ends: iOS pauses it shortly after you leave the app."
 msgstr "Gardez AlwyWatch ouvert jusqu'à la fin : iOS le met en pause peu après que vous quittez l'app."
+
+#~ msgid "Also deleting the account: on your phone or computer, at {address}"
+#~ msgstr "Pour supprimer aussi le compte : sur votre téléphone ou ordinateur, à l'adresse {address}"
+
+#~ msgid "Also deleting the account: opens {address}"
+#~ msgstr "Pour supprimer aussi le compte : ouvre {address}"
 
 #~ msgid "{count} already up to date"
 #~ msgstr "{count} déjà à jour"

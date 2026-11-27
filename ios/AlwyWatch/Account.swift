@@ -547,9 +547,20 @@ private struct AlwyWatchConnectionGroup: View {
                     Link(destination: page) {
                         TitledRow(
                             title: tr("Password & passkeys"),
-                            subtitle: tr("Also deleting the account: opens {address}", ["address": host(page.absoluteString) + "/account"]),
+                            subtitle: tr("Opens {address}", ["address": host(page.absoluteString) + "/account"]),
                             icon: "gearshape"
                         )
+                    }
+                    // Deleting happens on the server's page too (with the password when there is one).
+                    if let delete = URL(string: page.absoluteString + "#delete") {
+                        Link(destination: delete) {
+                            TitledRow(
+                                title: tr("Delete account"),
+                                subtitle: tr("Opens {address}", ["address": host(page.absoluteString) + "/account"]),
+                                icon: "trash",
+                                tint: Palette.danger
+                            )
+                        }
                     }
                 }
             }

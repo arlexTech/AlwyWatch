@@ -210,7 +210,10 @@ fun AlwyWatchConnectionGroup(
         )
     }
     var passwordPage by remember { mutableStateOf<String?>(null) }
-    passwordPage?.let { page -> WebPageDialog(tr("Password & passkeys"), page) { passwordPage = null } }
+    passwordPage?.let { page ->
+        val title = if (page.endsWith("#delete")) tr("Delete account") else tr("Password & passkeys")
+        WebPageDialog(title, page) { passwordPage = null }
+    }
     val address = base.substringAfter("://").trimEnd('/')
     Group(tr("AlwyWatch server")) {
         ListRow(
@@ -235,12 +238,29 @@ fun AlwyWatchConnectionGroup(
                 tr("Password & passkeys"),
                 subtitle =
                     if (tv) {
-                        tr("Also deleting the account: on your phone or computer, at {address}", "address" to page.substringAfter("://"))
+                        tr("On your phone or computer, at {address}", "address" to page.substringAfter("://"))
                     } else {
-                        tr("Also deleting the account: opens {address}", "address" to page.substringAfter("://"))
+                        tr("Opens {address}", "address" to page.substringAfter("://"))
                     },
                 icon = Icons.Settings,
                 onClick = { if (tv) passwordPage = page else openInBrowser(ctx, page) },
+                trailing = { Chevron() },
+            )
+            Divider()
+            // Deleting happens on the server's page too (with the password when there is
+            // one): the same for every app, and what each store asks the app to lead to.
+            val deletePage = "$page#delete"
+            ListRow(
+                tr("Delete account"),
+                subtitle =
+                    if (tv) {
+                        tr("On your phone or computer, at {address}", "address" to page.substringAfter("://"))
+                    } else {
+                        tr("Opens {address}", "address" to page.substringAfter("://"))
+                    },
+                icon = Icons.Delete,
+                iconTint = Danger,
+                onClick = { if (tv) passwordPage = deletePage else openInBrowser(ctx, deletePage) },
                 trailing = { Chevron() },
             )
         }

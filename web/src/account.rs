@@ -1212,6 +1212,22 @@ fn DeleteAccount(
     let error = RwSignal::new(None::<String>);
     let has = info.has_password;
     let media = !info.linked.is_empty();
+    // `/account#delete` (the apps' "Delete account"): this section, open, in view.
+    if web_sys::window()
+        .and_then(|w| w.location().hash().ok())
+        .is_some_and(|h| h == "#delete")
+    {
+        open.set(true);
+        spawn_local(async {
+            state::sleep(30).await;
+            if let Some(el) = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.get_element_by_id("delete"))
+            {
+                el.scroll_into_view();
+            }
+        });
+    }
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         // Pressed twice: the second would hit an account already gone.
@@ -1250,7 +1266,7 @@ fn DeleteAccount(
         });
     };
     view! {
-        <section class="group">
+        <section class="group" id="delete">
             <h2>{tr!("Delete account")}</h2>
             {move || if open.get() {
                 view! {
